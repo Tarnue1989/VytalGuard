@@ -103,28 +103,13 @@ import RolePermissionModel from "./RolePermission.js";
 
 
 // 🛠 Create Sequelize instance
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  throw new Error("❌ DATABASE_URL is not defined");
-}
-
-const isLocal =
-  databaseUrl.includes("localhost") ||
-  databaseUrl.includes("127.0.0.1");
-
-const sequelize = new Sequelize(databaseUrl, {
-  dialect: "postgres",
-  logging: false,
-  dialectOptions: isLocal
-    ? {} // ❌ NO SSL for local Postgres
-    : {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false, // ✅ required by Render
-        },
-      },
-});
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, { dialect: "postgres", logging: false })
+  : new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
+      host: process.env.DB_HOST,
+      dialect: "postgres",
+      logging: false,
+    });
 
 // 🏗 Initialize models
 const models = {
