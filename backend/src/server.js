@@ -28,6 +28,8 @@ const log = makeModuleLogger("server", DEBUG_OVERRIDE);
    APP SETUP
 ============================================================ */
 const app = express();
+// ✅ REQUIRED FOR RENDER / PROXIES
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 4000;
 const USE_HTTPS = process.env.USE_HTTPS === "true";
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || "./certs/key.pem";

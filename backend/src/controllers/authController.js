@@ -36,11 +36,11 @@ const REFRESH_TOKEN_TTL_DAYS = parseInt(process.env.REFRESH_TOKEN_TTL_DAYS || "7
 // Secure cookie settings
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
-  path: "/",   // ✅ allow cookie for all API routes
-  domain: process.env.COOKIE_DOMAIN || undefined
+  secure: true,        // 🔴 REQUIRED on Render (HTTPS)
+  sameSite: "none",    // 🔴 REQUIRED for cross-site cookies
+  path: "/",
 };
+
 
 
 // -------------------- Validation Schemas --------------------
