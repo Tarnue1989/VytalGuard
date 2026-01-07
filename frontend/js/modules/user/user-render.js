@@ -1,0 +1,271 @@
+// 📁 user-render.js – User Table & Card Renderers (Enterprise-Aligned)
+// ============================================================================
+// 🧭 Master Pattern: role-render.js
+// 🔹 Permission-aware UI via STATUS_ACTION_MATRIX + buildActionButtons
+// 🔹 Table + Card parity
+// 🔹 Export-safe, tooltip-safe
+// 🔹 100% ID-safe (userTableBody / userList)
+// ============================================================================
+
+import { FIELD_LABELS_USER } from "./user-constants.js";
+import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { buildActionButtons } from "../../utils/status-action-matrix.js";
+import { exportData } from "../../utils/export-utils.js";
+
+/* ============================================================
+   🎛️ Action Buttons (Centralized, Permission-Aware)
+============================================================ */
+function getUserActionButtons(entry, user) {
+  return buildActionButtons({
+    module: "user", // STATUS_ACTION_MATRIX.user
+    status: (entry.status || "").toLowerCase(),
+    entry,          // ✅ REQUIRED
+    entryId: entry.id,
+    user,
+    permissionPrefix: "users",
+  });
+}
+
+/* ============================================================
+   🧱 Dynamic Table Head Renderer
+============================================================ */
+export function renderDynamicTableHead(visibleFields) {
+  const thead = document.getElementById("dynamicTableHead");
+  if (!thead) return;
+
+  thead.innerHTML = "";
+  const tr = document.createElement("tr");
+
+  visibleFields.forEach((field) => {
+    const th = document.createElement("th");
+    th.textContent = FIELD_LABELS_USER[field] || field.replace(/_/g, " ");
+    if (field === "actions") th.classList.add("actions-cell");
+    tr.appendChild(th);
+  });
+
+  thead.appendChild(tr);
+}
+
+/* ============================================================
+   🔠 Field Render Helpers
+============================================================ */
+function renderUserRef(user) {
+  if (!user) return "—";
+  const parts = [user.first_name, user.last_name].filter(Boolean);
+  return parts.length ? parts.join(" ") : user.username || user.email || "—";
+}
+
+function renderValue(entry, field) {
+  switch (field) {
+    case "status": {
+      const raw = (entry.status || "").toLowerCase();
+      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+      const colorMap = {
+        active: "bg-success",
+        inactive: "bg-warning text-dark",
+        locked: "bg-danger",
+        deleted: "bg-secondary",
+      };
+
+      return raw
+        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">
+             <i class="fas ${
+               raw === "active" ? "fa-user-check" : "fa-user-slash"
+             } me-1"></i>${label}
+           </span>`
+        : "—";
+    }
+
+    case "full_name":
+      return (
+        [entry.first_name, entry.last_name].filter(Boolean).join(" ") || "—"
+      );
+
+    case "organization":
+      return entry.organization?.name || "—";
+
+    case "facilities":
+      return Array.isArray(entry.facilities) && entry.facilities.length
+        ? entry.facilities.map((f) => f.name || f.code || f.id).join(", ")
+        : "—";
+
+    case "roles":
+      return Array.isArray(entry.roles) && entry.roles.length
+        ? entry.roles.map((r) => r.name || r.id).join(", ")
+        : "—";
+
+    case "createdByUser":
+      return renderUserRef(entry.createdByUser);
+    case "updatedByUser":
+      return renderUserRef(entry.updatedByUser);
+    case "deletedByUser":
+      return renderUserRef(entry.deletedByUser);
+
+    case "created_at":
+    case "updated_at":
+    case "deleted_at":
+    case "last_login_at":
+    case "locked_until":
+      return entry[field] ? formatDate(entry[field]) : "—";
+
+    default:
+      return entry[field] ?? "—";
+  }
+}
+
+/* ============================================================
+   🗂️ Card Renderer
+============================================================ */
+export function renderCard(entry, visibleFields, user) {
+  const details = visibleFields
+    .filter((f) => f !== "actions")
+    .map(
+      (f) => `
+        <p><strong>${FIELD_LABELS_USER[f] || f}:</strong>
+        ${renderValue(entry, f)}</p>`
+    )
+    .join("");
+
+  const footer = visibleFields.includes("actions")
+    ? `
+      <div class="card-footer text-end">
+        <div class="table-actions">
+          ${getUserActionButtons(entry, user)}
+        </div>
+      </div>`
+    : "";
+
+  return `
+    <div class="record-card card shadow-sm h-100">
+      <div class="card-body">${details}</div>
+      ${footer}
+    </div>`;
+}
+
+/* ============================================================
+   📋 Main List Renderer
+============================================================ */
+export function renderList({ entries, visibleFields, viewMode, user }) {
+  const tableBody = document.getElementById("userTableBody");
+  const cardContainer = document.getElementById("userList");
+  const tableContainer = document.querySelector(".table-container");
+  if (!tableBody || !cardContainer || !tableContainer) return;
+
+  tableBody.innerHTML = "";
+  cardContainer.innerHTML = "";
+
+  if (viewMode === "table") {
+    cardContainer.classList.remove("active");
+    tableContainer.classList.add("active");
+
+    renderDynamicTableHead(visibleFields);
+
+    if (!entries.length) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}"
+              class="text-center text-muted py-3">
+            No users found.
+          </td>
+        </tr>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = visibleFields
+        .map((f) => {
+          const val =
+            f === "actions"
+              ? `<div class="table-actions export-ignore">
+                   ${getUserActionButtons(entry, user)}
+                 </div>`
+              : renderValue(entry, f);
+
+          const cls =
+            f === "actions" ? ' class="text-center actions-cell"' : "";
+
+          return `<td${cls}>${val}</td>`;
+        })
+        .join("");
+
+      tableBody.appendChild(tr);
+    });
+
+    initTooltips(tableBody);
+  } else {
+    tableContainer.classList.remove("active");
+    cardContainer.classList.add("active");
+
+    cardContainer.innerHTML = entries.length
+      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
+      : `<p class="text-muted text-center py-3">No users found.</p>`;
+
+    initTooltips(cardContainer);
+  }
+
+  setupExportHandlers(entries);
+}
+
+/* ============================================================
+   📤 Export Handlers
+============================================================ */
+let exportHandlersBound = false;
+
+function setupExportHandlers(entries) {
+  if (exportHandlersBound) return;
+  exportHandlersBound = true;
+
+  const title = "Users Report";
+
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
+    exportData({ type: "csv", data: entries, title });
+  });
+
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
+    exportData({ type: "xlsx", data: entries, title });
+  });
+
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+    exportData({
+      type: "pdf",
+      title,
+      selector: ".table-container",
+      orientation: "landscape",
+    });
+  });
+}
+
+/* ============================================================
+   🪟 View Modal (REQUIRED BY user-actions.js)
+============================================================ */
+export function showUserModal(title, bodyHtml) {
+  let modalEl = document.getElementById("userActionModal");
+  if (!modalEl) {
+    modalEl = document.createElement("div");
+    modalEl.id = "userActionModal";
+    modalEl.className = "modal fade";
+    modalEl.tabIndex = -1;
+    modalEl.innerHTML = `
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"></h5>
+            <button type="button" class="btn-close"
+              data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary"
+              data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+  }
+
+  modalEl.querySelector(".modal-title").innerHTML = title;
+  modalEl.querySelector(".modal-body").innerHTML = bodyHtml;
+
+  new bootstrap.Modal(modalEl).show();
+}

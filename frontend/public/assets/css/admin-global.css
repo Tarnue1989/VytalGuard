@@ -1,0 +1,43 @@
+/* ============================================================
+  🧱 Global Admin Styles – Aggregator
+  Includes all modular shared UI styles for GoldLTE HMS
+============================================================ */
+
+/* 🎨 Base Theme & Layout */
+@import url('./theme.css');        /* Colors, fonts, spacing */
+@import url('./layout.css');       /* Containers, spacing, grids */
+@import url('./utilities.css');    /* Helpers like .text-center, .d-none */
+
+/* 🧱 Core Structure */
+@import url('./header.css');       /* Top navbar */
+@import url('./sidebar.css');      /* Side menu styles */
+
+/* 🔘 Components */
+@import url('./buttons.css');      /* Form buttons and variants */
+@import url('./badges.css');       /* Dots, pill counters */
+@import url('./avatars.css');      /* User profile images */
+@import url('./tooltips.css');     /* Hover tips, info bubbles */
+
+/* 📄 UI Elements */
+@import url('./cards.css');        /* Cards for patients/items/etc */
+@import url('./tables.css');       /* Table layouts and hover behavior */
+@import url('./forms.css');        /* Floating labels, inputs, validation */
+@import url('./modals.css');       /* Dialog windows and overlays */
+@import url('./toasts.css');       /* Alerts and notification popups */
+@import url('./pagination.css');   /* Page navigation controls */
+@import url('./filters.css');      /* 🔍 Filter fields and grid layout */
+@import url('./status.css');       /* apply color to table or cards layout */
+@import url('./export.css');       /* Export-ignore styles for PDF/Excel */
+
+@import "suggestions.css";
+
+/* ✨ Pills for multi-item forms (Central Stock, etc.) */
+@import url('./pills.css');
+
+/* 🎞️ Effects & Fixes */
+@import url('./transitions.css');  /* Animations: fade, slide, expand */
+@import url('./overrides.css');    /* Specificity fixes, overrides */
+@import url('./print.css');        /* Print media tweaks (optional) */
+
+
+

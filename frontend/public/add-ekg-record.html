@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add EKG Record</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add an EKG Record">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">EKG Records</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add EKG Record</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add EKG Record</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="ekgRecordForm">
+                  <div class="row gx-3 gy-3">
+
+                    <!-- Patient -->
+                    <div class="col-md-3 position-relative">
+                      <label class="form-label" for="patientInput">Patient</label>
+                      <input type="text" class="form-control suggestion-input" id="patientInput"
+                             placeholder="Search patient..." autocomplete="off" />
+                      <input type="hidden" id="patientId" name="patient_id" />
+                      <div id="patientSuggestions" class="suggestions"></div>
+                    </div>
+                    
+                    <!-- Technician (hidden) -->
+                    <div class="col-md-3 position-relative d-none">
+                      <label class="form-label" for="technicianInput">Technician</label>
+                      <input type="text" class="form-control suggestion-input" id="technicianInput"
+                            placeholder="Search technician..." autocomplete="off" />
+                      <input type="hidden" id="technicianId" name="technician_id" />
+                      <div id="technicianSuggestions" class="suggestions"></div>
+                    </div>
+
+
+                    <!-- Recorded Date -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="recordedDate">Recorded Date</label>
+                      <input type="date" class="form-control" id="recordedDate" name="recorded_date">
+                    </div>
+
+                    <!-- Consultation (hidden) -->
+                    <div class="col-md-3 d-none">
+                      <label class="form-label" for="consultationSelect">Consultation</label>
+                      <select class="form-control" id="consultationSelect" name="consultation_id"></select>
+                    </div>
+
+                    <!-- Registration Log (hidden) -->
+                    <div class="col-md-3 d-none">
+                      <label class="form-label" for="registrationLogSelect">Registration Log</label>
+                      <select class="form-control" id="registrationLogSelect" name="registration_log_id"></select>
+                    </div>
+
+
+                    <!-- Billable Item -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="billableItemSelect">Billable Item</label>
+                      <select class="form-control" id="billableItemSelect" name="billable_item_id"></select>
+                    </div>
+
+                    <!-- Heart Metrics -->
+                    <div class="col-md-2">
+                      <label class="form-label" for="heartRate">Heart Rate</label>
+                      <input type="number" class="form-control" id="heartRate" name="heart_rate">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="prInterval">PR Interval</label>
+                      <input type="number" class="form-control" id="prInterval" name="pr_interval">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="qrsDuration">QRS Duration</label>
+                      <input type="number" class="form-control" id="qrsDuration" name="qrs_duration">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="qtInterval">QT Interval</label>
+                      <input type="number" class="form-control" id="qtInterval" name="qt_interval">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="axis">Axis</label>
+                      <input type="text" class="form-control" id="axis" name="axis">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label" for="rhythm">Rhythm</label>
+                      <input type="text" class="form-control" id="rhythm" name="rhythm">
+                    </div>
+
+                    <!-- Interpretation / Recommendation / Notes -->
+                    <div class="col-md-4">
+                      <label class="form-label" for="interpretation">Interpretation</label>
+                      <textarea class="form-control" id="interpretation" name="interpretation" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label" for="recommendation">Recommendation</label>
+                      <textarea class="form-control" id="recommendation" name="recommendation" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label" for="note">Notes</label>
+                      <textarea class="form-control" id="note" name="note" rows="2"></textarea>
+                    </div>
+
+                    <!-- Emergency -->
+                    <div class="col-md-3 form-check mt-4">
+                      <input class="form-check-input" type="checkbox" id="isEmergency" name="is_emergency">
+                      <label class="form-check-label" for="isEmergency">Emergency</label>
+                    </div>
+                    <!-- Organization (Superadmin only) -->
+                    <div class="col-md-4 superadmin-only">
+                      <div class="mb-3 form-group">
+                        <label for="organizationSelect" class="form-label">Organization</label>
+                        <!-- 🔒 remove "name" to prevent browser auto-sending -->
+                        <select id="organizationSelect" class="form-control"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-md-4">
+                      <div class="mb-3 form-group">
+                        <label for="facilitySelect" class="form-label">Facility</label>
+                        <!-- 🔒 remove "name" to prevent browser auto-sending -->
+                        <select id="facilitySelect" class="form-control"></select>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save EKG Record
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/ekg-records/add-ekg-record.js"></script>
+</body>
+</html>

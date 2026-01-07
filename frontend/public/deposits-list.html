@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Deposits List</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Deposits List">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+</head>
+
+<body>
+<div class="page-wrapper">
+  <div class="app-container">
+
+    <!-- Header -->
+    <div class="app-header d-flex align-items-center"></div>
+
+    <!-- Hero Header -->
+    <div class="app-hero-header d-flex align-items-center">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+          <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+        </li>
+        <li class="breadcrumb-item">Deposits</li>
+        <li class="breadcrumb-item text-primary" aria-current="page">
+          Deposits List
+        </li>
+      </ol>
+
+      <div class="ms-auto d-none d-md-flex flex-row">
+        <div class="input-group">
+          <span class="input-group-text bg-primary-lighten">
+            <i class="ri-calendar-2-line text-primary"></i>
+          </span>
+          <input type="text" id="dateRange" class="form-control custom-daterange">
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="app-body">
+      <div class="row gx-4">
+        <div class="col-sm-12">
+
+          <div class="card">
+
+            <!-- Card Header -->
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <h5 class="card-title">Deposits</h5>
+              <a href="add-deposit.html"
+                 class="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1"
+                 title="Add Deposit">
+                <i class="ri-add-line"></i>
+                <span>Add</span>
+              </a>
+            </div>
+
+            <div class="card-body">
+
+              <!-- Filters -->
+              <div class="card panel-card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+
+                  <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-filter me-1"></i>Filter
+                    <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                  </button>
+
+                  <div class="view-actions d-flex gap-2">
+                    <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+                      <i class="fas fa-file-csv me-1"></i> CSV
+                    </button>
+                    <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-file-excel me-1"></i> Excel
+                    </button>
+                    <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                      <i class="fas fa-file-pdf me-1"></i> PDF
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Filter Body (UNCHANGED CONTRACT) -->
+                <div id="filterCollapse" class="card-body filter-body">
+                  <div class="section-label mb-2"><strong>Filter Deposits</strong></div>
+
+                  <div class="row g-3 filter-grid compact">
+
+                    <!-- Patient -->
+                    <div class="col-md-3">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="filterPatient">Patient</label>
+                        <input type="text"
+                               id="filterPatient"
+                               class="form-control suggestion-input"
+                               placeholder="Search patient..."
+                               autocomplete="off">
+                        <input type="hidden" id="filterPatientId">
+                        <div id="filterPatientSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Transaction Ref -->
+                    <div class="col-md-3">
+                      <label for="filterTransactionRef" class="form-label">Transaction Ref</label>
+                      <input type="text"
+                             id="filterTransactionRef"
+                             class="form-control"
+                             placeholder="Ref no.">
+                    </div>
+
+                    <!-- Method -->
+                    <div class="col-md-3">
+                      <label for="filterMethodSelect" class="form-label">Method</label>
+                      <select id="filterMethodSelect" class="form-select">
+                        <option value="">All</option>
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="mobile_money">Mobile Money</option>
+                        <option value="cheque">Cheque</option>
+                      </select>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-md-3">
+                      <label for="filterStatus" class="form-label">Status</label>
+                      <select id="filterStatus" class="form-select">
+                        <option value="">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="cleared">Cleared</option>
+                        <option value="applied">Applied</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="reversed">Reversed</option>
+                      </select>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-md-3">
+                      <label for="filterOrganizationSelect" class="form-label">Organization</label>
+                      <select id="filterOrganizationSelect" class="form-select"></select>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-md-3">
+                      <label for="filterFacilitySelect" class="form-label">Facility</label>
+                      <select id="filterFacilitySelect" class="form-select"></select>
+                    </div>
+
+                    <!-- Dates -->
+                    <div class="col-md-2">
+                      <label for="filterCreatedFrom" class="form-label">From Date</label>
+                      <input type="date" id="filterCreatedFrom" class="form-control">
+                    </div>
+
+                    <div class="col-md-2">
+                      <label for="filterCreatedTo" class="form-label">To Date</label>
+                      <input type="date" id="filterCreatedTo" class="form-control">
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="col-12 d-flex gap-2 filter-actions">
+                      <button id="filterBtn" class="btn btn-primary btn-sm">
+                        <i class="fas fa-search me-1"></i> Search
+                      </button>
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              <!-- View + Controls -->
+              <div class="d-flex mb-2 view-toggle compact align-items-center">
+
+                <div class="dropdown relative-wrapper export-ignore">
+                  <button class="btn btn-outline-primary btn-sm dropdown-toggle"
+                          id="fieldSelectorBtn"
+                          data-bs-toggle="dropdown">
+                    <i class="fas fa-columns me-1"></i> Select Fields
+                  </button>
+                  <div class="dropdown-menu p-2 field-selector-dropdown"
+                       id="fieldSelectorDropdown"
+                       style="min-width:240px;"></div>
+                </div>
+
+                <div class="btn-group ms-2">
+                  <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
+                    <i class="fas fa-th me-1"></i> Card
+                  </button>
+                  <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
+                    <i class="fas fa-table me-1"></i> Table
+                  </button>
+                </div>
+
+
+
+              </div>
+                <!-- Records per page -->
+                <div class="btn-group align-items-center ms-2" role="group">
+
+                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">
+                    Show
+                  </span>
+
+                  <select id="recordsPerPage"
+                          class="btn btn-outline-secondary btn-sm text-center"
+                          style="width:64px; appearance:auto;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+
+                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">
+                    Rows
+                  </span>
+
+                </div>
+
+                <!-- 📊 Breakdown Summary -->
+                <hr class="my-2">
+
+                <div class="text-muted fw-semibold small mb-1">
+                  Breakdown Summary
+                </div>
+
+                <div id="moduleSummary" class="d-flex flex-wrap gap-2 my-2"></div>
+
+                <hr class="my-2">
+
+              <!-- Table -->
+              <div class="table-responsive table-container active">
+                <table class="table m-0 align-middle data-table print-table">
+                  <thead id="dynamicTableHead"></thead>
+                  <tbody id="depositTableBody"></tbody>
+                </table>
+              </div>
+
+              <!-- Card List -->
+              <div id="depositList" class="card-list"></div>
+
+              <!-- Pagination -->
+              <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="app-footer">
+      <span>© VytalGuard HMS 2025</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loadingOverlay" class="hidden">
+  <div class="spinner-box">
+    <i class="fas fa-spinner fa-spin"></i> Loading...
+  </div>
+</div>
+
+<!-- View Modal -->
+<div id="viewModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="viewModalTitle">Details</h2>
+      <button class="close-btn" data-close="viewModal">&times;</button>
+    </div>
+    <div class="modal-body" id="viewModalBody"></div>
+  </div>
+</div>
+
+<!-- Deposit Apply Modal (UNCHANGED – JS SAFE) -->
+<div id="depositApplyModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Apply Deposit</h2>
+      <button class="close-btn" data-close="depositApplyModal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="depositApplyForm">
+        <input type="hidden" id="applyDepositId">
+        <div class="mb-3">
+          <label for="applyInvoiceSelect" class="form-label">Select Invoice</label>
+          <select id="applyInvoiceSelect" class="form-select" required></select>
+        </div>
+        <div class="mb-3">
+          <label for="applyAmount" class="form-label">Amount</label>
+          <input type="number" id="applyAmount" class="form-control" required>
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-outline-secondary" data-close="depositApplyModal">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary">
+            Apply
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- JS -->
+<script src="assets/js/jquery.min.js"></script>
+<script src="assets/js/bootstrap.bundle.min.js"></script>
+<script src="assets/js/moment.min.js"></script>
+<script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+<script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+<script src="assets/vendor/daterange/daterange.js"></script>
+<script src="assets/vendor/daterange/custom-daterange.js"></script>
+<script src="assets/vendor/datatables/dataTables.min.js"></script>
+<script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+<script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+<script src="assets/js/custom.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script type="module" src="/js/logout.js"></script>
+<script type="module" src="/js/authSession.js"></script>
+<script type="module" src="/js/modules/deposits/deposit-filter-main.js"></script>
+<script type="module" src="/js/modules/deposits/deposit-render.js"></script>
+<script type="module" src="/js/modules/shared/list-export.js"></script>
+
+</body>
+</html>

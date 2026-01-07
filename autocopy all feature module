@@ -1,0 +1,33 @@
+-- ============================================================================
+-- 🧩 Grant ALL active feature modules to Organization Admin (ORG-WIDE)
+-- Safe to re-run | No duplicates | Facility-independent
+-- ============================================================================
+
+INSERT INTO feature_accesses (
+    id,
+    organization_id,
+    role_id,
+    module_id,
+    facility_id,
+    status,
+    created_by_id,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid()                             AS id,
+    '3ac6fbff-71ba-49c5-95ed-6ae1c7f293c0'         AS organization_id,   -- 🔁 ORG ID
+    r.id                                          AS role_id,           -- organization_admin
+    m.id                                          AS module_id,
+    NULL                                          AS facility_id,       -- ✅ ORG-WIDE
+    'active'                                      AS status,
+    '8f8ab795-aad1-43d5-955f-93cddcbda641'         AS created_by_id,     -- superadmin
+    NOW()                                         AS created_at,
+    NOW()                                         AS updated_at
+FROM feature_modules m
+JOIN roles r
+  ON LOWER(r.name) IN ('organization_admin', 'organization admin')
+WHERE m.enabled = true
+  AND m.status = 'active'
+ON CONFLICT (organization_id, role_id, module_id, facility_id)
+DO NOTHING;

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Billable Item</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add Billable Item">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Billable Items</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Billable</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Billable Item</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="billableItemForm">
+                  <div class="row gx-4">
+
+                    <!-- Organization (hidden by default) -->
+                    <div class="col-lg-3 col-sm-6 d-none" id="organizationFieldGroup">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility (hidden by default) -->
+                    <div class="col-lg-3 col-sm-6 d-none" id="facilityFieldGroup">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Department -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="departmentSelect">Department</label>
+                        <select class="form-control" id="departmentSelect" name="department_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Master Item -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="masterItemSearch">
+                          Master Item <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="masterItemSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search master item..."
+                          autocomplete="off"
+                        />
+                        <div id="masterItemSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Name -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="name">
+                          Name (will autofill)<span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="name" readonly>
+                      </div>
+                    </div>
+
+                    <!-- Code -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="code">Code (will autofill)</label>
+                        <input type="text" class="form-control" id="code" readonly>
+                        <div class="form-text text-muted">
+                          Code is generated from the Name or Master Item.
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="description">Description</label>
+                        <textarea class="form-control" id="description" rows="2"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Category -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="categoryName">Category (will autofill)</label>
+                        <input type="text" class="form-control" id="categoryName" readonly>
+                        <input type="hidden" id="category_id" name="category_id">
+                      </div>
+                    </div>
+
+                    <!-- Price -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="price">
+                          Price <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" step="0.01" class="form-control" id="price">
+                      </div>
+                    </div>
+
+                    <!-- Currency -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="currency">Currency</label>
+                        <input type="text" class="form-control" id="currency" placeholder="USD">
+                      </div>
+                    </div>
+
+                    <!-- Taxable -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="taxable">
+                        <label class="form-check-label" for="taxable">Taxable?</label>
+                      </div>
+                    </div>
+
+                    <!-- Discountable -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="discountable">
+                        <label class="form-check-label" for="discountable">Discountable?</label>
+                      </div>
+                    </div>
+
+                    <!-- Override Allowed -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="overrideAllowed">
+                        <label class="form-check-label" for="overrideAllowed">Allow Override?</label>
+                      </div>
+                    </div>
+
+                    <!-- Add Item -->
+                    <div class="col-sm-12">
+                      <div class="d-flex justify-content-start mb-3">
+                        <button type="button" id="addItemBtn" class="btn btn-outline-primary">
+                          <i class="ri-add-line me-1"></i> Add Item
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Pills -->
+                    <div class="col-sm-12">
+                      <div id="itemPillsContainer" class="mb-3">
+                        <p class="text-muted">No billables added yet.</p>
+                      </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <div class="m-0">
+                          <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
+                            <label class="form-check-label" for="status_active">Active</label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
+                            <label class="form-check-label" for="status_inactive">Inactive</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Submit All
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/billable/add-billableitem.js"></script>
+</body>
+</html>

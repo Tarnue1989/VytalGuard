@@ -1,0 +1,41 @@
+/* =============================================================
+   Pagination – Clean Number-Only Style
+   Active page stands out without borders
+============================================================= */
+
+#paginationButtons {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+/* Inactive pages */
+#paginationButtons button {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;      /* pill shape */
+  border: none;              /* no borders */
+  background: transparent;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Hover (inactive only) */
+#paginationButtons button:not(.active):not([aria-current="page"]):not(:disabled):hover {
+  background: #e5e7eb;
+  color: #334155;
+}
+
+/* ✅ ACTIVE page (very clear) */
+#paginationButtons button.active,
+#paginationButtons button[aria-current="page"],
+#paginationButtons button:disabled {
+  background: #1e3a8a;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: default;
+}

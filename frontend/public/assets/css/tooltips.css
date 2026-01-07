@@ -1,0 +1,36 @@
+/* =============================================================
+   FILE: tooltips.css
+   💡 Tooltips – Hover help bubbles and info hints
+   Currently minimal; structure for future expansion
+============================================================= */
+
+/* Placeholder for future tooltip styling (add as needed) */
+/* Example: Uncomment and use if tooltips are JS-driven or pseudo-element based */
+
+/*
+.tooltip {
+  position: relative;
+  cursor: pointer;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+}
+*/

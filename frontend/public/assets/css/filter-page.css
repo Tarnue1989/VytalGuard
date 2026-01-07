@@ -1,0 +1,498 @@
+/* ===========================
+   Global Filter + View Overrides
+   =========================== */
+
+/* Field selector + view toggle alignment */
+.view-toggle.compact {
+  justify-content: flex-start !important;
+  gap: 0.5rem;
+}
+
+/* Keep field selector first in order */
+.view-toggle.compact .dropdown.relative-wrapper {
+  order: 0;
+}
+
+/* Table headers & cells left-align */
+.table.data-table th,
+.table.data-table td {
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* Card list layout */
+.record-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 1rem;
+}
+
+.record-cards .card {
+  flex: 1 1 calc(33.333% - 1rem);
+  min-width: 250px;
+  max-width: 400px;
+}
+
+/* Responsive balancing */
+@media (max-width: 992px) {
+  .record-cards .card {
+    flex: 1 1 calc(50% - 1rem);
+  }
+}
+
+@media (max-width: 576px) {
+  .record-cards .card {
+    flex: 1 1 100%;
+  }
+}
+
+.view-toggle.compact .dropdown-menu.field-selector-dropdown {
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  margin-top: 0.25rem;
+  transform: none !important;
+}
+
+/* --- Patients filter layout fixes -------------------------------------- */
+
+/* 1) Make sure our filter row keeps Bootstrap's flex behavior */
+.filter-body .filter-grid.row {
+  display: flex !important;      /* re-enable flex for .row */
+  flex-wrap: wrap;
+}
+
+/* 2) Give each column a reasonable minimum width so they don't collapse */
+.filter-body .filter-grid .col-md-2 { min-width: 220px; }  /* gender / status / dates */
+.filter-body .filter-grid .col-md-4 { min-width: 320px; }  /* patient search */
+
+/* 3) Compact but breathable spacing inside the filter card */
+.filter-body { padding: 1rem 1.25rem; }
+.filter-body .filter-actions { margin-top: .25rem; }
+
+/* 4) Floating inputs: consistent heights and label spacing */
+.filter-body .form-floating > .form-control,
+.filter-body .form-floating > .form-select {
+  height: 44px;
+  line-height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Make labels sit nicely */
+.filter-body .form-floating > label {
+  padding: .25rem .75rem;
+  opacity: .85;
+}
+
+/* 5) Keep field wrapper stable and host the suggestion list */
+.filter-body .field-wrapper {
+  position: relative;
+}
+
+/* Suggestion list should stretch to input width and sit above other content */
+.filter-body .suggestions-list {
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  max-height: 260px;
+  overflow: auto;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* 6) View-toggle alignment (left) like your screenshot */
+.view-toggle.compact {
+  gap: .5rem;
+  align-items: center;
+}
+
+/* 7) Buttons inside filter area – keep small and consistent */
+.filter-body .btn-search,
+.filter-body .btn-clear {
+  min-width: 110px;
+}
+
+/* 8) On small screens, let fields stack full width */
+@media (max-width: 768px) {
+  .filter-body .filter-grid .col-md-2,
+  .filter-body .filter-grid .col-md-4 {
+    min-width: 100%;
+  }
+}
+
+/* === Patients filter: simple label above field, compact height === */
+
+/* Remove floating label effect inside filter area */
+.filter-body .form-floating {
+  position: static;
+}
+
+.filter-body .form-floating > label {
+  position: static;
+  transform: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  padding: 0;
+  opacity: 1;
+  color: #374151;
+}
+
+.filter-body .form-floating > .form-control,
+.filter-body .form-floating > .form-select {
+  height: 34px;                /* match btn-sm height */
+  line-height: 1.4;
+  padding: 4px 10px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+/* Also apply to non-floating selects/inputs */
+.filter-body .form-control:not(textarea),
+.filter-body .form-select {
+  height: 34px;
+  line-height: 1.4;
+  padding: 4px 10px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+/* Keep spacing between label and input consistent */
+.filter-body .field-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Compact fields like btn-sm */
+.filter-body .form-control:not(textarea),
+.filter-body .form-select {
+  height: 34px;
+  font-size: 0.875rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+/* Labels above fields */
+.filter-body .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #374151;
+}
+
+/* Wrapper keeps label + input aligned */
+.filter-body .field-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+/* === Short widths for compact filter columns === */
+.filter-body .col-md-2.short-field {
+  flex: 0 0 150px;
+  max-width: 150px;
+}
+
+.filter-body .col-md-2.short-date {
+  flex: 0 0 140px;
+  max-width: 140px;
+}
+
+.table-actions,
+.card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  white-space: nowrap;
+}
+/* ============================================================
+   📊 Compact Table Rows (Enterprise Tight Layout)
+   ============================================================ */
+
+/* Make rows tighter overall */
+.table.data-table tbody tr {
+  height: auto;             /* let content dictate height */
+  line-height: 1.1;         /* tighten vertical spacing */
+}
+
+/* Reduce padding in cells */
+.table.data-table th,
+.table.data-table td {
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 0.875rem;       /* slightly smaller font for density */
+  white-space: nowrap;       /* prevent multiline wrapping */
+}
+
+/* Reduce table header height slightly */
+.table.data-table thead th {
+  padding-top: 0.4rem !important;
+  padding-bottom: 0.4rem !important;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Compact action buttons inside table cells */
+.table.data-table .btn,
+.table.data-table .btn-sm {
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  border-radius: 4px;
+}
+
+/* Optional: narrow the gap in icon-only buttons */
+.table-actions button i {
+  font-size: 0.9rem;
+}
+
+/* Optional hover highlight still visible */
+.table.data-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+/* ============================================================
+   📏 Smart Column Widths (Auto Layout + Max Width Control)
+   ============================================================ */
+
+/* Let table layout automatically size columns based on content */
+.table.data-table {
+  table-layout: auto;  /* dynamic sizing */
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Limit how wide certain columns can grow */
+.table.data-table th,
+.table.data-table td {
+  max-width: 220px;         /* reasonable default max width */
+  overflow: hidden;         /* hide overflowing text */
+  text-overflow: ellipsis;  /* add "..." for clipped text */
+  white-space: nowrap;      /* keep single-line cells */
+}
+
+/* Make narrower columns for small utility fields */
+.table.data-table th.col-actions,
+.table.data-table td.col-actions {
+  width: 80px !important;   /* fixed width for action buttons */
+  text-align: center;
+}
+
+.table.data-table th.col-status,
+.table.data-table td.col-status {
+  width: 100px !important;  /* status badge column */
+}
+
+.table.data-table th.col-id,
+.table.data-table td.col-id {
+  width: 90px !important;   /* short text IDs */
+}
+
+/* Allow larger fields (like name or email) to flex slightly more */
+.table.data-table th.col-name,
+.table.data-table td.col-name {
+  max-width: 280px;
+}
+.table.data-table th.col-email,
+.table.data-table td.col-email {
+  max-width: 300px;
+}
+
+/* Keep numeric columns compact */
+.table.data-table th.col-count,
+.table.data-table td.col-count,
+.table.data-table th.col-amount,
+.table.data-table td.col-amount {
+  text-align: right;
+  max-width: 100px;
+}
+
+/* ============================================================
+   🧩 Ultra-Compact Filter Mode (Enterprise Tight Layout)
+   Makes all filter inputs, selects & buttons smaller and denser
+   ============================================================ */
+
+/* Reduce padding & height for filter inputs */
+.filter-body .form-control,
+.filter-body .form-select {
+  height: 30px !important;          /* slightly shorter than default 34px */
+  font-size: 0.8rem !important;     /* smaller text */
+  padding: 2px 8px !important;      /* tighter padding */
+  line-height: 1.2 !important;
+  border-radius: 4px;
+}
+
+/* Labels smaller and closer */
+.filter-body .form-label,
+.filter-body label {
+  font-size: 0.75rem !important;
+  margin-bottom: 2px !important;
+  color: #444;
+}
+
+/* Compact row spacing */
+.filter-body .filter-grid.row {
+  margin-bottom: 0.25rem !important;
+  row-gap: 0.25rem !important;
+}
+
+/* Shrink buttons inside filter */
+.filter-body .btn,
+.filter-body button {
+  height: 30px !important;
+  font-size: 0.8rem !important;
+  padding: 0 10px !important;
+  border-radius: 4px;
+}
+
+/* Reduce overall padding inside the filter card */
+.filter-body {
+  padding: 0.75rem 1rem !important;
+}
+
+/* Minimize spacing between fields */
+.filter-body .field-wrapper {
+  margin-bottom: 0.25rem !important;
+}
+
+/* Align all filter elements neatly on same line if space allows */
+.filter-body .filter-grid {
+  align-items: center !important;
+}
+
+/* Compact date inputs and short fields */
+.filter-body input[type="date"] {
+  min-width: 140px !important;
+}
+
+/* 🔘 Smaller dropdown menus (field selector / view toggles) */
+.dropdown-menu.field-selector-dropdown {
+  font-size: 0.8rem !important;
+  padding: 0.25rem 0.5rem !important;
+  min-width: 150px;
+}
+
+/* Consistent spacing for toggle area */
+.view-toggle.compact {
+  gap: 0.4rem !important;
+}
+
+/* Filter buttons area */
+.filter-body .filter-actions {
+  margin-top: 0.25rem !important;
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Buttons stack vertically on small screens */
+@media (max-width: 768px) {
+  .filter-body .filter-actions {
+    flex-direction: column;
+  }
+  .filter-body .btn {
+    width: 100%;
+  }
+}
+
+/* ============================================================
+   ⚙️ Force Compact Field Selector Rows (Override Bootstrap)
+   ============================================================ */
+.dropdown-menu.field-selector-dropdown label.dropdown-item,
+.dropdown-menu.field-selector-dropdown .dropdown-item {
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  margin: 0 !important;
+  line-height: 1.05 !important;
+  font-size: 0.8rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-height: 0 !important;
+}
+
+.dropdown-menu.field-selector-dropdown input[type="checkbox"] {
+  margin-top: 0 !important;
+  margin-right: 4px !important;
+  transform: scale(0.9);
+}
+
+
+/* =========================================================
+   📱 Mobile Layout Tightening (Filter + List Pages)
+   Removes excess side spacing on cards & lists
+========================================================= */
+@media (max-width: 576px) {
+
+  /* Reduce Bootstrap horizontal gutters */
+  .app-body .row.gx-4 {
+    --bs-gutter-x: 0.5rem;
+  }
+
+  /* Tighten column padding */
+  .app-body .col-sm-12 {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  /* Cards edge-to-edge feel */
+  .card {
+    border-radius: 0;
+  }
+
+  /* Card body padding */
+  .card-body {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Card list spacing */
+  .card-list {
+    margin-left: 0;
+    margin-right: 0;
+    gap: 0.5rem;
+  }
+
+  /* Individual record cards */
+  .record-card {
+    padding: 0.75rem;
+  }
+
+}
+/* =========================================================
+   📱 MOBILE FIX — app-body horizontal padding
+   Makes list pages full-width on phones
+========================================================= */
+@media (max-width: 576px) {
+
+  /* 🔥 THIS is the key fix */
+  .app-body {
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  /* Balance Bootstrap gutters */
+  .app-body .row.gx-4 {
+    --bs-gutter-x: 0.5rem;
+  }
+
+  /* Reduce column padding */
+  .app-body .col-sm-12 {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  /* Cards go edge-to-edge */
+  .card {
+    border-radius: 0;
+  }
+
+  /* Keep inner content readable */
+  .card-body {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+}

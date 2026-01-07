@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Maternity Visit</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Maternity Visit">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">Maternity Visits</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Maternity Visit</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Maternity Visit</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="maternityVisitForm">
+                  <div class="row gx-3 gy-3">
+
+                    <!-- Patient -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12 position-relative">
+                      <label class="form-label" for="patientInput">Patient</label>
+                      <input type="text" class="form-control suggestion-input" id="patientInput"
+                             placeholder="Search patient..." autocomplete="off" />
+                      <input type="hidden" id="patientId" name="patient_id" />
+                      <div id="patientSuggestions" class="suggestions"></div>
+                    </div>
+
+                    <!-- Visit Date -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <div class="form-group">
+                        <label class="form-label" for="visitDate">Visit Date</label>
+                        <input type="date" class="form-control" id="visitDate" name="visit_date" />
+                      </div>
+                    </div>
+
+                    <!-- Visit Type (Billable Items) -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="visitTypeSelect">Visit Type</label>
+                      <select class="form-control" id="visitTypeSelect" name="billable_item_id"></select>
+                    </div>
+
+
+                    <!-- Maternal details -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="lnmp">LNMP</label>
+                      <input type="date" class="form-control" id="lnmp" name="lnmp">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="expectedDueDate">Expected Due Date</label>
+                      <input type="date" class="form-control" id="expectedDueDate" name="expected_due_date">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="estimatedGestAge">Gestational Age</label>
+                      <input type="text" class="form-control" id="estimatedGestAge" name="estimated_gestational_age">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="fundusHeight">Fundus Height</label>
+                      <input type="text" class="form-control" id="fundusHeight" name="fundus_height">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="fetalHeartRate">Fetal Heart Rate</label>
+                      <input type="text" class="form-control" id="fetalHeartRate" name="fetal_heart_rate">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="presentation">Presentation</label>
+                      <input type="text" class="form-control" id="presentation" name="presentation">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="position">Position</label>
+                      <input type="text" class="form-control" id="position" name="position">
+                    </div>
+
+                    <!-- Obs history -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="gravida">Gravida</label>
+                      <input type="number" class="form-control" id="gravida" name="gravida">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="para">Para</label>
+                      <input type="number" class="form-control" id="para" name="para">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="abortion">Abortion</label>
+                      <input type="number" class="form-control" id="abortion" name="abortion">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="living">Living</label>
+                      <input type="number" class="form-control" id="living" name="living">
+                    </div>
+                    <!-- Registration Log (Hidden) -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12 d-none">
+                      <div class="form-group">
+                        <label class="form-label" for="registrationLogSelect">Registration Log</label>
+                        <select class="form-control" id="registrationLogSelect" name="registration_log_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Vitals -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="bloodPressure">Blood Pressure</label>
+                      <input type="text" class="form-control" id="bloodPressure" name="blood_pressure" placeholder="120/80">
+                    </div>
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="weight">Weight (kg)</label>
+                      <input type="number" class="form-control" id="weight" name="weight">
+                    </div>
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="height">Height (cm)</label>
+                      <input type="number" class="form-control" id="height" name="height">
+                    </div>
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="temperature">Temperature (°C)</label>
+                      <input type="number" step="0.1" class="form-control" id="temperature" name="temperature">
+                    </div>
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="pulseRate">Pulse Rate</label>
+                      <input type="number" class="form-control" id="pulseRate" name="pulse_rate">
+                    </div>
+                    <!-- Complaint & Notes -->
+                    <div class="col-lg-6 col-sm-12">
+                      <label class="form-label" for="complaint">Complaint</label>
+                      <textarea
+                        class="form-control"
+                        id="complaint"
+                        name="complaint"
+                        rows="2">
+                      </textarea>
+                    </div>
+
+                    <div class="col-lg-6 col-sm-12">
+                      <label class="form-label" for="visitNotes">Visit Notes</label>
+                      <textarea
+                        class="form-control"
+                        id="visitNotes"
+                        name="visit_notes"
+                        rows="2">
+                      </textarea>
+                    </div>
+
+
+                    <!-- Doctor -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <div class="form-group hidden position-relative" id="doctorFieldGroup">
+                        <label class="form-label" for="doctorInput">Doctor</label>
+                        <input
+                          type="text"
+                          class="form-control suggestion-input"
+                          id="doctorInput"
+                          placeholder="Search doctor..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="doctorId" name="doctor_id" />
+                        <div id="doctorSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Midwife -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <div class="form-group hidden position-relative" id="midwifeFieldGroup">
+                        <label class="form-label" for="midwifeInput">Midwife</label>
+                        <input
+                          type="text"
+                          class="form-control suggestion-input"
+                          id="midwifeInput"
+                          placeholder="Search midwife..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="midwifeId" name="midwife_id" />
+                        <div id="midwifeSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <div class="form-group hidden" id="organizationFieldGroup">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <div class="form-group hidden" id="facilityFieldGroup">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save Maternity Visit
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/maternity-visits/add-maternity-visit.js"></script>
+</body>
+</html>

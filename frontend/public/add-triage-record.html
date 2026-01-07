@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Triage Record</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Triage Record">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">Triage Records</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Triage Record</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Triage Record</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="triageRecordForm">
+                  <div class="row gx-3 gy-3">
+
+                    <!-- Patient -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12 position-relative">
+                      <label class="form-label" for="patientInput">Patient</label>
+                      <input type="text" class="form-control suggestion-input" id="patientInput"
+                            placeholder="Search patient..." autocomplete="off" />
+                      <input type="hidden" id="patientId" name="patient_id" />
+                      <div id="patientSuggestions" class="suggestions"></div>
+                    </div>
+
+                    <!-- Date -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="recordedAt">Recorded At</label>
+                      <input type="date" class="form-control" id="recordedAt" name="recorded_at">
+                    </div>
+
+                    <!-- Triage Type -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="triageTypeSelect">Triage Type</label>
+                      <select class="form-control" id="triageTypeSelect" name="triage_type_id"></select>
+                    </div>
+
+                    <!-- Registration Log -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="registrationLogSelect">Registration Log</label>
+                      <select class="form-control" id="registrationLogSelect" name="registration_log_id"></select>
+                    </div>
+                    <!-- Symptoms -->
+                    <div class="col-12">
+                      <label class="form-label" for="symptoms">Symptoms</label>
+                      <textarea class="form-control" id="symptoms" name="symptoms" rows="2" placeholder="Enter symptoms"></textarea>
+                    </div>
+
+                    <!-- Common Symptoms (auto-rendered) -->
+                    <div class="col-12">
+                      <label class="form-label">Common Symptoms</label>
+                      <div id="symptomCheckboxes" class="d-flex flex-wrap gap-3"></div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="col-12">
+                      <label class="form-label" for="triageNotes">Notes</label>
+                      <textarea class="form-control" id="triageNotes" name="triage_notes" rows="2" placeholder="Additional notes"></textarea>
+                    </div>
+
+                    <!-- Vitals (uniform short fields) -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="bp">Blood Pressure</label>
+                      <input type="text" class="form-control" id="bp" name="bp" placeholder="e.g. 120/80">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="pulse">Pulse</label>
+                      <input type="number" class="form-control" id="pulse" name="pulse">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="rr">Respiration Rate</label>
+                      <input type="number" class="form-control" id="rr" name="rr">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="temp">Temperature</label>
+                      <input type="number" step="0.1" class="form-control" id="temp" name="temp">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="oxygen">Oxygen Saturation</label>
+                      <input type="number" class="form-control" id="oxygen" name="oxygen">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="weight">Weight (kg)</label>
+                      <input type="number" class="form-control" id="weight" name="weight">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="height">Height (cm)</label>
+                      <input type="number" class="form-control" id="height" name="height">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="rbg">Random Blood Glucose</label>
+                      <input type="number" class="form-control" id="rbg" name="rbg">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="painScore">Pain Score</label>
+                      <input type="number" min="0" max="10" class="form-control" id="painScore" name="pain_score">
+                    </div>
+
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+                      <label class="form-label" for="position">Position</label>
+                      <input type="text" class="form-control" id="position" name="position" placeholder="Position">
+                    </div>
+                    <!-- Doctor -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12 d-none">
+                      <div class="form-group position-relative" id="doctorFieldGroup">
+                        <label class="form-label" for="doctorInput">Doctor</label>
+                        <input
+                          type="text"
+                          class="form-control suggestion-input"
+                          id="doctorInput"
+                          placeholder="Search doctor..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="doctorId" name="doctor_id" />
+                        <div id="doctorSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Nurse -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12 d-none">
+                      <div class="form-group position-relative" id="nurseFieldGroup">
+                        <label class="form-label" for="nurseInput">Nurse</label>
+                        <input
+                          type="text"
+                          class="form-control suggestion-input"
+                          id="nurseInput"
+                          placeholder="Search nurse..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="nurseId" name="nurse_id" />
+                        <div id="nurseSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    </div>
+
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">Organization</label>
+                          <select class="form-control" id="organizationSelect" name="organization_id">
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">Facility</label>
+                          <select class="form-control" id="facilitySelect" name="facility_id">
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save Triage Record
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/triage-records/add-triage-record.js"></script>
+</body>
+</html>

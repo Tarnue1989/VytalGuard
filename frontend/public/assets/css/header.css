@@ -1,0 +1,45 @@
+/* =============================================================
+   FILE: header.css
+   🔝 Header – Top navigation bar styles
+   Includes logo area, nav links, and dropdown styling
+============================================================= */
+
+/* Top header container */
+header {
+  background-color: #003366;
+  color: white;
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Left section (logo, system name, etc.) */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1rem;
+}
+
+/* Top navigation links (right section) */
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.top-nav a {
+  color: white;
+  text-decoration: none;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Dropdown inside top nav */
+.top-nav select {
+  padding: 0.25rem;
+  border-radius: 4px;
+}

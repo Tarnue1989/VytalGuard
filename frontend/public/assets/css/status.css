@@ -1,0 +1,28 @@
+/* 🔖 Common style for status badges */
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  display: inline-block;
+  width: fit-content;
+}
+
+/* ✅ Approved = green */
+.status-approved {
+  background-color: #d1fae5; /* light green */
+  color: #065f46; /* dark green text */
+}
+
+/* ❌ Rejected = red */
+.status-rejected {
+  background-color: #fee2e2; /* light red */
+  color: #991b1b; /* dark red text */
+}
+
+/* 🕒 Pending = yellow */
+.status-pending {
+  background-color: #fef9c3; /* light yellow */
+  color: #92400e; /* dark yellow/brown text */
+}

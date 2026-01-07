@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Central Stock</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add Central Stock">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Central Stock</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Stock</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Central Stock</h5>
+              </div>
+
+              <div class="card-body">
+                <!-- 📦 Form Container -->
+                <form id="centralStockForm">
+                  <div class="row gx-4">
+
+                  <!-- Organization (Superadmin only) -->
+                  <div class="col-md-4">
+                    <div class="mb-3 form-group">
+                      <label for="organizationSelect" class="form-label">Organization</label>
+                      <!-- 🔒 remove "name" to prevent browser auto-sending -->
+                      <select id="organizationSelect" class="form-control"></select>
+                    </div>
+                  </div>
+
+                  <!-- Facility -->
+                  <div class="col-md-4">
+                    <div class="mb-3 form-group">
+                      <label for="facilitySelect" class="form-label">Facility</label>
+                      <!-- 🔒 remove "name" to prevent browser auto-sending -->
+                      <select id="facilitySelect" class="form-control"></select>
+                    </div>
+                  </div>
+
+
+                    <!-- Supplier -->
+                    <div class="col-md-4">
+                      <div class="mb-3 form-group">
+                        <label for="supplierSelect" class="form-label">Supplier <span class="text-danger">*</span></label>
+                        <select id="supplierSelect" class="form-control" name="supplier_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Master Item -->
+                    <div class="col-md-4">
+                      <div class="field-wrapper">
+                        <label for="itemSearch" class="form-label">Item <span class="text-danger">*</span></label>
+                        <input type="text" id="itemSearch" class="form-control suggestion-input"
+                               placeholder="Search master item..." autocomplete="off">
+                        <div id="itemSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Quantity -->
+                    <div class="col-md-4">
+                      <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" id="quantity" class="form-control" min="1" placeholder="0">
+                      </div>
+                    </div>
+
+                    <!-- Received Date -->
+                    <div class="col-md-4">
+                      <div class="mb-3">
+                        <label for="receivedDate" class="form-label">Received Date <span class="text-danger">*</span></label>
+                        <input type="date" id="receivedDate" class="form-control">
+                      </div>
+                    </div>
+
+                    <!-- Expiry Date -->
+                    <div class="col-md-4">
+                      <div class="mb-3">
+                        <label for="expiryDate" class="form-label">Expiry Date</label>
+                        <input type="date" id="expiryDate" class="form-control">
+                      </div>
+                    </div>
+
+                    <!-- Batch Number -->
+                    <div class="col-md-4">
+                      <div class="mb-3">
+                        <label for="batchNumber" class="form-label">Batch Number</label>
+                        <input type="text" id="batchNumber" class="form-control" placeholder="Enter batch number">
+                      </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="col-md-8">
+                      <div class="mb-3">
+                        <label for="notes" class="form-label">Notes</label>
+                        <textarea id="notes" class="form-control" rows="2" placeholder="Enter notes..."></textarea>
+                      </div>
+                    </div>
+
+                    <!-- ➕ Add Item Button (Hidden in Edit Mode) -->
+                    <div class="col-sm-12">
+                      <div class="d-flex justify-content-start mb-3">
+                        <button type="button" id="addItemBtn" class="btn btn-outline-primary">
+                          <i class="ri-add-line me-1"></i> Add Item
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Pills Container (Hidden in Edit Mode) -->
+                    <div class="col-sm-12">
+                      <div id="itemPillsContainer" class="mb-3">
+                        <p class="text-muted">No items added yet.</p>
+                      </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end mt-3">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Submit All
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+                <!-- /Form -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/centralstock/add-central-stock.js"></script>
+</body>
+</html>

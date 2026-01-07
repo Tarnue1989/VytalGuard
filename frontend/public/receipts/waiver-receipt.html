@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VytalGuard - Waiver Receipt</title>
+  <meta name="description" content="VytalGuard HMS - Waiver Receipt" />
+  <link rel="shortcut icon" href="assets/images/favicon.svg" />
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css" />
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+</head>
+<body>
+  <div class="app-body">
+    <div class="receipt-container card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">Waiver Receipt</h4>
+        <button id="printBtn" class="btn btn-outline-primary btn-sm export-ignore">
+          <i class="fas fa-print me-1"></i> Print / Export
+        </button>
+      </div>
+      <div class="card-body" id="receiptContent"></div>
+      <div class="card-footer text-center">
+        <small>© VytalGuard HMS 2025 · System Generated</small>
+      </div>
+    </div>
+  </div>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script type="module" src="/js/authSession.js"></script>
+  <script type="module" src="/js/modules/financial/receipts/waiver-receipt.js"></script>
+</body>
+</html>

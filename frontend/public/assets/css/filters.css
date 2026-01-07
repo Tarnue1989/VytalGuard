@@ -1,0 +1,176 @@
+/* =============================================================  
+   📁 filters.css  
+   Styles for search filters section across modules  
+   Used in: Central Stock, Inventory, Reports, etc.  
+============================================================= */
+
+/* 🧱 Filter Grid Layout  
+   - Responsive: auto-fit ensures inputs wrap on smaller screens  
+   - Each input minimum 220px wide but expands as needed  
+------------------------------------------------------------- */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* 🔍 Filter Input Fields  
+   - Clean and readable  
+   - Matches global input style but can be overridden here  
+------------------------------------------------------------- */
+.filter-grid input {
+  padding: 0.5rem;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 0px;
+  background-color: #fff;
+  transition: border-color 0.3s ease;
+}
+
+/* 🔍 Input Hover State  
+   - Gives users visual feedback while interacting  
+------------------------------------------------------------- */
+.filter-grid input:hover,
+.filter-grid input:focus {
+  border-color: #1e3a8a; /* Matches primary theme color */
+  outline: none;
+}
+
+/* 🧹 Clear Filter Button (Optional use)  
+   - Style if a clear/reset button is added beside filters  
+------------------------------------------------------------- */
+.filter-grid .clear-filters-btn {
+  grid-column: span 2;
+  padding: 0.5rem 1rem;
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 0px;
+  cursor: pointer;
+}
+
+.filter-grid .clear-filters-btn:hover {
+  background-color: #4b5563;
+}
+
+/* ==========================================================================  
+   🔽 Collapsible Filter Section Styles  
+   Used in: stockrequests.html (and other pages using collapsible filters)  
+   ========================================================================== */
+
+/* Container that wraps toggle button + collapsible body */
+.filter-section {
+  margin-bottom: 1.5rem;
+}
+
+/* Header with the Toggle Filters button aligned right */
+.filter-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+/* Body that contains filters and search/export — toggled visible/hidden */
+.filter-body.hidden {
+  display: none !important;
+}
+
+/* Optional: add smooth animation for better UX (optional) */
+.filter-body {
+  transition: all 0.2s ease;
+}
+
+/* Optional: add spacing below toggle for visual separation */
+#toggleFilterBtn {
+  margin-bottom: 0.25rem;
+}
+
+/* Smooth filter toggle */
+.filter-body {
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height 0.3s ease;
+}
+.filter-body.hidden {
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+/* 🔄 Chevron animation */
+.toggle-icon {
+  transition: transform 0.3s ease;
+}
+.toggle-icon.rotate {
+  transform: rotate(180deg);
+}
+
+/* ✅ Force mobile-friendly behavior for filter layout */
+@media (max-width: 768px) {
+  .filter-grid.compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .filter-grid.compact .field-wrapper {
+    flex: 1 1 100%; /* Allow full width on mobile */
+    min-width: 0;
+  }
+
+  .filter-grid.compact input,
+  .filter-grid.compact select {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .filter-actions {
+    width: 100%;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-actions button {
+    flex: 1 1 auto;
+    min-width: 120px;
+  }
+}
+
+/* ✅ Force mobile-friendly behavior for date fields */
+@media (max-width: 768px) {
+  input[type="date"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .field-wrapper input[type="date"] {
+    width: 100% !important;
+  }
+}
+
+/* =============================================================  
+   🧪 Grouped Lab Results Styles (used in viewer render)  
+============================================================= */
+
+.group-header {
+  background-color: #f3f3f3;
+  font-weight: bold;
+  font-size: 1rem;
+  color: #333;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #ccc;
+}
+
+.group-label {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #444;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.3rem;
+}

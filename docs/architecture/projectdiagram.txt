@@ -1,0 +1,128 @@
+vytalguard/
+├─ docs/
+│  ├─ architecture/
+│  ├─ db/
+│  ├─ api/
+│  └─ ui/
+├─ infra/
+│  ├─ docker/
+│  ├─ k8s/
+│  ├─ scripts/
+│  └─ ci/
+├─ backend/
+│  ├─ src/
+│  │  ├─ app.js
+│  │  ├─ server.js
+│  │  ├─ config/
+│  │  │  └─ index.js
+│  │  ├─ db/
+│  │  │  ├─ migrations/
+│  │  │  ├─ seeders/
+│  │  │  └─ sequelize-meta/
+│  │  ├─ models/
+│  │  ├─ constants/
+│  │  │  ├─ enums.js
+│  │  │  ├─ fieldLabels.js
+│  │  │  ├─ fieldOrder.js
+│  │  │  ├─ fieldDefaults.js
+│  │  │  ├─ fieldVisibility.js
+│  │  │  └─ moduleFields.js
+│  │  ├─ middleware/
+│  │  ├─ policies/
+│  │  ├─ validators/
+│  │  ├─ services/
+│  │  ├─ controllers/
+│  │  ├─ routes/
+│  │  ├─ utils/
+│  │  │  └─ logger.js
+│  │  └─ jobs/
+│  └─ test/
+│     ├─ unit/
+│     └─ integration/
+├─ frontend/
+│  ├─ public/
+│  │  ├─ index.html
+│  │  └─ assets/
+│  │     ├─ css/
+│  │     ├─ fonts/
+│  │     ├─ images/
+│  │     └─ libs/
+│  └─ js/
+│     ├─ app.js
+│     ├─ utils/
+│     ├─ constants/
+│     ├─ components/
+│     └─ modules/
+│        ├─ patients/
+│        │  ├─ patients-main.js
+│        │  ├─ patients-actions.js
+│        │  ├─ patients-render.js
+│        │  ├─ patients-constants.js
+│        │  └─ patients-form.js
+│        ├─ registrations/
+│        │  ├─ registrations-main.js
+│        │  ├─ registrations-actions.js
+│        │  ├─ registrations-render.js
+│        │  ├─ registrations-constants.js
+│        │  └─ registrations-form.js
+│        ├─ consultations/
+│        │  ├─ consultations-main.js
+│        │  ├─ consultations-actions.js
+│        │  ├─ consultations-render.js
+│        │  ├─ consultations-constants.js
+│        │  └─ consultations-form.js
+│        ├─ maternity/
+│        │  ├─ maternity-main.js
+│        │  ├─ maternity-actions.js
+│        │  ├─ maternity-render.js
+│        │  ├─ maternity-constants.js
+│        │  └─ maternity-form.js
+│        ├─ delivery/
+│        │  ├─ delivery-main.js
+│        │  ├─ delivery-actions.js
+│        │  ├─ delivery-render.js
+│        │  ├─ delivery-constants.js
+│        │  └─ delivery-form.js
+│        ├─ surgery/
+│        │  ├─ surgery-main.js
+│        │  ├─ surgery-actions.js
+│        │  ├─ surgery-render.js
+│        │  ├─ surgery-constants.js
+│        │  └─ surgery-form.js
+│        ├─ ekg/
+│        │  ├─ ekg-main.js
+│        │  ├─ ekg-actions.js
+│        │  ├─ ekg-render.js
+│        │  ├─ ekg-constants.js
+│        │  └─ ekg-form.js
+│        ├─ ultrasound/
+│        │  ├─ ultrasound-main.js
+│        │  ├─ ultrasound-actions.js
+│        │  ├─ ultrasound-render.js
+│        │  ├─ ultrasound-constants.js
+│        │  └─ ultrasound-form.js
+│        ├─ prescriptions/
+│        │  ├─ prescriptions-main.js
+│        │  ├─ prescriptions-actions.js
+│        │  ├─ prescriptions-render.js
+│        │  ├─ prescriptions-constants.js
+│        │  └─ prescriptions-form.js
+│        ├─ inventory/
+│        │  ├─ inventory-main.js
+│        │  ├─ inventory-actions.js
+│        │  ├─ inventory-render.js
+│        │  ├─ inventory-constants.js
+│        │  ├─ inventory-form.js
+│        │  ├─ stockrequests-main.js
+│        │  ├─ stockrequests-actions.js
+│        │  ├─ stockrequests-render.js
+│        │  ├─ stockrequests-constants.js
+│        │  └─ stockrequests-form.js
+│        └─ billing/
+│           ├─ billing-main.js
+│           ├─ billing-constants.js
+│           ├─ invoices-actions.js
+│           ├─ payments-actions.js
+│           ├─ invoices-form.js
+│           └─ payments-form.js
+└─ generate-structure.js

@@ -1,0 +1,74 @@
+/* =============================================================
+   FILE: theme.css
+   🎨 Base Theme – Colors, Fonts, Resets, Typography
+   Used across all modules to unify look and feel
+============================================================= */
+
+/* Box sizing reset + margin/padding */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Base body setup */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f3f4f6;
+  color: #333;
+  height: 100vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Headings */
+h2 {
+  text-align: center;
+  color: #1e3a8a;
+}
+
+/* Utility colors for statuses, alerts, text highlights */
+.status-label {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  font-weight: bold;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+/* Status Colors */
+.status-admitted        { background: #d1fae5; color: #065f46; border: 1px solid #34d399; }
+.status-discharged      { background: #e0f2fe; color: #1e40af; border: 1px solid #3b82f6; }
+.status-cancelled       { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; }
+.status-ongoing         { background: #fef9c3; color: #92400e; border: 1px solid #facc15; }
+.status-scheduled       { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
+.status-completed       { background: #d1fae5; color: #065f46; border: 1px solid #34d399; }
+.status-open            { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
+.status-inprogress      { background: #e0f2fe; color: #1e40af; border: 1px solid #3b82f6; }
+.status-reviewed        { background: #e0e7ff; color: #1e3a8a; }
+.status-pending         { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
+.status-active          { background-color: #d1fae5; color: #065f46; }
+.status-on\ leave       { background-color: #fef3c7; color: #92400e; }
+.status-terminated      { background-color: #fee2e2; color: #991b1b; }
+
+/* Common fonts */
+.chat-header {
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+.chat-time {
+  font-weight: normal;
+  font-size: 0.75rem;
+  float: right;
+  color: #777;
+}
+
+/* Print overrides */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+}

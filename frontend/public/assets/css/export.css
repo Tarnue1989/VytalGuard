@@ -1,0 +1,15 @@
+/* =============================================================
+   FILE: export.css
+   📦 Export visibility control – manages what hides vs stays
+============================================================= */
+
+/* ✅ Ensure export-ignore elements are visible on screen */
+.export-ignore {
+  display: block !important; /* Use table-cell or flex as needed */
+  visibility: visible !important;
+}
+
+/* ✅ Optional: If you use html2pdf and set body.exporting */
+body.exporting .export-ignore {
+  display: none !important;
+}

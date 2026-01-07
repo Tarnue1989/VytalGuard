@@ -1,0 +1,55 @@
+/* =============================================================
+   FILE: transitions.css
+   🎞️ Transitions – Animations, hover effects, visual polish
+   Includes fade-ins, scale transforms, and icon spins
+============================================================= */
+
+/* Fade-in animation for modals and confirmations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* FontAwesome spinner override */
+.fa-spin {
+  animation: fa-spin 1s linear infinite;
+}
+@keyframes fa-spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Button hover transitions */
+.actions-table button:hover,
+.card-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.1);
+  transition: all 0.2s ease;
+}
+
+/* Floating label transition on TomSelect */
+.field-wrapper .ts-control:focus + .input-label,
+.field-wrapper .ts-wrapper.has-items .input-label {
+  transform: translateY(-0.9rem) scale(0.9);
+  color: #1e3a8a;
+}
+
+/* TomSelect padding fix for floating label spacing */
+.field-wrapper .ts-wrapper {
+  width: 100%;
+}
+.field-wrapper .ts-control {
+  padding-top: 1.25rem;
+  padding-bottom: 0.25rem;
+}
+
+/* Input label positioning */
+.field-wrapper .input-label {
+  top: 0.4rem;
+  left: 0.75rem;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  position: absolute;
+  font-size: 0.9rem;
+  color: #666;
+}

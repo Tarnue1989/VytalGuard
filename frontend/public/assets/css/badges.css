@@ -1,0 +1,231 @@
+/* =============================================================
+   FILE: badges.css
+   🏷️ Badges – Status indicators and notification pills
+   Used in tables, cards, chat, and buttons
+============================================================= */
+
+/* Status badge inside paragraph label */
+p strong + span.status-badge {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* Status badge colors */
+.status-badge.pending {
+  background-color: #facc15;
+  color: #92400e;
+}
+.status-badge.approved {
+  background-color: #4ade80;
+  color: #166534;
+}
+.status-badge.rejected {
+  background-color: #f87171;
+  color: #7f1d1d;
+}
+
+/* Unread badge (used in chat or nav) */
+.unread-badge {
+  background: red;
+  color: white;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 6px;
+}
+
+/* 🌐 Status badge for 'Open' */
+.status-badge.open {
+  background-color: #93c5fd;  /* light blue background */
+  color: #1e3a8a;              /* navy blue text */
+}
+
+/* 🔄 Status badge for 'In Progress' */
+.status-badge.in-progress {
+  background-color: #fcd34d;  /* amber background */
+  color: #92400e;             /* dark amber text */
+}
+
+/* ✅ Status badge for 'Completed' */
+.status-badge.completed {
+  background-color: #4ade80;  /* green background */
+  color: #166534;             /* dark green text */
+}
+
+/* ❌ Status badge for 'Cancelled' */
+.status-badge.cancelled {
+  background-color: #fca5a5;  /* light red background */
+  color: #7f1d1d;             /* dark red text */
+}
+
+/* ================================
+   🧪 Verified Result Status
+   ================================ */
+.status-badge.verified {
+  background-color: #dbeafe;  /* Light blue */
+  color: #1e40af;
+}
+
+/* ================================
+   🧠 Reviewed Result Status
+   ================================ */
+.status-badge.reviewed {
+  background-color: #ede9fe;  /* Light violet */
+  color: #6b21a8;
+}
+
+/* ================================
+   ✏️ Draft Result Status
+   ================================ */
+.status-badge.draft {
+  background-color: #e0e7ff;  /* Light indigo */
+  color: #3730a3;
+}
+
+/* 🔄 Status badge for 'Processing' */
+.status-badge.processing {
+  background-color: #fcd34d; /* amber bg */
+  color: #92400e;            /* dark amber text */
+}
+
+/* 🔖 Base badge style */
+.badge {
+  padding: 0.2rem 0.6rem;        /* Small padding inside the badge */
+  border-radius: 1rem;           /* Fully rounded badge shape */
+  font-size: 0.75rem;            /* Smaller text size */
+  font-weight: bold;             /* Bold text for emphasis */
+  text-transform: capitalize;    /* Make first letter uppercase */
+  display: inline-block;         /* Allows it to size to content */
+}
+
+/* 🟢 Registration Method Badges */
+.badge.in_person { background-color: #4caf50; color: white; }   /* Green for 'In Person' */
+.badge.online    { background-color: #2196f3; color: white; }   /* Blue for 'Online' */
+.badge.referral  { background-color: #ff9800; color: white; }   /* Orange for 'Referral' */
+
+/* 🔵 Patient Category Badges */
+.badge.new        { background-color: #007bff; color: white; }   /* Bright blue for 'New' */
+.badge.returning  { background-color: #6c757d; color: white; }   /* Gray for 'Returning' */
+.badge.referred   { background-color: #17a2b8; color: white; }   /* Teal for 'Referred' */
+.badge.emergency  { background-color: #dc3545; color: white; }   /* Red for 'Emergency' */
+
+/* ⚪ Status Badges (Generic) */
+.badge.active     { background-color: #28a745; color: white; }   /* Green for 'Active' */
+.badge.inactive   { background-color: #6c757d; color: white; }   /* Gray for 'Inactive' */
+
+/* 🟡 Registration Statuses */
+.badge.checked_in { background-color: #ffc107; color: black; }   /* Yellow for 'Checked In' */
+.badge.completed  { background-color: #4caf50; color: white; }   /* Green for 'Completed' */
+.badge.cancelled  { background-color: #f44336; color: white; }   /* Red for 'Cancelled' */
+/* ✅ Additional Status Badges (for log_status, etc.) */
+.badge.pending {
+  background-color: #ffc107; /* Yellow */
+  color: #212529;
+}
+
+.badge.voided {
+  background-color: #6c757d; /* Gray */
+  color: white;
+}
+
+.badge.rejected,
+.badge.error {
+  background-color: #dc3545; /* Red */
+  color: white;
+}
+
+.badge.info {
+  background-color: #17a2b8; /* Blue */
+  color: white;
+}
+
+/* 🚫 Status badge for 'Voided' */
+.status-badge.voided {
+  background-color: #6c757d;  /* Gray background */
+  color: white;               /* White text */
+}
+/* 📅 Status badge for 'Scheduled' */
+.status-badge.scheduled {
+  background-color: #93c5fd;  /* light blue background */
+  color: #1e3a8a;             /* dark navy text */
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* ✅ Status badge styles */
+.status-badge.active {
+  background-color: #4ade80;  /* green */
+  color: white;
+}
+
+.status-badge.disabled {
+  background-color: #f87171;  /* red */
+  color: white;
+}
+
+/* ✅ Boolean badges (Yes/No) */
+.boolean-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.boolean-badge.yes {
+  background-color: #e6f4ea;
+  color: #137333;
+}
+
+.boolean-badge.no {
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
+/* ✅ STATUS BADGES + TOGGLE BUTTON COLORS FOR SERVICE ITEMS */
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+}
+.badge.green {
+  background-color: #28a745; /* Active */
+}
+.badge.red {
+  background-color: #dc3545; /* Inactive */
+}
+
+.btn-green {
+  background-color: #28a745 !important; /* Disable action */
+  color: white !important;
+}
+.btn-red {
+  background-color: #dc3545 !important; /* Enable action */
+  color: white !important;
+}
+/* 🟢 Status badge for 'Finalized' */
+.status-badge.finalized {
+  background-color: #bbf7d0;  /* light green background */
+  color: #166534;             /* dark green text */
+}
+/* 📦 Status badge for 'Fulfilled' */
+.status-badge.fulfilled {
+  background-color: #38bdf8; /* sky blue */
+  color: #075985;            /* deep blue text */
+}

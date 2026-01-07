@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Refund Receipt</title>
+  <link rel="stylesheet" href="receipt-print.css">
+</head>
+<body>
+  <div id="receiptWrapper">
+    <div id="receiptHeader">
+      <img src="../images/logo.png" alt="Logo">
+      <h2>Refund Receipt</h2>
+      <div class="org-info">
+        <p><strong>{{organization_name}}</strong></p>
+        <p>{{organization_address}}</p>
+        <p>{{organization_contact}}</p>
+      </div>
+    </div>
+
+    <!-- Facility Info -->
+    <div class="facility-info">
+      <p><strong>Facility:</strong> {{facility_name}}</p>
+      <p>{{facility_address}}</p>
+      <p>{{facility_contact}}</p>
+    </div>
+
+    <h3 class="section-title">Refund Details</h3>
+    <table>
+      <tr><th>Refund Ref</th><td>{{refund_ref}}</td></tr>
+      <tr><th>Patient</th><td>{{patient_name}}</td></tr>
+      <tr><th>Invoice #</th><td>{{invoice_number}}</td></tr>
+      <tr><th>Date</th><td>{{created_at}}</td></tr>
+      <tr><th>Reason</th><td>{{reason}}</td></tr>
+      <tr><th>Status</th><td>{{status}}</td></tr>
+    </table>
+
+    <div class="summary">
+      <table>
+        <tr><td class="label">Refunded Amount:</td><td><strong>${{amount}}</strong></td></tr>
+      </table>
+    </div>
+
+    <div id="receiptFooter">
+      <p>Refund processed by {{facility_name}}.</p>
+    </div>
+  </div>
+</body>
+</html>

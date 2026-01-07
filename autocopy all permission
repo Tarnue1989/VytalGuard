@@ -1,0 +1,42 @@
+-- ============================================================================
+-- 🧩 Auto-Copy All Feature Modules into Organization Admin Role (Org-Wide)
+-- ----------------------------------------------------------------------------
+--  • Grants ALL enabled + active feature modules to a role
+--  • Uses feature_accesses (NOT role_permissions)
+--  • Organization-wide access (facility_id = NULL)
+--  • Duplicate-safe (ON CONFLICT DO NOTHING)
+-- ============================================================================
+
+INSERT INTO feature_accesses (
+    id,
+    organization_id,
+    role_id,
+    module_id,
+    facility_id,
+    status,
+    created_by_id,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid()                             AS id,
+    '3ac6fbff-71ba-49c5-95ed-6ae1c7f293c0'         AS organization_id,  -- ✅ ORG ID
+    r.id                                          AS role_id,          -- organization_admin
+    m.id                                          AS module_id,
+    NULL                                          AS facility_id,      -- ✅ ORG-WIDE ACCESS
+    'active'                                      AS status,
+    '8f8ab795-aad1-43d5-955f-93cddcbda641'         AS created_by_id,    -- Superadmin user
+    NOW()                                         AS created_at,
+    NOW()                                         AS updated_at
+FROM feature_modules m
+JOIN roles r
+  ON r.name = 'organization_admin'
+WHERE m.enabled = true
+  AND m.status = 'active'
+ON CONFLICT (organization_id, role_id, module_id, facility_id)
+DO NOTHING;
+
+-- ✅ Safe to re-run
+-- ✅ No duplicates
+-- ✅ Matches controller logic
+-- ✅ Facility-independent

@@ -1,0 +1,50 @@
+Perfect—here’s a clean install order plus the exact commands to run after so you’re up and coding without the Postgres errors you hit earlier.
+
+✅ Install order (Windows)
+Node.js (LTS) – installs Node + npm
+
+Git
+
+PostgreSQL (include pgAdmin in the installer)
+
+Visual Studio Code
+
+Optional (add right after the four above): Postman, DBeaver, Docker Desktop.
+
+▶️ After install: one-time setup & verification
+Open PowerShell as Administrator (Win+X → Windows PowerShell (Admin)).
+
+A. Verify tools
+powershell
+Copy
+Edit
+node -v
+npm -v
+git --version
+psql --version
+B. Git basics (global once)
+powershell
+Copy
+Edit
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+git config --global core.autocrlf true
+C. Project folder + base Node setup
+powershell
+Copy
+Edit
+# choose a location you like
+mkdir C:\VytalGuard && cd C:\VytalGuard
+
+# init git & node
+git init
+npm init -y
+D. Install core npm packages
+powershell
+Copy
+Edit
+# prod deps
+npm i express sequelize pg pg-hstore cors dotenv jsonwebtoken bcrypt joi multer
+
+# dev deps (tools you’ll use in development)
+npm i -D nodemon sequelize-cli

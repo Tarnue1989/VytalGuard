@@ -1,0 +1,20 @@
+INSERT INTO role_permissions (
+  id,
+  role_id,
+  permission_id,
+  organization_id,
+  facility_id,
+  created_at,
+  updated_at
+)
+SELECT
+  gen_random_uuid(),
+  '9b463b82-328c-4810-a388-dd3e625fa535',
+  p.id,
+  '3ac6fbff-71ba-49c5-95ed-6ae1c7f293c0',
+  NULL,
+  NOW(),
+  NOW()
+FROM permissions p
+WHERE p.is_global = true
+ON CONFLICT DO NOTHING;

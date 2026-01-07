@@ -1,0 +1,866 @@
+/* =============================================================
+   FILE: forms.css
+   📝 Forms – Grid layout, floating labels, input styling, wrappers
+   Includes mobile responsiveness and dynamic field behavior
+============================================================= */
+
+/* Form container */
+.form-container {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.05);
+  margin-bottom: 2rem;
+  display: block;;
+}
+
+/* Form grid layout */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Inputs */
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.4rem !important;
+  border: 1px solid #ccc;
+  border-radius: 0;
+  font-size: 0.95rem;
+  background-color: white;
+  transition: all 0.3s ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #1e3a8a;
+  background-color: #f9fafb;
+  box-shadow: 0 0 3px rgba(30, 58, 138, 0.15);
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* Special case: patient search wider */
+#patientSearch {
+  min-width: 240px;
+}
+
+/* Focus */
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #1e3a8a;
+  outline: none;
+}
+
+/* Field Wrapper */
+.field-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.field-wrapper input,
+.field-wrapper select,
+.field-wrapper textarea {
+  padding: 0.75rem 0.5rem 0.25rem 0.5rem;
+}
+
+.input-label {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 1rem;
+  pointer-events: none;
+  background-color: transparent;
+  padding: 0 4px;
+  transition: all 0.2s ease;
+}
+
+/* Floating label triggers */
+input:focus + .input-label,
+input:not(:placeholder-shown) + .input-label,
+textarea:focus + .input-label,
+textarea:not(:placeholder-shown) + .input-label,
+select:focus + .input-label,
+select:valid + .input-label {
+  top: -8px;
+  left: 8px;
+  font-size: 0.75rem;
+  color: #1e3a8a;
+  background-color: transparent;
+}
+
+/* Hide placeholder label until real value selected */
+select:invalid + .input-label {
+  display: none;
+}
+
+/* Float force with value */
+.field-wrapper.has-value .input-label {
+  top: -8px;
+  left: 8px;
+  font-size: 0.75rem;
+  color: #1e3a8a;
+  background-color: white;
+}
+
+/* Inline checkbox label */
+.inline-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+  white-space: nowrap;
+  padding: 0.25rem 0;
+}
+
+.inline-checkbox input[type="checkbox"] {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* Utility spans */
+.span-2 {
+  grid-column: span 2;
+}
+.span-3 {
+  grid-column: span 3;
+}
+.patient-span {
+  grid-column: span 2;
+}
+@media (max-width: 768px) {
+  .patient-span,
+  .span-2,
+  .span-3 {
+    grid-column: span 1 !important;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .form-grid > .field-wrapper,
+  .form-grid > .inline-checkbox,
+  .form-grid > .form-buttons {
+    grid-column: span 1 !important;
+    width: 100%;
+  }
+
+  .form-buttons {
+    flex-direction: column;
+  }
+
+  .form-buttons button {
+    width: 100%;
+    min-width: 140px;
+  }
+}
+@media (min-width: 769px) {
+  .form-buttons {
+    flex-direction: row;
+  }
+
+  .form-buttons button {
+    flex: 1;
+  }
+}
+
+/* Form button group row */
+.form-buttons {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.form-buttons button {
+  flex: 1;
+  min-width: 140px;
+}
+/* Container stays aligned */
+.search-container {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  margin: 1rem 0;
+}
+
+/* Search input styled cleanly */
+.search-container input[type="text"],
+.search-container input[type="search"] {
+  width: 100%;
+  padding: 0.5rem 2.5rem 0.5rem 0.75rem; /* room for icons */
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+/* Search icon inside input */
+.search-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #888;
+  font-size: 1rem;
+}
+
+/* Clear (×) button inside input */
+#clearSearchBtn {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #999;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+}
+
+#clearSearchBtn:hover {
+  color: #333;
+}
+
+
+/* 👁️ View Modal Styles */
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+.modal.hidden {
+  display: none !important;
+}
+.modal-content {
+  background: white;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.5rem;
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+}
+.modal-body {
+  padding-top: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* 📦 Align card fields (Dept, Created By, Remarks, etc.) in responsive grid */
+.card-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* auto-resize columns */
+  gap: 0.5rem 1.5rem; /* vertical & horizontal spacing */
+  margin-bottom: 0.5rem;
+  align-items: center;
+}
+
+/* ✅ Remove default bullet styling from item list */
+.record-card ul {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 0.25rem;
+}
+/* 🆔 Reference Number Badge */
+.ref-num {
+  display: inline-block;
+  background-color: #f3f4f6; /* light gray */
+  color: #111827; /* dark text */
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+.ref-num {
+  background-color: #e0f2fe;  /* light blue bg */
+  color: #0369a1;             /* darker blue text */
+  border-color: #bae6fd;
+}
+
+/* 💊 Each item pill */
+.item-pill {
+  display: inline-flex;               /* inline block layout */
+  align-items: center;
+  background: #f3f4f6;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  margin: 0.25rem 0.4rem 0.25rem 0;   /* spacing between pills */
+  font-size: 0.9rem;
+}
+
+/* ❌ Smaller delete button */
+.item-pill .remove-item-btn {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  color: #dc2626;
+  margin-left: 0.6rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+}
+
+.item-pill .remove-item-btn:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+/* ✏️ Edit button inside pill */
+.item-pill .edit-item-btn {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  color: #2563eb; /* Tailwind blue-600 */
+  margin-left: 0.5rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+}
+
+.item-pill .edit-item-btn:hover {
+  background: #e0ecff; /* light blue background on hover */
+  color: #1d4ed8;       /* darker blue on hover */
+}
+/* 🎯 Compact Close Button – Matches pill 'X' styling */
+.close-btn {
+  font-size: 1rem;                 /* Smaller font size for subtle icon */
+  color: #999;                     /* Neutral gray */
+  background: none;               /* No background */
+  border: none;                   /* No border */
+  padding: 2px 6px;               /* Tight spacing */
+  cursor: pointer;                /* Pointer on hover */
+  border-radius: 4px;             /* Rounded corners */
+  line-height: 1;
+  transition: background 0.2s ease;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);  /* Light hover feedback */
+  color: #333;                           /* Darker hover color */
+}
+
+/* 🟢 Responsive radio group fix */
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+
+/* =============================================================
+   📐 Lab Result Grid Variant – 2 rows + attachment
+   ============================================================= */
+.span-1 { grid-column: span 1; }
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+
+/* Symptoms flex container */
+.symptoms-flex {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Common Symptoms takes ~2/3 and wraps items inside */
+.symptom-checkboxes {
+  flex: 2 1 300px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.25rem 0;
+}
+
+/* Textarea takes ~1/3 */
+.symptoms-textarea {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Label styling */
+.symptom-checkboxes label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  min-width: 120px;
+  font-weight: normal;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+/* Hover */
+.symptom-checkboxes label:hover {
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
+/* On small screens, stack vertically */
+@media (max-width: 768px) {
+  .symptoms-flex {
+    flex-direction: column;
+  }
+}
+
+/* Wrapper around the image and remove button */
+.image-preview-wrapper {
+  position: relative;
+  display: inline-block;      /* Shrink to fit content */
+  margin-top: 0.75rem;        /* Space below file input */
+}
+
+/* Styles the image preview */
+#profilePicturePreview.thumb {
+  display: block;
+  width: 180px;               /* Fixed width */
+  height: 180px;              /* Fixed height */
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #ccc;
+}
+
+/* Make file inputs the same height and padding as text inputs */
+input[type="file"] {
+  height: 42px;               /* Match height of other inputs */
+  padding: 0 0.5rem;          /* Horizontal padding */
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  background-color: white;
+  box-sizing: border-box;
+}
+
+/* Remove button styled as small "X" in the corner */
+.remove-image-btn {
+  position: absolute;         /* Position relative to wrapper */
+  top: 4px;                   /* Position inside top-right corner */
+  right: 4px;
+  background: #e11d48;        /* Red background */
+  border: none;               /* No border */
+  font-size: 14px;            /* Smaller font */
+  color: white;               /* White "X" */
+  cursor: pointer;            /* Pointer cursor */
+  width: 20px;                /* Circle button */
+  height: 20px;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 20px;          /* Center "X" vertically */
+  padding: 0;                 /* Remove extra padding */
+}
+
+/* Optional hover effect for better UX */
+.remove-image-btn:hover {
+  background-color: #b91c1c;
+}
+
+/* 🧱 File upload container */
+.file-upload-wrapper {
+  position: relative;
+}
+
+/* ⬛ File input box with icons */
+.file-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 2.5rem; /* space for buttons */
+}
+
+.file-input-box input[type="file"] {
+  flex-grow: 1;
+  padding-right: 2rem;
+}
+
+/* 👁 Eye preview icon */
+#filePreviewIcon {
+  position: absolute;
+  right: 2.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: none;
+  color: #333;
+}
+
+/* ❌ Remove file button */
+#removeFileBtn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  display: none;
+}
+
+/* 📎 File icon styling inside input */
+.file-input-box .file-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1rem;
+  color: #6b7280;
+  pointer-events: none;
+}
+
+/* Add left padding so file name doesn't overlap icon */
+.file-input-box input[type="file"] {
+  padding-left: 2rem; /* Shift text right to make room for icon */
+}
+
+/* ✅ Improved mobile-friendly symptom checkboxes */
+.symptom-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+}
+
+.symptom-checkboxes label {
+  display: flex;
+  align-items: center;
+  font-size: 0.95rem;
+  gap: 0.4rem;
+  white-space: nowrap;
+  background: #f9fafb;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.symptom-checkboxes input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #1e3a8a; /* Tailwind primary color */
+}
+
+/* On small screens, allow wrapping */
+@media (max-width: 768px) {
+  .symptom-checkboxes {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .symptom-checkboxes label {
+    width: 100%;
+  }
+}
+/* 📄 Display the selected file name next to file input */
+#fileNameLabel {
+  font-size: 0.9rem;
+  color: #374151; /* Tailwind gray-700 */
+  margin-top: 0.25rem;
+  padding-left: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ❌ Remove file button (styled small red icon) */
+#removeFileBtn {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  color: #dc2626; /* Tailwind red-600 */
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+#removeFileBtn:hover {
+  background-color: #fee2e2; /* red-100 */
+  color: #b91c1c; /* red-700 */
+}
+
+/* Container holding file name and remove */
+.file-info-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+/* 🎯 Style document icons inside <td> file links for visual consistency */
+td a i.fa-file-pdf,
+td a i.fa-image,
+td a i.fa-file-alt {
+  margin-right: 6px;           /* Adds space between the icon and file name */
+  font-size: 1rem;             /* Ensures all icons are same size (16px = readable) */
+  vertical-align: middle;      /* Aligns icon with text baseline for cleaner look */
+}
+
+/* 📦 Form Section Block Styling */
+.form-section {
+  background-color: #f9f9fc;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  overflow: hidden; /* keeps inner border-radius clean */
+}
+
+/* 🏷️ Section Header Shared Style */
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  font-weight: bold;
+  font-size: 1rem;
+  text-align: left; /* ✅ Ensure text is left-aligned */
+  border-bottom: 1px solid #ccc; 
+}
+.section-label span {
+  flex-grow: 1;
+  text-align: left;  /* ✅ Force the icon + title to stay left-aligned */
+}
+
+/* 🔽 Collapsible content wrapper */
+.collapsible {
+  padding: 0.8rem 1.2rem 1rem;
+  display: block;
+}
+
+/* ⛔ Hidden when collapsed */
+.collapsed .collapsible {
+  display: none;
+}
+
+/* 🎨 Section-Specific Header Backgrounds */
+.section-basic    { background-color: #eef2fa; }  /* Blue */
+.section-history  { background-color: #fceef2; }  /* Pink */
+.section-fetal    { background-color: #e9f7f1; }  /* Green */
+.section-vitals   { background-color: #fff9e6; }  /* Yellow */
+.section-notes    { background-color: #f5f5f5; }  /* Gray */
+
+/* 📦 Suggestion dropdown container */
+.suggestion-box {
+  position: absolute;      /* 🔒 Anchors to nearest relative parent (field-wrapper) */
+  top: 100%;               /* 📍 Places it just below the input field */
+  left: 0;                 /* 👈 Align to left edge of input */
+  width: 100%;             /* 🧩 Match input width */
+  background: white;       /* 🎨 White background for contrast */
+  border: 1px solid #ccc;  /* 🪟 Light border */
+  border-top: none;        /* 🧼 Seamless transition from input field */
+  max-height: 250px;       /* 🧵 Scrollable limit */
+  overflow-y: auto;        /* 📜 Enable scroll if overflow */
+  z-index: 1000;           /* 🪜 Appear above other elements */
+  display: none;           /* 🚫 Hidden by default until JS triggers display */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* 🕶 Subtle depth */
+}
+
+/* 🧱 Each suggestion item */
+.suggestion-box div {
+  padding: 0.5rem 1rem;       /* 🧘 Spacing inside each suggestion */
+  cursor: pointer;           /* 👉 Pointer cursor for interaction */
+  transition: background 0.2s;
+}
+
+/* 🟦 Hover effect */
+.suggestion-box div:hover {
+  background-color: #f3f4f6;  /* 🌫 Soft highlight on hover */
+}
+
+/* 🎨 Section Label Accent Bars (Left Border Highlights) */
+.section-basic .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 100%;
+  background-color: #3b82f6; /* Blue */
+  margin-right: 0.75rem;
+  border-radius: 4px;
+}
+
+.section-history .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 100%;
+  background-color: #ec4899; /* Pink */
+  margin-right: 0.75rem;
+  border-radius: 4px;
+}
+
+.section-fetal .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 100%;
+  background-color: #10b981; /* Green */
+  margin-right: 0.75rem;
+  border-radius: 4px;
+}
+
+.section-vitals .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 100%;
+  background-color: #f59e0b; /* Yellow */
+  margin-right: 0.75rem;
+  border-radius: 4px;
+}
+
+.section-notes .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 100%;
+  background-color: #9ca3af; /* Gray */
+  margin-right: 0.75rem;
+  border-radius: 4px;
+}
+/* 🛠️ Prevent Billing Summary overlap on patient field */
+#billingOverview {
+  width: 100%;
+  clear: both;
+  margin-top: -10px; /* optional tweak if spacing too large */
+  padding: 0.5rem 1rem;
+  box-sizing: border-box;
+  z-index: 1;
+  position: relative;
+}
+
+
+/* ✅ Let suggestions overflow outside collapsible sections */
+.field-wrapper {
+  position: relative; /* anchor for absolute dropdowns */
+}
+
+/* Make suggestion lists always appear above and outside clipping */
+.suggestions-list,
+.suggestion-box {
+  position: absolute;
+  top: 100%;         /* directly below the input */
+  left: 0;
+  width: 100%;
+  max-height: 250px; /* scroll limit */
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-top: none;
+  z-index: 9999;     /* above collapsible/form-section */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Ensure parent containers don't clip the dropdown */
+.form-section,
+.collapsible {
+  overflow: visible !important;
+}
+
+/* Style pill container */
+#itemPillsContainer .pill {
+  border-radius: 20px;
+  padding: 6px 12px;
+  margin: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #f1f3f5;
+  font-size: 0.9rem;
+}
+
+/* Edit button inside pill */
+#itemPillsContainer .pill .pill-edit {
+  color: #0d6efd; /* blue like bootstrap primary */
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+#itemPillsContainer .pill .pill-edit:hover {
+  color: #0a58ca;
+}
+
+/* Remove button inside pill */
+#itemPillsContainer .pill .pill-remove {
+  color: #dc3545; /* bootstrap danger red */
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+#itemPillsContainer .pill .pill-remove:hover {
+  color: #a71d2a;
+}
+
+/* ============================================================
+   📷 Global Preview Image + Hidden Utility
+   Used by: patient-form.js, employee-form.js, delivery_record-form.js
+============================================================ */
+
+.preview-img {
+  display: block;
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  margin-top: 4px;
+}
+
+.hidden {
+  display: none !important;
+}

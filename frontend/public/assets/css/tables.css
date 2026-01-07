@@ -1,0 +1,298 @@
+/* =============================================================
+   FILE: tables.css
+   📊 Tables – Layout, row styles, cell padding, responsive table
+   Includes base table structure and hover effects
+============================================================= */
+
+/* Container for horizontal scroll */
+.table-container {
+  flex: 1;
+  width: 100%;
+  min-width: 100%;
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+/* General spacing for table and cards */
+.table-container,
+.card-list {
+  margin-top: 1rem;
+}
+
+/* Base Table */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  background-color: #fff;
+}
+/* REQUIRED for column resizing to work */
+.data-table {
+  table-layout: fixed;
+}
+
+/* Header */
+thead {
+  background: #1e3a8a;
+  color: white;
+}
+
+/* Cell styling */
+th, td {
+  padding: 0.4rem 0.6rem;
+  min-width: 120px;
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* First column wider */
+.data-table th:first-child,
+.data-table td:first-child {
+  width: 200px;      /* default width */
+  min-width: 80px;   /* allow shrinking */
+}
+
+/* Row hover effect */
+tbody tr:hover {
+  background-color: #f0f8ff;
+}
+
+/* Row shadow */
+tbody tr {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Actions table (for compact buttons) */
+.actions-table {
+  white-space: nowrap;
+}
+.actions-table button {
+  margin-right: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* Photo thumbnail column */
+table .photo-col {
+  width: 45px;
+  padding: 4px;
+}
+.table-container th.photo-col,
+.table-container td.photo-col {
+  width: 60px !important;
+  min-width: 60px !important;
+  max-width: 60px !important;
+  padding: 0.25rem !important;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Print table layout */
+@media print {
+  table, th, td {
+    border: 1px solid black !important;
+  }
+
+  table.print-table {
+    page-break-inside: auto;
+  }
+  table.print-table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .print-table.totals-aligned td {
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: none;
+  }
+
+  .print-table.totals-aligned td:last-child {
+    text-align: right;
+  }
+
+  .print-table.totals-aligned td:nth-child(3) {
+    text-align: right;
+    font-weight: bold;
+  }
+}
+/* ============================================================================
+   ✅ View Toggle Support – Prevent Overlap Between Card & Table Views
+============================================================================ */
+.record-cards,
+.table-container {
+  display: none; /* Both hidden by default */
+}
+
+.record-cards.active,
+.table-container.active {
+  display: block; /* JS will toggle these */
+}
+
+/* ✅ Table stays readable on smaller screens */
+.table-container {
+  overflow-x: auto;
+}
+.data-table {
+  min-width: max-content;
+}
+
+th, td {
+  white-space: nowrap;
+}
+.actions-table button:hover {
+  background-color: #e5e7eb;
+  color: #1e3a8a;
+}
+/* ✅ Apply small text to table and card views globally */
+.table-container .data-table th,
+.table-container .data-table td,
+.record-card {
+  font-size: 0.875rem; /* ≈ 14px */
+  line-height: 1.4;
+}
+
+/* ✅ Optional: tighter table cell spacing */
+.table-container .data-table td,
+.table-container .data-table th {
+  padding: 6px 10px;
+}
+
+/* Ensure table action columns marked as .export-ignore remain visible on screen */
+.export-ignore {
+  display: table-cell !important;
+  visibility: visible !important;
+}
+
+.table-actions-col {
+  text-align: right;
+  white-space: nowrap;
+  min-width: 120px;
+  padding-right: 1rem;
+}
+
+/* 🎨 Thumbnail image styling for tight alignment within table rows */
+.thumb {
+  width: 30px;              /* Fixed width so all thumbs are consistent */
+  height: 30px;             /* Fixed height so rows remain even */
+  object-fit: cover;        /* Crop to fill without distortion */
+  display: block;           /* Removes inline gap below image */
+  margin: 0 auto;           /* Center in the cell horizontally */
+  border: 1px solid #ccc;   /* Light border */
+  border-radius: 4px;       /* Rounded corners */
+}
+/* Only narrow columns with patient photos */
+.table-container .data-table td:has(.thumb-patient),
+.table-container .data-table th.photo-column {
+  width: 50px;
+  max-width: 50px;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+/* Optional: tighten row height further */
+.table-container .data-table td {
+  vertical-align: middle;
+}
+
+/* Make table rows tighter */
+.table-container .data-table th,
+.table-container .data-table td {
+  padding: 4px 8px;           /* Less vertical padding */
+  line-height: 1.2;           /* Tighter line height */
+}
+
+/* Reduce header font size slightly if needed */
+.table-container .data-table th {
+  font-size: 0.85rem;         /* ≈13px */
+}
+
+
+/* =====================================================
+   📐 Column Resize – Admin Tables
+===================================================== */
+.data-table th {
+  position: relative;
+  padding-right: 10px; /* space for handle */
+  overflow: visible;
+}
+
+.data-table th .resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 10;
+}
+
+/* Optional: show handle only on hover */
+.data-table th .resize-handle {
+  opacity: 0;
+}
+.data-table th:hover .resize-handle {
+  opacity: 1;
+}
+/* =====================================================
+   📐 Visible Column Separator for Resizable Headers
+===================================================== */
+
+/* White vertical divider */
+.data-table th::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.9); /* white separator */
+  pointer-events: none;
+}
+
+/* Stronger divider on hover (clear affordance) */
+.data-table th:hover::after {
+  background-color: #ffffff;
+  width: 2px;
+}
+
+/* Resize handle visual cue */
+.data-table th .resize-handle {
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+.data-table th:hover .resize-handle {
+  background-color: #ffffff;
+}
+
+/* Header vertical separators */
+.data-table thead th {
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Remove last header divider */
+.data-table thead th:last-child {
+  border-right: none;
+}
+
+
+/* Body vertical separators */
+.data-table tbody td {
+  border-right: 1px solid #e5e7eb; /* light gray */
+}
+
+/* Remove last column divider */
+.data-table tbody td:last-child {
+  border-right: none;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 2px solid #d1d5db; /* slightly stronger */
+}

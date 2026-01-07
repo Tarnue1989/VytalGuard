@@ -1,0 +1,91 @@
+/* =============================================================
+   FILE: print.css
+   🖨️ Global Print Styles (App-wide)
+   Hides navigation, buttons, and export-only elements
+   ============================================================= */
+
+@media print {
+  /* ✅ Hide ONLY app chrome / UI, not receipt headers */
+  .app-header,
+  .app-footer,
+  nav,
+  .top-nav,
+  .sidebar,
+  .toolbar,
+  .floating-btn,
+  .btn,
+  .actions-cell,
+  .export-ignore,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 🧾 Simplify backgrounds + text color */
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* 📋 Force tables to print clearly */
+  table,
+  th,
+  td {
+    border: 1px solid #000 !important;
+    border-collapse: collapse !important;
+  }
+
+  /* ✅ Compact tables */
+  table {
+    width: 100% !important;
+    margin: 4px 0 !important;
+    page-break-inside: auto;
+  }
+
+  th,
+  td {
+    padding: 2px 5px !important;    /* tighter */
+    font-size: 12px !important;
+    line-height: 1.2 !important;    /* reduce row height */
+    color: #000 !important;         /* force black text */
+  }
+
+  th {
+    font-weight: bold !important;
+    background: #f4f4f4 !important; /* light gray header background */
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  /* 🖼️ Scale logos or icons if still visible */
+  img {
+    max-height: 80px !important;
+    object-fit: contain !important;
+  }
+
+  /* ✅ Ensure receipt header/footer always print */
+  #receiptHeader,
+  #receiptFooter {
+    display: block !important;
+  }
+
+  #receiptHeader h2,
+  #receiptHeader p,
+  #receiptHeader small,
+  #receiptFooter {
+    color: #000 !important;
+    background: none !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+  }
+
+  /* ✅ Page setup for consistency */
+  @page {
+    size: A4 portrait;
+    margin: 20mm;
+  }
+}

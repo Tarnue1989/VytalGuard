@@ -1,0 +1,152 @@
+/* =============================================================
+   FILE: modals.css
+   💬 Modals – Overlay windows for view details, confirmation
+   Includes modal base, spinner, and confirmation dialog
+============================================================= */
+
+/* View Modal Overlay */
+#viewModal {
+  position: fixed;
+  z-index: 9999;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+#viewModal.hidden {
+  display: none;
+}
+
+/* View Modal Content */
+#viewModal .modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+#viewModal .modal-content h2 {
+  color: #1e3a8a;
+  margin-bottom: 1rem;
+}
+#viewDetailsBody p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+}
+#closeViewModal {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 1.5rem;
+  color: #dc2626;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+/* Confirmation Modal Overlay */
+.confirm-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+/* Confirmation Box */
+.confirm-box {
+  background: white;
+  padding: 1.2rem 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Message and Buttons */
+.confirm-message {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: #1f2937;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.confirm-actions button {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-confirm-yes {
+  background-color: #dc2626;
+  color: #fff;
+}
+.btn-confirm-yes:hover {
+  background-color: #b91c1c;
+}
+
+.btn-confirm-no {
+  background-color: #e5e7eb;
+  color: #111827;
+}
+.btn-confirm-no:hover {
+  background-color: #d1d5db;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Loading Spinner Box */
+.loading-spinner {
+  background: white;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  color: #1e3a8a;
+  box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Spinner icon (FA override fallback) */
+.fa-spin {
+  animation: fa-spin 1s linear infinite;
+}
+
+@keyframes fa-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Ensure modal actions marked export-ignore stay visible during normal view */
+.modal-actions.export-ignore,
+button.export-ignore,
+.export-ignore {
+  display: flex !important;
+  visibility: visible !important;
+}
+

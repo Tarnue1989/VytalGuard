@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VytalGuard - Add Ultrasound Record</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add an Ultrasound Record" />
+  <link rel="shortcut icon" href="assets/images/favicon.svg" />
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css" />
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css" />
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css" />
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">Ultrasound Records</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Ultrasound Record</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Ultrasound Record</h5>
+              </div>
+              <div class="card-body">
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="ultrasoundRecordForm">
+                    <div class="row gx-4 gy-3">
+                      <!-- Patient -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 position-relative">
+                        <label class="form-label" for="patientInput">Patient</label>
+                        <input type="text" class="form-control suggestion-input" id="patientInput" placeholder="Search patient..." autocomplete="off" />
+                        <input type="hidden" id="patientId" name="patient_id" />
+                        <div id="patientSuggestions" class="suggestions"></div>
+                      </div>
+
+                      <!-- Consultation (hidden) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 position-relative d-none">
+                        <label class="form-label" for="consultationInput">Consultation</label>
+                        <input type="text" class="form-control suggestion-input" id="consultationInput"
+                              placeholder="Search consultation..." autocomplete="off" />
+                        <input type="hidden" id="consultationId" name="consultation_id" />
+                        <div id="consultationSuggestions" class="suggestions"></div>
+                      </div>
+
+                      <!-- Maternity Visit (hidden) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 position-relative d-none">
+                        <label class="form-label" for="maternityVisitInput">Maternity Visit</label>
+                        <input type="text" class="form-control suggestion-input" id="maternityVisitInput"
+                              placeholder="Search maternity visit..." autocomplete="off" />
+                        <input type="hidden" id="maternityVisitId" name="maternity_visit_id" />
+                        <div id="maternitySuggestions" class="suggestions"></div>
+                      </div>
+
+                      <!-- Technician (hidden) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 position-relative d-none">
+                        <label class="form-label" for="technicianInput">Technician</label>
+                        <input type="text" class="form-control suggestion-input" id="technicianInput"
+                              placeholder="Search technician..." autocomplete="off" />
+                        <input type="hidden" id="technicianId" name="technician_id" />
+                        <div id="technicianSuggestions" class="suggestions"></div>
+                      </div>
+
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 form-group">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 form-group">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                      </div>
+
+                      <!-- Billable Item (Scan Type) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label" for="billableItemSelect">Scan Type</label>
+                        <select class="form-control" id="billableItemSelect" name="billable_item_id"></select>
+                      </div>
+
+                      <!-- Scan Date -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label" for="scanDate">Scan Date</label>
+                        <input type="date" class="form-control" id="scanDate" name="scan_date" />
+                      </div>
+
+                      <!-- Scan Location -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label" for="scanLocation">Scan Location</label>
+                        <input type="text" class="form-control" id="scanLocation" name="scan_location" />
+                      </div>
+
+                      <!-- Findings -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <label class="form-label" for="ultraFindings">Findings</label>
+                        <textarea class="form-control" id="ultraFindings" name="ultra_findings" rows="2"></textarea>
+                      </div>
+
+                      <!-- Notes -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <label class="form-label" for="note">Notes</label>
+                        <textarea class="form-control" id="note" name="note" rows="2"></textarea>
+                      </div>
+
+                      <!-- Measurements -->
+                      <div class="col-md-2"><label class="form-label" for="numberOfFetus">No. of Fetuses</label><input type="number" class="form-control" id="numberOfFetus" name="number_of_fetus" /></div>
+                      <div class="col-md-2"><label class="form-label" for="biparietalDiameter">Biparietal Diameter (cm)</label><input type="text" class="form-control" id="biparietalDiameter" name="biparietal_diameter" /></div>
+                      <div class="col-md-2"><label class="form-label" for="presentation">Presentation</label><input type="text" class="form-control" id="presentation" name="presentation" /></div>
+                      <div class="col-md-2"><label class="form-label" for="lie">Lie</label><input type="text" class="form-control" id="lie" name="lie" /></div>
+                      <div class="col-md-2"><label class="form-label" for="position">Position</label><input type="text" class="form-control" id="position" name="position" /></div>
+                      <div class="col-md-2"><label class="form-label" for="amnioticVolume">Amniotic Volume</label><input type="text" class="form-control" id="amnioticVolume" name="amniotic_volume" /></div>
+                      <div class="col-md-2"><label class="form-label" for="fetalHeartRate">Fetal Heart Rate</label><input type="text" class="form-control" id="fetalHeartRate" name="fetal_heart_rate" /></div>
+                      <div class="col-md-2">
+                        <label class="form-label" for="gender">Gender</label>
+                        <select class="form-control" id="gender" name="gender">
+                          <option value="">-- Select Gender --</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
+                      </div>
+
+                      <!-- History -->
+                      <div class="col-md-6">
+                        <label class="form-label" for="indication">Indication</label>
+                        <textarea class="form-control" id="indication" name="indication" rows="2"></textarea>
+                      </div>
+
+                      <div class="col-md-3 form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="previousCesarean" name="previous_cesarean" />
+                        <label class="form-check-label" for="previousCesarean">Previous Cesarean</label>
+                      </div>
+
+                      <div class="col-md-3"><label class="form-label" for="prevCesDate">Prev Cesarean Date</label><input type="date" class="form-control" id="prevCesDate" name="prev_ces_date" /></div>
+                      <div class="col-md-3"><label class="form-label" for="prevCesLocation">Prev Cesarean Location</label><input type="text" class="form-control" id="prevCesLocation" name="prev_ces_location" /></div>
+                      <div class="col-md-3"><label class="form-label" for="cesareanDate">Cesarean Date</label><input type="date" class="form-control" id="cesareanDate" name="cesarean_date" /></div>
+                      <div class="col-md-6"><label class="form-label" for="nextOfKin">Next of Kin</label><input type="text" class="form-control" id="nextOfKin" name="next_of_kin" /></div>
+
+                      <!-- Flags -->
+                      <div class="col-md-3 form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="isEmergency" name="is_emergency" />
+                        <label class="form-check-label" for="isEmergency">Emergency?</label>
+                      </div>
+
+                      <!-- Buttons -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                          </button>
+                          <button type="reset" id="clearBtn" class="btn btn-warning">
+                            <i class="ri-refresh-line me-1"></i> Clear
+                          </button>
+                          <button type="submit" class="btn btn-primary">
+                            <i class="ri-save-3-line me-1"></i> Save Ultrasound Record
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+                <!-- /formContainer -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/ultrasound-records/add-ultrasound-record.js"></script>
+</body>
+</html>

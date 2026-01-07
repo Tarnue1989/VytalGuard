@@ -1,0 +1,124 @@
+📂 docs/
+Stores project documentation for reference, onboarding, and audits.
+
+architecture/ → System architecture diagrams, component relationships, deployment topology.
+
+db/ → Database schema diagrams, migrations overview, seed data notes.
+
+api/ → API endpoint documentation (OpenAPI/Swagger files, Postman collections).
+
+ui/ → UI/UX design specs, mockups, style guides.
+
+📂 infra/
+Contains infrastructure & deployment configurations.
+
+docker/ → Dockerfile, docker-compose.yml for local and cloud containerization.
+
+k8s/ → Kubernetes deployment, service, and ingress YAMLs.
+
+scripts/ → Utility scripts (backup, restore, seeding, batch jobs).
+
+ci/ → Continuous Integration configs (GitHub Actions, GitLab CI, Jenkins pipelines).
+
+📂 backend/
+Houses all server-side code.
+
+src/
+app.js → Express app setup (middleware, routes, error handling).
+
+server.js → Entry point, starts HTTP server.
+
+config/ → Config files for environment, database connection, secrets.
+
+db/migrations/ → Sequelize migration files for DB schema changes.
+
+db/seeders/ → Seed data scripts (default roles, departments, etc.).
+
+db/sequelize-meta/ → Sequelize’s internal migration tracking table.
+
+models/ → Sequelize models (Patient.js, User.js, etc.).
+
+constants/ → Project-wide constants:
+
+enums.js → Status enums, priority levels, etc.
+
+fieldLabels.js → Human-readable field names.
+
+fieldOrder.js → Preferred field display order.
+
+fieldDefaults.js → Default field values per module.
+
+fieldVisibility.js → Role-based visibility rules.
+
+moduleFields.js → Central field definitions per module.
+
+middleware/ → Reusable Express middleware (auth check, role guard, error handler).
+
+policies/ → Access control policies (e.g., can edit record if role = doctor).
+
+validators/ → Joi schemas or custom validators for request payloads.
+
+services/ → Business logic (billing service, notification service).
+
+controllers/ → API endpoint logic (CRUD handlers).
+
+routes/ → Route definitions, mapping URLs to controllers.
+
+utils/ → Utility helpers (logger, date formatter, file uploader).
+
+jobs/ → Scheduled jobs (cron, batch processing).
+
+test/
+unit/ → Unit tests for services, utils, and isolated functions.
+
+integration/ → Tests hitting the API endpoints with a DB.
+
+📂 frontend/
+Houses all client-side code.
+
+public/
+index.html → Main app HTML entry point.
+
+assets/css/ → Global CSS and module-specific styles.
+
+assets/fonts/ → Web fonts.
+
+assets/images/ → Icons, logos, placeholders.
+
+assets/libs/ → Third-party JS/CSS libraries.
+
+js/
+app.js → Main frontend bootstrap file.
+
+utils/ → Shared JS utilities (fetch wrappers, toast notifications, DOM helpers).
+
+constants/ → Shared frontend constants matching backend field definitions.
+
+components/ → Reusable UI components (modal popups, date pickers).
+
+modules/
+Each module gets its own folder with a consistent 5-file pattern:
+
+*-main.js → Bootstraps module, loads filters, table/card view, pagination.
+
+*-actions.js → Handles user actions (view, edit, delete, finalize, etc.).
+
+*-render.js → Renders tables/cards, formats fields.
+
+*-constants.js → Frontend constants for labels, field order, defaults.
+
+*-form.js → Handles form submissions, validation, reset logic.
+
+Example: patients/
+patients-main.js → Loads patients list, handles filter UI.
+
+patients-actions.js → Button click events (view/edit/delete patient).
+
+patients-render.js → HTML rendering of patient rows/cards.
+
+patients-constants.js → Labels like { first_name: "First Name" }.
+
+patients-form.js → Submit new/edit patient form.
+
+📄 generate-structure.js
+One-time setup script to create all folders & placeholder files.

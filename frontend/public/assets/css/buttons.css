@@ -1,0 +1,343 @@
+/* =============================================================
+   FILE: buttons.css
+   🔘 Buttons – All button variants for forms, tables, and actions
+   Includes hover effects, spacing, and status-based styles
+============================================================= */
+
+/* Base button style */
+button {
+  padding: 0.4rem 1.2rem;              /* 🔽 Reduced vertical padding */
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  background-color: #1e3a8a;           /* Dark Blue */
+  color: white;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background-color: #2563eb;          /* Lighter Blue on hover */
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.2);
+}
+
+
+/* Submit & Cancel */
+.btn-submit {
+ 
+  color: white;
+}
+.btn-submit:hover {
+  background: #233e93;
+}
+
+.btn-cancel {
+  background: #6b7280;
+  color: white;
+}
+.btn-cancel:hover {
+  background: #4b5563;
+}
+
+/* Add Button (desktop floating) */
+.add-btn-desktop {
+  background: #1e3a8a;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: bold;
+  display: inline-block; 
+  margin-bottom: 1rem;
+}
+
+/* Floating circular button */
+.floating-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: #1e3a8a;
+  color: white;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  display: none;
+  display: flex;
+}
+.floating-btn:active {
+  cursor: grabbing;
+}
+.floating-btn:hover {
+  background-color: #2563eb;
+  transform: scale(1.05);
+}
+
+/* Icon/Action Buttons for tables/cards */
+.actions-table button,
+.card-actions button {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 5px;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+/* Variants */
+.edit, .btn-edit          { background: #2563eb; }
+.edit:hover, .btn-edit:hover {
+  background-color: #1e40af;
+}
+.delete, .btn-delete      { background: #dc2626; }
+.delete:hover, .btn-delete:hover {
+  background-color: #991b1b;
+}
+.reset, .btn-reset        { background: #0d9488; }
+.disable, .btn-disable    {
+  background-color: #6b7280;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+.disable:hover, .btn-disable:hover {
+  background-color: #4b5563;
+}
+
+.enable, .btn-enable {
+  background-color: #16a34a;
+  color: white;
+}
+.enable:hover, .btn-enable:hover {
+  background-color: #15803d;
+}
+
+.finalize, .btn-finalize {
+  background-color: #16a34a;
+  color: white;
+}
+.finalize:hover, .btn-finalize:hover {
+  background-color: #15803d;
+}
+
+.btn-complete, .complete {
+  background-color: #16a34a;
+}
+.btn-complete:hover, .complete:hover {
+  background-color: #15803d;
+}
+
+.btn-warning, .warning {
+  background-color: #f59e0b;
+  color: white;
+}
+.btn-warning:hover, .warning:hover {
+  background-color: #d97706;
+}
+
+.btn-print, .print {
+  background-color: #6b7280;
+}
+.btn-print:hover, .print:hover {
+  background-color: #4b5563;
+}
+
+.btn-view {
+  background-color: #6366f1;
+  color: white;
+}
+.btn-view:hover {
+  background-color: #4f46e5;
+}
+
+.btn-export:hover {
+  background: #047857;
+}
+
+/* Special Buttons */
+.btn-clear {
+  background: #f59e0b;
+  color: white;
+  border: 1px solid #d97706;
+}
+.btn-clear:hover {
+  background: #d97706;
+  border-color: #b45309;
+}
+
+.btn-void {
+  background-color: #6b7280;
+  color: white !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.btn-void:hover {
+  background-color: #4b5563;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(107, 114, 128, 0.3);
+}
+
+.generate-token {
+  background-color: #7c3aed;
+}
+
+/* Stock approval buttons */
+.approve-btn {
+  background-color: #16a34a;
+  color: white;
+}
+.approve-btn:hover {
+  background-color: #15803d;
+}
+.reject-btn {
+  background-color: #dc2626;
+  color: white;
+}
+.reject-btn:hover {
+  background-color: #b91c1c;
+}
+/* Compact icon-style buttons for cards/tables */
+.icon-btn {
+  background: #1e3a8a;
+  color: white;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  margin: 0 2px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: #233e93;
+  transform: scale(1.05);
+}
+
+/* Tooltip support (optional, native browser title attribute works too) */
+.icon-btn[title] {
+  position: relative;
+}
+/* 🔍 Compact Search Button */
+/* 🔍 Compact Search Button – Green */
+.btn-search {
+  background-color: #16a34a;         /* Emerald Green */
+  color: white;
+  border: 1px solid #15803d;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 5px;
+}
+.btn-search:hover {
+  background-color: #15803d;
+  border-color: #166534;
+}
+
+/* ❌ Compact Clear Button – Red */
+.btn-clear {
+  background-color: #dc2626;         /* Red */
+  color: white;
+  border: 1px solid #b91c1c;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 5px;
+}
+.btn-clear:hover {
+  background-color: #b91c1c;
+  border-color: #991b1b;
+}
+/* ============================================================================
+   ✅ Semantic Action Button Colors – Approve & Reject
+   ------------------------------------------------------------
+   📌 Used for icon-only buttons in table/card views.
+   Applies green/red tint based on action type (approve or reject).
+============================================================================ */
+
+/* 🟢 Approve Button (icon only) */
+.btn-approve {
+  color: #16a34a; /* Green 600 */
+}
+.btn-approve:hover {
+  color: #15803d; /* Green 700 */
+}
+
+/* 🔴 Reject Button (icon only) */
+.btn-reject {
+  color: #dc2626; /* Red 600 */
+}
+.btn-reject:hover {
+  color: #b91c1c; /* Red 700 */
+}
+
+/* 🌀 Optional: Icon hover background polish */
+.icon-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 50%;
+}
+/* =============================================================
+   📁 buttons.css or actions.css
+   📤 Export Buttons – Excel / PDF
+   Used in: stockrequests.html, reports.html, etc.
+============================================================= */
+
+/* 🔗 Export Button Container */
+.export-btn-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+/* 📤 Export Button Style */
+.btn-export {
+  background-color: #1e40af; /* Indigo-900 */
+  color: white;
+  padding: 0.45rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+/* 🔄 Export Icons */
+.btn-export i {
+  font-size: 1rem;
+}
+
+/* 🟦 Hover Effect */
+.btn-export:hover {
+  background-color: #1d4ed8; /* Indigo-700 */
+  transform: translateY(-1px);
+}
+
+/* Ensure export-ignore buttons remain visible on screen */
+.icon-btn.export-ignore,
+.export-ignore {
+  display: inline-flex !important;
+  visibility: visible !important;
+}
+
+
+
+

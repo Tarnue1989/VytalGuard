@@ -1,0 +1,1 @@
+console.log("VytalGuard frontend boot");

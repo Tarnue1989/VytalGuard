@@ -1,0 +1,120 @@
+/* =============================================================
+   FILE: utilities.css
+   🛠️ Utilities – Reusable helpers, resets, and layout tweaks
+   Includes visibility, span helpers, conditional blocks, etc.
+============================================================= */
+
+/* Hide element */
+.hidden {
+  display: none !important;
+}
+
+/* Conditional content block */
+.conditional {
+  display: none;
+  width: 100%;
+  margin-top: 1rem;
+}
+.conditional .form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem 1rem;
+}
+
+/* Grid spans */
+.span-2 {
+  grid-column: span 2;
+}
+.span-3 {
+  grid-column: span 3;
+}
+.patient-span {
+  grid-column: span 2;
+}
+
+/* Responsive overrides */
+@media (max-width: 768px) {
+  .patient-span,
+  .span-2,
+  .span-3 {
+    grid-column: span 1 !important;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .form-grid > .field-wrapper,
+  .form-grid > .inline-checkbox,
+  .form-grid > .form-buttons {
+    grid-column: span 1 !important;
+    width: 100%;
+  }
+
+  .form-buttons {
+    flex-direction: column;
+  }
+
+  .form-buttons button {
+    width: 100%;
+    min-width: 140px;
+  }
+
+  .request-item-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .request-item-row input,
+  .request-item-row button {
+    width: 100%;
+  }
+
+  input[type="file"] {
+    max-width: 100%;
+  }
+
+  #filePreview {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+
+  .form-grid div[style*="grid-column: span 2"] {
+    display: block !important;
+  }
+
+  .card-list {
+    display: block;
+  }
+
+  .table-container {
+    display: none;
+  }
+
+  .floating-btn {
+    display: flex;
+  }
+}
+
+@media (min-width: 769px) {
+  .table-container {
+    display: block;
+  }
+
+  .card-list {
+    display: none;
+  }
+
+  .add-btn-desktop {
+    display: inline-block;
+  }
+
+  .form-buttons {
+    flex-direction: row;
+  }
+
+  .form-buttons button {
+    flex: 1;
+  }
+}

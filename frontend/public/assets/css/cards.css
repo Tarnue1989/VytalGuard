@@ -1,0 +1,86 @@
+/* =============================================================
+   FILE: cards.css
+   🧾 Cards – Layouts for records, patient lists, chart sections
+============================================================= */
+
+/* Base Record Card */
+.record-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  padding: 1rem;
+  border-radius: 0; /* ⬅️ make square corners */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s ease;
+  overflow-wrap: break-word; /* 🔑 prevent overflow */
+  word-break: break-word;    /* 🔑 ensure wrapping for long strings */
+}
+
+
+.record-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Inline Record Fields */
+.record-card p {
+  margin: 0.25rem 0;
+  flex: 1 1 200px;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.record-card p strong {
+  display: inline-block;
+  min-width: 120px;
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+/* Card Action Buttons */
+.card-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.card-actions button {
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 0; /* ⬅️ square buttons inside cards too */
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+/* ✅ Ensure export-ignore elements are always visible on screen */
+.card-actions.export-ignore,
+.icon-btn.export-ignore,
+.export-ignore {
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Toggle Views */
+.card-list:not(.active),
+.table-container:not(.active) {
+  display: none !important;
+}
+.card-list.active {
+  margin-top: 1rem;
+  display: grid !important; /* ensure grid shows when active */
+}
+/* =========================================================
+   Responsive Card Grid – Auto-fit by device
+========================================================= */
+.card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+/* Ensure cards stretch evenly */
+.card-list .record-card {
+  height: 100%;
+}

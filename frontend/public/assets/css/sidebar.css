@@ -1,0 +1,106 @@
+/* =============================================================
+   FILE: sidebar.css
+   📂 Sidebar – Chat sidebar and floating widget styles
+   Used for real-time messaging user list and layout panel
+============================================================= */
+
+/* Sidebar container */
+.chat-sidebar {
+  position: fixed;
+  right: 0;
+  top: 60px;
+  width: 280px;
+  max-height: calc(100% - 60px);
+  background: #fff;
+  border-left: 1px solid #ddd;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+  z-index: 9999;
+  padding: 1rem;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+/* Slide off screen */
+.chat-sidebar.closed {
+  transform: translateX(100%);
+}
+
+/* Sidebar header text */
+.chat-sidebar-header {
+  font-weight: bold;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Sidebar search input */
+#chatSearchInput {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* User list container */
+#chatUserList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: calc(100% - 100px);
+  overflow-y: auto;
+  border-top: 1px solid #ddd;
+}
+
+#chatUserList li {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+#chatUserList li:hover {
+  background: #eef2f7;
+}
+
+/* User item row */
+.chat-user-row {
+  cursor: pointer;
+  margin-bottom: 0.6rem;
+}
+.chat-user-item {
+  display: flex;
+  align-items: center;
+}
+
+/* Avatar */
+.chat-avatar {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+  margin-right: 0.75rem;
+}
+
+/* User info row */
+.chat-user-info {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Floating Chat Button */
+.floating-chat-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  z-index: 9998;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}

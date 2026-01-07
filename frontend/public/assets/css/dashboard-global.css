@@ -1,0 +1,841 @@
+/* ============================================================================
+🌐 GOLDLTE – Single Dashboard Styles
+============================================================================ */
+
+/* ✅ Base Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family: "Segoe UI", sans-serif;
+  background: #f4f6fa;
+  color: #333;
+}
+
+/* ✅ Layout */
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+main.content {
+  padding: 2rem 1rem;
+  flex-grow: 1;
+}
+
+/* ✅ Header */
+header {
+  background: #1e3a8a;
+  color: white;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+}
+.top-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+.top-nav a {
+  color: white;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.top-nav select {
+  padding: 0.3rem;
+  border-radius: 4px;
+  border: none;
+}
+
+/* ✅ Search Input */
+#searchInput {
+  width: 100%;
+  max-width: 320px;
+  margin: 1rem auto 2rem;
+  display: block;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+/* ✅ Section Layout */
+.overview-section {
+  margin-bottom: 2rem;
+  border-radius: 10px;
+  padding: 1rem;
+}
+#userInfoSection {
+  margin-bottom: 2rem;
+}
+
+/* ✅ Section Header (Collapsible) */
+.section-title {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #fff;
+  background: #1e3a8a;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+.section-title:hover {
+  background: #2c4ca6;
+}
+.section-title i {
+  font-size: 0.9rem;
+}
+
+/* ✅ Card Grid */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem; /* Reduce vertical & horizontal gap */
+  margin-top: 0.5rem; /* Less top margin */
+}
+
+
+/* ✅ Dashboard Card */
+.card {
+  background: white;
+  padding: 1rem;
+  border-radius: 10px;
+  text-align: center;
+  color: #1e3a8a;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  transition: 0.3s ease;
+  border-left: 5px solid #1e3a8a;
+}
+.card i {
+  font-size: 1.5rem;
+  margin-bottom: 0.4rem;
+  display: block;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+  background: #f1f5f9;
+}
+
+/* ✅ Optional Future Card */
+.future-card {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ✅ Hide Collapsed Sections */
+.collapsed {
+  display: none;
+}
+
+/* ✅ Section Background Variants */
+.admin-tools     { background: #eef2ff; }
+.admin-tools .card     { border-left-color: #6366f1; }
+
+.billing-inv     { background: #fefce8; }
+.billing-inv .card     { border-left-color: #eab308; }
+
+.lab-pharmacy    { background: #f0fdf4; }
+.lab-pharmacy .card    { border-left-color: #10b981; }
+
+.patients        { background: #fff7ed; }
+.patients .card        { border-left-color: #fb923c; }
+
+.appointments    { background: #fef2f2; }
+.appointments .card    { border-left-color: #ef4444; }
+
+.clinical        { background: #f0f9ff; }
+.clinical .card        { border-left-color: #0ea5e9; }
+
+.patient-records { background: #fdf4ff; }
+.patient-records .card { border-left-color: #a855f7; }
+
+.diagnostics     { background: #ecfdf5; }
+.diagnostics .card     { border-left-color: #14b8a6; }
+
+.invoice-tools   { background: #fefce8; }
+.invoice-tools .card   { border-left-color: #f59e0b; }
+
+/* ✅ Footer */
+footer {
+  background: #1e3a8a;
+  color: white;
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+
+/* ✅ Chat Button */
+#globalChatBtn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #0d6efd;
+  color: white;
+  font-size: 1.4rem;
+  padding: 12px 16px;
+  border-radius: 50px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  cursor: pointer;
+  z-index: 1000;
+  transition: background 0.3s ease;
+}
+#globalChatBtn:hover {
+  background: #0b5ed7;
+}
+.unread-badge {
+  background: red;
+  color: white;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  position: absolute;
+  top: -5px;
+  right: -5px;
+}
+
+/* ✅ Responsive */
+@media (max-width: 600px) {
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .header-left {
+    font-size: 1rem;
+  }
+}
+
+/* Reduce profile pic size on smaller screens */
+@media (max-width: 600px) {
+  #profilePic {
+    width: 48px;
+    height: 48px;
+  }
+}
+@media (max-width: 600px) {
+  .user-profile {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr); /* 🔧 Force 2 columns on small screens */
+  }
+}
+/* ===============================
+🔹 Profile Section Styling
+=============================== */
+
+/* Aligns the profile picture and name side-by-side with spacing */
+.profile-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Styles the profile picture with fixed size and circular shape */
+#profilePic {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #ccc;
+}
+
+/* ===============================
+💬 Chat Sidebar and Overlay
+=============================== */
+
+/* Slide-out chat panel on the right side */
+.chat-sidebar {
+  position: fixed;
+  top: 64px;
+  right: 0;
+  width: 340px;
+  height: calc(100% - 64px);
+  background: #fff;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+  border-left: 1px solid #ccc;
+  overflow-y: auto;
+  z-index: 9999;
+  transition: transform 0.3s ease;
+}
+
+/* Hide the chat sidebar off-screen */
+.chat-sidebar.closed {
+  transform: translateX(100%);
+}
+
+/* Transparent overlay when chat is open */
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 9998;
+}
+
+/* Hidden state for the overlay */
+.chat-overlay.hidden {
+  display: none;
+}
+
+/* ===============================
+📊 Full-Width Card Layout (Optional)
+=============================== */
+
+/* Used for full-width modules like activity feed or summaries */
+.card.full-width {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+}
+
+/* Heading inside full-width card */
+.card.full-width h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Bullet list inside full-width card */
+.card.full-width ul {
+  padding-left: 1.2rem;
+  line-height: 1.5;
+}
+/* 🔹 User Overview Section Container */
+#userInfoSection {
+  margin-top: 2rem;                   /* Adds spacing above the section */
+  background: #f8f9ff;                /* Light background to distinguish the section */
+  padding: 1rem;                      /* Padding inside the box */
+  border-radius: 10px;               /* Rounded corners for aesthetic */
+  border: 1px solid #dee2e6;         /* Light border around the section */
+}
+
+/* 🔹 Grid Layout for Role-Based Info Cards */
+#group-user-info {
+  display: grid;                                         /* Enables grid layout */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;                                              /* Spacing between cards */
+  margin-top: 1rem;                                       /* Space below the section title */
+}
+
+
+#group-user-info .card:hover {
+  transform: translateY(-3px);                           /* Lift effect on hover */
+}
+
+/* 🔹 Overview Card Title and Count */
+#group-user-info .card h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+  color: #1e3a8a;
+  line-height: 1.2;
+}
+
+#group-user-info .card p {
+  font-size: 1.3rem;
+  font-weight: bold;
+  margin: 0.25rem 0;
+}
+
+#group-user-info .card a {
+  font-size: 0.9rem;
+  color: #007bff;
+  text-decoration: none;
+}
+
+#group-user-info .card a:hover {
+  text-decoration: underline;
+}
+/* ===============================
+👤 Header User Profile Info
+=============================== */
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-profile .profile-pic {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid white;
+}
+
+.user-profile .user-info {
+  font-size: 0.85rem;
+  line-height: 1.2;
+  color: white;
+  text-align: right;
+}
+
+/* ✅ Subkey Breakdown Container (side-by-side layout) */
+.card-subdata {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-top: 1px solid #dee2e6;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+
+.card-subdata span {
+  background: #eff3f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: #1e3a8a;
+}
+
+/* 🔲 Container for the period dropdown and label */
+#userInfoControls {
+  display: flex;                         /* Align label and select inline */
+  align-items: center;                  /* Vertically center items */
+  gap: 10px;                            /* Space between label and dropdown */
+  margin-bottom: 20px;                  /* Space below control */
+  padding: 8px 12px;                    /* Internal spacing */
+  background-color: #f8f9fa;            /* Light gray background */
+  border-radius: 6px;                   /* Rounded corners */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); /* Subtle shadow */
+  font-size: 0.95rem;                   /* Slightly smaller font */
+  flex-wrap: wrap;                      /* Wrap if screen is narrow */
+}
+
+/* 🏷 Label styling */
+#userInfoControls label {
+  font-weight: 600;                     /* Bold text */
+  color: #333;                          /* Darker gray */
+}
+
+/* 🔽 Period dropdown styling */
+#periodSelect {
+  padding: 5px 12px;                    /* Padding inside dropdown */
+  font-size: 0.95rem;                   /* Match overall font size */
+  border: 1px solid #ced4da;            /* Light border */
+  border-radius: 5px;                   /* Rounded dropdown edges */
+  background-color: #fff;               /* White background */
+  color: #212529;                       /* Dark text */
+  transition: border-color 0.2s, box-shadow 0.2s; /* Smooth focus effect */
+}
+
+/* 🔷 Dropdown focus behavior */
+#periodSelect:focus {
+  border-color: #80bdff;                /* Blue border on focus */
+  outline: 0;
+  box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25); /* Subtle glow */
+}
+
+
+
+
+
+/* ✅ Module Tile: Card Layout, Icon, Content */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.75rem; /* reduced padding */
+  background: white;
+  border-radius: 8px; /* smaller radius */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  color: #1e3a8a;
+  text-decoration: none;
+  transition: transform 0.2s ease;
+  border-left: 4px solid #1e3a8a; /* thinner border */
+  min-height: 120px; /* consistent height */
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  background: #f1f5f9;
+}
+
+.card-icon {
+  flex-shrink: 0;
+  font-size: 1.25rem; /* smaller icon */
+  margin-bottom: 0.3rem;
+  color: #1e3a8a;
+}
+
+.card-content h4 {
+  margin: 0;
+  font-size: 0.9rem; /* smaller heading */
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ✅ Description */
+.card-desc {
+  font-size: 0.75rem; /* reduced font size */
+  color: #555;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+/* ✅ Tags */
+.card-tags {
+  margin-top: 5px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card-tags .tag {
+  font-size: 0.65rem; /* slightly smaller */
+  background: #e0e7ff;
+  color: #1e3a8a;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  font-weight: 500;
+}
+
+
+
+/* ✅ Module Tile: Card Layout, Icon, Content */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  color: #1e3a8a;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+  border-left: 3px solid #1e3a8a;
+  min-height: auto;
+  font-size: 0.85rem;
+  gap: 0.2rem;
+}
+
+
+
+.card:hover {
+  transform: translateY(-4px);
+  background: #f1f5f9;
+}
+
+.card-icon {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  color: #1e3a8a;
+  margin-top: 2px;
+}
+
+.card-content h4 {
+  margin: 0;
+  font-size: 1.1rem;     /* ⬅️ Bigger name */
+  font-weight: 700;
+  line-height: 1.3;
+  color: #1e3a8a;
+}
+
+
+/* 🔲 Grid Layout for Dashboard Tiles */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+/* 🔲 Grid Layout for Dashboard Tiles */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* tighter layout */
+  gap: 0.75rem; /* slightly reduced gap */
+  margin-top: 1rem;
+}
+
+/* ✅ Description */
+.card-desc {
+  font-size: 0.8rem;
+  color: #555;
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+
+
+/* ✅ Tags */
+.card-tags {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card-tags .tag {
+  font-size: 0.7rem;
+  background: #e0e7ff;
+  color: #1e3a8a;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  font-weight: 500;
+}
+
+/* ✅ Section-Based Background Coloring */
+.admin-section .dashboard-grid {
+  background: #f0f5ff;
+}
+.admin-tools-section .dashboard-grid {
+  background: #eef2ff;
+}
+.appointments-consultations-section .dashboard-grid {
+  background: #ecfdf5;
+}
+.billing-inventory-section .dashboard-grid {
+  background: #fef3c7;
+}
+.lab-pharmacy-section .dashboard-grid {
+  background: #f5f3ff;
+}
+.patient-records-section .dashboard-grid {
+  background: #fee2e2;
+}
+.website-section .dashboard-grid {
+  background: #ccfbf1;
+}
+.support-section .dashboard-grid {
+  background: #ede9fe;
+}
+.security-section .dashboard-grid {
+  background: #e5e7eb;
+}
+.messaging-section .dashboard-grid {
+  background: #dbeafe;
+}
+.diagnostics-section .dashboard-grid {
+  background: #dcfce7;
+}
+.finance-section .dashboard-grid {
+  background: #fef9c3;
+}
+.infrastructure-section .dashboard-grid {
+  background: #f3f4f6;
+}
+.communication-section .dashboard-grid {
+  background: #cffafe;
+}
+
+.dashboard-grid.collapsed {
+  display: none !important;
+}
+
+
+/* 🟦 Admin */
+.admin .section-title {
+  background: #4f46e5;
+}
+
+/* 🔷 Admin Tools */
+.admin-tools .section-title {
+  background: #6366f1;
+}
+
+/* 🔵 Appointments & Consultations */
+.appointments-consultations .section-title {
+  background: #0ea5e9;
+}
+
+/* 🟨 Billing & Inventory */
+.billing-inventory .section-title {
+  background: #eab308;
+}
+
+/* 🟦 Communication */
+.communication .section-title {
+  background: #06b6d4;
+}
+
+/* 🟢 Diagnostics */
+.diagnostics .section-title {
+  background: #14b8a6;
+}
+
+/* 🟧 Finance */
+.finance .section-title {
+  background: #f59e0b;
+}
+
+/* ⚫ Infrastructure */
+.infrastructure .section-title {
+  background: #4b5563;
+}
+
+/* 💚 Lab & Pharmacy */
+.lab-pharmacy .section-title {
+  background: #10b981;
+}
+
+/* 🔹 Messaging */
+.messaging .section-title {
+  background: #3b82f6;
+}
+
+/* 🟪 Patient Records */
+.patient-records .section-title {
+  background: #a855f7;
+}
+
+/* 🔴 Security */
+.security .section-title {
+  background: #ef4444;
+}
+
+/* 🟦 Support */
+.support .section-title {
+  background: #0d9488;
+}
+
+/* 🟣 Website */
+.website .section-title {
+  background: #8b5cf6;
+}
+/* ✅ Two-column layout for dashboard sections */
+.section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* ✅ Mobile responsive: stack to 1 column */
+@media (max-width: 768px) {
+  .section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+
+
+
+
+
+
+
+/* === Tab-Based Dashboard Layout === */
+.tab-nav-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  justify-content: flex-start;
+}
+
+.tab-btn {
+  background: #e0e7ff;
+  color: #1e3a8a;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.3s;
+  font-size: 0.9rem;
+}
+
+.tab-btn:hover {
+  background: #c7d2fe;
+}
+
+.tab-btn.active {
+  background: #1e3a8a;
+  color: white;
+}
+
+/* 💡 Recommended Section */
+.recommended-section {
+  margin-top: 2rem;
+}
+
+.recommended-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 📱 Responsive Grid Support */
+@media (max-width: 768px) {
+  .tab-nav-bar {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .dashboard-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+}
+
+
+.chart-h240 { height: 240px; }
+.chart-h260 { height: 260px; }
+
+
+
+/*Hide sidebar menu wh click outside*/
+#overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998; /* just below sidebar */
+}
+
+.page-wrapper.toggled #overlay {
+  display: block;
+}

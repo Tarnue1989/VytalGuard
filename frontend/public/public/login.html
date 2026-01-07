@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login – VytalGuard</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard Login Page" />
+  <meta property="og:title" content="VytalGuard Admin Login" />
+  <meta property="og:description" content="Secure access to VytalGuard HMS" />
+  <meta property="og:type" content="Website" />
+  <link rel="shortcut icon" href="/assets/images/favicon.svg" />
+
+  <!-- Fonts & CSS -->
+  <link rel="stylesheet" href="/assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="/assets/css/main.min.css" />
+</head>
+
+<body class="login-bg">
+  <div class="container">
+    <div class="auth-wrapper">
+      <!-- Login Form -->
+      <form id="loginForm">
+        <div class="auth-box">
+          <a href="/" class="auth-logo mb-4">
+            <img id="dynamicLogo" src="/assets/images/logo.svg" alt="VytalGuard Logo" />
+          </a>
+
+          <h4 class="mb-4">Sign In to Your Account</h4>
+
+          <div class="mb-3">
+            <label class="form-label" for="email">Email <span class="text-danger">*</span></label>
+            <input type="email" id="email" name="email" class="form-control" placeholder="Enter your email" required />
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label" for="password">Password <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="password" id="password" name="password" class="form-control" placeholder="Enter password" required />
+              <button id="togglePasswordBtn" class="btn btn-outline-secondary" type="button">
+                <i class="ri-eye-line text-primary"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <a href="javascript:void(0)" id="useResetTokenLink" class="text-decoration-underline">Use Reset Token</a>
+          </div>
+
+          <div class="mb-3 d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Login</button>
+            <a href="/create-account.html" class="btn btn-secondary">Not registered? Signup</a>
+          </div>
+
+          <p id="errorMsg" class="text-danger" style="display: none;"></p>
+        </div>
+      </form>
+
+      <!-- Password Reset Form -->
+      <form id="resetPasswordForm" style="display: none;">
+        <div class="auth-box">
+          <h5 class="mb-3">Reset Your Password</h5>
+          <div class="mb-3">
+            <input type="password" id="newPassword" class="form-control" placeholder="New Password" required />
+          </div>
+          <div class="mb-3">
+            <input type="password" id="confirmPassword" class="form-control" placeholder="Confirm Password" required />
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Update Password</button>
+        </div>
+      </form>
+
+      <!-- Manual Reset Token Section -->
+      <div id="tokenResetSection" style="display: none;">
+        <form id="tokenResetForm">
+          <div class="auth-box">
+            <h5 class="mb-3">Reset via Token</h5>
+            <div class="mb-3">
+              <input type="email" id="tokenEmail" class="form-control" placeholder="Your Email" required />
+            </div>
+            <div class="mb-3">
+              <input type="text" id="resetToken" class="form-control" placeholder="Reset Token" required />
+            </div>
+            <div class="mb-3">
+              <input type="password" id="tokenNewPassword" class="form-control" placeholder="New Password" required />
+            </div>
+            <div class="mb-3">
+              <input type="password" id="tokenConfirmPassword" class="form-control" placeholder="Confirm Password" required />
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Reset Password</button>
+            <button type="button" id="backToLoginBtn" class="btn btn-secondary w-100 mt-2">← Back to Login</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Core session & token handling -->
+  <script src="/js/authSession.js" type="module"></script>
+
+  <!-- Page-specific logic (login flow, reset flow, password toggle) -->
+  <script src="/js/login/index.js" type="module"></script>
+
+  <!-- Dynamic branding/logo -->
+  <script src="/js/dynamic-logo.js" type="module"></script>
+</body>
+</html>

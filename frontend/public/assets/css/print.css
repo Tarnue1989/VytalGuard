@@ -1,0 +1,77 @@
+/* =============================================================
+   FILE: print.css
+   🖨️ Print – Styles applied only when printing
+   Hides UI elements, enhances readability, ensures alignment
+============================================================= */
+
+@media print {
+  /* ❌ Hide elements not needed in print */
+  header,
+  footer,
+  #printBtn,
+  .top-nav,
+  .floating-btn,
+  .print-button {
+    display: none !important;
+  }
+
+  /* ❌ Hide all .export-ignore elements in print */
+  .export-ignore {
+    display: none !important;
+  }
+
+  /* 🧾 Simplify background and text */
+  body {
+    background: white;
+    color: black;
+  }
+
+  /* 📋 Border tables clearly */
+  table, th, td {
+    border: 1px solid black !important;
+  }
+
+  /* 📄 Prevent row splitting */
+  table.print-table {
+    page-break-inside: auto;
+  }
+
+  table.print-table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  /* 📊 Align totals section */
+  .print-table.totals-aligned td {
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: none;
+  }
+
+  .print-table.totals-aligned td:last-child {
+    text-align: right;
+  }
+
+  .print-table.totals-aligned td:nth-child(3) {
+    text-align: right;
+    font-weight: bold;
+  }
+
+  /* 🖼️ Logo handling */
+  #invoiceLogo {
+    max-height: 80px;
+    object-fit: contain;
+  }
+
+  /* ➕ Add spacing above totals */
+  .print-totals {
+    margin-top: 1rem;
+  }
+
+  /* 🧾 Remove box shadows from print content */
+  .record-card,
+  .container {
+    box-shadow: none;
+    padding: 0;
+  }
+}

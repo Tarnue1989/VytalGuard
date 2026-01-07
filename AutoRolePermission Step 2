@@ -1,0 +1,17 @@
+INSERT INTO user_facilities (
+  user_id,
+  role_id,
+  organization_id,
+  facility_id,
+  created_at,
+  updated_at
+)
+VALUES (
+  '3b882ba1-2805-4f50-8a93-972bb58bb826',
+  '9b463b82-328c-4810-a388-dd3e625fa535',
+  '3ac6fbff-71ba-49c5-95ed-6ae1c7f293c0',
+  NULL,
+  NOW(),
+  NOW()
+)
+ON CONFLICT DO NOTHING;

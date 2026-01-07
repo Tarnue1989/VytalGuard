@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Feature Modules</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Manage Feature Modules">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="index.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Feature Modules</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Module</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Feature Module</h5>
+              </div>
+              <div class="card-body">
+
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="featureModuleForm">
+                    <div class="row gx-4">
+
+                      <!-- Module Name -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="name">Module Name <span class="text-danger">*</span></label>
+                          <input type="text" class="form-control" id="name" name="name" placeholder="Enter module name" required>
+                        </div>
+                      </div>
+
+                      <!-- Key -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="key">Key <span class="text-danger">*</span></label>
+                          <input type="text" class="form-control" id="key" name="key" placeholder="Unique module key" required>
+                        </div>
+                      </div>
+
+                      <!-- Route -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="route">Route <span class="text-danger">*</span></label>
+                          <input type="text" class="form-control" id="route" name="route" placeholder="/path-to-module" required>
+                        </div>
+                      </div>
+
+                      <!-- Icon -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="icon">Icon</label>
+                          <input type="text" class="form-control" id="icon" name="icon" placeholder="Icon class (optional)">
+                        </div>
+                      </div>
+
+                      <!-- Category -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="category">Category</label>
+                          <input type="text" class="form-control" id="category" name="category" placeholder="Enter category">
+                        </div>
+                      </div>
+
+                      <!-- Parent Module -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="parent_id">Parent Module</label>
+                          <select class="form-select" id="parent_id" name="parent_id">
+                            <option value="">-- None (Top-level) --</option>
+                            <!-- dynamically populated by add-feature-module.js -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Description -->
+                      <div class="col-xxl-6 col-lg-6 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="description">Description</label>
+                          <input type="text" class="form-control" id="description" name="description" placeholder="Enter description">
+                        </div>
+                      </div>
+
+                      <!-- Tags -->
+                      <div class="col-xxl-6 col-lg-6 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="tags">Tags</label>
+                          <input type="text" class="form-control" id="tags" name="tags" placeholder="Comma-separated tags">
+                        </div>
+                      </div>
+
+                      <!-- Visibility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label">Visibility <span class="text-danger">*</span></label>
+                          <div class="m-0">
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="visibility" id="visibility_public" value="public" checked>
+                              <label class="form-check-label" for="visibility_public">Public</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="visibility" id="visibility_private" value="private">
+                              <label class="form-check-label" for="visibility_private">Private</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="visibility" id="visibility_hidden" value="hidden">
+                              <label class="form-check-label" for="visibility_hidden">Hidden</label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Enabled -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-check mt-4">
+                          <input class="form-check-input" type="checkbox" id="enabled" name="enabled">
+                          <label class="form-check-label" for="enabled">Enabled</label>
+                        </div>
+                      </div>
+
+                      <!-- Status -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label">Status <span class="text-danger">*</span></label>
+                          <div class="m-0">
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
+                              <label class="form-check-label" for="status_active">Active</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
+                              <label class="form-check-label" for="status_inactive">Inactive</label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Buttons -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                          </button>
+                          <button type="reset" id="clearBtn" class="btn btn-warning">
+                            <i class="ri-refresh-line me-1"></i> Clear
+                          </button>
+                          <button type="submit" class="btn btn-primary">
+                            <i class="ri-save-3-line me-1"></i> Save Module
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </form>
+                </div>
+                <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+  <!-- ⚠️ Toasts are dynamically handled by toast-utils.js -->
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/feature-module/add-feature-module.js"></script>
+</body>
+</html>

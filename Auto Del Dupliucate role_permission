@@ -1,0 +1,15 @@
+-- ============================================================================
+-- 🧹 Remove duplicate role_permissions (KEEP ONE)
+-- ----------------------------------------------------------------------------
+-- Safe: keeps the earliest row (by created_at)
+-- Works even if table already has data
+-- ============================================================================
+
+DELETE FROM role_permissions rp
+USING role_permissions dup
+WHERE rp.id <> dup.id
+  AND rp.role_id = dup.role_id
+  AND rp.permission_id = dup.permission_id
+  AND rp.organization_id IS NOT DISTINCT FROM dup.organization_id
+  AND rp.facility_id IS NOT DISTINCT FROM dup.facility_id
+  AND rp.created_at > dup.created_at;

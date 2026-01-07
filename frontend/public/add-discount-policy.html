@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Discount Policy</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Discount Policy">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">Discount Policies</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Policy</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Discount Policy</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="discountPolicyForm">
+                  <div class="row gx-3 gy-3">
+
+                    <!-- Policy Code -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="code">
+                        Code <span class="text-danger">*</span>
+                      </label>
+                      <input type="text" class="form-control" id="code" name="code"
+                             placeholder="LOYALTY10" autocomplete="off" />
+                    </div>
+
+                    <!-- Policy Name -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="name">
+                        Name <span class="text-danger">*</span>
+                      </label>
+                      <input type="text" class="form-control" id="name" name="name"
+                             placeholder="Summer Discount" autocomplete="off" />
+                    </div>
+
+                    <!-- Discount Type -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="typeSelect">
+                        Type <span class="text-danger">*</span>
+                      </label>
+                      <select class="form-control" id="typeSelect" name="discount_type">
+                        <option value="">-- Select --</option>
+                        <option value="percentage">Percentage</option>
+                        <option value="fixed">Fixed Amount</option>
+                        <option value="waiver">Waiver</option>
+                      </select>
+                    </div>
+
+                    <!-- Value -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="value">
+                        Value <span class="text-danger">*</span>
+                      </label>
+                      <input type="number" step="0.01" class="form-control" id="value" name="discount_value"
+                             placeholder="10.00" autocomplete="off" />
+                    </div>
+
+                    <!-- Applies To -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="appliesToSelect">Applies To</label>
+                      <select class="form-control" id="appliesToSelect" name="applies_to">
+                        <option value="all">All</option>
+                        <option value="billable_item">Billable Item</option>
+                        <option value="category">Category</option>
+                        <option value="department">Department</option>
+                        <option value="patient_class">Patient Class</option>
+                      </select>
+                    </div>
+
+                    <!-- Effective From -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="effectiveFrom">Effective From</label>
+                      <input type="date" class="form-control" id="effectiveFrom" name="effective_from" />
+                    </div>
+
+
+                      <!-- Organization (Super Admins only) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">Organization</label>
+                          <select class="form-control" id="organizationSelect" name="organization_id">
+                            <!-- dynamically populated by JS -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility (Admins only) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">Facility</label>
+                          <select class="form-control" id="facilitySelect" name="facility_id">
+                            <!-- dynamically populated by JS -->
+                          </select>
+                        </div>
+                      </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-3 col-lg-4 col-md-6">
+                      <label class="form-label" for="facilitySelect">Facility</label>
+                      <select class="form-control" id="facilitySelect" name="facility_id">
+                        <option value="">-- Select --</option>
+                      </select>
+                    </div>
+
+                    <!-- Conditions JSON -->
+                    <div class="col-xxl-6 col-lg-6 col-md-12">
+                      <label class="form-label" for="conditionJson">Conditions (JSON)</label>
+                      <textarea class="form-control" id="conditionJson" name="condition_json" rows="3"
+                                placeholder='{"patientType": "staff"}'></textarea>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="col-xxl-6 col-lg-6 col-md-12">
+                      <label class="form-label" for="description">Description</label>
+                      <textarea class="form-control" id="description" name="description" rows="3"
+                                placeholder="Short explanation of this policy"></textarea>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="button" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save Policy
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/discount-policies/add-discount-policy.js"></script>
+</body>
+</html>

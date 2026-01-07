@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Facilities</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Manage Facilities">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Hero Header -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Facilities</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Facility List
+          </li>
+        </ol>
+
+        <div class="ms-auto d-lg-flex d-none flex-row">
+          <div class="input-group">
+            <span class="input-group-text bg-primary-lighten">
+              <i class="ri-calendar-2-line text-primary"></i>
+            </span>
+            <input type="text" id="dateRange" class="form-control custom-daterange">
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+
+            <div class="card">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title">Facilities</h5>
+                <a href="add-facility.html" class="btn btn-primary ms-auto">
+                  <i class="ri-add-line me-1"></i> Add Facility
+                </a>
+              </div>
+
+              <div class="card-body">
+
+                <!-- Filters -->
+                <div class="card panel-card mb-3">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-filter me-1"></i> Toggle Filters
+                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                      </button>
+                    </div>
+                    <div class="view-actions d-flex gap-2">
+                      <button id="exportCSVBtn" class="btn btn-light btn-sm icon-btn btn-export">
+                        <i class="fas fa-file-excel me-1"></i> Excel
+                      </button>
+                      <button id="exportPDFBtn" class="btn btn-light btn-sm icon-btn btn-export">
+                        <i class="fas fa-file-pdf me-1"></i> PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id="filterCollapse" class="card-body filter-body">
+                    <div class="section-label mb-2"><strong>Filter Facilities</strong></div>
+                    <div class="row g-3 filter-grid compact">
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterName" class="form-label">Facility Name</label>
+                          <input type="text" id="filterName" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterCode" class="form-label">Code</label>
+                          <input type="text" id="filterCode" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterAddress" class="form-label">Address</label>
+                          <input type="text" id="filterAddress" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterPhone" class="form-label">Phone</label>
+                          <input type="text" id="filterPhone" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterEmail" class="form-label">Email</label>
+                          <input type="text" id="filterEmail" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterOrganization" class="form-label">Organization</label>
+                          <select id="filterOrganization" class="form-select">
+                            <option value="">🔄 All Organizations</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterStatus" class="form-label">Status</label>
+                          <select id="filterStatus" class="form-select">
+                            <option value="">🔄 All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterCreatedFrom" class="form-label">From Date</label>
+                          <input type="date" id="filterCreatedFrom" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterCreatedTo" class="form-label">To Date</label>
+                          <input type="date" id="filterCreatedTo" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-12 d-flex gap-2 filter-actions">
+                        <button id="filterBtn" class="btn btn-primary btn-sm">
+                          <i class="fas fa-search me-1"></i> Search
+                        </button>
+                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                          <i class="fas fa-times me-1"></i> Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- View Toggle -->
+                <div class="d-flex mb-2 view-toggle compact">
+                  <div class="dropdown relative-wrapper export-ignore">
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
+                            id="fieldSelectorBtn"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                      <i class="fas fa-columns me-1"></i> Select Fields
+                    </button>
+                    <div class="dropdown-menu p-2 field-selector-dropdown"
+                         id="fieldSelectorDropdown"
+                         style="min-width:240px;">
+                      <!-- dynamic checkboxes -->
+                    </div>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
+                      <i class="fas fa-th me-1"></i> Card View
+                    </button>
+                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
+                      <i class="fas fa-table me-1"></i> Table View
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-responsive table-container active">
+                  <table class="table m-0 align-middle data-table print-table">
+                    <thead id="dynamicTableHead"></thead>
+                    <tbody id="facilityTableBody"></tbody>
+                  </table>
+                </div>
+
+                <!-- Card list -->
+                <div id="facilityList" class="card-list"></div>
+
+                <!-- Pagination -->
+                <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
+
+              </div>
+            </div>
+            <!-- /card -->
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+  <!-- ⚠️ removed static <div id="toast">, handled dynamically by toast-utils.js -->
+
+  <div id="viewModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="viewModalTitle">Details</h2>
+        <button id="closeViewModal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="viewModalBody"></div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module Scripts -->
+
+  <!-- html2pdf: use CDN (safer) OR place a local copy in /public/js/libs/ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <script type="module" src="/js/logout.js"></script>
+
+  <!-- authSession.js replaces session.js -->
+  <script type="module" src="/js/authSession.js"></script>
+
+  <!-- Facility modules -->
+  <script type="module" src="/js/modules/facility/facility-filter-main.js"></script>
+
+</body>
+</html>
