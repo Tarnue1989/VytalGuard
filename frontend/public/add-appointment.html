@@ -42,105 +42,113 @@
               </div>
               <div class="card-body">
 
-                <!-- 📦 Form Container -->
-                <div id="formContainer">
-                  <form id="appointmentForm">
-                    <div class="row gx-4">
+<!-- 📦 Form Container -->
+<div id="formContainer">
+  <form id="appointmentForm">
+    <div class="row gx-3 gy-2">
 
-                      <!-- Patient (suggestion input) -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="patientInput">Patient</label>
-                          <input type="text"
-                                 class="form-control suggestion-input"
-                                 id="patientInput"
-                                 placeholder="Search patient..."
-                                 autocomplete="off" />
-                          <input type="hidden" id="patientId" name="patient_id" />
-                          <div id="patientSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
+      <!-- Patient -->
+      <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+        <div class="field-wrapper">
+          <label class="form-label" for="patientInput">Patient</label>
+          <input type="text"
+                 class="form-control suggestion-input"
+                 id="patientInput"
+                 placeholder="Search patient..."
+                 autocomplete="off" />
+          <input type="hidden" id="patientId" name="patient_id" />
+          <div id="patientSuggestions" class="suggestions"></div>
+        </div>
+      </div>
 
-                      <!-- Doctor (suggestion input) -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="doctorInput">Doctor</label>
-                          <input type="text"
-                                 class="form-control suggestion-input"
-                                 id="doctorInput"
-                                 placeholder="Search doctor..."
-                                 autocomplete="off" />
-                          <input type="hidden" id="doctorId" name="doctor_id" />
-                          <div id="doctorSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
+      <!-- Doctor -->
+      <div class="col-xxl-3 col-lg-4 col-md-6 col-sm-12">
+        <div class="field-wrapper">
+          <label class="form-label" for="doctorInput">Doctor</label>
+          <input type="text"
+                 class="form-control suggestion-input"
+                 id="doctorInput"
+                 placeholder="Search doctor..."
+                 autocomplete="off" />
+          <input type="hidden" id="doctorId" name="doctor_id" />
+          <div id="doctorSuggestions" class="suggestions"></div>
+        </div>
+      </div>
 
-                      <!-- Department -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="departmentSelect">Department</label>
-                          <select class="form-control" id="departmentSelect" name="department_id">
-                            <!-- populated dynamically -->
-                          </select>
-                        </div>
-                      </div>
+      <!-- Department -->
+      <div class="col-xxl-2 col-lg-4 col-md-6 col-sm-12">
+        <div class="form-group">
+          <label class="form-label" for="departmentSelect">Department</label>
+          <select class="form-control"
+                  id="departmentSelect"
+                  name="department_id">
+            <!-- populated dynamically -->
+          </select>
+        </div>
+      </div>
 
-                      <!-- Date & Time -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="mb-3">
-                          <label class="form-label" for="dateTime">Date & Time</label>
-                          <input type="datetime-local" class="form-control" id="dateTime" name="date_time" />
-                        </div>
-                      </div>
+      <!-- Date & Time -->
+      <div class="col-xxl-2 col-lg-4 col-md-6 col-sm-12">
+        <label class="form-label" for="dateTime">Date & Time</label>
+        <input type="datetime-local"
+               class="form-control"
+               id="dateTime"
+               name="date_time" />
+      </div>
 
+      <!-- Notes (still full width, but compact rows) -->
+      <div class="col-12">
+        <label class="form-label" for="notes">Notes</label>
+        <textarea class="form-control"
+                  id="notes"
+                  name="notes"
+                  rows="2"
+                  placeholder="Additional notes"></textarea>
+      </div>
 
-                      <!-- Notes -->
-                      <div class="col-xxl-12 col-lg-12 col-sm-12">
-                        <div class="mb-3">
-                          <label class="form-label" for="notes">Notes</label>
-                          <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Additional notes"></textarea>
-                        </div>
-                      </div>
+      <!-- Organization -->
+      <div class="col-xxl-2 col-lg-3 col-md-6 col-sm-12">
+        <div class="form-group">
+          <label class="form-label" for="organizationSelect">Organization</label>
+          <select class="form-control"
+                  id="organizationSelect"
+                  name="organization_id">
+            <!-- dynamically populated -->
+          </select>
+        </div>
+      </div>
 
-                      <!-- Organization (Super Admins only) -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="organizationSelect">Organization</label>
-                          <select class="form-control" id="organizationSelect" name="organization_id">
-                            <!-- dynamically populated -->
-                          </select>
-                        </div>
-                      </div>
+      <!-- Facility -->
+      <div class="col-xxl-2 col-lg-3 col-md-6 col-sm-12">
+        <div class="form-group">
+          <label class="form-label" for="facilitySelect">Facility</label>
+          <select class="form-control"
+                  id="facilitySelect"
+                  name="facility_id">
+            <!-- dynamically populated -->
+          </select>
+        </div>
+      </div>
 
-                      <!-- Facility -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="facilitySelect">Facility</label>
-                          <select class="form-control" id="facilitySelect" name="facility_id">
-                            <!-- dynamically populated -->
-                          </select>
-                        </div>
-                      </div>
+      <!-- Buttons -->
+      <div class="col-12">
+        <div class="d-flex gap-2 justify-content-end">
+          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+          </button>
+          <button type="reset" id="clearBtn" class="btn btn-warning">
+            <i class="ri-refresh-line me-1"></i> Clear
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <i class="ri-save-3-line me-1"></i> Save Appointment
+          </button>
+        </div>
+      </div>
 
-                      <!-- Buttons -->
-                      <div class="col-sm-12">
-                        <div class="d-flex gap-2 justify-content-end">
-                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                          </button>
-                          <button type="reset" id="clearBtn" class="btn btn-warning">
-                            <i class="ri-refresh-line me-1"></i> Clear
-                          </button>
-                          <button type="submit" class="btn btn-primary">
-                            <i class="ri-save-3-line me-1"></i> Save Appointment
-                          </button>
-                        </div>
-                      </div>
-
-                    </div>
-                  </form>
-                </div>
-                <!-- /formContainer -->
+    </div>
+  </form>
+</div>
+<!-- /formContainer -->
 
               </div>
             </div>

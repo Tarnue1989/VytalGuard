@@ -1011,3 +1011,8 @@ input[type="file"] {
 .module-grid .form-check-input {
   margin-top: 3px;
 }
+
+/* Allow user to resize textareas vertically */
+textarea {
+  resize: vertical;
+}
