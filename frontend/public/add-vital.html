@@ -42,160 +42,144 @@
               </div>
               <div class="card-body">
 
-                <!-- 📦 Form Container -->
-                <div id="formContainer">
-                  <form id="vitalForm">
-                    <div class="row gx-4">
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="vitalForm">
+                  <div class="row gx-4">
 
-                      <!-- Patient (suggestion input) -->
-                      <div class="col-lg-3 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="patientInput">Patient</label>
-                          <input
-                            type="text"
-                            class="form-control suggestion-input"
-                            id="patientInput"
-                            placeholder="Search patient..."
-                            autocomplete="off"
-                          />
-                          <input type="hidden" id="patientId" name="patient_id" />
-                          <div id="patientSuggestions" class="suggestions"></div>
-                        </div>
+                    <!-- Patient (wider, important) -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="patientInput">Patient</label>
+                        <input
+                          type="text"
+                          class="form-control suggestion-input"
+                          id="patientInput"
+                          placeholder="Search patient..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="patientId" name="patient_id" />
+                        <div id="patientSuggestions" class="suggestions"></div>
                       </div>
-
-                      <!-- Clinical fields -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="bp">Blood Pressure</label>
-                          <input type="text" class="form-control" id="bp" name="bp" placeholder="e.g. 120/80">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="pulse">Pulse</label>
-                          <input type="number" class="form-control" id="pulse" name="pulse" placeholder="bpm">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="rr">Respiration Rate</label>
-                          <input type="number" class="form-control" id="rr" name="rr" placeholder="breaths/min">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="temp">Temperature (°C)</label>
-                          <input type="number" step="0.1" class="form-control" id="temp" name="temp">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="oxygen">Oxygen Saturation (%)</label>
-                          <input type="number" class="form-control" id="oxygen" name="oxygen">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="weight">Weight (kg)</label>
-                          <input type="number" step="0.1" class="form-control" id="weight" name="weight">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="height">Height (cm)</label>
-                          <input type="number" class="form-control" id="height" name="height">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="rbg">Random Blood Glucose</label>
-                          <input type="number" step="0.1" class="form-control" id="rbg" name="rbg">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="painScore">Pain Score (0–10)</label>
-                          <input type="number" class="form-control" id="painScore" name="pain_score">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="position">Position</label>
-                          <input type="text" class="form-control" id="position" name="position">
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="recordedAt">Recorded At</label>
-                          <input type="datetime-local" class="form-control" id="recordedAt" name="recorded_at">
-                        </div>
-                      </div>
-
-                      <!-- Organization -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="organizationSelect">Organization</label>
-                          <select class="form-control" id="organizationSelect" name="organization_id">
-                            <!-- dynamically populated -->
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- Facility -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="facilitySelect">Facility</label>
-                          <select class="form-control" id="facilitySelect" name="facility_id">
-                            <!-- dynamically populated -->
-                          </select>
-                        </div>
-                      </div>
-                      <!-- Nurse (suggestion input) -->
-                      <div class="col-lg-3 col-sm-6 d-none">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="nurseInput">Nurse</label>
-                          <input
-                            type="text"
-                            class="form-control suggestion-input"
-                            id="nurseInput"
-                            placeholder="Search nurse..."
-                            autocomplete="off"
-                          />
-                          <input type="hidden" id="nurseId" name="nurse_id" />
-                          <div id="nurseSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
-
-
-                      <!-- Buttons -->
-                      <div class="col-sm-12">
-                        <div class="d-flex gap-2 justify-content-end">
-                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                          </button>
-                          <button type="reset" id="clearBtn" class="btn btn-warning">
-                            <i class="ri-refresh-line me-1"></i> Clear
-                          </button>
-                          <button type="submit" class="btn btn-primary">
-                            <i class="ri-save-3-line me-1"></i> Save Vital
-                          </button>
-                        </div>
-                      </div>
-
                     </div>
-                  </form>
-                </div>
-                <!-- /formContainer -->
+
+                    <!-- Blood Pressure (slightly wider) -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="bp">Blood Pressure</label>
+                        <input type="text" class="form-control" id="bp" name="bp" placeholder="120/80">
+                      </div>
+                    </div>
+
+                    <!-- ===== COMPACT VITALS (6 PER ROW ON XXL/LG) ===== -->
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="pulse">Pulse</label>
+                        <input type="number" class="form-control" id="pulse" name="pulse">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="rr">Resp. Rate</label>
+                        <input type="number" class="form-control" id="rr" name="rr">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="temp">Temp (°C)</label>
+                        <input type="number" step="0.1" class="form-control" id="temp" name="temp">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="oxygen">SpO₂ (%)</label>
+                        <input type="number" class="form-control" id="oxygen" name="oxygen">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="weight">Weight (kg)</label>
+                        <input type="number" step="0.1" class="form-control" id="weight" name="weight">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="height">Height (cm)</label>
+                        <input type="number" class="form-control" id="height" name="height">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="rbg">RBG</label>
+                        <input type="number" step="0.1" class="form-control" id="rbg" name="rbg">
+                      </div>
+                    </div>
+
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-4">
+                      <div class="mb-3">
+                        <label class="form-label" for="painScore">Pain (0–10)</label>
+                        <input type="number" class="form-control" id="painScore" name="pain_score">
+                      </div>
+                    </div>
+
+                    <!-- Position (text, medium width) -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="position">Position</label>
+                        <input type="text" class="form-control" id="position" name="position">
+                      </div>
+                    </div>
+
+                    <!-- Recorded At (date-time needs space) -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="recordedAt">Recorded At</label>
+                        <input type="datetime-local" class="form-control" id="recordedAt" name="recorded_at">
+                      </div>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save Vital
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
 
               </div>
             </div>

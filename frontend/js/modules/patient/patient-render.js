@@ -1,9 +1,10 @@
-// 📁 patient-render.js – Patient table & card renderers (Enterprise Master)
+// 📁 patient-render.js – Entity Card System (Enterprise Master)
 // ============================================================================
-// 🧭 Matches employee-render.js / delivery-record-render.js standard
-// 🔹 Handles JSONB emergency_contacts correctly
-// 🔹 Permission-driven buttons via status-action-matrix.js
-// 🔹 DOB = DATE ONLY | Audit fields = DATE + TIME
+// 🧭 Matches appointment-render.js entity-card architecture
+// 🔹 Table = flat | Card = structured
+// 🔹 Field-selector safe
+// 🔹 JSONB emergency_contacts supported
+// 🔹 Media fields (photo / QR) handled correctly
 // ============================================================================
 
 import { FIELD_LABELS_PATIENT } from "./patient-constants.js";
@@ -17,7 +18,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 
 /* ============================================================
-   🎛️ Permission-driven Action Buttons
+   🎛️ Action Buttons
 ============================================================ */
 function getPatientActionButtons(entry, user) {
   return buildActionButtons({
@@ -30,16 +31,13 @@ function getPatientActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer (FINAL – RESIZE READY)
+   🧱 Dynamic Table Head (UNCHANGED)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
   const table = thead?.closest("table");
   if (!thead || !table) return;
 
-  /* ===============================
-     🟦 RESET HEADER
-  =============================== */
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
@@ -48,32 +46,23 @@ export function renderDynamicTableHead(visibleFields) {
     th.textContent =
       FIELD_LABELS_PATIENT[field] || field.replace(/_/g, " ");
     th.dataset.key = field;
-
     if (field === "actions") th.classList.add("actions-cell");
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
 
-  /* ===============================
-     🟩 CREATE COLGROUP (CRITICAL)
-  =============================== */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
   colgroup = document.createElement("colgroup");
-
   visibleFields.forEach(() => {
     const col = document.createElement("col");
-    col.style.width = "150px"; // default width
+    col.style.width = "150px";
     colgroup.appendChild(col);
   });
 
   table.prepend(colgroup);
-
-  /* ===============================
-     📐 ENABLE COLUMN RESIZE
-  =============================== */
   enableColumnResize(table);
 }
 
@@ -87,60 +76,44 @@ function renderUserName(user) {
 }
 
 function renderFileField(url, type = "file", isQr = false, label = null) {
-  if (!url || typeof url !== "string") return "—";
-
-  const safeUrl = url.startsWith("/uploads/")
-    ? url
-    : `/uploads/${url.replace(/^\/+/, "")}`;
-
+  if (!url) return "—";
+  const safeUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
   const fileName = safeUrl.split("/").pop();
   const style = isQr ? "max-width:140px;" : "max-width:60px;";
 
   if (type === "image") {
     return `
-      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer"
-         data-bs-toggle="tooltip" data-bs-title="Open Image">
-        <img src="${safeUrl}" alt="${fileName}"
-             class="rounded shadow-sm"
-             style="${style}" />
+      <a href="${safeUrl}" target="_blank">
+        <img src="${safeUrl}" class="rounded shadow-sm" style="${style}" />
       </a>
     `;
   }
 
   return `
-    <a href="${safeUrl}" target="_blank" rel="noopener noreferrer"
-       data-bs-toggle="tooltip" data-bs-title="View File">
+    <a href="${safeUrl}" target="_blank">
       <i class="ri-file-2-line me-1"></i>${label || fileName}
     </a>
   `;
 }
 
-/* ============================================================
-   ☎️ Emergency Contacts Renderer (JSONB SAFE)
-============================================================ */
 function renderEmergencyContacts(value, viewMode = "card") {
   if (!Array.isArray(value) || !value.length) return "—";
 
   if (viewMode === "table") {
-    return value
-      .map((c) => `${c.name || "—"} (${c.phone || "—"})`)
-      .join("<br>");
+    return value.map(c => `${c.name || "—"} (${c.phone || "—"})`).join("<br>");
   }
 
   return `
     <ul class="mb-0 ps-3">
-      ${value
-        .map(
-          (c) =>
-            `<li>${c.name || "—"} <small class="text-muted">(${c.phone || "—"})</small></li>`
-        )
-        .join("")}
+      ${value.map(
+        c => `<li>${c.name || "—"} <small>(${c.phone || "—"})</small></li>`
+      ).join("")}
     </ul>
   `;
 }
 
 /* ============================================================
-   🧩 Field Value Renderer (FIXED)
+   🧩 Field Value Renderer (TABLE + CARD)
 ============================================================ */
 function renderValue(entry, field, viewMode = "card") {
   switch (field) {
@@ -151,26 +124,22 @@ function renderValue(entry, field, viewMode = "card") {
       if (raw === "active") cls = "bg-success";
       if (raw === "cancelled") cls = "bg-warning text-dark";
       if (raw === "voided") cls = "bg-danger";
-      return raw ? `<span class="badge ${cls}">${label}</span>` : "—";
+      return `<span class="badge ${cls}">${label}</span>`;
     }
 
     case "organization":
       return entry.organization?.name || "—";
-
     case "facility":
       return entry.facility?.name || "—";
 
-    case "registeredBy":
     case "createdBy":
     case "updatedBy":
     case "deletedBy":
       return renderUserName(entry[field]);
 
-    // ✅ DOB — DATE ONLY (NO TIME EVER)
     case "date_of_birth":
       return entry.date_of_birth ? formatDate(entry.date_of_birth) : "—";
 
-    // ✅ AUDIT FIELDS — DATE + TIME
     case "created_at":
     case "updated_at":
     case "deleted_at":
@@ -193,38 +162,149 @@ function renderValue(entry, field, viewMode = "card") {
       return entry[field] != null ? String(entry[field]) : "—";
   }
 }
-
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — ENTITY SYSTEM (PATIENT | FINAL FIXED)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  let html = "";
+  const has = (f) => visibleFields.includes(f);
 
-  visibleFields.forEach((field) => {
-    if (field === "actions") return;
-    const label = FIELD_LABELS_PATIENT[field] || field.replace(/_/g, " ");
-    html += `<p><strong>${label}:</strong> ${renderValue(entry, field)}</p>`;
-  });
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}:</span>
+      <span class="entity-value">${value}</span>
+    </div>
+  `;
 
-  const footer = visibleFields.includes("actions")
+  const fullName =
+    [entry.first_name, entry.middle_name, entry.last_name]
+      .filter(Boolean)
+      .join(" ") || "Unnamed Patient";
+
+  /* ================= HEADER ================= */
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-secondary">${entry.pat_no || "—"}</div>
+        <div class="entity-primary">${fullName}</div>
+      </div>
+      ${
+        has("registration_status")
+          ? `<span class="entity-status ${entry.registration_status}">
+               ${entry.registration_status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  /* ================= CONTEXT (SINGLE COLUMN) ================= */
+  const contextItems = [];
+
+  if (has("organization"))
+    contextItems.push(`🏥 ${entry.organization?.name || "—"}`);
+
+  if (has("facility"))
+    contextItems.push(`📍 ${entry.facility?.name || "—"}`);
+
+  if (has("date_of_birth"))
+    contextItems.push(`🎂 DOB: ${formatDate(entry.date_of_birth)}`);
+
+  const context = contextItems.length
     ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getPatientActionButtons(entry, user)}
+      <div class="entity-card-context">
+        ${contextItems.map(v => `<div>${v}</div>`).join("")}
+      </div>
+    `
+    : "";
+
+  /* ================= BODY (2 COLUMNS) ================= */
+  const left = [];
+  const right = [];
+
+  // Demographics
+  if (has("gender")) left.push(fieldRow("Gender", entry.gender || "—"));
+  if (has("marital_status")) left.push(fieldRow("Marital Status", entry.marital_status || "—"));
+  if (has("religion")) left.push(fieldRow("Religion", entry.religion || "—"));
+  if (has("profession")) left.push(fieldRow("Profession", entry.profession || "—"));
+
+  // IDs
+  if (has("national_id")) left.push(fieldRow("National ID", entry.national_id || "—"));
+  if (has("insurance_number")) left.push(fieldRow("Insurance No.", entry.insurance_number || "—"));
+  if (has("passport_number")) left.push(fieldRow("Passport No.", entry.passport_number || "—"));
+
+  // Contact + Media
+  if (has("phone_number")) right.push(fieldRow("Phone", entry.phone_number || "—"));
+  if (has("email_address")) right.push(fieldRow("Email", entry.email_address || "—"));
+  if (has("home_address")) right.push(fieldRow("Address", entry.home_address || "—"));
+  if (has("photo_path")) right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
+  if (has("qr_code_path")) right.push(fieldRow("QR Code", renderValue(entry, "qr_code_path")));
+
+  const body = `
+    <div class="entity-card-body">
+      <div>${left.join("")}</div>
+      <div>${right.join("")}</div>
+    </div>
+  `;
+
+  /* ================= AUTO EXTRA (2 COLUMNS) ================= */
+  const usedFields = new Set([
+    "pat_no","first_name","middle_name","last_name",
+    "registration_status","organization","facility","date_of_birth",
+    "gender","marital_status","religion","profession",
+    "national_id","insurance_number","passport_number",
+    "phone_number","email_address","home_address",
+    "photo_path","qr_code_path","notes","actions",
+  ]);
+
+  const extraFields = visibleFields
+    .filter(f => !usedFields.has(f))
+    .map(f =>
+      fieldRow(FIELD_LABELS_PATIENT[f] || f, renderValue(entry, f))
+    );
+
+  const extrasSection = extraFields.length
+    ? `
+      <details class="entity-notes">
+        <summary>More Details</summary>
+        <div class="entity-card-body">
+          <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
+          <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
         </div>
-      </div>`
+      </details>
+    `
+    : "";
+
+  /* ================= NOTES ================= */
+  const notes =
+    has("notes") && entry.notes
+      ? `
+      <details class="entity-notes">
+        <summary>Notes</summary>
+        <p>${entry.notes}</p>
+      </details>`
+      : "";
+
+  /* ================= ACTIONS ================= */
+  const actions = has("actions")
+    ? `<div class="entity-card-footer">
+         ${getPatientActionButtons(entry, user)}
+       </div>`
     : "";
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${html}</div>
-      ${footer}
+    <div class="entity-card patient-card">
+      ${header}
+      ${context}
+      ${body}
+      ${extrasSection}
+      ${notes}
+      ${actions}
     </div>
   `;
 }
 
 /* ============================================================
-   📋 List Renderer (Table + Card)
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("patientTableBody");

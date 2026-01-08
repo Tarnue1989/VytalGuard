@@ -3,10 +3,14 @@
 // 🧭 Master Pattern: triage-record-render.js
 // 🔹 Full enterprise consistency (permissions, UI logic, tooltips, exports)
 // 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 Displays patient number + full name properly
+// 🔹 Field-selector safe for BOTH table and card views
 // ============================================================================
 
-import { FIELD_LABELS_APPOINTMENT } from "./appointments-constants.js";
+import {
+  FIELD_LABELS_APPOINTMENT,
+  FIELD_GROUPS_APPOINTMENT,
+} from "./appointments-constants.js";
+
 import { formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
@@ -16,7 +20,7 @@ import { exportData } from "../../utils/export-utils.js";
 ============================================================ */
 function getAppointmentActionButtons(entry, user) {
   return buildActionButtons({
-    module: "appointment", // maps to STATUS_ACTION_MATRIX.appointment
+    module: "appointment",
     status: (entry.status || "").toLowerCase(),
     entryId: entry.id,
     user,
@@ -30,6 +34,7 @@ function getAppointmentActionButtons(entry, user) {
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
   if (!thead) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
@@ -65,19 +70,8 @@ function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        scheduled: "bg-info",
-        in_progress: "bg-warning text-dark",
-        completed: "bg-primary",
-        verified: "bg-success",
-        cancelled: "bg-danger",
-        no_show: "bg-dark text-light",
-        voided: "bg-secondary text-light",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      const label = raw.replace(/_/g, " ").toUpperCase();
+      return raw ? label : "—";
     }
 
     case "organization":
@@ -92,7 +86,7 @@ function renderValue(entry, field) {
       return entry.department?.name || "—";
     case "invoice":
       return entry.invoice
-        ? `${entry.invoice.invoice_number || ""} (${entry.invoice.status || "—"})`
+        ? entry.invoice.invoice_number || "—"
         : "—";
     case "createdBy":
       return renderUserName(entry.createdBy);
@@ -113,36 +107,134 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ Card Renderer – Entity Card System (Field-Selector SAFE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const patientLabel = renderPatient(entry);
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_APPOINTMENT[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
+  const has = (f) => visibleFields.includes(f);
+
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}:</span>
+      <span class="entity-value">${value}</span>
+    </div>
+  `;
+
+  const patient = entry.patient || {};
+  const patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ");
+  const patientCode = patient.pat_no || "—";
+  const status = (entry.status || "").toLowerCase();
+
+  /* ---------- HEADER ---------- */
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        ${has("patient") ? `<div class="entity-secondary">${patientCode}</div>` : ""}
+        ${has("patient") ? `<div class="entity-primary">${patientName || "Unnamed Patient"}</div>` : ""}
+      </div>
+      ${has("status")
+        ? `<span class="entity-status ${status}">
+            ${status.replace(/_/g, " ").toUpperCase()}
+          </span>`
+        : ""}
+    </div>
+  `;
+
+  /* ---------- CONTEXT ---------- */
+  const contextItems = [];
+  if (has("facility")) contextItems.push(`📍 ${entry.facility?.name || "—"}`);
+  if (has("organization")) contextItems.push(`🏥 ${entry.organization?.name || "—"}`);
+  if (has("date_time")) contextItems.push(`📅 ${formatDate(entry.date_time)}`);
+
+  const context = contextItems.length
+    ? `<div class="entity-card-context">${contextItems.map((c) => `<div>${c}</div>`).join("")}</div>`
+    : "";
+
+  /* ---------- MAIN BODY ---------- */
+  const left = [];
+  const right = [];
+
+  if (has("doctor")) left.push(fieldRow("Doctor", renderUserName(entry.doctor)));
+  if (has("department")) left.push(fieldRow("Department", entry.department?.name || "—"));
+  if (has("appointment_code")) left.push(fieldRow("Appointment", entry.appointment_code || "—"));
+
+  if (has("invoice")) right.push(fieldRow("Invoice", renderValue(entry, "invoice")));
+  if (has("createdBy")) right.push(fieldRow("Created By", renderUserName(entry.createdBy)));
+  if (has("created_at")) right.push(fieldRow("Created", formatDate(entry.created_at)));
+
+  const body =
+    left.length || right.length
+      ? `
+    <div class="entity-card-body">
+      <div>${left.join("")}</div>
+      <div>${right.join("")}</div>
+    </div>`
+      : "";
+
+  /* ---------- EXTRA META / SYSTEM FIELDS (AUTO) ---------- */
+  const usedFields = new Set([
+    "patient",
+    "status",
+    "facility",
+    "organization",
+    "date_time",
+    "doctor",
+    "department",
+    "appointment_code",
+    "invoice",
+    "createdBy",
+    "created_at",
+    "notes",
+    "actions",
+  ]);
+
+  const extraFields = visibleFields
+    .filter((f) => !usedFields.has(f))
+    .map((f) =>
+      fieldRow(
+        FIELD_LABELS_APPOINTMENT[f] || f,
+        renderValue(entry, f)
+      )
     )
     .join("");
 
-  const footer = visibleFields.includes("actions")
+  const extrasSection = extraFields
     ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getAppointmentActionButtons(entry, user)}
+      <details class="entity-notes">
+        <summary>More Details</summary>
+        <div class="entity-card-body">
+          <div>${extraFields}</div>
         </div>
-      </div>`
+      </details>
+    `
+    : "";
+
+  /* ---------- NOTES ---------- */
+  const notes =
+    has("notes") && entry.notes
+      ? `
+    <details class="entity-notes">
+      <summary>Notes</summary>
+      <p>${entry.notes}</p>
+    </details>`
+      : "";
+
+  /* ---------- ACTIONS ---------- */
+  const actions = has("actions")
+    ? `<div class="entity-card-footer">
+         ${getAppointmentActionButtons(entry, user)}
+       </div>`
     : "";
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-header bg-light fw-semibold">
-        ${patientLabel}
-      </div>
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card appointment-card">
+      ${header}
+      ${context}
+      ${body}
+      ${extrasSection}
+      ${notes}
+      ${actions}
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -162,8 +254,6 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
@@ -175,14 +265,11 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     entries.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getAppointmentActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell text-center">${getAppointmentActionButtons(entry, user)}</td>`
+            : `<td>${renderValue(entry, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -191,8 +278,6 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")

@@ -110,20 +110,25 @@ export const FIELD_DEFAULTS_PATIENT = {
     "facility",
     "pat_no",
     "full_name",
-    "first_name",
-    "last_name",
     "gender",
     "date_of_birth",
     "phone_number",
     "email_address",
-    "marital_status",
-    "religion",
-    "profession",
+    "home_address",
     "emergency_contacts",
     "registration_status",
     "source_of_registration",
+
+    // 🧾 AUDIT
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+
+    // 📎 MEDIA
     "photo_path",
     "qr_code_path",
+
     "actions",
   ],
 
@@ -132,28 +137,22 @@ export const FIELD_DEFAULTS_PATIENT = {
     "facility",
     "pat_no",
     "full_name",
-    "first_name",
-    "last_name",
     "gender",
     "phone_number",
-    "email_address",
-    "emergency_contacts",
     "registration_status",
-    "photo_path",
-    "qr_code_path",
+
+    // 🧾 AUDIT (read-only)
+    "createdBy",
+    "created_at",
+
     "actions",
   ],
 
   staff: [
-    "organization",
-    "facility",
     "pat_no",
     "full_name",
-    "first_name",
-    "last_name",
     "gender",
-    "photo_path",
-    "qr_code_path",
+    "registration_status",
     "actions",
   ],
 };
