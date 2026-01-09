@@ -107,87 +107,70 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — ENTITY SYSTEM (APPOINTMENT)
-   Field-Selector SAFE • Enterprise-Aligned
+   🗂️ Card Renderer – Entity Card System (Field-Selector SAFE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
-  const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
-      <span class="entity-label">${label}</span>
-      <span class="entity-value">${safe(value)}</span>
+      <span class="entity-label">${label}:</span>
+      <span class="entity-value">${value}</span>
     </div>
   `;
 
-  /* ================= HEADER ================= */
   const patient = entry.patient || {};
   const patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ");
   const patientCode = patient.pat_no || "—";
   const status = (entry.status || "").toLowerCase();
 
+  /* ---------- HEADER ---------- */
   const header = `
     <div class="entity-card-header">
       <div>
         ${has("patient") ? `<div class="entity-secondary">${patientCode}</div>` : ""}
         ${has("patient") ? `<div class="entity-primary">${patientName || "Unnamed Patient"}</div>` : ""}
       </div>
-      ${
-        has("status")
-          ? `<span class="entity-status ${status}">
-              ${status.replace(/_/g, " ").toUpperCase()}
-            </span>`
-          : ""
-      }
+      ${has("status")
+        ? `<span class="entity-status ${status}">
+            ${status.replace(/_/g, " ").toUpperCase()}
+          </span>`
+        : ""}
     </div>
   `;
 
-  /* ================= CONTEXT ================= */
+  /* ---------- CONTEXT ---------- */
   const contextItems = [];
-
-  if (has("facility"))
-    contextItems.push(`📍 ${safe(entry.facility?.name)}`);
-
-  if (has("organization"))
-    contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
-
-  if (has("date_time"))
-    contextItems.push(`📅 ${entry.date_time ? formatDateTime(entry.date_time) : "—"}`);
+  if (has("facility")) contextItems.push(`📍 ${entry.facility?.name || "—"}`);
+  if (has("organization")) contextItems.push(`🏥 ${entry.organization?.name || "—"}`);
+  if (has("date_time")) contextItems.push(`📅 ${formatDate(entry.date_time)}`);
 
   const context = contextItems.length
-    ? `<div class="entity-card-context">
-         ${contextItems.map(v => `<div>${v}</div>`).join("")}
-       </div>`
+    ? `<div class="entity-card-context">${contextItems.map((c) => `<div>${c}</div>`).join("")}</div>`
     : "";
 
-  /* ================= BODY ================= */
+  /* ---------- MAIN BODY ---------- */
   const left = [];
   const right = [];
 
-  if (has("doctor"))
-    left.push(fieldRow("Doctor", renderUserName(entry.doctor)));
+  if (has("doctor")) left.push(fieldRow("Doctor", renderUserName(entry.doctor)));
+  if (has("department")) left.push(fieldRow("Department", entry.department?.name || "—"));
+  if (has("appointment_code")) left.push(fieldRow("Appointment", entry.appointment_code || "—"));
 
-  if (has("department"))
-    left.push(fieldRow("Department", safe(entry.department?.name)));
-
-  if (has("appointment_code"))
-    left.push(fieldRow("Appointment", safe(entry.appointment_code)));
-
-  if (has("invoice"))
-    right.push(fieldRow("Invoice", renderValue(entry, "invoice")));
+  if (has("invoice")) right.push(fieldRow("Invoice", renderValue(entry, "invoice")));
+  if (has("createdBy")) right.push(fieldRow("Created By", renderUserName(entry.createdBy)));
+  if (has("created_at")) right.push(fieldRow("Created", formatDate(entry.created_at)));
 
   const body =
     left.length || right.length
       ? `
-        <div class="entity-card-body">
-          <div>${left.join("")}</div>
-          <div>${right.join("")}</div>
-        </div>
-      `
+    <div class="entity-card-body">
+      <div>${left.join("")}</div>
+      <div>${right.join("")}</div>
+    </div>`
       : "";
 
-  /* ================= AUTO EXTRA FIELDS ================= */
+  /* ---------- EXTRA META / SYSTEM FIELDS (AUTO) ---------- */
   const usedFields = new Set([
     "patient",
     "status",
@@ -198,81 +181,50 @@ export function renderCard(entry, visibleFields, user) {
     "department",
     "appointment_code",
     "invoice",
-    "notes",
-    "created_at",
-    "updated_at",
     "createdBy",
-    "updatedBy",
+    "created_at",
+    "notes",
     "actions",
   ]);
 
   const extraFields = visibleFields
-    .filter(f => !usedFields.has(f))
-    .map(f =>
+    .filter((f) => !usedFields.has(f))
+    .map((f) =>
       fieldRow(
         FIELD_LABELS_APPOINTMENT[f] || f,
         renderValue(entry, f)
       )
-    );
+    )
+    .join("");
 
-  const extrasSection = extraFields.length
+  const extrasSection = extraFields
     ? `
       <details class="entity-notes">
         <summary>More Details</summary>
         <div class="entity-card-body">
-          <div>${extraFields.join("")}</div>
+          <div>${extraFields}</div>
         </div>
       </details>
     `
     : "";
 
-  /* ================= NOTES ================= */
+  /* ---------- NOTES ---------- */
   const notes =
     has("notes") && entry.notes
       ? `
-        <details class="entity-notes">
-          <summary>Notes</summary>
-          <p>${entry.notes}</p>
-        </details>
-      `
+    <details class="entity-notes">
+      <summary>Notes</summary>
+      <p>${entry.notes}</p>
+    </details>`
       : "";
 
-  /* ================= AUDIT ================= */
-  const auditFields = [];
-
-  if (has("created_at"))
-    auditFields.push(fieldRow("Created At", formatDateTime(entry.created_at)));
-
-  if (has("createdBy"))
-    auditFields.push(fieldRow("Created By", renderUserName(entry.createdBy)));
-
-  if (has("updated_at"))
-    auditFields.push(fieldRow("Updated At", formatDateTime(entry.updated_at)));
-
-  if (has("updatedBy"))
-    auditFields.push(fieldRow("Updated By", renderUserName(entry.updatedBy)));
-
-  const auditSection = auditFields.length
-    ? `
-      <details class="entity-notes">
-        <summary>Audit Information</summary>
-        <div class="entity-card-body">
-          <div>${auditFields.join("")}</div>
-        </div>
-      </details>
-    `
-    : "";
-
-  /* ================= ACTIONS ================= */
+  /* ---------- ACTIONS ---------- */
   const actions = has("actions")
-    ? `
-      <div class="entity-card-footer">
-        ${getAppointmentActionButtons(entry, user)}
-      </div>
-    `
+    ? `<div class="entity-card-footer">
+         ${getAppointmentActionButtons(entry, user)}
+       </div>`
     : "";
 
-  /* ================= FINAL ================= */
   return `
     <div class="entity-card appointment-card">
       ${header}
@@ -280,7 +232,6 @@ export function renderCard(entry, visibleFields, user) {
       ${body}
       ${extrasSection}
       ${notes}
-      ${auditSection}
       ${actions}
     </div>
   `;
