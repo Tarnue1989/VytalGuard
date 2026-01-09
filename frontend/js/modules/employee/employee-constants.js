@@ -124,6 +124,12 @@ export const FIELD_DEFAULTS_EMPLOYEE = {
     "photo_path",
     "resume_url",
     "document_url",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
     "actions",
   ],
 

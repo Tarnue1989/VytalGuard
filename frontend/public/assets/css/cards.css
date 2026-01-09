@@ -1,174 +1,196 @@
 /* =============================================================
-   ENTITY CARD SYSTEM – Generic (used everywhere)
+   ENTITY CARD SYSTEM – Header-First, Stacked Fields (FINAL)
    -------------------------------------------------------------
-   PURPOSE:
-   - Base reusable card layout for ALL modules
-   - Appointments, Patients, Labs, Admissions, Pharmacy, Invoices
-   - NO module-specific colors or logic here
-   - Safe, scalable, and future-proof
+   - Header & context full-width
+   - Body below in 2 columns
+   - Label ABOVE value (compact & readable)
+   - Future-proof action zone
 ============================================================= */
 
-/* Root card container */
-.entity-card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  padding: 18px 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  display: flex;
-  flex-direction: column;
-
-  /* ✅ Prevent overflow (QR, images, long text) */
-  overflow: hidden;
+/* ================= ROOT CARD ================= */
+.entity-card{
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  padding:14px 16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  transition:box-shadow .2s ease,transform .2s ease;
+}
+.entity-card:hover{
+  box-shadow:0 8px 18px rgba(0,0,0,.08);
+  transform:translateY(-2px);
 }
 
-/* Header: primary identity + status */
-.entity-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eef1f5;
+/* ================= HEADER ================= */
+.entity-card-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  padding-bottom:8px;
+  border-bottom:1px solid #eef1f5;
 }
 
-/* Main title (Patient Name, Invoice Title, etc.) */
-.entity-primary {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
+.entity-primary{
+  font-size:1.05rem;
+  font-weight:600;
+  color:#111827;
+  line-height:1.3;
 }
 
-/* Secondary identifier (Patient Code, Invoice No) */
-.entity-secondary {
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
+.entity-secondary{
+  font-size:.7rem;
+  font-weight:500;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:#6b7280;
 }
 
-/* Status badge (color comes from module overrides) */
-.entity-status {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 999px;
-  white-space: nowrap;
+.entity-status{
+  font-size:.7rem;
+  font-weight:600;
+  padding:4px 12px;
+  border-radius:999px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  white-space:nowrap;
 }
 
-/* Context row (Org / Facility / DOB / Date) */
-.entity-card-context {
-  margin-top: 12px;
-  display: grid;
-  gap: 6px;
-  font-size: 14px;
-  color: #374151;
+/* ================= CONTEXT ================= */
+.entity-card-context{
+  margin-top:6px;
+  padding-bottom:8px;
+  border-bottom:1px dashed #eef1f5;
+  display:grid;
+  gap:3px;
+  font-size:.78rem;
+  color:#6b7280;
 }
 
-/* Main content body (2-column, overflow-safe) */
-.entity-card-body {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  font-size: 15px;
+/* ================= BODY (2 COLUMNS) ================= */
+.entity-card-body{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:14px;
+  font-size:.85rem;
+  align-items:start;
+}
+.entity-card-body > div{min-width:0}
+
+/* ================= FIELD ROWS (STACKED) ================= */
+.entity-field{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-bottom:6px;
+  line-height:1.25;
 }
 
-/* Individual label/value row */
-.entity-field {
-  display: flex;
-  gap: 6px;
-  line-height: 1.35;
+.entity-label{
+  font-size:.72rem;
+  font-weight:600;
+  color:#6b7280;
 }
 
-/* Field label */
-.entity-label {
-  font-weight: 600;
-  color: #111827;
+.entity-value{
+  font-size:.85rem;
+  font-weight:500;
+  color:#111827;
+  word-break:break-word;
+  max-width:100%;
+  overflow:hidden;
 }
 
-/* Field value */
-.entity-value {
-  color: #374151;
-  word-break: break-word;
+/* ================= MEDIA ================= */
+.entity-card img{
+  max-width:100%;
+  height:auto;
+  object-fit:contain;
+  display:block;
+  border-radius:10px;
+  background:#f9fafb;
+  padding:2px;
 }
 
-/* Expandable sections (More Details / Notes) */
-.entity-notes {
-  margin-top: 14px;
+/* QR clamp */
+.patient-card img[src*="qr"],
+.patient-card img[src*="/qr/"]{
+  width:72px;
+  height:72px;
+  max-width:72px;
+  max-height:72px;
+  padding:4px;
+  border:1px dashed #d1d5db;
+  background:#fff;
 }
 
-.entity-notes summary {
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
+/* ================= NOTES / DETAILS ================= */
+.entity-notes{margin-top:8px}
+.entity-notes summary{
+  font-size:.82rem;
+  font-weight:600;
+  cursor:pointer;
+}
+.entity-notes p{
+  margin-top:4px;
+  font-size:.82rem;
+  color:#374151;
 }
 
-.entity-notes p {
-  margin-top: 8px;
-  font-size: 15px;
-  color: #374151;
+/* ================= FOOTER (ACTION ZONE) ================= */
+.entity-card-footer{
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid #eef1f5;
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
 }
 
-/* Footer for action buttons */
-.entity-card-footer {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
+/* logical grouping for future modules */
+.entity-actions{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
 }
 
-/* Card grid container */
-.card-list.active {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 20x;
+/* ================= CARD GRID ================= */
+.card-list.active{
+  display:grid!important;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:18px;
+  align-items:stretch;
 }
 
-/* Media safety (QR / images / SVG) */
-.entity-card img,
-.entity-card canvas,
-.entity-card svg {
-  max-width: 100%;
-  height: auto;
+/* ================= MOBILE ================= */
+@media(max-width:768px){
+  .entity-card{padding:12px 14px}
+  .entity-card-body{gap:10px}
 }
 
-/* =============================================================
-   APPOINTMENTS – Status Color Mapping
-============================================================= */
-.appointment-card .entity-status.no_show {
-  background: #dc3545;
-  color: #ffffff;
+
+
+.entity-card{
+  background:linear-gradient(180deg,#ffffff 0%,#fafbff 100%);
+  border:1px solid rgba(0,0,0,.06);
 }
 
-.appointment-card .entity-status.completed {
-  background: #198754;
-  color: #ffffff;
+.entity-card-header,
+.entity-card-context,
+.entity-card-footer{
+  border-color:rgba(0,0,0,.04);
 }
 
-.appointment-card .entity-status.scheduled {
-  background: #0d6efd;
-  color: #ffffff;
-}
+/* ================= STATUS COLORS ================= */
+.patient-card .entity-status.active{background:#198754;color:#fff}
+.patient-card .entity-status.cancelled{background:#f59e0b;color:#111}
+.patient-card .entity-status.voided{background:#dc3545;color:#fff}
 
-.appointment-card .entity-status.in_progress {
-  background: #f59e0b;
-  color: #111111;
-}
-
-/* =============================================================
-   PATIENTS – Status Color Mapping
-============================================================= */
-.patient-card .entity-status.active {
-  background: #198754;
-  color: #ffffff;
-}
-
-.patient-card .entity-status.cancelled {
-  background: #f59e0b;
-  color: #111111;
-}
-
-.patient-card .entity-status.voided {
-  background: #dc3545;
-  color: #ffffff;
-}
+.appointment-card .entity-status.no_show{background:#dc3545;color:#fff}
+.appointment-card .entity-status.completed{background:#198754;color:#fff}
+.appointment-card .entity-status.scheduled{background:#0d6efd;color:#fff}
+.appointment-card .entity-status.in_progress{background:#f59e0b;color:#111}

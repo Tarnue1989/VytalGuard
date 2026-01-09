@@ -303,7 +303,7 @@ export const createPatient = async (req, res) => {
 
 
 /* ============================
-   UPDATE PATIENT
+   UPDATE PATIENT (FINAL – UPLOAD + REMOVE FIXED)
 ============================ */
 export const updatePatient = async (req, res) => {
   const t = await sequelize.transaction();
@@ -318,8 +318,9 @@ export const updatePatient = async (req, res) => {
 
     const { id } = req.params;
 
-    /* ================= DEBUG: INCOMING ================= */
+    /* ================= DEBUG ================= */
     debug.log("update → incoming body", req.body);
+    debug.log("update → incoming files", req.files);
 
     /* ================= VALIDATION ================= */
     const { value, errors } = validate(
@@ -328,12 +329,9 @@ export const updatePatient = async (req, res) => {
     );
 
     if (errors) {
-      debug.warn("update → validation error", errors);
       await t.rollback();
       return res.status(400).json({ success: false, errors });
     }
-
-    debug.log("update → validated payload", value);
 
     normalizeDateOnlyFields(value, ["date_of_birth"]);
 
@@ -356,9 +354,31 @@ export const updatePatient = async (req, res) => {
       return error(res, "Patient not found", null, 404);
     }
 
-    /* ================= DEBUG: BEFORE ================= */
     debug.log("update → before", patient.toJSON());
 
+    /* ================= REMOVE FLAGS ================= */
+    ["remove_photo", "remove_qr_code"].forEach(flag => {
+      if (value[flag] === "true") value[flag] = true;
+      if (value[flag] === "false") value[flag] = false;
+    });
+
+    if (value.remove_photo === true) {
+      value.photo_path = null;
+    }
+
+    if (value.remove_qr_code === true) {
+      value.qr_code_path = null;
+    }
+
+    delete value.remove_photo;
+    delete value.remove_qr_code;
+
+    /* ================= FILE UPLOAD (✅ CORRECT FIELD NAME) ================= */
+    if (req.files?.photo_path?.[0]) {
+      value.photo_path = `/uploads/patients/${req.files.photo_path[0].filename}`;
+    }
+
+    /* ================= ORG / FACILITY ================= */
     const { orgId, facilityId } = resolveOrgFacility({
       user: req.user,
       value,
@@ -376,9 +396,9 @@ export const updatePatient = async (req, res) => {
       { transaction: t }
     );
 
-    /* ================= DEBUG: AFTER ================= */
     debug.log("update → after", patient.toJSON());
 
+    /* ================= QR AUTO-REGEN ================= */
     if (
       !patient.qr_code_path ||
       (value.pat_no && value.pat_no !== patient.pat_no)
@@ -392,8 +412,7 @@ export const updatePatient = async (req, res) => {
 
     await t.commit();
 
-    debug.log("update → committed", { patientId: id });
-
+    /* ================= RELOAD FULL ================= */
     const full = await Patient.findOne({
       where: { id },
       include: PATIENT_INCLUDES,
@@ -409,13 +428,11 @@ export const updatePatient = async (req, res) => {
 
     return success(res, "✅ Patient updated", full);
   } catch (err) {
-    debug.error("update → FAILED", err);
     await t.rollback();
-    throw err;
+    debug.error("update → FAILED", err);
+    return error(res, "❌ Failed to update patient", err);
   }
 };
-
-
 
 /* ============================================================
    📌 TOGGLE PATIENT STATUS
