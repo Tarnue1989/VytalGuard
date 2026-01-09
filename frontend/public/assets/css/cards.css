@@ -184,13 +184,141 @@
 .entity-card-footer{
   border-color:rgba(0,0,0,.04);
 }
+/* =============================================================
+   🔧 ADD-ON SUPPORT (Renderer Complements)
+   - Appointment date & time clarity
+   - Audit section layout
+   - Role / Department status colors
+   - Context icon spacing
+============================================================= */
 
-/* ================= STATUS COLORS ================= */
-.patient-card .entity-status.active{background:#198754;color:#fff}
+/* ================= DATE + TIME EMPHASIS ================= */
+.entity-date-time{
+  font-size:.82rem;
+  font-weight:600;
+  color:#111827;
+}
+.entity-date-time small{
+  display:block;
+  font-size:.7rem;
+  font-weight:500;
+  color:#6b7280;
+}
+
+/* Optional clock emphasis */
+.entity-date-time::before{
+  content:"🕒 ";
+  opacity:.8;
+}
+
+/* ================= CONTEXT ICON ALIGN ================= */
+.entity-card-context div{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.entity-card-context div span{
+  display:inline-block;
+}
+
+/* ================= AUDIT SECTION ================= */
+.entity-notes summary{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.entity-notes summary::before{
+  content:"▸";
+  font-size:.7rem;
+  transition:transform .2s ease;
+}
+.entity-notes[open] summary::before{
+  transform:rotate(90deg);
+}
+
+.entity-notes .entity-card-body{
+  margin-top:8px;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:12px;
+}
+
+/* ================= ACTION BUTTON SAFETY ================= */
+.entity-card-footer .btn{
+  min-width:36px;
+}
+/* =============================================================
+   ENTITY CARD – STATUS COLORS (COMPACT, NON-REDUNDANT)
+============================================================= */
+
+/* ================= GENERIC STATUS ================= */
+.entity-status.active{background:#198754;color:#fff}
+.entity-status.inactive{background:#f59e0b;color:#111}
+.entity-status.deleted,
+.entity-status.voided{background:#dc3545;color:#fff}
+
+/* ================= PATIENT ================= */
 .patient-card .entity-status.cancelled{background:#f59e0b;color:#111}
-.patient-card .entity-status.voided{background:#dc3545;color:#fff}
 
-.appointment-card .entity-status.no_show{background:#dc3545;color:#fff}
-.appointment-card .entity-status.completed{background:#198754;color:#fff}
+/* ================= EMPLOYEE ================= */
+.employee-card .entity-status.active{background:#198754;color:#fff}
+.employee-card .entity-status.inactive{background:#f59e0b;color:#111}
+.employee-card .entity-status.on_leave{background:#0dcaf0;color:#111}
+.employee-card .entity-status.terminated{background:#dc3545;color:#fff}
+
+/* ================= ROLE ================= */
+.role-card .entity-status.system{background:#111827;color:#fff}
+.role-card .entity-status.owner{background:#0d6efd;color:#fff}
+.role-card .entity-status.custom{background:#0dcaf0;color:#111}
+
+/* ================= DEPARTMENT ================= */
+.department-card .entity-status.active{background:#198754;color:#fff}
+.department-card .entity-status.inactive{background:#f59e0b;color:#111}
+
+/* ================= APPOINTMENT ================= */
 .appointment-card .entity-status.scheduled{background:#0d6efd;color:#fff}
 .appointment-card .entity-status.in_progress{background:#f59e0b;color:#111}
+.appointment-card .entity-status.completed{background:#198754;color:#fff}
+.appointment-card .entity-status.no_show{background:#dc3545;color:#fff}
+.appointment-card .entity-status.cancelled{background:#6b7280;color:#fff}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =============================================================
+   ENTITY CARD – FOOTER (ACTIONS ZONE)
+============================================================= */
+.entity-card-footer{
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid #eef1f5;
+  display:flex;
+  justify-content:flex-end;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+/* Button safety */
+.entity-card-footer .btn{
+  min-width:34px;
+  padding:4px 8px;
+}
