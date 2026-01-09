@@ -1,10 +1,9 @@
-// 📁 employee-render.js – Employee table & card renderers (Upgraded Master Pattern)
+// 📁 employee-render.js – Entity Card System (Enterprise Master)
 // ============================================================================
-// 🧭 Fully mirrors patient-render.js
-// 🔹 Identical image display logic (thumbnail + preview behavior)
-// 🔹 Permission-driven buttons via status-action-matrix.js
-// 🔹 Consistent renderValue, audit fields, tooltip handling
-// 🔹 100% ID-safe, non-breaking upgrade
+// 🧭 EXACT PARITY with patient-render.js
+// 🔹 Header → Context → Body → Extras → Audit → Actions
+// 🔹 Field-selector safe
+// 🔹 Audit fields INCLUDED (createdBy / updatedBy / timestamps)
 // ============================================================================
 
 import { FIELD_LABELS_EMPLOYEE } from "./employee-constants.js";
@@ -18,7 +17,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 
 /* ============================================================
-   🎛️ Permission-driven Action Buttons
+   🎛️ Action Buttons
 ============================================================ */
 function getEmployeeActionButtons(entry, user) {
   return buildActionButtons({
@@ -31,42 +30,31 @@ function getEmployeeActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer (FINAL – RESIZE READY)
-   Matches patient-render.js exactly
+   🧱 Dynamic Table Head (UNCHANGED – PARITY)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
   const table = thead?.closest("table");
   if (!thead || !table) return;
 
-  /* ===============================
-     🟦 RESET HEADER
-  =============================== */
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-
     th.textContent =
       FIELD_LABELS_EMPLOYEE[field] || field.replace(/_/g, " ");
-
     th.dataset.key = field;
     if (field === "actions") th.classList.add("actions-cell");
-
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
 
-  /* ===============================
-     🟩 CREATE COLGROUP (CRITICAL)
-  =============================== */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
   colgroup = document.createElement("colgroup");
-
   visibleFields.forEach(() => {
     const col = document.createElement("col");
     col.style.width = "150px";
@@ -74,65 +62,51 @@ export function renderDynamicTableHead(visibleFields) {
   });
 
   table.prepend(colgroup);
-
-  /* ===============================
-     📐 ENABLE COLUMN RESIZE
-  =============================== */
   enableColumnResize(table);
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 Helpers
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
   const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  if (parts.length) return parts.join(" ");
-  if (user.full_name) return user.full_name;
-  return user.email || "—";
+  return parts.length ? parts.join(" ") : "—";
 }
 
-function renderFileField(url, type = "file", isQr = false, label = null) {
-  if (!url || typeof url !== "string") return "—";
-
-  const safeUrl = url.startsWith("/uploads/")
-    ? url
-    : `/uploads/${url.replace(/^\/+/, "")}`;
-
+function renderFileField(url, type = "file", label = null) {
+  if (!url) return "—";
+  const safeUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
   const fileName = safeUrl.split("/").pop();
-  const style = isQr ? "max-width:150px;" : "max-width:60px;";
 
   if (type === "image") {
     return `
-      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer"
-         data-bs-toggle="tooltip" data-bs-title="Open Image">
-        <img src="${safeUrl}" alt="${fileName}" class="rounded shadow-sm"
-             style="${style}" onerror="this.style.display='none'" />
+      <a href="${safeUrl}" target="_blank">
+        <img src="${safeUrl}" class="rounded shadow-sm"
+             style="max-width:60px;" />
       </a>
     `;
   }
 
   return `
-    <a href="${safeUrl}" target="_blank" rel="noopener noreferrer"
-       data-bs-toggle="tooltip" data-bs-title="View File">
+    <a href="${safeUrl}" target="_blank">
       <i class="ri-file-2-line me-1"></i>${label || fileName}
     </a>
   `;
 }
 
 /* ============================================================
-   🧩 Field Value Renderer
+   🧩 Field Value Renderer (TABLE + CARD)
 ============================================================ */
 function renderValue(entry, field, viewMode = "card") {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      let badgeClass = "bg-secondary";
-      if (raw === "active") badgeClass = "bg-success";
-      if (raw === "inactive") badgeClass = "bg-warning text-dark";
-      if (raw === "terminated") badgeClass = "bg-danger";
-      return raw ? `<span class="badge ${badgeClass}">${label}</span>` : "—";
+      let cls = "bg-secondary";
+      if (raw === "active") cls = "bg-success";
+      if (raw === "inactive") cls = "bg-warning text-dark";
+      if (raw === "terminated") cls = "bg-danger";
+      return `<span class="badge ${cls}">${raw.toUpperCase()}</span>`;
     }
 
     case "organization":
@@ -141,37 +115,32 @@ function renderValue(entry, field, viewMode = "card") {
       return entry.facility?.name || "—";
     case "department":
       return entry.department?.name || "—";
-    case "user":
-      return renderUserName(entry.user);
-    case "createdBy":
-      return renderUserName(entry.createdBy);
-    case "updatedBy":
-      return renderUserName(entry.updatedBy);
-    case "deletedBy":
-      return renderUserName(entry.deletedBy);
 
-    // 📅 DATE ONLY (NO TIME)
+    case "createdBy":
+    case "updatedBy":
+    case "deletedBy":
+      return renderUserName(entry[field]);
+
     case "dob":
     case "hire_date":
     case "termination_date":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    // 🕒 AUDIT TIMESTAMPS (DATE + TIME)
     case "created_at":
     case "updated_at":
     case "deleted_at":
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
-    // 🖼️ Image/File behavior mirrors patient-render.js
     case "photo_path":
       return viewMode === "table"
-        ? renderFileField(entry.photo_path, "file", false, "Profile Photo")
+        ? renderFileField(entry.photo_path, "file", "Photo")
         : renderFileField(entry.photo_path, "image");
 
     case "resume_url":
-      return renderFileField(entry.resume_url, "file", false, "Resume");
+      return renderFileField(entry.resume_url, "file", "Resume");
+
     case "document_url":
-      return renderFileField(entry.document_url, "file", false, "Document");
+      return renderFileField(entry.document_url, "file", "Document");
 
     default:
       return entry[field] != null ? String(entry[field]) : "—";
@@ -179,37 +148,141 @@ function renderValue(entry, field, viewMode = "card") {
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — ENTITY SYSTEM (EMPLOYEE | FINAL)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  let html = "";
+  const has = f => visibleFields.includes(f);
+  const safe = v => (v !== null && v !== undefined && v !== "" ? v : "—");
 
-  visibleFields.forEach((field) => {
-    if (field === "actions") return;
-    const label = FIELD_LABELS_EMPLOYEE[field] || field.replace(/_/g, " ");
-    const value = renderValue(entry, field);
-    html += `<p><strong>${label}:</strong> ${value}</p>`;
-  });
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
+    </div>
+  `;
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getEmployeeActionButtons(entry, user)}
-        </div>
-      </div>`
+  const fullName =
+    entry.full_name ||
+    [entry.first_name, entry.middle_name, entry.last_name].filter(Boolean).join(" ") ||
+    "Unnamed Employee";
+
+  /* ================= HEADER ================= */
+  const status = (entry.status || "").toLowerCase();
+
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-secondary">${safe(entry.employee_no)}</div>
+        <div class="entity-primary">${fullName}</div>
+      </div>
+      ${
+        has("status")
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  /* ================= CONTEXT ================= */
+  const contextItems = [];
+  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("position")) contextItems.push(`🧑‍⚕️ ${safe(entry.position)}`);
+
+  const context = contextItems.length
+    ? `<div class="entity-card-context">
+         ${contextItems.map(v => `<div>${v}</div>`).join("")}
+       </div>`
+    : "";
+
+  /* ================= BODY ================= */
+  const left = [];
+  const right = [];
+
+  if (has("gender")) left.push(fieldRow("Gender", entry.gender));
+  if (has("dob")) left.push(fieldRow("DOB", formatDate(entry.dob)));
+  if (has("department")) left.push(fieldRow("Department", entry.department?.name));
+  if (has("license_no")) left.push(fieldRow("License No.", entry.license_no));
+
+  if (has("phone")) right.push(fieldRow("Phone", entry.phone));
+  if (has("email")) right.push(fieldRow("Email", entry.email));
+  if (has("address")) right.push(fieldRow("Address", entry.address));
+  if (has("photo_path")) right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
+
+  const body = `
+    <div class="entity-card-body">
+      <div>${left.join("")}</div>
+      <div>${right.join("")}</div>
+    </div>
+  `;
+
+  /* ================= AUTO EXTRA ================= */
+  const usedFields = new Set([
+    "employee_no","first_name","middle_name","last_name","full_name",
+    "status","organization","facility","department","position",
+    "gender","dob","license_no",
+    "phone","email","address",
+    "photo_path","resume_url","document_url",
+    "created_at","updated_at","deleted_at",
+    "createdBy","updatedBy","deletedBy",
+    "actions"
+  ]);
+
+  const extraFields = visibleFields
+    .filter(f => !usedFields.has(f))
+    .map(f => fieldRow(FIELD_LABELS_EMPLOYEE[f] || f, renderValue(entry, f)));
+
+  const extrasSection = extraFields.length
+    ? `<details class="entity-notes">
+         <summary>More Details</summary>
+         <div class="entity-card-body">
+           <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
+           <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
+         </div>
+       </details>`
+    : "";
+
+  /* ================= AUDIT ================= */
+  const audit =
+    has("created_at") || has("updated_at")
+      ? `<details class="entity-notes">
+           <summary>Audit</summary>
+           <div class="entity-card-body">
+             <div>
+               ${has("createdBy") ? fieldRow("Created By", renderValue(entry, "createdBy")) : ""}
+               ${has("created_at") ? fieldRow("Created At", renderValue(entry, "created_at")) : ""}
+             </div>
+             <div>
+               ${has("updatedBy") ? fieldRow("Updated By", renderValue(entry, "updatedBy")) : ""}
+               ${has("updated_at") ? fieldRow("Updated At", renderValue(entry, "updated_at")) : ""}
+             </div>
+           </div>
+         </details>`
+      : "";
+
+  /* ================= ACTIONS ================= */
+  const actions = has("actions")
+    ? `<div class="entity-card-footer">
+         ${getEmployeeActionButtons(entry, user)}
+       </div>`
     : "";
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${html}</div>
-      ${footer}
+    <div class="entity-card employee-card">
+      ${header}
+      ${context}
+      ${body}
+      ${extrasSection}
+      ${audit}
+      ${actions}
     </div>
   `;
 }
 
 /* ============================================================
-   📋 List Renderer (Table + Card View)
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("employeeTableBody");
@@ -223,8 +296,6 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
@@ -235,31 +306,23 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     }
 
     entries.forEach((entry) => {
-      const row = document.createElement("tr");
-      let rowHTML = "";
-
-      visibleFields.forEach((field) => {
-        const value =
+      const tr = document.createElement("tr");
+      tr.innerHTML = visibleFields
+        .map((field) =>
           field === "actions"
-            ? `<div class="table-actions export-ignore">${getEmployeeActionButtons(entry, user)}</div>`
-            : renderValue(entry, field, "table");
-
-        const tdClass =
-          field === "actions" ? ' class="actions-cell text-center"' : "";
-
-        rowHTML += `<td${tdClass}>${value}</td>`;
-      });
-
-      row.innerHTML = rowHTML;
-      tableBody.appendChild(row);
+            ? `<td class="actions-cell text-center export-ignore">
+                ${getEmployeeActionButtons(entry, user)}
+               </td>`
+            : `<td>${renderValue(entry, field, "table")}</td>`
+        )
+        .join("");
+      tableBody.appendChild(tr);
     });
 
     initTooltips(tableBody);
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")

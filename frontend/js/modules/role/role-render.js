@@ -1,35 +1,42 @@
-// 📁 role-render.js – Role Table & Card Renderers (Enterprise-Aligned)
+// 📁 role-render.js – Entity Card System (Enterprise Master)
 // ============================================================================
-// 🧭 Master Pattern: vital-render.js
-// 🔹 Full enterprise consistency (permissions, UI logic, tooltips, exports)
-// 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 100% ID-safe: preserves roleTableBody / roleList references
+// 🧭 Fully aligned with patient-render.js entity-card architecture
+// 🔹 Table = flat | Card = structured
+// 🔹 Field-selector safe
+// 🔹 Full audit section (created / updated / deleted)
+// 🔹 Permission-driven actions
 // ============================================================================
 
 import { FIELD_LABELS_ROLE } from "./role-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import {
+  formatDate,
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
 
 /* ============================================================
-   🎛️ Action Buttons (Centralized)
+   🎛️ Action Buttons
 ============================================================ */
 function getRoleActionButtons(entry, user) {
   return buildActionButtons({
-    module: "role", // maps to STATUS_ACTION_MATRIX.role
+    module: "role",
     status: (entry.status || "").toLowerCase(),
     entryId: entry.id,
     user,
-    permissionPrefix: "roles", // ensures alignment with permission keys
+    permissionPrefix: "roles",
   });
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 Dynamic Table Head (Resize Ready)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
@@ -37,15 +44,29 @@ export function renderDynamicTableHead(visibleFields) {
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
     th.textContent = FIELD_LABELS_ROLE[field] || field.replace(/_/g, " ");
+    th.dataset.key = field;
     if (field === "actions") th.classList.add("actions-cell");
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "150px";
+    colgroup.appendChild(col);
+  });
+
+  table.prepend(colgroup);
+  enableColumnResize(table);
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 Helpers
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
@@ -53,19 +74,30 @@ function renderUserName(user) {
   return parts.length ? parts.join(" ") : user.username || user.email || "—";
 }
 
+/* ============================================================
+   🧩 Field Value Renderer
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
       const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        active: "bg-success",
-        inactive: "bg-warning text-dark",
-        deleted: "bg-danger",
+      let cls = "bg-secondary";
+      if (raw === "active") cls = "bg-success";
+      if (raw === "inactive") cls = "bg-warning text-dark";
+      if (raw === "deleted") cls = "bg-danger";
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    case "role_type": {
+      const raw = (entry.role_type || "").toLowerCase();
+      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+      const map = {
+        system: "bg-dark",
+        owner: "bg-primary",
+        custom: "bg-info text-dark",
       };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      return `<span class="badge ${map[raw] || "bg-secondary"}">${label}</span>`;
     }
 
     case "organization":
@@ -73,67 +105,140 @@ function renderValue(entry, field) {
     case "facility":
       return entry.facility?.name || "—";
 
-    case "role_type": {
-      const raw = (entry.role_type || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        system: "bg-dark",
-        owner: "bg-primary",
-        custom: "bg-info text-dark",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
-    }
-
     case "createdBy":
-      return renderUserName(entry.createdBy);
     case "updatedBy":
-      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry.deletedBy);
+      return renderUserName(entry[field]);
 
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
-      return entry[field] ?? "—";
+      return entry[field] != null && entry[field] !== "" ? String(entry[field]) : "—";
   }
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — ENTITY SYSTEM (ROLE | FINAL)
+   ------------------------------------------------------------
+   ✔ Header = Identity + Status
+   ✔ Context = Scope + Classification
+   ✔ Body = Role meaning only
+   ✔ Audit = Collapsible (enterprise standard)
+   ✔ Actions = Permission-driven
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_ROLE[f] || f}:</strong> 
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = f => visibleFields.includes(f);
+  const safe = v => (v !== null && v !== undefined && v !== "" ? v : "—");
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getRoleActionButtons(entry, user)}
-        </div>
-      </div>`
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
+    </div>
+  `;
+
+  /* ================= HEADER ================= */
+  const status = (entry.status || "").toLowerCase();
+
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-secondary">${safe(entry.code)}</div>
+        <div class="entity-primary">${safe(entry.name)}</div>
+      </div>
+      ${
+        has("status")
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  /* ================= CONTEXT (SCOPE ONLY) ================= */
+  const contextItems = [];
+
+  if (has("organization") && entry.organization)
+    contextItems.push(`🏥 ${safe(entry.organization.name)}`);
+
+  if (has("facility") && entry.facility)
+    contextItems.push(`📍 ${safe(entry.facility.name)}`);
+
+  if (has("role_type"))
+    contextItems.push(`🔐 ${renderValue(entry, "role_type")}`);
+
+  const context = contextItems.length
+    ? `<div class="entity-card-context">
+         ${contextItems.map(v => `<div>${v}</div>`).join("")}
+       </div>`
     : "";
 
+  /* ================= BODY (NO REDUNDANCY) ================= */
+  const left = [];
+  const right = [];
+
+  if (has("description"))
+    left.push(fieldRow("Description", entry.description));
+
+  const body = `
+    <div class="entity-card-body">
+      <div>${left.join("")}</div>
+      <div>${right.join("")}</div>
+    </div>
+  `;
+
+  /* ================= AUDIT (STANDARDIZED) ================= */
+  const auditFields = [];
+
+  if (has("created_at"))
+    auditFields.push(fieldRow("Created At", formatDateTime(entry.created_at)));
+  if (has("createdBy"))
+    auditFields.push(fieldRow("Created By", renderUserName(entry.createdBy)));
+
+  if (has("updated_at"))
+    auditFields.push(fieldRow("Updated At", formatDateTime(entry.updated_at)));
+  if (has("updatedBy"))
+    auditFields.push(fieldRow("Updated By", renderUserName(entry.updatedBy)));
+
+  if (has("deleted_at") && entry.deleted_at)
+    auditFields.push(fieldRow("Deleted At", formatDateTime(entry.deleted_at)));
+  if (has("deletedBy") && entry.deletedBy)
+    auditFields.push(fieldRow("Deleted By", renderUserName(entry.deletedBy)));
+
+  const auditSection = auditFields.length
+    ? `<details class="entity-notes">
+         <summary>Audit Information</summary>
+         <div class="entity-card-body">
+           <div>${auditFields.join("")}</div>
+         </div>
+       </details>`
+    : "";
+
+  /* ================= ACTIONS ================= */
+  const actions = has("actions")
+    ? `<div class="entity-card-footer">
+         ${getRoleActionButtons(entry, user)}
+       </div>`
+    : "";
+
+  /* ================= FINAL ================= */
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card role-card">
+      ${header}
+      ${context}
+      ${body}
+      ${auditSection}
+      ${actions}
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("roleTableBody");
@@ -144,33 +249,27 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No roles found.</td></tr>`;
-
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}">No roles found.</td></tr>`;
+      initTooltips(tableBody);
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach(entry => {
       const tr = document.createElement("tr");
-      tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getRoleActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
-        .join("");
+      tr.innerHTML = visibleFields.map(field =>
+        field === "actions"
+          ? `<td class="actions-cell text-center export-ignore">
+               ${getRoleActionButtons(entry, user)}
+             </td>`
+          : `<td>${renderValue(entry, field)}</td>`
+      ).join("");
       tableBody.appendChild(tr);
     });
 
@@ -178,12 +277,10 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
     cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No roles found.</p>`;
+      ? entries.map(e => renderCard(e, visibleFields, user)).join("")
+      : `<p class="text-muted">No roles found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -214,7 +311,7 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #roleList.active",
       orientation: "landscape",
     });
   });

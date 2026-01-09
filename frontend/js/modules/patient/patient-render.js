@@ -163,15 +163,16 @@ function renderValue(entry, field, viewMode = "card") {
   }
 }
 /* ============================================================
-   🗂️ CARD RENDERER — ENTITY SYSTEM (PATIENT | FINAL FIXED)
+   🗂️ CARD RENDERER — ENTITY SYSTEM (PATIENT | FINAL + AUDIT)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const has = (f) => visibleFields.includes(f);
+  const has = f => visibleFields.includes(f);
+  const safe = v => (v !== null && v !== undefined && v !== "" ? v : "—");
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
-      <span class="entity-label">${label}:</span>
-      <span class="entity-value">${value}</span>
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
     </div>
   `;
 
@@ -181,61 +182,55 @@ export function renderCard(entry, visibleFields, user) {
       .join(" ") || "Unnamed Patient";
 
   /* ================= HEADER ================= */
+  const status = (entry.registration_status || "").toLowerCase();
+
   const header = `
     <div class="entity-card-header">
       <div>
-        <div class="entity-secondary">${entry.pat_no || "—"}</div>
+        <div class="entity-secondary">${safe(entry.pat_no)}</div>
         <div class="entity-primary">${fullName}</div>
       </div>
       ${
         has("registration_status")
-          ? `<span class="entity-status ${entry.registration_status}">
-               ${entry.registration_status.toUpperCase()}
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
              </span>`
           : ""
       }
     </div>
   `;
 
-  /* ================= CONTEXT (SINGLE COLUMN) ================= */
+  /* ================= CONTEXT ================= */
   const contextItems = [];
-
-  if (has("organization"))
-    contextItems.push(`🏥 ${entry.organization?.name || "—"}`);
-
-  if (has("facility"))
-    contextItems.push(`📍 ${entry.facility?.name || "—"}`);
-
-  if (has("date_of_birth"))
-    contextItems.push(`🎂 DOB: ${formatDate(entry.date_of_birth)}`);
+  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("date_of_birth")) contextItems.push(`🎂 DOB: ${formatDate(entry.date_of_birth)}`);
 
   const context = contextItems.length
-    ? `
-      <div class="entity-card-context">
-        ${contextItems.map(v => `<div>${v}</div>`).join("")}
-      </div>
-    `
+    ? `<div class="entity-card-context">
+         ${contextItems.map(v => `<div>${v}</div>`).join("")}
+       </div>`
     : "";
 
-  /* ================= BODY (2 COLUMNS) ================= */
+  /* ================= BODY ================= */
   const left = [];
   const right = [];
 
   // Demographics
-  if (has("gender")) left.push(fieldRow("Gender", entry.gender || "—"));
-  if (has("marital_status")) left.push(fieldRow("Marital Status", entry.marital_status || "—"));
-  if (has("religion")) left.push(fieldRow("Religion", entry.religion || "—"));
-  if (has("profession")) left.push(fieldRow("Profession", entry.profession || "—"));
+  if (has("gender")) left.push(fieldRow("Gender", entry.gender));
+  if (has("marital_status")) left.push(fieldRow("Marital Status", entry.marital_status));
+  if (has("religion")) left.push(fieldRow("Religion", entry.religion));
+  if (has("profession")) left.push(fieldRow("Profession", entry.profession));
 
   // IDs
-  if (has("national_id")) left.push(fieldRow("National ID", entry.national_id || "—"));
-  if (has("insurance_number")) left.push(fieldRow("Insurance No.", entry.insurance_number || "—"));
-  if (has("passport_number")) left.push(fieldRow("Passport No.", entry.passport_number || "—"));
+  if (has("national_id")) left.push(fieldRow("National ID", entry.national_id));
+  if (has("insurance_number")) left.push(fieldRow("Insurance No.", entry.insurance_number));
+  if (has("passport_number")) left.push(fieldRow("Passport No.", entry.passport_number));
 
   // Contact + Media
-  if (has("phone_number")) right.push(fieldRow("Phone", entry.phone_number || "—"));
-  if (has("email_address")) right.push(fieldRow("Email", entry.email_address || "—"));
-  if (has("home_address")) right.push(fieldRow("Address", entry.home_address || "—"));
+  if (has("phone_number")) right.push(fieldRow("Phone", entry.phone_number));
+  if (has("email_address")) right.push(fieldRow("Email", entry.email_address));
+  if (has("home_address")) right.push(fieldRow("Address", entry.home_address));
   if (has("photo_path")) right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
   if (has("qr_code_path")) right.push(fieldRow("QR Code", renderValue(entry, "qr_code_path")));
 
@@ -246,42 +241,58 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= AUTO EXTRA (2 COLUMNS) ================= */
+  /* ================= AUTO EXTRA ================= */
   const usedFields = new Set([
     "pat_no","first_name","middle_name","last_name",
     "registration_status","organization","facility","date_of_birth",
     "gender","marital_status","religion","profession",
     "national_id","insurance_number","passport_number",
     "phone_number","email_address","home_address",
-    "photo_path","qr_code_path","notes","actions",
+    "photo_path","qr_code_path","notes",
+    "created_at","updated_at","deleted_at",
+    "createdBy","updatedBy","deletedBy",
+    "actions"
   ]);
 
   const extraFields = visibleFields
     .filter(f => !usedFields.has(f))
-    .map(f =>
-      fieldRow(FIELD_LABELS_PATIENT[f] || f, renderValue(entry, f))
-    );
+    .map(f => fieldRow(FIELD_LABELS_PATIENT[f] || f, renderValue(entry, f)));
 
   const extrasSection = extraFields.length
-    ? `
-      <details class="entity-notes">
-        <summary>More Details</summary>
-        <div class="entity-card-body">
-          <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
-          <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
-        </div>
-      </details>
-    `
+    ? `<details class="entity-notes">
+         <summary>More Details</summary>
+         <div class="entity-card-body">
+           <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
+           <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
+         </div>
+       </details>`
     : "";
+
+  /* ================= AUDIT (NEW) ================= */
+  const audit =
+    has("created_at") || has("updated_at")
+      ? `<details class="entity-notes">
+           <summary>Audit</summary>
+           <div class="entity-card-body">
+             <div>
+               ${has("createdBy") ? fieldRow("Created By", renderValue(entry, "createdBy")) : ""}
+               ${has("created_at") ? fieldRow("Created At", renderValue(entry, "created_at")) : ""}
+             </div>
+             <div>
+               ${has("updatedBy") ? fieldRow("Updated By", renderValue(entry, "updatedBy")) : ""}
+               ${has("updated_at") ? fieldRow("Updated At", renderValue(entry, "updated_at")) : ""}
+             </div>
+           </div>
+         </details>`
+      : "";
 
   /* ================= NOTES ================= */
   const notes =
     has("notes") && entry.notes
-      ? `
-      <details class="entity-notes">
-        <summary>Notes</summary>
-        <p>${entry.notes}</p>
-      </details>`
+      ? `<details class="entity-notes">
+           <summary>Notes</summary>
+           <p>${entry.notes}</p>
+         </details>`
       : "";
 
   /* ================= ACTIONS ================= */
@@ -297,6 +308,7 @@ export function renderCard(entry, visibleFields, user) {
       ${context}
       ${body}
       ${extrasSection}
+      ${audit}
       ${notes}
       ${actions}
     </div>

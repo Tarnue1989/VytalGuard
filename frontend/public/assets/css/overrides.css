@@ -1,15 +1,19 @@
 /* =============================================================
    FILE: overrides.css
-   🛠 Overrides – Fixes for specificity, duplicates, visual bugs
-   Used for cleanup, edge cases, or last-minute patching
+   🛠 Overrides – Specificity & last-mile fixes ONLY
+   ⚠️ RULE: MUST NOT break layout systems (grid / cards)
 ============================================================= */
 
-/* Duplicate hidden utility to ensure visibility override */
+/* =============================================================
+   GLOBAL UTILITIES
+============================================================= */
 .hidden {
   display: none !important;
 }
 
-/* Ensure field floats if value exists */
+/* =============================================================
+   FLOATING LABEL FIX
+============================================================= */
 .field-wrapper.has-value .input-label {
   top: -8px;
   left: 8px;
@@ -18,107 +22,77 @@
   background-color: white;
 }
 
-/* Reset span-2 on mobile for inline field wrappers */
+/* =============================================================
+   FORM GRID MOBILE FIX
+============================================================= */
 @media (max-width: 768px) {
   .form-grid > .field-wrapper[style*="grid-column: span 2"] {
     grid-column: span 1 !important;
   }
 }
 
-/* Restore table view toggling */
-#tableView {
-  display: none;
-}
+/* =============================================================
+   TABLE ↔ CARD VIEW TOGGLING
+   (Respect JS-driven .active state)
+============================================================= */
 
-/* 🔧 Default desktop: show table, hide cards */
-/* 🔧 Respect JS-driven view toggling */
-.table-container:not(.active) {
-  display: none !important;
-}
-
-.table-container.active {
-  display: block !important;
-}
-
+/* Hide inactive views */
+.table-container:not(.active),
 .card-list:not(.active) {
   display: none !important;
 }
 
-.card-list.active {
+/* Active table */
+.table-container.active {
   display: block !important;
 }
 
-/* 📱 Mobile: show cards, hide table */
+/* Active cards → LET cards.css decide layout (grid) */
+.card-list.active {
+  display: grid !important;
+}
+
+/* =============================================================
+   MOBILE VIEW (CARDS ONLY)
+============================================================= */
 @media (max-width: 768px) {
   .table-container {
-    display: none;
+    display: none !important;
   }
-  .card-list {
-    display: flex;
+
+  /* Force single-column grid on mobile */
+  .card-list.active {
+    grid-template-columns: 1fr !important;
   }
 }
 
-/* ================================================================
-   GLOBAL EXPORT FIX
-   Ensures export-ignore elements are visible by default
-   Only hidden during print or explicit .exporting mode
-=================================================================== */
-
+/* =============================================================
+   EXPORT SAFETY
+============================================================= */
 .export-ignore {
   display: initial !important;
   visibility: visible !important;
 }
 
-/* ================================================================
-   🌍 GLOBAL FORM SPACING FIXES
-   Applies to all forms across the system
-================================================================= */
+/* =============================================================
+   GLOBAL FORM SPACING (SAFE)
+============================================================= */
 
-/* Reduce bottom margin of each field block */
-form .mb-3 {
-  margin-bottom: 0.6rem !important; /* default ~1rem */
-}
-
-/* Tighten section headings inside forms */
-form h6.mt-3 {
-  margin-top: 0.75rem !important;   /* default ~1.5rem */
-  margin-bottom: 0.25rem !important;
-}
-
-/* Slim down horizontal rules */
-form hr {
-  margin: 0.4rem 0 !important;      /* default ~1rem 0 */
-}
-
-/* Bring labels closer to inputs */
-form .form-label {
-  margin-bottom: 0.2rem !important; /* default ~0.5rem */
-}
-
-/* (Optional) Reduce column gutter spacing inside forms */
-form .row[class*="gx-"] {
-  --bs-gutter-x: 1rem; /* default is 1.5rem in gx-4 */
-}
-/* ================================================================
-   🌍 GLOBAL FORM & FILTER SPACING FIXES
-   Applies to all forms (data-entry + filter panels)
-================================================================= */
-
-/* Field blocks */
+/* Field spacing */
 form .mb-3,
 .filter-body .field-wrapper {
-  margin-bottom: 0.5rem !important; /* tighter row spacing */
+  margin-bottom: 0.5rem !important;
 }
 
-/* Labels closer to fields */
+/* Labels */
 form .form-label,
 .filter-body .form-label {
-  margin-bottom: 0.1rem !important; /* was 0.5rem → now ~2–3px */
-  font-size: 0.8rem !important;     /* slightly smaller label text */
-  line-height: 1.2;                 /* compact vertical rhythm */
+  margin-bottom: 0.1rem !important;
+  font-size: 0.8rem !important;
+  line-height: 1.2;
 }
 
-/* Section headings inside forms */
+/* Section headings */
 form h6.mt-3 {
   margin-top: 0.75rem !important;
   margin-bottom: 0.25rem !important;
@@ -129,14 +103,14 @@ form hr {
   margin: 0.4rem 0 !important;
 }
 
-/* Reduce card-body padding for filter panels */
+/* Filter panel padding */
 .filter-body {
-  padding: 0.5rem 0.75rem !important; /* default ~1.5rem → very tight */
+  padding: 0.5rem 0.75rem !important;
 }
 
-/* Reduce column gutters in forms & filters */
+/* Grid gutters */
 form .row[class*="gx-"],
 .filter-body .row[class*="g-"] {
-  --bs-gutter-x: 0.75rem !important; /* default 1.5rem */
-  --bs-gutter-y: 0.25rem !important; /* was ~1rem → compact */
+  --bs-gutter-x: 0.75rem !important;
+  --bs-gutter-y: 0.25rem !important;
 }
