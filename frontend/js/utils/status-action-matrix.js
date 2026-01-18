@@ -15,7 +15,14 @@ export const STATUS_ACTION_MATRIX = {
   delivery_record:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 📅 APPOINTMENT ======================== */
-  appointment:{scheduled:["edit","activate","cancel","no-show","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:[],cancelled:["restore"],no_show:["restore"],voided:["restore"],deleted:["restore"]},
+  appointment:{scheduled:["edit","activate","cancel","no-show","void"],
+    in_progress:["complete","cancel","void"],
+    completed:["verify","void"],
+    verified:[],
+    cancelled:["restore"],
+    no_show:["restore"],
+    voided:["restore"],
+    deleted:["restore"]},
 
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
@@ -181,6 +188,13 @@ export const STATUS_ACTION_MATRIX = {
   /* ======================== 💰 BILLING ======================== */
   billable_item:{active:["edit","toggle","delete","history"],inactive:["edit","toggle","delete","history"],deleted:["restore","history"]},
   auto_billing_rule:{active:["edit","toggle","delete","history"],inactive:["edit","toggle","delete","history"],deleted:["restore","history"]},
+ 
+  /* ======================== ⚡ BILLING TRIGGER ======================== */
+  billing_trigger:{
+    active:   ["edit","toggle-status","delete"],
+    inactive: ["edit","toggle-status","delete"],
+    deleted:  ["restore"]
+  },
 
   /* ======================== 🏭 INVENTORY ======================== */
   central_stock:{active:["edit","toggle","lock","delete"],inactive:["edit","toggle","lock","delete"],locked:["unlock"],deleted:["restore"]},
@@ -203,9 +217,17 @@ export const STATUS_ACTION_MATRIX = {
   patient:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],cancelled:["edit","toggle","delete"],voided:["restore"],deleted:["restore"]},
 
   /* ======================== 🛡️ ADMIN ======================== */
-  role:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
+  role:{
+    active:["edit","toggle-status","delete"],
+    inactive:["edit","toggle-status","delete"],
+    deleted:["restore"]
+  },
   permission:{active:["edit"]},
-  department:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
+  department: {
+    active:   ["edit","toggle-status","delete"],
+    inactive: ["edit","toggle-status","delete"],
+    deleted:  ["restore"]
+  },
 
   /* ======================== 👤 USER ======================== */
   user:{
@@ -308,6 +330,9 @@ export function buildActionButtons({
     view: "fa-eye",
     edit: "fa-pen",
     start: "fa-play",
+    activate: "fa-calendar-check",
+    "no-show": "fa-user-slash",
+
     dispense: "fa-pills",
     "partial-dispense": "fa-divide",
     complete: "fa-check",
@@ -351,6 +376,8 @@ export function buildActionButtons({
     review: "Review",
     verify: "Verify",
     finalize: "Finalize",
+    activate: "Activate Appointment",   // 📅
+    "no-show": "Mark No Show",           // 🚫
 
     clear: isDeposit ? "Clear Deposit" : "Clear Record",
     revert: "Revert to Pending",
@@ -420,20 +447,16 @@ export function buildActionButtons({
   }
 
   for (const act of allowed) {
-  const backend =
-    module === "user" && act === "toggle-status"
-      ? "edit"                  // ✅ USERS use users:edit
-      : module === "supplier" && act === "toggle-status"
-      ? "update"
-      : act === "complete"
-      ? "finalize"
-      : ["clear", "revert"].includes(act)
-      ? "toggle-status"
-      : act;
+    const backend =
+      (act === "toggle" || ["clear","revert"].includes(act)) ? "toggle-status" :
+      act === "complete" ? "finalize" :
+      act === "toggle-status" && module === "user" ? "edit" :
+      act === "toggle-status" && module === "supplier" ? "update" :
+      act;
 
     const permKey = `${permissionPrefix}:${backend}`;
 
-    if (perms.has(permKey) || isSuperAdmin) {
+    if (isSuperAdmin || perms.has(permKey)) {
       html += buildButton(
         act,
         titles[act] || act,

@@ -1,4 +1,11 @@
-// 📦 feature-module-filter-main.js – Filters + Table/Card (Enterprise-Parity, No Form)
+// 📦 feature-module-filter-main.js – Enterprise Filter + Table/Card (CLEAN FINAL)
+// ============================================================================
+// 🔹 Unified global search (name | key | category)
+// 🔹 AUTO filters (search, selects, date range)
+// 🔹 Sorting, pagination, summary MATCH controller
+// 🔹 Permission-aware
+// 🔹 Non-breaking
+// ============================================================================
 
 import {
   showToast,
@@ -9,12 +16,8 @@ import {
   renderPaginationControls,
   initLogoutWatcher,
 } from "../../utils/index.js";
-
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 import { authFetch } from "../../authSession.js";
-
-import {
-  setupSuggestionInputDynamic,
-} from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
@@ -25,37 +28,56 @@ import { setupActionHandlers } from "./feature-module-actions.js";
 import {
   FIELD_ORDER_FEATURE_MODULE,
   FIELD_DEFAULTS_FEATURE_MODULE,
+  FIELD_LABELS_FEATURE_MODULE
 } from "./feature-module-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import {
+  setupAutoSearch,
+  setupAutoFilters,
+} from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
 
 /* ============================================================
-   🔐 Auth
+   👤 USER PREFERENCE KEYS (UI ONLY)
+============================================================ */
+const USER_PREF_COLUMN_ORDER_KEY =
+  "user_pref:feature_module:column_order";
+
+/* ============================================================
+   🔐 Auth + Permissions
 ============================================================ */
 const token = initPageGuard("feature_modules");
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role
-============================================================ */
-const userRole = localStorage.getItem("userRole") || "admin";
+const roleRaw = localStorage.getItem("userRole") || "";
+const userRole = roleRaw.trim().toLowerCase();
+
+let perms = [];
+try {
+  const raw = JSON.parse(localStorage.getItem("permissions") || "[]");
+  perms = Array.isArray(raw)
+    ? raw.map(p => String(p.key || p).toLowerCase())
+    : [];
+} catch {
+  perms = [];
+}
+
+const user = { role: userRole, permissions: perms };
 
 /* ============================================================
    🧠 Shared State
 ============================================================ */
-const sharedState = {
-  currentEditIdRef: { value: null },
-};
-
-// 🛟 No-form stubs
+const sharedState = { currentEditIdRef: { value: null } };
+window.entries = [];
 window.showForm = () => {};
 window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ Field Visibility (BASE)
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "feature_module",
   userRole,
@@ -63,7 +85,26 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_FEATURE_MODULE,
 });
 
-// 🔒 Only DB columns go to ?fields=
+/* ============================================================
+   👤 Restore USER column order preference (SAFE)
+============================================================ */
+try {
+  const saved = JSON.parse(
+    localStorage.getItem(USER_PREF_COLUMN_ORDER_KEY) || "null"
+  );
+
+  if (Array.isArray(saved)) {
+    visibleFields = saved.filter(f =>
+      FIELD_ORDER_FEATURE_MODULE.includes(f)
+    );
+  }
+} catch {
+  // silently ignore corrupt preference
+}
+
+/* ============================================================
+   🔐 API Field Whitelist
+============================================================ */
 const API_FIELD_WHITELIST = [
   "id",
   "name",
@@ -80,9 +121,6 @@ const API_FIELD_WHITELIST = [
   "created_at",
   "updated_at",
   "deleted_at",
-  "created_by",
-  "updated_by",
-  "deleted_by",
 ];
 
 /* ============================================================
@@ -91,8 +129,15 @@ const API_FIELD_WHITELIST = [
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
+  newFields => {
     visibleFields = newFields;
+
+    // 👤 persist user preference
+    localStorage.setItem(
+      USER_PREF_COLUMN_ORDER_KEY,
+      JSON.stringify(visibleFields)
+    );
+
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, userRole, currentPage });
   },
@@ -102,38 +147,35 @@ renderFieldSelector(
 /* ============================================================
    🔎 Filter DOM Refs
 ============================================================ */
-const filterName = document.getElementById("filterName");
-const filterKey = document.getElementById("filterKey");
-
-const filterCategory = document.getElementById("filterCategory");
-const filterCategorySuggestions = document.getElementById("filterCategorySuggestions");
-
-const filterParent = document.getElementById("filterParent");
-const filterParentSuggestions = document.getElementById("filterParentSuggestions");
-
+const globalSearch = document.getElementById("globalSearch");
 const filterStatus = document.getElementById("filterStatus");
 const filterVisibility = document.getElementById("filterVisibility");
 const filterEnabled = document.getElementById("filterEnabled");
-
-const filterTags = document.getElementById("filterTags");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const filterTenantScope = document.getElementById("filterTenantScope");
+const dateRange = document.getElementById("dateRange");
 
 /* ============================================================
-   ⬇️ Export Buttons
-============================================================ */
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
-
-/* ============================================================
-   🌍 View + Paging
+   🌍 View + Pagination + Sorting
 ============================================================ */
 let currentPage = 1;
 let totalPages = 1;
 let viewMode = localStorage.getItem("featureModuleView") || "table";
 
+let sortBy = "";
+let sortDir = "asc";
+
 /* ============================================================
-   🔁 Pagination Control (MATCHES ALL OTHER MODULES)
+   🔃 Sort Bridge (Renderer → Main)
+============================================================ */
+window.setFeatureModuleSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+
+window.loadFeatureModulePage = (page = 1) => loadEntries(page);
+
+/* ============================================================
+   🔁 Pagination Control
 ============================================================ */
 const getPagination = initPaginationControl(
   "feature_module",
@@ -142,49 +184,63 @@ const getPagination = initPaginationControl(
 );
 
 /* ============================================================
-   📋 Filters
+   🔎 Auto Filters
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterStatus,
+    filterVisibility,
+    filterEnabled,
+    filterTenantScope,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 Filters (UNIFIED)
 ============================================================ */
 function getFilters() {
   return {
-    name: filterName?.dataset.value || filterName?.value || "",
-    key: filterKey?.dataset.value || filterKey?.value || "",
-    category: filterCategory?.dataset.value || filterCategory?.value || "",
-    parent_id: filterParent?.dataset.value || "",
+    search: globalSearch?.value?.trim() || "",
     status: filterStatus?.value || "",
     visibility: filterVisibility?.value || "",
     enabled: filterEnabled?.value || "",
-    tags: (filterTags?.value || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(","),
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    tenant_scope: filterTenantScope?.value || "",
+    dateRange: dateRange?.value || "",
   };
 }
 
 /* ============================================================
-   📦 Load Feature Modules (PAGINATION FIXED)
+   📦 Load Feature Modules
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
+
     const filters = getFilters();
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
     q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.append("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.append("sort_by", sortBy);
+      q.append("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || k === "created_from" || k === "created_to") return;
-      q.append(k, v);
-    });
+    if (filters.search) q.append("search", filters.search);
+    if (filters.status) q.append("status", filters.status);
+    if (filters.visibility) q.append("visibility", filters.visibility);
+    if (filters.enabled) q.append("enabled", filters.enabled);
+    if (filters.tenant_scope) q.append("tenant_scope", filters.tenant_scope);
+    if (filters.dateRange) q.append("dateRange", filters.dateRange);
 
-    const safeFields = visibleFields.filter((f) =>
+    const safeFields = visibleFields.filter(f =>
       API_FIELD_WHITELIST.includes(f)
     );
     if (safeFields.length) q.append("fields", safeFields.join(","));
@@ -194,21 +250,20 @@ async function loadEntries(page = 1) {
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = json?.message || "Failed to load feature modules";
-      throw new Error(msg);
-    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message || "Load failed");
 
-    const payload = json?.data || {};
+    const payload = json.data || {};
     const records = Array.isArray(payload.records) ? payload.records : [];
+
     window.entries = records;
+    currentPage = payload.pagination?.page || safePage;
+    totalPages = payload.pagination?.pageCount || 1;
 
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    renderList({ entries, visibleFields, viewMode, user, currentPage });
+    payload.summary && renderModuleSummary(payload.summary);
 
-    renderList({ entries, visibleFields, viewMode, userRole, currentPage });
-
+    syncViewToggleUI({ mode: viewMode });
     setupActionHandlers({
       entries,
       token,
@@ -216,6 +271,7 @@ async function loadEntries(page = 1) {
       loadEntries,
       visibleFields,
       sharedState,
+      user,
     });
 
     renderPaginationControls(
@@ -224,6 +280,10 @@ async function loadEntries(page = 1) {
       totalPages,
       loadEntries
     );
+
+    if (!records.length) {
+      showToast("ℹ️ No feature modules found");
+    }
   } catch (err) {
     console.error("❌ loadEntries failed:", err);
     showToast("❌ Failed to load feature modules");
@@ -238,66 +298,98 @@ async function loadEntries(page = 1) {
 document.getElementById("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("featureModuleView", "table");
-  renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 document.getElementById("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("featureModuleView", "card");
-  renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔎 Filter Actions
+   🔄 Reset Filters
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  await loadEntries(1);
-};
-
 document.getElementById("resetFilterBtn").onclick = () => {
   [
-    filterName,
-    filterKey,
-    filterCategory,
-    filterParent,
+    globalSearch,
     filterStatus,
     filterVisibility,
     filterEnabled,
-    filterTags,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
-    if (!el) return;
-    el.value = "";
-    if (el.dataset) el.dataset.value = "";
-  });
+    filterTenantScope,
+    dateRange,
+  ].forEach(el => el && (el.value = ""));
 
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export
+   ⬇️ Export (CLEAN + SAFE)
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
+const exportExcelBtn = document.getElementById("exportExcelBtn");
+const exportPDFBtn = document.getElementById("exportPDFBtn");
+const exportCSVBtn = document.getElementById("exportCSVBtn");
+
+exportCSVBtn &&
+  (exportCSVBtn.onclick = () => {
+    if (!entries.length) {
+      showToast("❌ No data to export");
+      return;
+    }
+
+    const exportRows = mapDataForExport(
       entries,
-      `feature_modules_${new Date().toISOString().slice(0, 10)}.xlsx`
+      visibleFields,
+      FIELD_LABELS_FEATURE_MODULE
     );
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
+    exportData({
+      type: "csv",
+      data: exportRows,
+      title: `feature_modules_${new Date().toISOString().slice(0, 10)}`
+    });
+  });
+
+exportExcelBtn &&
+  (exportExcelBtn.onclick = () => {
+    if (!entries.length) {
+      showToast("❌ No data to export");
+      return;
+    }
+
+    const exportRows = mapDataForExport(
+      entries,
+      visibleFields,
+      FIELD_LABELS_FEATURE_MODULE
+    );
+
+    exportToExcel(
+      exportRows,
+      `feature_modules_${new Date().toISOString().slice(0, 10)}`
+    );
+  });
+
+exportPDFBtn &&
+  (exportPDFBtn.onclick = () => {
+    if (!entries.length) {
+      showToast("❌ No data to export");
+      return;
+    }
+
     const target =
       viewMode === "table" ? ".table-container" : "#featureModuleList";
-    exportToPDF("Feature Module List", target, "portrait", true);
-  };
+
+    exportToPDF("Feature Module List", target, "portrait");
+  });
 
 /* ============================================================
    🚀 Init
 ============================================================ */
 export async function initFeatureModule() {
   renderDynamicTableHead(visibleFields);
-
+  syncViewToggleUI({ mode: viewMode });
   setupToggleSection(
     "toggleFilterBtn",
     "filterCollapse",
@@ -305,84 +397,12 @@ export async function initFeatureModule() {
     "featureModuleFilterVisible"
   );
 
-  // Name
-  if (filterName) {
-    const suggestions = document.createElement("div");
-    suggestions.classList.add("suggestions");
-    filterName.parentNode.appendChild(suggestions);
-
-    setupSuggestionInputDynamic(
-      filterName,
-      suggestions,
-      "/api/lite/feature-modules",
-      (sel) => {
-        filterName.value = sel.name;
-        filterName.dataset.value = sel.name;
-      },
-      "name"
-    );
-  }
-
-  // Key
-  if (filterKey) {
-    const suggestions = document.createElement("div");
-    suggestions.classList.add("suggestions");
-    filterKey.parentNode.appendChild(suggestions);
-
-    setupSuggestionInputDynamic(
-      filterKey,
-      suggestions,
-      "/api/lite/feature-modules",
-      (sel) => {
-        filterKey.value = sel.key;
-        filterKey.dataset.value = sel.key;
-      },
-      "key"
-    );
-  }
-
-  // Parent
-  if (filterParent && filterParentSuggestions) {
-    setupSuggestionInputDynamic(
-      filterParent,
-      filterParentSuggestions,
-      "/api/lite/feature-module-parents",
-      (sel) => {
-        filterParent.value = sel.name;
-        filterParent.dataset.value = sel.id;
-      },
-      "name"
-    );
-  }
-
-  // Category
-  if (filterCategory && filterCategorySuggestions) {
-    setupSuggestionInputDynamic(
-      filterCategory,
-      filterCategorySuggestions,
-      "/api/lite/feature-module-categories",
-      (sel) => {
-        filterCategory.value = sel.category;
-        filterCategory.dataset.value = sel.category;
-      },
-      "category"
-    );
-  }
-
   await loadEntries(1);
 }
 
 /* ============================================================
    🏁 Boot
 ============================================================ */
-export function syncRefsToState() {}
-
-function boot() {
-  initFeatureModule().catch((err) =>
-    console.error("initFeatureModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initFeatureModule)
+  : initFeatureModule();

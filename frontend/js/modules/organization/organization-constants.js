@@ -1,8 +1,9 @@
+// 📁 organization-fields.js – Enterprise-Aligned Master Pattern (Upgraded)
 // ============================================================================
-// 🏢 VytalGuard – Organization Constants (Enterprise Master Pattern Aligned)
-// 🔹 Mirrors consultation-constants.js for unified structure + field handling
-// 🔹 Safe for UI mapping, permissions, and role-based visibility
-// 🔹 All field keys, IDs, and linkages preserved exactly
+// 🔹 Pattern Source: role-fields.js (Enterprise Master)
+// 🔹 Structural Consistency: Field labels, order, role-based visibility
+// 🔹 100% ID retention (safe for linked HTML and other JS modules)
+// 🔹 Includes standardized metadata + role-tier visibility
 // ============================================================================
 
 /* ============================================================
@@ -15,19 +16,18 @@ export const FIELD_LABELS_ORGANIZATION = {
   status: "Status",
 
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
-
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
   actions: "Actions",
 };
 
 /* ============================================================
-   📋 FIELD ORDER
-   - Canonical order for column rendering + export consistency
+   📋 FIELD ORDER (Enterprise-Consistent)
+   - Canonical order for rendering, exports, and summaries
 ============================================================ */
 export const FIELD_ORDER_ORGANIZATION = [
   "name",
@@ -43,9 +43,8 @@ export const FIELD_ORDER_ORGANIZATION = [
 ];
 
 /* ============================================================
-   ⚙️ FIELD DEFAULTS BY ROLE
-   - Controls visibility tiers in grids/forms (auto-applied)
-   - Matches master pattern: superadmin > admin > manager > staff
+   👥 ROLE-BASED FIELD VISIBILITY DEFAULTS
+   - Matches enterprise tiers: superadmin > admin > manager > staff
 ============================================================ */
 export const FIELD_DEFAULTS_ORGANIZATION = {
   superadmin: [
@@ -58,7 +57,7 @@ export const FIELD_DEFAULTS_ORGANIZATION = {
     "updated_at",
     "deletedBy",
     "deleted_at",
-    "actions", // ✅ Superadmin has full visibility (delete + audit)
+    "actions",
   ],
 
   admin: [
@@ -70,7 +69,7 @@ export const FIELD_DEFAULTS_ORGANIZATION = {
     "updatedBy",
     "updated_at",
     "deletedBy",
-    "deleted_at", // 🟡 Can view delete audit but not trigger delete
+    "deleted_at",
   ],
 
   manager: [
@@ -80,19 +79,19 @@ export const FIELD_DEFAULTS_ORGANIZATION = {
     "createdBy",
     "created_at",
     "updatedBy",
-    "updated_at", // 🟢 Streamlined operational visibility
+    "updated_at",
   ],
 
   staff: [
     "name",
     "code",
-    "status", // 🧩 Minimal safe fields for regular users
+    "status",
   ],
 };
 
 /* ============================================================
-   🧩 EXPORT GROUP (Optional)
-   - Used by DataTables, field-selectors, and unified loaders
+   🧩 EXPORT GROUP (Enterprise Standard)
+   - Unified access for tables, field selectors, and loaders
 ============================================================ */
 export const FIELD_GROUP_ORGANIZATION = {
   LABELS: FIELD_LABELS_ORGANIZATION,
@@ -101,6 +100,9 @@ export const FIELD_GROUP_ORGANIZATION = {
 };
 
 // ============================================================================
-// ✅ This module follows Enterprise Master Pattern:
+// ✅ Enterprise Master Compliance
 //    • Safe structure
-//    • Consisten
+//    • Consistent ordering
+//    • Role-aware visibility
+//    • No behavior changes
+// ============================================================================

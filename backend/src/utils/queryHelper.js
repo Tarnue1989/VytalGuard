@@ -3,7 +3,7 @@ import { Op } from "sequelize";
 
 /* ============================================================
    🧠 Enterprise Query Helper (Sequelize)
-   ============================================================ */
+============================================================ */
 
 /* ============================================================
    🛡️ UUID SAFETY HELPERS
@@ -11,7 +11,6 @@ import { Op } from "sequelize";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// ✅ EXPORT THIS (ONLY FIX)
 export function isValidUUID(value) {
   return typeof value === "string" && UUID_REGEX.test(value);
 }
@@ -27,6 +26,9 @@ function isUUIDField(field) {
   );
 }
 
+/* ============================================================
+   🧠 BUILD QUERY OPTIONS
+============================================================ */
 export function buildQueryOptions(
   req,
   configOrSortBy = "created_at",
@@ -49,11 +51,21 @@ export function buildQueryOptions(
   const defaultOrder = isConfigObject ? defaultSort[1] : defaultSortOrder;
   const validCols = isConfigObject ? fields : validColumns;
 
+  /* ============================================================
+     🔍 Extract Query Params (SUPPORT BOTH STYLES)
+  ============================================================ */
   const {
     page = 1,
     limit = 10,
+
+    // snake_case
     sort_by,
-    sort_order = defaultOrder,
+    sort_order,
+
+    // camelCase (frontend)
+    sortBy,
+    sortDir,
+
     search,
     fields: fieldStr,
     ...filters
@@ -63,15 +75,30 @@ export function buildQueryOptions(
   const where = {};
 
   /* ============================================================
-     🚫 Remove meta / UI-only query params
+     🚫 Remove UI / META params (CRITICAL FIX)
   ============================================================ */
   const excludedMetaKeys = [
-    "global", "search", "q",
-    "page", "limit", "sort_by", "sort_order",
-    "modelType", "moduleType",
-    "groupField", "aggregate_by",
-    "date_range", "format",
-    "fields", "from_date", "to_date",
+    "global",
+    "search",
+    "q",
+    "page",
+    "limit",
+
+    // ⛔ SORT KEYS (THIS FIXES YOUR BUG)
+    "sortBy",
+    "sortDir",
+    "sort_by",
+    "sort_order",
+
+    "modelType",
+    "moduleType",
+    "groupField",
+    "aggregate_by",
+    "date_range",
+    "format",
+    "fields",
+    "from_date",
+    "to_date",
     "_ts",
   ];
 
@@ -96,12 +123,12 @@ export function buildQueryOptions(
   };
 
   /* ============================================================
-     🔍 Filter Parsing (UUID SAFE)
+     🔍 FILTER PARSING (UUID SAFE)
   ============================================================ */
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === null || value === "") continue;
 
-    // 🛡️ HARD BLOCK invalid UUIDs
+    // 🔐 UUID SAFETY
     if (isUUIDField(key)) {
       if (Array.isArray(value)) {
         const valid = value.filter(isValidUUID);
@@ -110,15 +137,12 @@ export function buildQueryOptions(
         continue;
       }
 
-      if (!isValidUUID(value)) {
-        continue; // ❌ DROP invalid UUID silently
-      }
-
+      if (!isValidUUID(value)) continue;
       where[key] = value;
       continue;
     }
 
-    /* ------------------ [gte] ------------------ */
+    /* ----------- [gte] ----------- */
     if (key.includes("[gte]")) {
       const baseKey = key.replace("[gte]", "");
       const date = new Date(value);
@@ -131,7 +155,7 @@ export function buildQueryOptions(
       continue;
     }
 
-    /* ------------------ [lte] ------------------ */
+    /* ----------- [lte] ----------- */
     if (key.includes("[lte]")) {
       const baseKey = key.replace("[lte]", "");
       const date = new Date(value);
@@ -144,7 +168,7 @@ export function buildQueryOptions(
       continue;
     }
 
-    /* ------------------ object filters ------------------ */
+    /* ----------- Object filters ----------- */
     if (typeof value === "object" && !Array.isArray(value)) {
       for (const [opKey, opValue] of Object.entries(value)) {
         const op = operatorMap[opKey];
@@ -169,7 +193,7 @@ export function buildQueryOptions(
   }
 
   /* ============================================================
-     📅 Date Range Shortcuts
+     📅 DATE RANGE SHORTCUTS
   ============================================================ */
   if (req.query.date_range && !filters["created_at[gte]"]) {
     const now = new Date();
@@ -201,9 +225,11 @@ export function buildQueryOptions(
   }
 
   /* ============================================================
-     ⚙️ Sorting + Attributes
+     ⚙️ SORTING (CAMEL + SNAKE SAFE)
   ============================================================ */
-  let sortColumn = sort_by?.trim() || defaultSortBy;
+  let sortColumn = sortBy || sort_by || defaultSortBy;
+  let direction = sortDir || sort_order || defaultOrder;
+
   const colWhitelist = validCols.length ? validCols : allowedFilters;
 
   if (colWhitelist.length && !colWhitelist.includes(sortColumn)) {
@@ -213,12 +239,14 @@ export function buildQueryOptions(
   }
 
   const order = [
-    [sortColumn, sort_order?.toUpperCase() === "DESC" ? "DESC" : "ASC"],
+    [sortColumn, String(direction).toUpperCase() === "DESC" ? "DESC" : "ASC"],
   ];
 
+  /* ============================================================
+     📦 ATTRIBUTES
+  ============================================================ */
   let attributes;
 
-  // 🔹 Explicit fields from query (?fields=...)
   if (fieldStr) {
     attributes = fieldStr
       .split(",")
@@ -231,13 +259,12 @@ export function buildQueryOptions(
     }
   }
 
-  // 🔹 RBAC fallback: use allowed columns explicitly
   if (!attributes && colWhitelist.length) {
     attributes = [...colWhitelist];
   }
 
   /* ============================================================
-     🚀 Final Return
+     🚀 FINAL OUTPUT
   ============================================================ */
   return {
     model,

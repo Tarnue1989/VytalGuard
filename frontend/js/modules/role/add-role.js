@@ -1,9 +1,10 @@
-// 📦 role-main.js – Role Form (Add/Edit) Page Controller (Enterprise-Aligned)
+// 📦 add-role.js – Secure Add/Edit Page Controller for Roles (Enterprise Master)
 // ============================================================================
-// 🧭 Master Pattern: vital-main.js
-// 🔹 Fully enterprise-aligned structure (auth guard, permissions, role visibility)
-// 🔹 Consistent reset/edit/add UI flow + shared state pattern
-// 🔹 All original HTML IDs preserved exactly
+// 🧭 Mirrors add-patient.js architecture
+// 🔹 Unified auth guard + dropdown preload
+// 🔹 Delegates ALL business logic to role-form.js
+// 🔹 Handles edit-prefill (cache + API fallback)
+// 🔹 Preserves all HTML IDs
 // ============================================================================
 
 import { setupRoleFormSubmission } from "./role-form.js";
@@ -17,43 +18,26 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
-import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
+import { authFetch } from "../../authSession.js";
+
 /* ============================================================
-   🔐 Auth Guard
+   🔐 Auth Guard + Shared State
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🧠 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧩 Role Normalization (CRITICAL)
-============================================================ */
-function resolveUserRole() {
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase();
-
-  if (raw.includes("superadmin")) return "superadmin";
-  if (raw.includes("organization_admin")) return "organization_admin";
-  if (raw.includes("facility_admin")) return "facility_admin";
-
-  return "staff";
-}
-
-const userRole = resolveUserRole();
-
-/* ============================================================
-   🧹 Reset Form Helper → Back to Add Mode
+   🧹 Reset Form Helper
 ============================================================ */
 function resetForm() {
   const form = document.getElementById("roleForm");
@@ -62,24 +46,20 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
-  // Reset radios
-  document.getElementById("status_active")?.setAttribute("checked", true);
-  document.getElementById("is_system_false")?.setAttribute("checked", true);
-
-  // Reset dropdowns
   ["organizationSelect", "facilitySelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset UI text
+  document.getElementById("status_active")?.setAttribute("checked", true);
+  document.getElementById("is_system_false")?.setAttribute("checked", true);
+
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Role";
 
   const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Create Role`;
-  }
+  if (submitBtn)
+    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Role`;
 }
 
 /* ============================================================
@@ -92,44 +72,52 @@ document.addEventListener("DOMContentLoaded", async () => {
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
 
+  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+
   /* ============================================================
-     🏢 Organization & Facility Scoping
+     🏢 Organization / Facility (SAME AS PATIENT)
   ============================================================ */
   try {
-    // 🔑 SUPERADMIN → selectable org + facility
-    if (userRole === "superadmin") {
+    if (userRole.includes("super")) {
       const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+      setupSelectOptions(
+        orgSelect,
+        orgs,
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-
-      orgSelect?.addEventListener("change", async () => {
-        const orgId = orgSelect.value || null;
-        const facilities = await loadFacilitiesLite(
+      async function reloadFacilities(orgId = null) {
+        const facs = await loadFacilitiesLite(
           orgId ? { organization_id: orgId } : {},
           true
         );
         setupSelectOptions(
           facSelect,
-          facilities,
+          facs,
           "id",
           "name",
-          "-- Select Facility --"
+          "-- Select Facility (optional) --"
         );
-      });
-    }
+      }
 
-    // 🏢 ORGANIZATION ADMIN → org locked, facility selectable
-    else if (userRole === "organization_admin") {
+      await reloadFacilities();
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+    } else if (userRole.includes("admin")) {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
 
       const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    }
-
-    // 🏥 FACILITY ADMIN / STAFF → both hidden
-    else {
+      setupSelectOptions(
+        facSelect,
+        facs,
+        "id",
+        "name",
+        "-- Select Facility (optional) --"
+      );
+    } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
@@ -139,7 +127,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ============================================================
-     🧾 Form Setup & Submission
+     🧾 Form Setup (ALL LOGIC LIVES HERE)
   ============================================================ */
   setupRoleFormSubmission({
     form,
@@ -150,7 +138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   /* ============================================================
-     ✏️ Edit Mode Support
+     ✏️ Edit Mode Prefill (CACHE → API FALLBACK)
   ============================================================ */
   const editId = sessionStorage.getItem("roleEditId");
   const rawPayload = sessionStorage.getItem("roleEditPayload");
@@ -160,41 +148,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("code").value = entry.code || "";
     document.getElementById("description").value = entry.description || "";
 
-    if (entry.organization?.id && orgSelect) {
-      orgSelect.value = entry.organization.id;
+    if (entry.organization_id && orgSelect) {
+      const orgs = await loadOrganizationsLite();
+      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+      orgSelect.value = entry.organization_id;
+    }
 
+    if (entry.facility_id && facSelect) {
       const facs = await loadFacilitiesLite(
-        { organization_id: entry.organization.id },
+        entry.organization_id
+          ? { organization_id: entry.organization_id }
+          : {},
         true
       );
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    }
-
-    if (entry.facility?.id && facSelect) {
-      facSelect.value = entry.facility.id;
-    }
-
-    if (entry.role_type) {
-      const radio = document.getElementById(
-        `is_system_${entry.role_type === "system"}`
+      setupSelectOptions(
+        facSelect,
+        facs,
+        "id",
+        "name",
+        "-- Select Facility (optional) --"
       );
-      if (radio) radio.checked = true;
+      facSelect.value = entry.facility_id;
     }
+
+    (entry.is_system
+      ? document.getElementById("is_system_true")
+      : document.getElementById("is_system_false")
+    )?.setAttribute("checked", true);
 
     if (entry.status) {
-      const radio = document.getElementById(
-        `status_${entry.status.toLowerCase()}`
-      );
-      if (radio) radio.checked = true;
+      document
+        .getElementById(`status_${entry.status}`)
+        ?.setAttribute("checked", true);
     }
 
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Role";
 
     const submitBtn = form.querySelector("button[type=submit]");
-    if (submitBtn) {
+    if (submitBtn)
       submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Role`;
-    }
   }
 
   if (editId && rawPayload) {
@@ -202,24 +195,25 @@ document.addEventListener("DOMContentLoaded", async () => {
       sharedState.currentEditIdRef.value = editId;
       await applyPrefill(JSON.parse(rawPayload));
     } catch (err) {
-      console.error("❌ Cached edit load failed:", err);
-      showToast("❌ Could not load cached role for editing");
+      console.error("❌ Cached role load failed:", err);
+      showToast("❌ Could not load cached role");
     }
   } else {
     const id = new URLSearchParams(window.location.search).get("id");
     if (id) {
+      sharedState.currentEditIdRef.value = id;
       try {
         showLoading();
         const res = await authFetch(`/api/roles/${id}`);
         const result = await res.json();
-        if (!res.ok || !result?.data)
-          throw new Error(result.message || "❌ Failed to fetch role");
 
-        sharedState.currentEditIdRef.value = id;
+        if (!res.ok || !result?.data)
+          throw new Error(result.message || "Failed to load role");
+
         await applyPrefill(result.data);
       } catch (err) {
-        console.error("❌ Failed to load role:", err);
-        showToast(err.message || "❌ Failed to load role for editing");
+        console.error(err);
+        showToast(err.message || "❌ Failed to load role");
       } finally {
         hideLoading();
       }
@@ -227,7 +221,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ============================================================
-     🚪 Cancel & Clear
+     🚪 Cancel / Clear
   ============================================================ */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("roleEditId");

@@ -496,6 +496,13 @@ export const loadAutoBillingRulesLite = (params = {}, force = false) => {
   return fetchGenericList(endpoint, "data", 15, force);
 };
 
+// Billing Triggers lite
+export const loadBillingTriggersLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/billing-triggers${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data", 15, force);
+};
+
 // -----------------------------------------------------------------------------
 // 💳 Billable Items (category & ID helpers)
 // -----------------------------------------------------------------------------

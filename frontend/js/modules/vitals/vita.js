@@ -1,6 +1,6 @@
 // 📦 vitals.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: consultation.js
+// 🧭 Master Pattern: department.js
 // 🔹 Unified initialization entry for the Vital module
 // 🔹 Handles module boot, imports, constants, and safe startup guard
 // ============================================================================
@@ -9,13 +9,13 @@
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filter, table, card, etc.)
+// 🧭 Main module init (filters, table, card, pagination)
 import { initVitalModule } from "./vital-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, verify, void, etc.)
+// ⚙️ Lifecycle + action handlers (view, edit, delete, finalize, etc.)
 import "./vital-actions.js";
 
-// 🧩 Constants (exportable for dynamic field selector or columns)
+// 🧩 Constants (exportable for dynamic field selector / columns)
 import {
   FIELD_LABELS_VITAL,
   FIELD_ORDER_VITAL,
@@ -28,19 +28,16 @@ import { showToast, hideLoading } from "../../utils/index.js";
 /* ============================================================
    🚀 DOM-Ready Bootstrap
 ============================================================ */
-
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Only initialize if the vital form or list container exists
-    if (document.getElementById("vitalForm")) {
+    // 🧩 Initialize only if the vital form or list container exists
+    if (
+      document.getElementById("vitalForm") ||
+      document.getElementById("vitalList") ||
+      document.getElementById("vitalTableBody")
+    ) {
       await initVitalModule();
     }
-
-    // (Optional) Future enhancement:
-    // if (document.getElementById("vitalTableBody")) {
-    //   await initVitalListModule();
-    // }
-
   } catch (err) {
     console.error("❌ Failed to initialize Vital module", err);
     hideLoading();

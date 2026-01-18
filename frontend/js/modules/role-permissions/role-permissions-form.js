@@ -39,6 +39,26 @@ function normalizeMessage(result, fallback) {
   }
 }
 
+function addPermissionPill({ permission_id, permissionName }) {
+  if (!permission_id) return;
+
+  const exists = selectedPermissions.some(
+    (p) => String(p.permission_id) === String(permission_id)
+  );
+
+  if (exists) {
+    showToast("⚠️ Permission already added");
+    return;
+  }
+
+  selectedPermissions.push({
+    permission_id,
+    permissionName: permissionName || "—",
+  });
+
+  renderPermissionPills();
+}
+
 /* ============================================================
    🧠 Pill State
 ============================================================ */
@@ -93,7 +113,11 @@ function renderPermissionPills(isEdit = false) {
 }
 
 export function getPermissionFormState() {
-  return { selectedPermissions, renderPermissionPills };
+  return {
+    selectedPermissions,
+    renderPermissionPills,
+    addPermissionPill, // ✅ REQUIRED
+  };
 }
 
 /* ============================================================

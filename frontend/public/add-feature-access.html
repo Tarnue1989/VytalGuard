@@ -44,168 +44,177 @@
               <div class="card-header">
                 <h5 class="card-title">Add Feature Access</h5>
               </div>
+
               <div class="card-body">
+                <div id="formContainer">
+                  <form id="featureAccessForm" novalidate>
+                    <div class="row gx-4">
 
-              <!-- 📦 Form Container -->
-              <div id="formContainer">
-                <form id="featureAccessForm">
-                  <div class="row gx-4">
-
-                    <!-- ================== SCOPE ================== -->
-
-                    <!-- Organization -->
-                    <div class="col-xxl-4 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="organization_id">
-                          Organization <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="organization_id" name="organization_id" required>
-                          <option value="">-- Select Organization --</option>
-                        </select>
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Role -->
-                    <div class="col-xxl-4 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="role_id">
-                          Role <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="role_id" name="role_id" required>
-                          <option value="">-- Select Role --</option>
-                        </select>
+                      <!-- Organization -->
+                      <div class="col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="organization_id">
+                            Organization <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-select"
+                            id="organization_id"
+                            name="organization_id"
+                            data-required="true"
+                          >
+                            <option value="">-- Select Organization --</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- ================== SINGLE MODE ================== -->
-
-                    <!-- Module (single access mode) -->
-                    <div class="col-xxl-4 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="module_id">
-                          Module <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="module_id" name="module_id">
-                          <option value="">-- Select Module --</option>
-                        </select>
+                      <!-- Role -->
+                      <div class="col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="role_id">
+                            Role <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-select"
+                            id="role_id"
+                            name="role_id"
+                            data-required="true"
+                          >
+                            <option value="">-- Select Role --</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- ================== BULK ACTIONS ================== -->
+                      <!-- Module (single mode) -->
+                      <div class="col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="module_id">
+                            Module <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-select"
+                            id="module_id"
+                            name="module_id"
+                            data-required="true"
+                          >
+                            <option value="">-- Select Module --</option>
+                          </select>
+                        </div>
+                      </div>
 
-                    <div class="col-sm-12 d-flex gap-2 mb-3">
-                      <button
-                        type="button"
-                        id="addAllModulesBtn"
-                        class="btn btn-sm btn-outline-primary"
-                      >
-                        <i class="ri-folder-add-line me-1"></i>
-                        Add all modules
-                      </button>
-
-                      <button
-                        type="button"
-                        id="grantFullAccessBtn"
-                        class="btn btn-sm btn-outline-danger"
-                      >
-                        <i class="ri-shield-check-line me-1"></i>
-                        Grant full access
-                      </button>
-                    </div>
-
-                    <!-- ================== BULK PREVIEW ================== -->
-
-                    <div class="col-sm-12 d-none" id="modulePreviewContainer">
-                      <label class="form-label">Modules to be granted</label>
-
-                      <div class="d-flex gap-2 mb-2">
-                        <button type="button" class="btn btn-xs btn-light" id="selectAllPreview">
-                          Select all
+                      <!-- ================= Bulk Actions ================= -->
+                      <div class="col-12 d-flex gap-2 mb-3">
+                        <button
+                          type="button"
+                          id="addAllModulesBtn"
+                          class="btn btn-sm btn-outline-primary"
+                        >
+                          <i class="ri-folder-add-line me-1"></i>
+                          Select all modules
                         </button>
-                        <button type="button" class="btn btn-xs btn-light" id="deselectAllPreview">
-                          Deselect all
+
+                        <button
+                          type="button"
+                          id="grantFullAccessBtn"
+                          class="btn btn-sm btn-outline-danger"
+                        >
+                          <i class="ri-shield-check-line me-1"></i>
+                          Replace access (all modules)
                         </button>
                       </div>
 
-                      <div
-                        id="modulePreviewList"
-                        class="border rounded p-2 module-grid"
-                        style="max-height:240px; overflow:auto"
-                      >
-
-                        <!-- dynamically rendered -->
-                      </div>
-                    </div>
-
-                    <!-- ================== FACILITY ================== -->
-
-                    <div class="col-xxl-4 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="facility_id">
-                          Facility <small class="text-muted">(optional)</small>
-                        </label>
-                        <select class="form-select" id="facility_id" name="facility_id">
-                          <option value="">-- All Facilities (Org-wide) --</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <!-- ================== STATUS ================== -->
-
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
-                      <div class="mb-3">
+                      <!-- ================= Bulk Preview ================= -->
+                      <div class="col-12 d-none" id="modulePreviewContainer">
                         <label class="form-label">
-                          Status <span class="text-danger">*</span>
+                          Modules to be granted
+                          <small class="text-muted">(bulk replace)</small>
                         </label>
-                        <div>
-                          <div class="form-check form-check-inline">
-                            <input
-                              class="form-check-input"
-                              type="radio"
-                              name="status"
-                              id="status_active"
-                              value="active"
-                              checked
-                            />
-                            <label class="form-check-label" for="status_active">Active</label>
-                          </div>
-                          <div class="form-check form-check-inline">
-                            <input
-                              class="form-check-input"
-                              type="radio"
-                              name="status"
-                              id="status_inactive"
-                              value="inactive"
-                            />
-                            <label class="form-check-label" for="status_inactive">Inactive</label>
+
+                        <div class="d-flex gap-2 mb-2">
+                          <button type="button" class="btn btn-xs btn-light" id="selectAllPreview">
+                            Select all
+                          </button>
+                          <button type="button" class="btn btn-xs btn-light" id="deselectAllPreview">
+                            Deselect all
+                          </button>
+                        </div>
+
+                        <div
+                          id="modulePreviewList"
+                          class="border rounded p-2 module-grid"
+                          style="max-height:240px; overflow:auto"
+                        >
+                          <!-- dynamically rendered -->
+                        </div>
+                      </div>
+
+                      <!-- ================= Facility ================= -->
+                      <div class="col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="facility_id">
+                            Facility <small class="text-muted">(optional, org-wide if empty)</small>
+                          </label>
+                          <select class="form-select" id="facility_id" name="facility_id">
+                            <option value="">-- All Facilities (Org-wide) --</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- ================= Status ================= -->
+                      <div class="col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label">
+                            Status <span class="text-danger">*</span>
+                          </label>
+                          <div>
+                            <div class="form-check form-check-inline">
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                value="active"
+                                checked
+                              >
+                              <label class="form-check-label">Active</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                value="inactive"
+                              >
+                              <label class="form-check-label">Inactive</label>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <!-- ================== ACTIONS ================== -->
-
-                    <div class="col-sm-12">
-                      <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                        </button>
-                        <button type="reset" id="clearBtn" class="btn btn-warning">
-                          <i class="ri-refresh-line me-1"></i> Clear
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                          <i class="ri-save-3-line me-1"></i> Save Access
-                        </button>
+                      <!-- ================= Actions ================= -->
+                      <div class="col-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                            Back
+                          </button>
+                          <button type="reset" id="clearBtn" class="btn btn-warning">
+                            Reset Form
+                          </button>
+                          <button type="submit" class="btn btn-primary">
+                            Save
+                          </button>
+                        </div>
                       </div>
+
                     </div>
-
-                  </div>
-                </form>
+                  </form>
+                </div>
               </div>
-              <!-- /formContainer -->
 
-
-              </div>
             </div>
           </div>
         </div>
@@ -216,11 +225,6 @@
         <span>© VytalGuard HMS 2025</span>
       </div>
     </div>
-  </div>
-
-  <!-- overlays / modals / toasts -->
-  <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
   </div>
 
   <!-- JS -->

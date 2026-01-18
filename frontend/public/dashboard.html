@@ -140,59 +140,96 @@
             </div>
 
         </div>
-
-        <!-- App body -->
-        <div class="app-body">
-
-          <!-- 🔀 Dashboard Tabs -->
+        <!-- ================= DASHBOARD TABS ================= -->
         <div class="dashboard-tabs-wrapper">
-          <div class="container-fluid px-4">
-            <div id="dashboardTabs" class="dashboard-tabs">
-              <button class="dashboard-tab active" data-tab="dashboard">
-                Super Admin
-              </button>
-              <button class="dashboard-tab" data-tab="modules">
-                Modules & Settings
-              </button>
-            </div>
+          <div class="dashboard-tabs" id="dashboardTabs">
+            <button class="dashboard-tab active" data-tab="dashboard">
+              <i class="ri-dashboard-line"></i> Dashboard
+            </button>
+            <button class="dashboard-tab" data-tab="modules">
+              <i class="ri-grid-line"></i> Modules
+            </button>
           </div>
         </div>
 
+        <div class="app-body dashboard-modern">
 
-        <!-- 🔁 Dashboard Content -->
-<!-- 🔁 Dashboard Content -->
+          <!-- ===== DASHBOARD SECTION ===== -->
+          <div data-dashboard-section="dashboard">
+            
+            <!-- TOP KPI STRIP -->
+            <div class="container-fluid px-4 mb-4">
+              <div class="dashboard-kpi-strip" id="top-kpis"></div>
+            </div>
 
-<!-- DASHBOARD SECTION -->
-<div data-dashboard-section="dashboard">
+            <!-- MAIN GRID -->
+            <div class="container-fluid px-4">
+              <div class="dashboard-grid">
 
-  <!-- 🩺 Clinical KPIs -->
-  <div class="row mb-4">
-    <div class="col-12">
-      <h6 class="fw-bold text-primary mb-3">
-        <i class="ri-heart-pulse-line me-1"></i>
-        Clinical Overview
-      </h6>
-    </div>
-    <div id="clinical-kpis" class="dashboard-kpi-grid"></div>
-  </div>
+                <!-- ===== MAIN COLUMN ===== -->
+                <div class="dashboard-main">
 
-  <!-- 🏢 Admin / System KPIs -->
-  <div class="row mb-4">
-    <div class="col-12">
-      <h6 class="fw-bold text-secondary mb-3">
-        <i class="ri-settings-3-line me-1"></i>
-        System & Administration
-      </h6>
-    </div>
-    <div id="admin-kpis" class="dashboard-kpi-grid"></div>
-  </div>
+                  <!-- Clinical KPIs -->
+                  <div class="dashboard-section">
+                    <div class="section-header">
+                      <h6><i class="ri-heart-pulse-line"></i> Clinical Overview</h6>
+                    </div>
+                    <div class="dashboard-kpi-grid" id="clinical-kpis"></div>
+                  </div>
 
-</div>
+                  <!-- Admin KPIs -->
+                  <div class="dashboard-section">
+                    <div class="section-header">
+                      <h6><i class="ri-settings-3-line"></i> System & Administration</h6>
+                    </div>
+                    <div class="dashboard-kpi-grid" id="admin-kpis"></div>
+                  </div>
 
-<!-- MODULES SECTION (EMPTY, JS FILLS IT) -->
-<div data-dashboard-section="modules" style="display:none;"></div>
+                  <!-- Activity Analytics -->
+                  <div class="dashboard-section">
+                    <div class="section-header">
+                      <h6><i class="ri-bar-chart-line"></i> Activity Analytics</h6>
+                    </div>
+                    <div id="dashboard-charts"></div>
+                  </div>
 
+                </div>
 
+                <!-- ===== SIDE COLUMN ===== -->
+                <div class="dashboard-side">
+
+                  <div class="side-card">
+                    <div class="side-card-header">
+                      <h6><i class="ri-notification-3-line"></i> Alerts</h6>
+                    </div>
+                    <div id="dashboard-alerts"></div>
+                  </div>
+
+                  <div class="side-card">
+                    <div class="side-card-header">
+                      <h6><i class="ri-time-line"></i> Queues</h6>
+                    </div>
+                    <div id="dashboard-queues"></div>
+                  </div>
+                  <div class="side-card calendar-card">
+                    <div class="side-card-header calendar-header">
+                      <button id="cal-prev">‹</button>
+                      <span id="cal-title"></span>
+                      <button id="cal-next">›</button>
+                    </div>
+                    <div id="dashboard-calendar"></div>
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- ===== MODULES SECTION ===== -->
+          <div data-dashboard-section="modules" style="display:none;"></div>
 
         </div>
 

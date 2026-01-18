@@ -1,18 +1,40 @@
 // 📁 controllers/roleController.js
 import Joi from "joi";
 import { Op } from "sequelize";
-import { sequelize, Role, User, Facility, Organization } from "../models/index.js";
+import {
+  sequelize,
+  Role,
+  User,
+  Facility,
+  Organization,
+} from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { ROLE_STATUS } from "../constants/enums.js";
+
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
-import { isSuperAdmin, isOrgOwner, isFacilityHead } from "../utils/role-utils.js";
-import { buildQueryOptions } from "../utils/queryHelper.js";
 import {
-  syncOrgAdminForRole
+  isSuperAdmin,
+  isOrgOwner,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+
+import { buildQueryOptions } from "../utils/queryHelper.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
+import {
+  syncOrgAdminForRole,
 } from "../services/roleProvisioningService.js";
 
 const MODULE_KEY = "roles";
+
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE (ROLE CONTROLLER)
+============================================================ */
+const DEBUG_OVERRIDE = true; // 👈 turn OFF in prod
+const debug = makeModuleLogger("roleController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔗 SHARED INCLUDES (LEFT JOIN SAFE)
@@ -22,13 +44,13 @@ const ROLE_INCLUDES = [
     model: Organization,
     as: "organization",
     attributes: ["id", "name", "code"],
-    required: false, // ✅ KEEP roles even if org is NULL
+    required: false,
   },
   {
     model: Facility,
     as: "facility",
     attributes: ["id", "name", "code", "organization_id"],
-    required: false, // ✅ CRITICAL: keep org-only roles
+    required: false,
   },
   {
     model: User,
@@ -62,35 +84,24 @@ function buildRoleSchema(isSuper, mode = "create") {
     requires_facility: Joi.boolean(),
   };
 
-  // CREATE vs UPDATE rules
   if (mode === "create") {
     base.name = base.name.required();
     base.is_system = base.is_system.default(false);
     base.requires_facility = base.requires_facility.default(false);
   } else {
     base.status = Joi.string().valid(...ROLE_STATUS).optional();
-    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    Object.keys(base).forEach(k => (base[k] = base[k].optional()));
   }
 
-  /* ============================================================
-     🧭 SCOPE RULES
-  ============================================================ */
-
-  // 👑 Superadmin: may set org + facility explicitly
   if (isSuper) {
     base.organization_id = Joi.string().uuid().allow(null).optional();
     base.facility_id = Joi.string().uuid().allow(null).optional();
-  }
-  // 🏢 Org-level users (organization_admin / org_owner)
-  // ✔ Org is enforced in controller
-  // ✔ Facility is OPTIONAL but MUST NOT be stripped
-  else {
+  } else {
     base.facility_id = Joi.string().uuid().allow(null).optional();
   }
 
   return Joi.object(base);
 }
-
 
 /* ============================================================
    📌 CREATE ROLE
@@ -98,13 +109,7 @@ function buildRoleSchema(isSuper, mode = "create") {
 export const createRole = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    console.log("🟡 [CREATE ROLE] RAW req.body:", req.body);
-    console.log("🟡 [CREATE ROLE] USER:", {
-      id: req.user.id,
-      org: req.user.organization_id,
-      fac: req.user.facility_id,
-      roles: req.user.roles,
-    });
+    debug.log("create → incoming", req.body);
 
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -119,32 +124,39 @@ export const createRole = async (req, res) => {
       stripUnknown: true,
     });
 
-    console.log("🟡 [CREATE ROLE] VALIDATED value:", value);
-
     if (validationError) {
+      debug.warn("create → validation failed", validationError);
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
     if (value.is_system && !isSuperAdmin(req.user)) {
       await t.rollback();
-      return error(res, "❌ Only superadmin can create system roles", null, 403);
+      return error(
+        res,
+        "❌ Only superadmin can create system roles",
+        null,
+        403
+      );
     }
 
-    /* ============================================================
+    /* ========================================================
        🧭 SCOPE RESOLUTION
-    ============================================================ */
+    ======================================================== */
     let orgId = null;
     let facilityId = null;
 
     if (isSuperAdmin(req.user)) {
       if (!value.is_system) {
-        orgId = "organization_id" in value ? value.organization_id : null;
-        facilityId = "facility_id" in value ? value.facility_id : null;
+        orgId =
+          "organization_id" in value ? value.organization_id : null;
+        facilityId =
+          "facility_id" in value ? value.facility_id : null;
       }
     } else if (isOrgOwner(req.user)) {
       orgId = req.user.organization_id;
-      facilityId = "facility_id" in value ? value.facility_id : null;
+      facilityId =
+        "facility_id" in value ? value.facility_id : null;
     } else if (isFacilityHead(req.user)) {
       orgId = req.user.organization_id;
       facilityId = req.user.facility_id;
@@ -153,19 +165,14 @@ export const createRole = async (req, res) => {
       facilityId = req.user.facility_id ?? null;
     }
 
-    console.log("🟡 [CREATE ROLE] RESOLVED SCOPE:", {
-      organization_id: orgId,
-      facility_id: facilityId,
-    });
-
     if (!value.is_system && !orgId) {
       await t.rollback();
       return error(res, "Missing organization assignment", null, 400);
     }
 
-    /* ============================================================
+    /* ========================================================
        🚫 UNIQUENESS CHECK
-    ============================================================ */
+    ======================================================== */
     const exists = await Role.findOne({
       where: {
         organization_id: orgId,
@@ -173,51 +180,47 @@ export const createRole = async (req, res) => {
         name: value.name,
       },
       paranoid: false,
+      transaction: t,
     });
 
     if (exists) {
       await t.rollback();
-      return error(res, "Role already exists in this scope", null, 400);
+      return error(
+        res,
+        "Role already exists in this scope",
+        null,
+        400
+      );
     }
 
-    /* ============================================================
-       ✅ CREATE ROLE
-    ============================================================ */
-    const payloadToSave = {
-      ...value,
-      organization_id: orgId,
-      facility_id: facilityId,
-      role_type: value.is_system ? "system" : "custom",
-      created_by_id: req.user.id,
-    };
+    /* ========================================================
+       ✅ CREATE
+    ======================================================== */
+    const created = await Role.create(
+      {
+        ...value,
+        organization_id: orgId,
+        facility_id: facilityId,
+        role_type: value.is_system ? "system" : "custom",
+        created_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
-    console.log("🟢 [CREATE ROLE] FINAL SAVE PAYLOAD:", payloadToSave);
-
-    const created = await Role.create(payloadToSave, { transaction: t });
-
-    // ✅ Commit FIRST (RBAC provisioning must not be inside TX)
     await t.commit();
 
-    /* ============================================================
-       🔐 AUTO-PROVISION ORG ADMIN (MODULES + PERMISSIONS)
-    ============================================================ */
+    /* ========================================================
+       🔐 AUTO-PROVISION (NON-BLOCKING)
+    ======================================================== */
     try {
       await syncOrgAdminForRole(created.id);
-      console.log("🔐 [RBAC] Org admin auto-provisioned:", created.id);
+      debug.log("auto-provision → success", created.id);
     } catch (provErr) {
-      // ⚠️ Do NOT fail role creation if provisioning fails
-      console.error("⚠️ [RBAC] Provisioning warning:", provErr);
+      debug.warn("auto-provision → warning", provErr);
     }
 
     const full = await Role.findByPk(created.id, {
       include: ROLE_INCLUDES,
-    });
-
-    console.log("✅ [CREATE ROLE] SAVED RECORD:", {
-      id: full.id,
-      org: full.organization_id,
-      fac: full.facility_id,
-      name: full.name,
     });
 
     await auditService.logAction({
@@ -231,11 +234,10 @@ export const createRole = async (req, res) => {
     return success(res, "✅ Role created", full);
   } catch (err) {
     await t.rollback();
-    console.error("🔴 [CREATE ROLE] ERROR:", err);
+    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create role", err);
   }
 };
-
 
 /* ============================================================
    📌 UPDATE ROLE
@@ -243,8 +245,10 @@ export const createRole = async (req, res) => {
 export const updateRole = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    console.log("🟡 [UPDATE ROLE] RAW req.body:", req.body);
-    console.log("🟡 [UPDATE ROLE] PARAM id:", req.params.id);
+    debug.log("update → incoming", {
+      id: req.params.id,
+      body: req.body,
+    });
 
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -259,8 +263,6 @@ export const updateRole = async (req, res) => {
       stripUnknown: true,
     });
 
-    console.log("🟡 [UPDATE ROLE] VALIDATED value:", value);
-
     if (validationError) {
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
@@ -272,59 +274,40 @@ export const updateRole = async (req, res) => {
       return error(res, "❌ Role not found", null, 404);
     }
 
-    console.log("🟡 [UPDATE ROLE] BEFORE UPDATE:", {
-      org: record.organization_id,
-      fac: record.facility_id,
-    });
-
     let orgId = record.organization_id;
     let facilityId = record.facility_id;
 
     if (isSuperAdmin(req.user)) {
       if ("organization_id" in value) orgId = value.organization_id;
       if ("facility_id" in value) facilityId = value.facility_id;
-    } 
-    else if (isOrgOwner(req.user)) {
+    } else if (isOrgOwner(req.user)) {
       orgId = req.user.organization_id;
       if ("facility_id" in value) facilityId = value.facility_id;
-    } 
-    else if (isFacilityHead(req.user)) {
+    } else if (isFacilityHead(req.user)) {
       orgId = req.user.organization_id;
       facilityId = req.user.facility_id;
-    } 
-    else {
+    } else {
       orgId = req.user.organization_id;
       facilityId = req.user.facility_id ?? record.facility_id;
     }
 
-    console.log("🟡 [UPDATE ROLE] RESOLVED SCOPE:", {
-      organization_id: orgId,
-      facility_id: facilityId,
-    });
+    await record.update(
+      {
+        ...value,
+        organization_id: orgId,
+        facility_id: facilityId,
+        updated_by_id: req.user?.id || null,
+        ...(value.is_system !== undefined
+          ? { role_type: value.is_system ? "system" : "custom" }
+          : {}),
+      },
+      { transaction: t }
+    );
 
-    const updatePayload = {
-      ...value,
-      organization_id: orgId,
-      facility_id: facilityId,
-      updated_by_id: req.user.id,
-      ...(value.is_system !== undefined
-        ? { role_type: value.is_system ? "system" : "custom" }
-        : {}),
-    };
-
-    console.log("🟢 [UPDATE ROLE] FINAL UPDATE PAYLOAD:", updatePayload);
-
-    await record.update(updatePayload, { transaction: t });
     await t.commit();
 
     const full = await Role.findByPk(record.id, {
       include: ROLE_INCLUDES,
-    });
-
-    console.log("✅ [UPDATE ROLE] AFTER SAVE:", {
-      org: full.organization_id,
-      fac: full.facility_id,
-      name: full.name,
     });
 
     await auditService.logAction({
@@ -338,45 +321,73 @@ export const updateRole = async (req, res) => {
     return success(res, "✅ Role updated", full);
   } catch (err) {
     await t.rollback();
-    console.error("🔴 [UPDATE ROLE] ERROR:", err);
+    debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update role", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET ALL ROLES
+   📌 GET ALL ROLES (MASTER PARITY + SUMMARY)
 ============================================================ */
 export const getAllRoles = async (req, res) => {
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
+    debug.log("list → raw query", req.query);
+
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS (MASTER PARITY)
+    ======================================================== */
     const options = buildQueryOptions(req, "name", "ASC");
 
-    // 🔹 Always normalize WHERE into AND container
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS (NEVER DB COLUMNS)
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    /* ========================================================
+       🧱 WHERE ROOT (ALWAYS NORMALIZED)
+    ======================================================== */
     options.where = { [Op.and]: [] };
 
-    /* ============================================================
-       🔐 BASE SCOPE
-    ============================================================ */
-    if (!isSuperAdmin(req.user)) {
-      // 🔒 Always restrict to user's organization
-      options.where[Op.and].push(
-        { organization_id: req.user.organization_id },
-        { role_type: { [Op.ne]: "system" } }
-      );
+    /* ========================================================
+       📅 DATE RANGE (MASTER – SINGLE FIELD)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
 
-      // 🧭 Facility visibility rules
+    /* ========================================================
+       🔐 TENANT / BASE SCOPE
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      // Organization lock
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      // Non-super users never see system roles
+      options.where[Op.and].push({
+        role_type: { [Op.ne]: "system" },
+      });
+
+      // Facility scope
       if (!isOrgOwner(req.user)) {
-        // Facility-scoped users see:
-        //  • org-wide roles (facility_id = NULL)
-        //  • roles for THEIR facility only
         options.where[Op.and].push({
           [Op.or]: [
             { facility_id: null },
@@ -384,11 +395,8 @@ export const getAllRoles = async (req, res) => {
           ],
         });
       }
-      // ✅ Org owners / org admins:
-      //  • see ALL roles in the organization
-      //  • NO facility filter applied
     } else {
-      // 👑 Superadmin optional filters
+      // Super admin optional scope
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -401,9 +409,9 @@ export const getAllRoles = async (req, res) => {
       }
     }
 
-    /* ============================================================
-       🔍 SEARCH (SAFE – does NOT overwrite scope)
-    ============================================================ */
+    /* ========================================================
+       🔍 GLOBAL SEARCH (SAFE)
+    ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -414,9 +422,27 @@ export const getAllRoles = async (req, res) => {
       });
     }
 
-    /* ============================================================
-       📦 QUERY
-    ============================================================ */
+    /* ========================================================
+       📌 ROLE TYPE FILTER (DB FILTER → req.query)
+    ======================================================== */
+    if (req.query.role_type) {
+      options.where[Op.and].push({
+        role_type: req.query.role_type,
+      });
+    }
+
+    /* ========================================================
+       📌 STATUS FILTER (DB FILTER → req.query, ENUM SAFE)
+    ======================================================== */
+    if (req.query.status && ROLE_STATUS.includes(req.query.status)) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       📦 QUERY EXECUTION
+    ======================================================== */
     const { count, rows } = await Role.findAndCountAll({
       where: options.where,
       include: ROLE_INCLUDES,
@@ -425,15 +451,35 @@ export const getAllRoles = async (req, res) => {
       limit: options.limit,
     });
 
+    /* ========================================================
+       📊 SUMMARY (FILTER-AWARE, PAGE-BASED)
+    ======================================================== */
+    const summary = {
+      total: count,
+      active: rows.filter(r => r.status === "active").length,
+      inactive: rows.filter(r => r.status === "inactive").length,
+    };
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        returned: count,
+        query: req.query,
+        dateRange: dateRange || null,
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Roles loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -441,9 +487,11 @@ export const getAllRoles = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("list → FAILED", err);
     return error(res, "❌ Failed to load roles", err);
   }
 };
+
 
 /* ============================================================
    📌 GET ROLE BY ID
@@ -452,7 +500,7 @@ export const getRoleById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -485,7 +533,7 @@ export const getRoleById = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "view",
       entityId: id,
       entity: found,
@@ -493,20 +541,19 @@ export const getRoleById = async (req, res) => {
 
     return success(res, "✅ Role loaded", found);
   } catch (err) {
+    debug.error("view → FAILED", err);
     return error(res, "❌ Failed to load role", err);
   }
 };
 
 /* ============================================================
-   📌 GET ROLES LITE (Autocomplete)
-   - Used by forms (Create User, Assign Role, Role Permission, etc.)
-   - MUST include org-only roles (facility_id = NULL)
+   📌 GET ROLES LITE (AUTOCOMPLETE)
 ============================================================ */
 export const getAllRolesLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -514,41 +561,21 @@ export const getAllRolesLite = async (req, res) => {
 
     const { q, organization_id, facility_id } = req.query;
 
-    /* ============================================================
-       🧱 BASE WHERE (ACTIVE ROLES ONLY)
-    ============================================================ */
     const where = {
-      status: ROLE_STATUS[0], // usually "active"
+      status: ROLE_STATUS[0],
       [Op.and]: [],
     };
 
-    /* ============================================================
-       🏢 ORGANIZATION SCOPE
-       Priority:
-       1️⃣ UI-selected organization
-       2️⃣ User organization (non-superadmin)
-       3️⃣ No org filter (superadmin)
-    ============================================================ */
     if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
       where.organization_id = organization_id;
     } else if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
     }
 
-    /* ============================================================
-       🏥 FACILITY VISIBILITY (🔥 CRITICAL FIX 🔥)
-       RULES:
-       - Org-only roles (facility_id = NULL) must ALWAYS be visible
-       - Facility roles only when facility is known
-       - Superadmin ignores facility entirely
-    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
         [Op.or]: [
-          // ✅ ORG-LEVEL ROLES (NO FACILITY)
           { facility_id: null },
-
-          // ✅ FACILITY ROLES (ONLY WHEN FACILITY IS KNOWN)
           ...(facility_id && /^[0-9a-f-]{36}$/i.test(facility_id)
             ? [{ facility_id }]
             : []),
@@ -556,17 +583,10 @@ export const getAllRolesLite = async (req, res) => {
       });
     }
 
-    /* ============================================================
-       🔒 SYSTEM ROLE VISIBILITY
-       - Only superadmin can see system roles
-    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       where.role_type = { [Op.ne]: "system" };
     }
 
-    /* ============================================================
-       🔍 TEXT SEARCH (SAFE – DOES NOT BREAK SCOPE)
-    ============================================================ */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -577,9 +597,6 @@ export const getAllRolesLite = async (req, res) => {
       });
     }
 
-    /* ============================================================
-       📦 QUERY
-    ============================================================ */
     const roles = await Role.findAll({
       where,
       attributes: ["id", "name", "code", "description", "role_type"],
@@ -587,7 +604,7 @@ export const getAllRolesLite = async (req, res) => {
       limit: 50,
     });
 
-    const result = roles.map((r) => ({
+    const result = roles.map(r => ({
       id: r.id,
       name: r.name,
       code: r.code || "",
@@ -597,7 +614,7 @@ export const getAllRolesLite = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "list_lite",
       details: {
         count: result.length,
@@ -609,7 +626,7 @@ export const getAllRolesLite = async (req, res) => {
 
     return success(res, "✅ Roles loaded (lite)", { records: result });
   } catch (err) {
-    console.error("❌ getAllRolesLite ERROR:", err);
+    debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load roles (lite)", err);
   }
 };
@@ -621,7 +638,7 @@ export const toggleRoleStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
@@ -667,7 +684,7 @@ export const toggleRoleStatus = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       entity: full,
@@ -676,19 +693,26 @@ export const toggleRoleStatus = async (req, res) => {
 
     return success(res, `✅ Role status set to ${newStatus}`, full);
   } catch (err) {
+    debug.error("toggle_status → FAILED", err);
     return error(res, "❌ Failed to toggle role status", err);
   }
 };
 
 /* ============================================================
    📌 DELETE ROLE
+   (MASTER-PARITY, SAFE SOFT DELETE + AUDIT)
 ============================================================ */
 export const deleteRole = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    debug.log("delete → incoming", {
+      id: req.params.id,
+      query: req.query,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
@@ -697,6 +721,9 @@ export const deleteRole = async (req, res) => {
     const { id } = req.params;
     const where = { id };
 
+    /* ========================================================
+       🔐 SCOPE ENFORCEMENT
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
 
@@ -706,13 +733,19 @@ export const deleteRole = async (req, res) => {
 
       where.role_type = { [Op.ne]: "system" };
     } else {
-      if (req.query.organization_id)
+      if (req.query.organization_id) {
         where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
+      }
+      if (req.query.facility_id) {
         where.facility_id = req.query.facility_id;
+      }
     }
 
-    const role = await Role.findOne({ where, transaction: t });
+    const role = await Role.findOne({
+      where,
+      transaction: t,
+    });
+
     if (!role) {
       await t.rollback();
       return error(res, "❌ Role not found", null, 404);
@@ -723,10 +756,14 @@ export const deleteRole = async (req, res) => {
       return error(res, "❌ Cannot delete a system role", null, 403);
     }
 
+    /* ========================================================
+       🗑️ SOFT DELETE (AUDIT SAFE)
+    ======================================================== */
     await role.update(
-      { deleted_by_id: req.user.id },
+      { deleted_by_id: req.user?.id || null },
       { transaction: t }
     );
+
     await role.destroy({ transaction: t });
     await t.commit();
 
@@ -738,7 +775,7 @@ export const deleteRole = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "role",
+      module: MODULE_KEY,
       action: "delete",
       entityId: id,
       entity: full,
@@ -747,6 +784,7 @@ export const deleteRole = async (req, res) => {
     return success(res, "✅ Role deleted", full);
   } catch (err) {
     await t.rollback();
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete role", err);
   }
 };

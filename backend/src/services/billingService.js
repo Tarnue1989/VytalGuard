@@ -11,7 +11,12 @@ import {
 import { logger } from "../utils/logger.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { getTaxRate } from "../constants/tax.js";           // ✅ Liberia tax constants
-import { shouldTriggerBilling } from "../constants/billing.js"; // ✅ Consistent static import
+import { shouldTriggerBillingDB } from "./billingTriggerService.js";
+
+
+function normalize(value) {
+  return (value || "").trim().toLowerCase();
+}
 
 /**
  * billingService – Enterprise-grade auto billing engine (now item-aware)
@@ -29,11 +34,26 @@ export const billingService = {
       logger.warn(`[billingService] ❌ Skipped: No patient_id on entity for module=${module}, entity=${entity?.id}`);
       return null;
     }
+    // 🔐 DB-driven trigger gate
+    const allowed = await shouldTriggerBillingDB({
+      module: normalize(module),
+      status: normalize(entity.status),
+      organization_id: user.organization_id,
+      facility_id: user.facility_id,
+    });
+
+
+    if (!allowed) {
+      logger.info(
+        `[billingService] ⛔ Billing blocked | source=billing_triggers module=${normalize(module)} status=${normalize(entity.status)} org=${user.organization_id} facility=${user.facility_id}`
+      );
+      return null;
+    }
 
     // 1️⃣ Find active auto-billing rule
     const rule = await AutoBillingRule.findOne({
       where: {
-        trigger_module: module,
+        trigger_module: normalize(module),
         organization_id: user.organization_id,
         facility_id: user.facility_id,
         status: "active",
@@ -294,20 +314,25 @@ export const billingService = {
   async billPharmacyTransaction({ transaction, user, sequelizeTransaction }) {
     try {
       logger.info(
-        `[billingService] ▶️ billPharmacyTransaction | txn=${transaction.id}, status=${transaction.status}`
+        `[billingService] ▶️ billPharmacyTransaction | txn=${transaction.id}, status=${normalize(transaction.status)}`
       );
 
-      // ✅ Status gate
-      const shouldBill = shouldTriggerBilling(
-        "pharmacy-transaction",
-        transaction.status
+    // 🔐 DB-driven trigger gate
+    const allowed = await shouldTriggerBillingDB({
+      module: "pharmacy-transaction",
+      status: normalize(transaction.status),
+      organization_id: transaction.organization_id,
+      facility_id: transaction.facility_id,
+    });
+
+
+    if (!allowed) {
+      logger.info(
+        `[billingService] ⛔ Billing blocked by trigger | module=pharmacy-transaction, status=${normalize(transaction.status)}`
       );
-      if (!shouldBill) {
-        logger.info(
-          `[billingService] ⚠️ Skipped billing for txn=${transaction.id}, invalid status=${transaction.status}`
-        );
-        return null;
-      }
+      return null;
+    }
+
 
       // ✅ Must have patient
       if (!transaction.patient_id) {

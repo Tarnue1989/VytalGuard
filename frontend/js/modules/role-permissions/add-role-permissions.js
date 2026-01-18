@@ -1,4 +1,11 @@
 // 📁 add-role-permissions.js – Add/Edit Role Permission (Module + Suggestion + Pills)
+// ============================================================================
+// ✔ Module-aware permission assignment
+// ✔ Pill-based UI (single source of truth)
+// ✔ SuperAdmin full-access support
+// ✔ Edit + Add modes
+// ✔ Fully aligned with role-permissions-form.js
+// ============================================================================
 
 import {
   setupPermissionFormSubmission,
@@ -11,6 +18,7 @@ import {
   hideLoading,
   initPageGuard,
   initLogoutWatcher,
+  autoPagePermissionKey
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -24,8 +32,10 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-// 🔐 Auth Guard
-const token = initPageGuard("role_permissions");
+/* ============================================================
+   🔐 Auth Guard
+============================================================ */
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const sharedState = {
@@ -33,7 +43,7 @@ const sharedState = {
 };
 
 /* ============================================================
-   🧹 Reset Form Helper (Back to Add Mode)
+   🧹 Reset Form Helper
 ============================================================ */
 function resetForm() {
   const form = document.getElementById("rolePermissionForm");
@@ -51,12 +61,11 @@ function resetForm() {
   if (pillsContainer)
     pillsContainer.innerHTML = `<p class="text-muted">No permissions added yet.</p>`;
 
-  ["organizationSelect", "facilitySelect", "roleSelect", "permissionModuleSelect"].forEach(
-    (id) => {
+  ["organizationSelect", "facilitySelect", "roleSelect", "permissionModuleSelect"]
+    .forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
-    }
-  );
+    });
 
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Role Permission";
@@ -81,14 +90,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const permissionInput = document.getElementById("permissionSearch");
   const permissionSuggestions = document.getElementById("permissionSearchSuggestions");
   const addAllModuleBtn = document.getElementById("addAllModulePermissionsBtn");
-
-  // ⭐ NEW: Grant FULL Access button
   const addAllPermissionsBtn = document.getElementById("addAllPermissionsBtn");
 
   const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
-  const { selectedPermissions, renderPermissionPills, addPermissionPill } =
-    getPermissionFormState();
+  // ✅ SINGLE SOURCE OF TRUTH
+  const {
+    selectedPermissions,
+    renderPermissionPills,
+    addPermissionPill,
+  } = getPermissionFormState();
 
   let allPermissionsCache = [];
 
@@ -197,7 +208,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ============================================================
-     ⭐ Grant FULL Access (ALL modules, SuperAdmin only)
+     ⭐ Grant FULL Access (SuperAdmin)
   ============================================================ */
   if (addAllPermissionsBtn) {
     if (!userRole.includes("super")) {
@@ -220,7 +231,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ============================================================
-     🧾 Form submission
+     🧾 Submit (delegated)
   ============================================================ */
   setupPermissionFormSubmission({
     form,
@@ -231,7 +242,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   /* ============================================================
-     ✏️ Edit Mode (unchanged)
+     ✏️ Edit Mode
   ============================================================ */
   const editId =
     sessionStorage.getItem("rolePermissionEditId") ||
@@ -267,8 +278,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const entry = rawPayload
         ? JSON.parse(rawPayload)
-        : (await (await authFetch(`/api/role-permissions/${editId}`)).json())
-            ?.data;
+        : (await (await authFetch(`/api/role-permissions/${editId}`)).json())?.data;
 
       if (entry) {
         sharedState.currentEditIdRef.value = editId;

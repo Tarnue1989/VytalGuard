@@ -1,4 +1,11 @@
-// 📁 add-feature-access.js – Init add/edit Feature Access page
+// 📁 add-feature-access.js – Secure Add/Edit Page Controller for Feature Access
+// ============================================================================
+// 🧭 Mirrors add-feature-module.js architecture EXACTLY
+// 🔹 Unified guard, edit-prefill, reset, cancel, clear
+// 🔹 Session + URL edit resolution
+// 🔹 Edit-mode lockdown for bulk actions
+// 🔹 100% ID retention for linked HTML
+// ============================================================================
 
 import { setupFeatureAccessFormSubmission } from "./feature-access-form.js";
 import {
@@ -7,32 +14,48 @@ import {
   hideLoading,
   initPageGuard,
   initLogoutWatcher,
+  autoPagePermissionKey
 } from "../../utils/index.js";
 import { authFetch } from "../../authSession.js";
 
-// 🔐 Auth Guard
-initPageGuard("feature_accesses");
+/* ============================================================
+   🔐 Auth Guard + Shared State
+============================================================ */
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// Shared edit ref (read-only for this page)
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧹 Reset helper (ADD MODE ONLY)
+   🧹 Reset Form Helper (ADD MODE ONLY)
 ============================================================ */
 function resetForm() {
   const form = document.getElementById("featureAccessForm");
   if (!form) return;
 
   form.reset();
-  document.getElementById("status_active")?.click();
+  sharedState.currentEditIdRef.value = null;
 
+  // Explicit dropdown clears
   ["organization_id", "role_id", "module_id", "facility_id"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+
+  // Default radio
+  document.getElementById("status_active")?.click();
+
+  // Reset title + button
+  const titleEl = document.querySelector(".card-title");
+  if (titleEl) titleEl.textContent = "Add Feature Access";
+
+  const submitBtn = form.querySelector("button[type=submit]");
+  if (submitBtn) {
+    submitBtn.innerHTML =
+      `<i class="ri-save-3-line me-1"></i> Save Access`;
+  }
 }
 
 /* ============================================================
@@ -42,52 +65,80 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("featureAccessForm");
   if (!form) return;
 
-  // Detect edit mode (session OR query)
+  /* ----------------------------------------------------------
+     ✏️ Detect Edit Mode (Session → URL)
+  ----------------------------------------------------------- */
   const editId =
     sessionStorage.getItem("featureAccessEditId") ||
     new URLSearchParams(window.location.search).get("id");
 
   const rawPayload = sessionStorage.getItem("featureAccessEditPayload");
-  const isEdit = !!editId;
+  const isEdit = Boolean(editId);
 
   if (isEdit) {
     sharedState.currentEditIdRef.value = editId;
   }
 
-  // Init form logic (loads dropdowns + submit handler)
-  await setupFeatureAccessFormSubmission({ form });
+  /* ----------------------------------------------------------
+     📦 Init Form Logic (dropdowns + submit)
+  ----------------------------------------------------------- */
+  await setupFeatureAccessFormSubmission({
+    form,
+    sharedState,
+    resetForm,
+    loadEntries: null,
+  });
 
-  /* ========================================================
+  /* ----------------------------------------------------------
      🔒 EDIT MODE LOCKDOWN
-  ======================================================== */
+  ----------------------------------------------------------- */
   if (isEdit) {
     // Disable bulk buttons
     document.getElementById("addAllModulesBtn")?.setAttribute("disabled", true);
-    document.getElementById("grantFullAccessBtn")?.setAttribute("disabled", true);
+    document
+      .getElementById("grantFullAccessBtn")
+      ?.setAttribute("disabled", true);
 
-    // Hide preview controls
-    document.getElementById("modulePreviewContainer")?.classList.add("d-none");
+    // Hide bulk preview controls
+    document
+      .getElementById("modulePreviewContainer")
+      ?.classList.add("d-none");
     document.getElementById("selectAllPreview")?.classList.add("d-none");
     document.getElementById("deselectAllPreview")?.classList.add("d-none");
   }
 
-  /* ========================================================
-     ✏️ Prefill (EDIT MODE)
-  ======================================================== */
-  async function prefillForm(entry) {
-    document.getElementById("organization_id").value = entry.organization_id;
-    document.getElementById("role_id").value = entry.role_id;
-    document.getElementById("module_id").value = entry.module_id;
-    document.getElementById("facility_id").value = entry.facility_id || "";
+  /* ----------------------------------------------------------
+     ✏️ Prefill Helper (EDIT MODE)
+  ----------------------------------------------------------- */
+  async function applyPrefill(entry) {
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val ?? "";
+    };
 
-    document.getElementById(`status_${entry.status}`)?.click();
+    set("organization_id", entry.organization_id);
+    set("role_id", entry.role_id);
+    set("module_id", entry.module_id);
+    set("facility_id", entry.facility_id || "");
+
+    document
+      .getElementById(`status_${entry.status || "active"}`)
+      ?.click();
 
     // UI
-    document.querySelector(".card-title").textContent = "Edit Feature Access";
-    form.querySelector("button[type=submit]").innerHTML =
-      `<i class="ri-save-3-line me-1"></i> Update Access`;
+    const titleEl = document.querySelector(".card-title");
+    if (titleEl) titleEl.textContent = "Edit Feature Access";
+
+    const submitBtn = form.querySelector("button[type=submit]");
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        `<i class="ri-save-3-line me-1"></i> Update Access`;
+    }
   }
 
+  /* ----------------------------------------------------------
+     📦 Load Edit Data (Session → API)
+  ----------------------------------------------------------- */
   if (isEdit) {
     try {
       let entry = null;
@@ -96,35 +147,41 @@ document.addEventListener("DOMContentLoaded", async () => {
         entry = JSON.parse(rawPayload);
       } else {
         showLoading();
-        const res = await authFetch(`/api/features/feature-access/${editId}`);
+        const res = await authFetch(
+          `/api/features/feature-access/${editId}`
+        );
         const result = await res.json();
+
         if (!res.ok || !result?.data) {
-          throw new Error(result?.message || "Failed to load feature access");
+          throw new Error(
+            result?.message || "Failed to load feature access"
+          );
         }
+
         entry = result.data;
       }
 
-      await prefillForm(entry);
+      await applyPrefill(entry);
     } catch (err) {
-      console.error("❌ Edit load failed:", err);
+      console.error("❌ Feature access edit load failed:", err);
       showToast(err.message || "❌ Failed to load feature access");
     } finally {
       hideLoading();
     }
   }
 
-  /* ========================================================
+  /* ----------------------------------------------------------
      🚪 Cancel
-  ======================================================== */
+  ----------------------------------------------------------- */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("featureAccessEditId");
     sessionStorage.removeItem("featureAccessEditPayload");
     window.location.href = "/feature-access-list.html";
   });
 
-  /* ========================================================
+  /* ----------------------------------------------------------
      🧹 Clear (ADD MODE ONLY)
-  ======================================================== */
+  ----------------------------------------------------------- */
   document.getElementById("clearBtn")?.addEventListener("click", () => {
     if (isEdit) return;
     resetForm();

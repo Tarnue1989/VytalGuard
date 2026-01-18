@@ -1,10 +1,10 @@
-// 📁 master-item-category-actions.js – Full Permission-Driven Action Handlers (Upgraded)
+// 📁 master-item-category-actions.js – Enterprise Master Parity (FINAL / LOCKED)
 // ============================================================================
-// 🧭 Master Pattern: role-actions.js / vital-actions.js
-// 🔹 Enterprise-aligned permission scheme (master_item_categories:view, edit...)
-// 🔹 Includes Superadmin bypass + unified permission normalization
+// 🧭 Parity Source: department-actions.js (Gold Standard)
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / toggle-status / delete
 // 🔹 Consistent UX: toasts, confirms, redirects, loading overlays
-// 🔹 100% ID retention for HTML + linked JS modules
+// 🔹 100% DOM ID + route retention
 // ============================================================================
 
 import {
@@ -17,6 +17,9 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./master-item-category-render.js";
 
+/**
+ * Unified permission-aware action handler for Master Item Category module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -26,16 +29,19 @@ export function setupActionHandlers({
   sharedState,
   user, // { role, permissions, roleNames }
 }) {
+  const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("masterItemCategoryTableBody");
   const cardContainer = document.getElementById("masterItemCategoryList");
 
-  // Cache current entries
+  // 🗂️ Cache latest entries
   window.latestMasterItemCategoryEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
-  /* ---------------------- Normalize Permissions ---------------------- */
+  /* ============================================================
+     🔑 Normalize Permissions (MASTER PARITY)
+  ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -48,23 +54,28 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
 
-  // ✅ Superadmin bypass
+  // 🧠 Superadmin bypass
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalizedKey = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  // ✅ Permission checker (MASTER)
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
-  /* ---------------------- Handler Dispatcher ---------------------- */
+  /* ============================================================
+     🎯 Main Dispatcher
+  ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
@@ -75,7 +86,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🔄 Fallback: fetch full record if not cached
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -93,28 +104,24 @@ export function setupActionHandlers({
 
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("master_item_categories:view"))
         return showToast("⛔ You don't have permission to view categories");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("master_item_categories:edit"))
         return showToast("⛔ You don't have permission to edit categories");
       return handleEdit(entry);
     }
 
-    // --- Toggle Status ---
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("master_item_categories:toggle"))
-        return showToast("⛔ You don't have permission to toggle category status");
+      if (!hasPerm("master_item_categories:toggle-status"))
+        return showToast("⛔ You don't have permission to change status");
       return await handleToggleStatus(id, entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("master_item_categories:delete"))
         return showToast("⛔ You don't have permission to delete categories");
@@ -122,25 +129,28 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Handlers ---------------------- */
+  /* ============================================================
+     ⚙️ Action Handlers
+  ============================================================ */
 
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Category Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
-    if (sharedState?.currentEditIdRef)
-      sharedState.currentEditIdRef.value = entry.id;
-
+    if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("masterItemCategoryEditId", entry.id);
     sessionStorage.setItem(
       "masterItemCategoryEditPayload",
       JSON.stringify(entry)
     );
-    window.location.href = `add-master-item-category.html`;
+    window.location.href = "add-master-item-category.html";
   }
 
+  // 🔄 Toggle Status
   async function handleToggleStatus(id, entry) {
     const isActive = (entry.status || "").toLowerCase() === "active";
     const confirmed = await showConfirm(
@@ -152,26 +162,23 @@ export function setupActionHandlers({
 
     try {
       showLoading();
-      const res = await authFetch(`/api/master-item-categories/${id}/toggle-status`, {
-        method: "PATCH",
-      });
+      const res = await authFetch(
+        `/api/master-item-categories/${id}/toggle-status`,
+        { method: "PATCH" }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to toggle category status");
 
       const newStatus =
-        data?.data?.status || (isActive ? "inactive" : "active");
-      const categoryName = entry?.name || data?.data?.name || "Category";
+        (data?.data?.status ||
+          (isActive ? "inactive" : "active")).toLowerCase();
 
-      if (newStatus.toLowerCase() === "active") {
-        showToast(`✅ Category "${categoryName}" has been activated`);
-      } else if (newStatus.toLowerCase() === "inactive") {
-        showToast(`✅ Category "${categoryName}" has been deactivated`);
-      } else {
-        showToast(
-          `✅ Category "${categoryName}" status updated to ${newStatus}`
-        );
-      }
+      showToast(
+        newStatus === "active"
+          ? `✅ Category "${entry.name}" activated`
+          : `✅ Category "${entry.name}" deactivated`
+      );
 
       window.latestMasterItemCategoryEntries = [];
       await loadEntries(currentPage);
@@ -183,8 +190,11 @@ export function setupActionHandlers({
     }
   }
 
+  // 🗑️ Delete
   async function handleDelete(id, entry) {
-    const confirmed = await showConfirm(`Delete category "${entry.name}"?`);
+    const confirmed = await showConfirm(
+      `Delete category "${entry.name}" permanently?`
+    );
     if (!confirmed) return;
 
     try {
@@ -196,9 +206,7 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete category");
 
-      const categoryName = entry?.name || data?.data?.name || "Category";
-      showToast(`✅ Category "${categoryName}" deleted successfully`);
-
+      showToast(`✅ Category "${entry.name}" deleted successfully`);
       window.latestMasterItemCategoryEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -209,36 +217,36 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Global Helpers ---------------------- */
+  /* ============================================================
+     🌍 Global Helpers (Inline Triggers)
+  ============================================================ */
   const findEntry = (id) =>
     (window.latestMasterItemCategoryEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewCategory = (id) => {
     if (!hasPerm("master_item_categories:view"))
       return showToast("⛔ No permission to view categories");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Category not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editCategory = (id) => {
     if (!hasPerm("master_item_categories:edit"))
       return showToast("⛔ No permission to edit categories");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Category not found for editing");
   };
 
-  window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("master_item_categories:toggle"))
-      return showToast("⛔ No permission to toggle category status");
+  window.toggleCategoryStatus = async (id) => {
+    if (!hasPerm("master_item_categories:toggle-status"))
+      return showToast("⛔ No permission to toggle categories");
     const entry = findEntry(id);
     await handleToggleStatus(id, entry);
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteCategory = async (id) => {
     if (!hasPerm("master_item_categories:delete"))
       return showToast("⛔ No permission to delete categories");
     const entry = findEntry(id);

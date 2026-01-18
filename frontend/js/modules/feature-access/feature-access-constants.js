@@ -1,11 +1,25 @@
-// 🧩 Feature Access Field Labels
+// 📁 feature-access-constants.js – Enterprise Master Pattern
+// ============================================================================
+// 🧭 Mirrors feature-module-constants.js EXACTLY (structure + intent)
+// 🔹 Aligned with FeatureAccess model + API payload
+// 🔹 UI-safe (NO raw UUIDs rendered)
+// 🔹 Safe for list, export, card, detail, summary, sorting
+// ============================================================================
+
+/* ============================================================
+   📋 Field Labels (Enterprise Aligned)
+============================================================ */
 export const FIELD_LABELS_FEATURE_ACCESS = {
-  organization_id: "Organization",
-  module_id: "Module",
-  role_id: "Role",
-  facility_id: "Facility",
+  // 🏢 Scope
+  organization: "Organization",
+  module: "Module",
+  role: "Role",
+  facility: "Facility",
+
+  // 🔐 Access
   status: "Status",
 
+  // 👤 Audit (UI-safe associations)
   createdBy: "Created By",
   updatedBy: "Updated By",
   deletedBy: "Deleted By",
@@ -14,69 +28,87 @@ export const FIELD_LABELS_FEATURE_ACCESS = {
   updated_at: "Updated At",
   deleted_at: "Deleted At",
 
-  actions: "Actions"
+  // ⚙️ System
+  actions: "Actions",
 };
 
+/* ============================================================
+   📋 Field Display Order (Table / Export / Detail)
+============================================================ */
 export const FIELD_ORDER_FEATURE_ACCESS = [
-  "organization_id",
-  "module_id",
-  "role_id",
-  "facility_id",
+  // 🏢 Scope
+  "organization",
+  "module",
+  "role",
+  "facility",
+
+  // 🔐 Access
   "status",
+
+  // 🧾 Audit
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
-  "actions"
+
+  // ⚙️ System
+  "actions",
 ];
 
+/* ============================================================
+   👥 Role-Based Default Field Sets
+============================================================ */
 export const FIELD_DEFAULTS_FEATURE_ACCESS = {
   superadmin: [
-    "organization_id",
-    "module_id",
-    "role_id",
-    "facility_id",
+    "organization",
+    "module",
+    "role",
+    "facility",
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
-    "actions"
+
+    "actions",
   ],
+
   admin: [
-    "organization_id",
-    "module_id",
-    "role_id",
-    "facility_id",
+    "organization",
+    "module",
+    "role",
+    "facility",
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
-    "deletedBy",
-    "deleted_at",
-    "actions"
+
+    "actions",
   ],
+
   manager: [
-    "organization_id",
-    "module_id",
-    "role_id",
-    "facility_id",
+    "organization",
+    "module",
+    "role",
+    "facility",
     "status",
+
     "createdBy",
     "created_at",
-    "updatedBy",
-    "updated_at",
-    "actions"
+
+    "actions",
   ],
+
   staff: [
-    "organization_id",
-    "module_id",
+    "organization",
+    "module",
     "status",
-    "actions"
-  ]
+  ],
 };

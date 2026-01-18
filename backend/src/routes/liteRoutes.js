@@ -78,6 +78,7 @@ import { getAllPoliciesLite } from "../controllers/discountPolicyController.js";
 import { getAllWaiversLite } from "../controllers/discountWaiverController.js";
 import { getAllDiscountsLite } from "../controllers/discountController.js";
 import { getAllAutoBillingRulesLite } from "../controllers/autoBillingRuleController.js";
+import { getAllBillingTriggersLite } from "../controllers/billingTriggerController.js";
 
 // -------------------------------
 // 🔹 Consultations & Appointments
@@ -184,16 +185,17 @@ router.get("/registration-logs", verifyAuth, getAllRegistrationLogsLite);
 // -------------------------------
 // 🔹 Billing & Finance
 // -------------------------------
-router.get("/invoices", verifyAuth,  getAllInvoicesLite);
-router.get("/invoices/:id/items", verifyAuth,  getInvoiceItemsLite);
-router.get("/payments", verifyAuth,  getAllPaymentsLite);
-router.get("/deposits", verifyAuth,  getAllDepositsLite);
-router.get("/refunds", verifyAuth,  getAllRefundsLite);                 // payment refunds
-router.get("/refund-deposits", verifyAuth,  getAllRefundDepositsLite); // ✅ deposit refunds (NEW)
-router.get("/discount-policies", verifyAuth,  getAllPoliciesLite);
-router.get("/discount-waivers", verifyAuth,  getAllWaiversLite);
-router.get("/discounts", verifyAuth,  getAllDiscountsLite);
-router.get("/auto-billing-rules", verifyAuth,  getAllAutoBillingRulesLite);
+router.get("/invoices", verifyAuth, getAllInvoicesLite);
+router.get("/invoices/:id/items", verifyAuth, getInvoiceItemsLite);
+router.get("/payments", verifyAuth, getAllPaymentsLite);
+router.get("/deposits", verifyAuth, getAllDepositsLite);
+router.get("/refunds", verifyAuth, getAllRefundsLite);
+router.get("/refund-deposits", verifyAuth, getAllRefundDepositsLite);
+router.get("/discount-policies", verifyAuth, getAllPoliciesLite);
+router.get("/discount-waivers", verifyAuth, getAllWaiversLite);
+router.get("/discounts", verifyAuth, getAllDiscountsLite);
+router.get("/auto-billing-rules", verifyAuth, getAllAutoBillingRulesLite);
+router.get("/billing-triggers", verifyAuth, getAllBillingTriggersLite); // ✅ ADD
 
 // -------------------------------
 // 🔹 Consultations & Appointments

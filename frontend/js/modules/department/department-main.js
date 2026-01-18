@@ -1,16 +1,14 @@
-// 📦 department-main.js – Form-only loader for Department (Enterprise-Aligned)
+// 📦 department-main.js – Form-only loader for Department (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: role-main.js / vital-main.js
-// 🔹 Identical enterprise structure (auth guard, reset, visibility, shared state)
-// 🔹 Supports full department field schema + role-based visibility
-// 🔹 100% ID-safe for existing HTML and JS integration
+// 🧭 Mirrors patient-main.js structure exactly
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
-import {
-  initPageGuard,
-  autoPagePermissionKey,
-  initLogoutWatcher,
-} from "../../utils/index.js";
+import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
 import { setupDepartmentFormSubmission } from "./department-form.js";
 import {
   FIELD_LABELS_DEPARTMENT,
@@ -20,15 +18,11 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-// Automatically resolves correct permission ("departments:create" / "departments:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -49,33 +43,31 @@ function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // 🧩 Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("departmentEditId");
   sessionStorage.removeItem("departmentEditPayload");
 
-  // 🧽 Clear core input fields
+  // Clear text inputs
   ["name", "code", "description", "headInput"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🏢 Reset dropdowns
+  // Clear dropdowns
   ["organizationSelect", "facilitySelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 👤 Clear hidden IDs
-  const headId = document.getElementById("headId");
-  if (headId) headId.value = "";
+  // Clear hidden head ID
+  document.getElementById("headId")?.value = "";
 
-  // ✅ Default status active
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Default status = active
+  document.getElementById("status_active")?.setAttribute("checked", true);
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -90,17 +82,17 @@ function hideForm() {
   localStorage.setItem("departmentFormVisible", "false");
 }
 
-// 🌐 Expose globally for action handlers
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/departments-list.html"; // ✅ plural redirect
+    window.location.href = "/departments-list.html";
   };
 }
 
@@ -108,33 +100,26 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // 🧹 Clear stale session data
     sessionStorage.removeItem("departmentEditId");
     sessionStorage.removeItem("departmentEditPayload");
-
-    // Reset and display form for Add mode
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🧠 Loader (no-op for form-only mode)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles entries
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initDepartmentModule() {
-  // Restore previous form visibility
-  const visible = localStorage.getItem("departmentFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  showForm(); // form-only mode (matches Patient)
 
-  // Initialize form submission behavior
   if (form) {
     setupDepartmentFormSubmission({
       form,
@@ -145,10 +130,9 @@ export async function initDepartmentModule() {
     });
   }
 
-  // Hide list panel for standalone form
   localStorage.setItem("departmentPanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -156,7 +140,6 @@ export async function initDepartmentModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
   setupFieldSelector({
     module: "departments",
     fieldLabels: FIELD_LABELS_DEPARTMENT,
@@ -166,8 +149,8 @@ export async function initDepartmentModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved for future reactive linking)
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for enterprise reactive form state syncing
+  // reserved for future reactive syncing
 }

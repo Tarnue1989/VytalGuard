@@ -1,24 +1,67 @@
-// 📁 role-render.js – Entity Card System (Enterprise Master)
+// 📁 role-render.js – Entity Card System (ROLE | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Fully aligned with patient-render.js entity-card architecture
+// 🧭 FULL MASTER PARITY WITH appointment-render.js
 // 🔹 Table = flat | Card = structured
 // 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize enabled
+// 🔹 Column drag reorder enabled
 // 🔹 Full audit section (created / updated / deleted)
 // 🔹 Permission-driven actions
+// 🔹 Export-safe
 // ============================================================================
 
 import { FIELD_LABELS_ROLE } from "./role-constants.js";
+
 import {
   formatDate,
   formatDateTime,
   initTooltips,
 } from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons
+   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "name",
+  "code",
+  "role_type",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+/* ============================================================
+   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+============================================================ */
+let sortBy = localStorage.getItem("roleSortBy") || "";
+let sortDir = localStorage.getItem("roleSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("roleSortBy", sortBy);
+  localStorage.setItem("roleSortDir", sortDir);
+
+  // 🔗 Bridge to MAIN
+  window.setRoleSort?.(sortBy, sortDir);
+  window.loadRolePage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
 ============================================================ */
 function getRoleActionButtons(entry, user) {
   return buildActionButtons({
@@ -31,7 +74,7 @@ function getRoleActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head (Resize Ready)
+   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -43,30 +86,69 @@ export function renderDynamicTableHead(visibleFields) {
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_ROLE[field] || field.replace(/_/g, " ");
+    const label = FIELD_LABELS_ROLE[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
     th.dataset.key = field;
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
 
+  /* ================= Column resize ================= */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
   colgroup = document.createElement("colgroup");
   visibleFields.forEach(() => {
     const col = document.createElement("col");
-    col.style.width = "150px";
+    col.style.width = "160px";
     colgroup.appendChild(col);
   });
-
   table.prepend(colgroup);
+
   enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadRolePage?.(1);
+    },
+  });
 }
 
 /* ============================================================
-   🔠 Helpers
+   🔠 HELPERS
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
@@ -75,34 +157,40 @@ function renderUserName(user) {
 }
 
 /* ============================================================
-   🧩 Field Value Renderer
+   🧩 FIELD VALUE RENDERER
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
       let cls = "bg-secondary";
       if (raw === "active") cls = "bg-success";
       if (raw === "inactive") cls = "bg-warning text-dark";
       if (raw === "deleted") cls = "bg-danger";
-      return `<span class="badge ${cls}">${label}</span>`;
+
+      return `<span class="badge ${cls}">
+        ${raw.toUpperCase()}
+      </span>`;
     }
 
     case "role_type": {
       const raw = (entry.role_type || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
       const map = {
-        system: "bg-dark",
-        owner: "bg-primary",
-        custom: "bg-info text-dark",
+        system: "bg-dark text-white",
+        owner: "bg-primary text-white",
+        custom: "bg-light text-muted border",
       };
-      return `<span class="badge ${map[raw] || "bg-secondary"}">${label}</span>`;
+      return `<span class="badge ${map[raw] || "bg-secondary"}">
+        ${raw.toUpperCase()}
+      </span>`;
     }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
 
     case "createdBy":
@@ -116,18 +204,12 @@ function renderValue(entry, field) {
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
-      return entry[field] != null && entry[field] !== "" ? String(entry[field]) : "—";
+      return entry[field] ?? "—";
   }
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — ENTITY SYSTEM (ROLE | FINAL)
-   ------------------------------------------------------------
-   ✔ Header = Identity + Status
-   ✔ Context = Scope + Classification
-   ✔ Body = Role meaning only
-   ✔ Audit = Collapsible (enterprise standard)
-   ✔ Actions = Permission-driven
+   🗂️ CARD RENDERER — ROLE
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = f => visibleFields.includes(f);
@@ -140,7 +222,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= HEADER ================= */
   const status = (entry.status || "").toLowerCase();
 
   const header = `
@@ -159,17 +240,10 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= CONTEXT (SCOPE ONLY) ================= */
   const contextItems = [];
-
-  if (has("organization") && entry.organization)
-    contextItems.push(`🏥 ${safe(entry.organization.name)}`);
-
-  if (has("facility") && entry.facility)
-    contextItems.push(`📍 ${safe(entry.facility.name)}`);
-
-  if (has("role_type"))
-    contextItems.push(`🔐 ${renderValue(entry, "role_type")}`);
+  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("role_type")) contextItems.push(`🔐 ${renderValue(entry, "role_type")}`);
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
@@ -177,61 +251,46 @@ export function renderCard(entry, visibleFields, user) {
        </div>`
     : "";
 
-  /* ================= BODY (NO REDUNDANCY) ================= */
-  const left = [];
-  const right = [];
-
-  if (has("description"))
-    left.push(fieldRow("Description", entry.description));
-
   const body = `
     <div class="entity-card-body">
-      <div>${left.join("")}</div>
-      <div>${right.join("")}</div>
+      <div>
+        ${has("description") ? fieldRow("Description", entry.description) : ""}
+      </div>
+      <div></div>
     </div>
   `;
 
-  /* ================= AUDIT (STANDARDIZED) ================= */
-  const auditFields = [];
+  const audit =
+    has("created_at") || has("updated_at") || has("deleted_at")
+      ? `
+        <details class="entity-notes">
+          <summary>Audit</summary>
+          <div class="entity-card-body">
+            <div>
+              ${has("createdBy") ? fieldRow("Created By", renderUserName(entry.createdBy)) : ""}
+              ${has("created_at") ? fieldRow("Created At", formatDateTime(entry.created_at)) : ""}
+            </div>
+            <div>
+              ${has("updatedBy") ? fieldRow("Updated By", renderUserName(entry.updatedBy)) : ""}
+              ${has("updated_at") ? fieldRow("Updated At", formatDateTime(entry.updated_at)) : ""}
+            </div>
+          </div>
+        </details>
+      `
+      : "";
 
-  if (has("created_at"))
-    auditFields.push(fieldRow("Created At", formatDateTime(entry.created_at)));
-  if (has("createdBy"))
-    auditFields.push(fieldRow("Created By", renderUserName(entry.createdBy)));
-
-  if (has("updated_at"))
-    auditFields.push(fieldRow("Updated At", formatDateTime(entry.updated_at)));
-  if (has("updatedBy"))
-    auditFields.push(fieldRow("Updated By", renderUserName(entry.updatedBy)));
-
-  if (has("deleted_at") && entry.deleted_at)
-    auditFields.push(fieldRow("Deleted At", formatDateTime(entry.deleted_at)));
-  if (has("deletedBy") && entry.deletedBy)
-    auditFields.push(fieldRow("Deleted By", renderUserName(entry.deletedBy)));
-
-  const auditSection = auditFields.length
-    ? `<details class="entity-notes">
-         <summary>Audit Information</summary>
-         <div class="entity-card-body">
-           <div>${auditFields.join("")}</div>
-         </div>
-       </details>`
-    : "";
-
-  /* ================= ACTIONS ================= */
   const actions = has("actions")
-    ? `<div class="entity-card-footer">
+    ? `<div class="entity-card-footer export-ignore">
          ${getRoleActionButtons(entry, user)}
        </div>`
     : "";
 
-  /* ================= FINAL ================= */
   return `
     <div class="entity-card role-card">
       ${header}
       ${context}
       ${body}
-      ${auditSection}
+      ${audit}
       ${actions}
     </div>
   `;
@@ -256,7 +315,12 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}">No roles found.</td></tr>`;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
+            No roles found.
+          </td>
+        </tr>`;
       initTooltips(tableBody);
       return;
     }
@@ -280,7 +344,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     cardContainer.innerHTML = entries.length
       ? entries.map(e => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted">No roles found.</p>`;
+      : `<p class="text-muted text-center">No roles found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -289,7 +353,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 

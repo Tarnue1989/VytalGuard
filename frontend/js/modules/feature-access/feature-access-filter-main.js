@@ -1,4 +1,11 @@
-// 📦 feature-access-filter-main.js – Filters + Table/Card (Enterprise-Parity, No Form)
+// 📦 feature-access-filter-main.js – Enterprise Filter + Table/Card (FULL PARITY)
+// ============================================================================
+// 🔹 Unified global search
+// 🔹 Full filter wiring (organization, role, module, facility, status, date range)
+// 🔹 Table + Card view
+// 🔹 Sorting, pagination, export
+// 🔹 Permission-aware actions
+// ============================================================================
 
 import {
   showToast,
@@ -11,11 +18,7 @@ import {
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
-
-import {
-  setupSuggestionInputDynamic,
-} from "../../utils/data-loaders.js";
-
+import { setupSuggestionInputDynamic } from "../../utils/data-loaders.js";
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
@@ -25,37 +28,53 @@ import { setupActionHandlers } from "./feature-access-actions.js";
 import {
   FIELD_ORDER_FEATURE_ACCESS,
   FIELD_DEFAULTS_FEATURE_ACCESS,
+  FIELD_LABELS_FEATURE_ACCESS,
 } from "./feature-access-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
+
 
 /* ============================================================
-   🔐 Auth
+   👤 USER PREF KEYS
+============================================================ */
+const USER_PREF_COLUMN_ORDER_KEY =
+  "user_pref:feature_access:column_order";
+
+/* ============================================================
+   🔐 Auth + Permissions
 ============================================================ */
 const token = initPageGuard("feature_accesses");
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role
-============================================================ */
-const userRole = localStorage.getItem("userRole") || "admin";
+const roleRaw = localStorage.getItem("userRole") || "";
+const userRole = roleRaw.trim().toLowerCase();
+
+let perms = [];
+try {
+  const raw = JSON.parse(localStorage.getItem("permissions") || "[]");
+  perms = Array.isArray(raw)
+    ? raw.map(p => String(p.key || p).toLowerCase())
+    : [];
+} catch {}
+
+const user = { role: userRole, permissions: perms };
 
 /* ============================================================
    🧠 Shared State
 ============================================================ */
-const sharedState = {
-  currentEditIdRef: { value: null },
-};
-
-// 🛟 No-form stubs
+const sharedState = { currentEditIdRef: { value: null } };
+window.entries = [];
 window.showForm = () => {};
 window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ Field Visibility
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "feature_access",
   userRole,
@@ -63,8 +82,25 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_FEATURE_ACCESS,
 });
 
-// 🔒 Only DB-safe columns go to ?fields=
+/* ============================================================
+   👤 Restore column order
+============================================================ */
+try {
+  const saved = JSON.parse(
+    localStorage.getItem(USER_PREF_COLUMN_ORDER_KEY) || "null"
+  );
+  if (Array.isArray(saved)) {
+    visibleFields = saved.filter(f =>
+      FIELD_ORDER_FEATURE_ACCESS.includes(f)
+    );
+  }
+} catch {}
+
+/* ============================================================
+   🔐 API Field Whitelist
+============================================================ */
 const API_FIELD_WHITELIST = [
+  "organization_id",
   "module_id",
   "role_id",
   "facility_id",
@@ -72,9 +108,6 @@ const API_FIELD_WHITELIST = [
   "created_at",
   "updated_at",
   "deleted_at",
-  "created_by",
-  "updated_by",
-  "deleted_by",
 ];
 
 /* ============================================================
@@ -83,10 +116,16 @@ const API_FIELD_WHITELIST = [
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
+  newFields => {
     visibleFields = newFields;
+    localStorage.setItem(
+      USER_PREF_COLUMN_ORDER_KEY,
+      JSON.stringify(visibleFields)
+    );
     renderDynamicTableHead(visibleFields);
-    renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+    syncViewToggleUI({ mode: viewMode });
+
+    renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
   FIELD_ORDER_FEATURE_ACCESS
 );
@@ -94,34 +133,49 @@ renderFieldSelector(
 /* ============================================================
    🔎 Filter DOM Refs
 ============================================================ */
+const globalSearch = document.getElementById("globalSearch");
+
+const filterOrganization = document.getElementById("filterOrganization");
+const filterOrganizationSuggestions =
+  document.getElementById("filterOrganizationSuggestions");
+
 const filterModule = document.getElementById("filterModule");
-const filterModuleSuggestions = document.getElementById("filterModuleSuggestions");
+const filterModuleSuggestions =
+  document.getElementById("filterModuleSuggestions");
 
 const filterRole = document.getElementById("filterRole");
-const filterRoleSuggestions = document.getElementById("filterRoleSuggestions");
+const filterRoleSuggestions =
+  document.getElementById("filterRoleSuggestions");
 
 const filterFacility = document.getElementById("filterFacility");
-const filterFacilitySuggestions = document.getElementById("filterFacilitySuggestions");
+const filterFacilitySuggestions =
+  document.getElementById("filterFacilitySuggestions");
 
 const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const dateRange = document.getElementById("dateRange");
 
 /* ============================================================
-   ⬇️ Export Buttons
-============================================================ */
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
-
-/* ============================================================
-   🌍 View + Paging
+   🌍 View / Sort / Paging
 ============================================================ */
 let currentPage = 1;
 let totalPages = 1;
 let viewMode = localStorage.getItem("featureAccessView") || "table";
 
+let sortBy = "";
+let sortDir = "asc";
+
 /* ============================================================
-   🔁 Pagination Control (MATCHES ALL MODULES)
+   🔃 Sort Bridge
+============================================================ */
+window.setFeatureAccessSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+
+window.loadFeatureAccessPage = (page = 1) => loadEntries(page);
+
+/* ============================================================
+   🔁 Pagination
 ============================================================ */
 const getPagination = initPaginationControl(
   "feature_access",
@@ -130,41 +184,58 @@ const getPagination = initPaginationControl(
 );
 
 /* ============================================================
+   🔎 Auto Search & Filters
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [filterStatus],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
    📋 Filters
 ============================================================ */
 function getFilters() {
   return {
+    search: globalSearch?.value?.trim() || "",
+    organization_id: filterOrganization?.dataset.value || "",
     module_id: filterModule?.dataset.value || "",
     role_id: filterRole?.dataset.value || "",
     facility_id: filterFacility?.dataset.value || "",
     status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    dateRange: dateRange?.value || "",
   };
 }
 
 /* ============================================================
-   📦 Load Feature Access Entries (PAGINATION FIXED)
+   📦 Load Entries
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
+
     const filters = getFilters();
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
     q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.append("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.append("sort_by", sortBy);
+      q.append("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || k === "created_from" || k === "created_to") return;
-      q.append(k, v);
-    });
+    if (filters.search) q.append("search", filters.search);
+    if (filters.dateRange) q.append("dateRange", filters.dateRange);
 
-    const safeFields = visibleFields.filter((f) =>
+    ["organization_id", "module_id", "role_id", "facility_id", "status"]
+      .forEach(k => filters[k] && q.append(k, filters[k]));
+
+    const safeFields = visibleFields.filter(f =>
       API_FIELD_WHITELIST.includes(f)
     );
     if (safeFields.length) q.append("fields", safeFields.join(","));
@@ -174,20 +245,26 @@ async function loadEntries(page = 1) {
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = json?.message || "Failed to load feature access entries";
-      throw new Error(msg);
-    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message || "Load failed");
 
-    const payload = json?.data || {};
+    const payload = json.data || {};
     const records = Array.isArray(payload.records) ? payload.records : [];
 
     window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    currentPage = payload.pagination?.page || safePage;
+    totalPages = payload.pagination?.pageCount || 1;
 
-    renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+    /* ================= RENDER LIST ================= */
+    renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    /* ================= SUMMARY (REUSABLE UTIL) ================= */
+    payload.summary &&
+      renderModuleSummary(payload.summary, "moduleSummary", {
+        moduleLabel: "ACCESS RULES",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -196,6 +273,7 @@ async function loadEntries(page = 1) {
       loadEntries,
       visibleFields,
       sharedState,
+      user,
     });
 
     renderPaginationControls(
@@ -205,7 +283,7 @@ async function loadEntries(page = 1) {
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load feature access entries");
   } finally {
     hideLoading();
@@ -218,31 +296,31 @@ async function loadEntries(page = 1) {
 document.getElementById("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("featureAccessView", "table");
-  renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 document.getElementById("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("featureAccessView", "card");
-  renderList({ entries, visibleFields, viewMode, userRole, currentPage });
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
+
 
 /* ============================================================
-   🔎 Filter Actions
+   🔄 Reset Filters
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  await loadEntries(1);
-};
-
 document.getElementById("resetFilterBtn").onclick = () => {
   [
+    globalSearch,
+    filterOrganization,
     filterModule,
     filterRole,
     filterFacility,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
+    dateRange,
+  ].forEach(el => {
     if (!el) return;
     el.value = "";
     if (el.dataset) el.dataset.value = "";
@@ -254,19 +332,41 @@ document.getElementById("resetFilterBtn").onclick = () => {
 /* ============================================================
    ⬇️ Export
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `feature_access_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data to export");
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#featureAccessList";
-    exportToPDF("Feature Access List", target, "portrait", true);
-  };
+  const rows = mapDataForExport(
+    entries,
+    visibleFields,
+    FIELD_LABELS_FEATURE_ACCESS
+  );
+
+  exportToExcel(
+    rows,
+    `feature_access_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data to export");
+
+  const rows = mapDataForExport(
+    entries,
+    visibleFields,
+    FIELD_LABELS_FEATURE_ACCESS
+  );
+
+  exportToExcel(
+    rows,
+    `feature_access_${new Date().toISOString().slice(0, 10)}`
+  );
+});
+
+document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  const target =
+    viewMode === "table" ? ".table-container" : "#featureAccessList";
+  exportToPDF("Feature Access List", target, "portrait");
+});
 
 /* ============================================================
    🚀 Init
@@ -281,35 +381,66 @@ export async function initFeatureAccess() {
     "featureAccessFilterVisible"
   );
 
-  if (filterRole && filterRoleSuggestions) {
-    setupSuggestionInputDynamic(
-      filterRole,
-      filterRoleSuggestions,
-      "/api/lite/roles",
-      (sel) => (filterRole.dataset.value = sel.id),
-      "name"
-    );
-  }
+  // 🔒 Enforce REAL suggestion selection
+  const enforce = input => {
+    input.addEventListener("input", () => {
+      input.dataset.value = "";
+    });
+    input.addEventListener("blur", () => {
+      if (!input.dataset.value) input.value = "";
+    });
+  };
 
-  if (filterModule && filterModuleSuggestions) {
-    setupSuggestionInputDynamic(
-      filterModule,
-      filterModuleSuggestions,
-      "/api/lite/feature-modules",
-      (sel) => (filterModule.dataset.value = sel.id),
-      "name"
-    );
-  }
+  [filterOrganization, filterRole, filterModule, filterFacility]
+    .forEach(enforce);
 
-  if (filterFacility && filterFacilitySuggestions) {
-    setupSuggestionInputDynamic(
-      filterFacility,
-      filterFacilitySuggestions,
-      "/api/lite/facilities",
-      (sel) => (filterFacility.dataset.value = sel.id),
-      "name"
-    );
-  }
+  setupSuggestionInputDynamic(
+    filterOrganization,
+    filterOrganizationSuggestions,
+    "/api/lite/organizations",
+    sel => {
+      filterOrganization.value = sel.name;
+      filterOrganization.dataset.value = sel.id;
+      loadEntries(1);
+    },
+    "name"
+  );
+
+  setupSuggestionInputDynamic(
+    filterRole,
+    filterRoleSuggestions,
+    "/api/lite/roles",
+    sel => {
+      filterRole.value = sel.name;
+      filterRole.dataset.value = sel.id;
+      loadEntries(1);
+    },
+    "name"
+  );
+
+  setupSuggestionInputDynamic(
+    filterModule,
+    filterModuleSuggestions,
+    "/api/lite/feature-modules",
+    sel => {
+      filterModule.value = sel.name;
+      filterModule.dataset.value = sel.id;
+      loadEntries(1);
+    },
+    "name"
+  );
+
+  setupSuggestionInputDynamic(
+    filterFacility,
+    filterFacilitySuggestions,
+    "/api/lite/facilities",
+    sel => {
+      filterFacility.value = sel.name;
+      filterFacility.dataset.value = sel.id;
+      loadEntries(1);
+    },
+    "name"
+  );
 
   await loadEntries(1);
 }
@@ -317,14 +448,6 @@ export async function initFeatureAccess() {
 /* ============================================================
    🏁 Boot
 ============================================================ */
-export function syncRefsToState() {}
-
-function boot() {
-  initFeatureAccess().catch((err) =>
-    console.error("initFeatureAccess failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initFeatureAccess)
+  : initFeatureAccess();

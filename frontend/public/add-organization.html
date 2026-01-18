@@ -4,10 +4,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VytalGuard - Organization Management</title>
+  <title>VytalGuard - Add Organization</title>
 
   <!-- Meta -->
-  <meta name="description" content="VytalGuard HMS - Manage Organizations">
+  <meta name="description" content="VytalGuard HMS - Add an Organization">
   <link rel="shortcut icon" href="assets/images/favicon.svg">
 
   <!-- CSS -->
@@ -31,7 +31,7 @@
           <li class="breadcrumb-item">
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
-          <li class="breadcrumb-item">Organization</li>
+          <li class="breadcrumb-item">Organizations</li>
           <li class="breadcrumb-item text-primary" aria-current="page">Add Organization</li>
         </ol>
       </div>
@@ -48,52 +48,113 @@
 
                 <!-- 📦 Form Container -->
                 <div id="formContainer">
-                  <form id="organizationForm">
+                  <form id="organizationForm" novalidate>
                     <div class="row gx-4">
+
+                      <!-- ================= Organization Information ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Organization Information</h6>
+                        <hr />
+                      </div>
 
                       <!-- Organization Name -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label" for="name">Organization Name <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control" id="name" name="name" placeholder="Enter organization name">
+                          <label class="form-label" for="name">
+                            Organization Name <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="name"
+                            name="name"
+                            minlength="3"
+                            data-required="true"
+                            placeholder="Enter organization name"
+                          >
                         </div>
                       </div>
 
                       <!-- Organization Code -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label" for="code">Code <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control" id="code" name="code" placeholder="Enter code">
+                          <label class="form-label" for="code">
+                            Code <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="code"
+                            name="code"
+                            placeholder="Enter code"
+                            pattern="[A-Za-z0-9_\-]+"
+                            maxlength="50"
+                            data-required="true"
+                          >
                         </div>
+                      </div>
+
+                      <!-- ================= Organization Settings ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Organization Settings</h6>
+                        <hr />
                       </div>
 
                       <!-- Status -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label">Status <span class="text-danger">*</span></label>
-                          <div class="m-0">
+                          <label class="form-label">Status</label>
+                          <div>
                             <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
-                              <label class="form-check-label" for="status_active">Active</label>
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_active"
+                                value="active"
+                                checked
+                              >
+                              <label class="form-check-label" for="status_active">
+                                Active
+                              </label>
                             </div>
                             <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
-                              <label class="form-check-label" for="status_inactive">Inactive</label>
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_inactive"
+                                value="inactive"
+                              >
+                              <label class="form-check-label" for="status_inactive">
+                                Inactive
+                              </label>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <!-- Buttons -->
+                      <!-- ================= Actions ================= -->
                       <div class="col-sm-12">
                         <div class="d-flex gap-2 justify-content-end">
-                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-outline-secondary"
+                          >
                             <i class="ri-arrow-go-back-line me-1"></i> Cancel
                           </button>
-                          <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <button
+                            type="reset"
+                            id="clearBtn"
+                            class="btn btn-warning"
+                          >
                             <i class="ri-refresh-line me-1"></i> Clear
                           </button>
-                          <button type="submit" class="btn btn-primary">
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                          >
                             <i class="ri-save-3-line me-1"></i> Save Organization
                           </button>
                         </div>
@@ -119,9 +180,10 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
-  <!-- ⚠️ removed static <div id="toast">, handled dynamically by toast-utils.js -->
 
   <!-- JS -->
   <script src="assets/js/jquery.min.js"></script>

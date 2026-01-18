@@ -15,7 +15,7 @@ import {
   renderPaginationControls,
   initLogoutWatcher,
 } from "../../utils/index.js";
-
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
@@ -88,78 +88,7 @@ renderFieldSelector(
   FIELD_ORDER_DEPOSIT
 );
 
-/* ============================================================
-   📊 Deposit Summary Renderer (Smart $ logic + Gender Display)
-============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
 
-  const colorMap = {
-    pending: "text-warning",
-    cleared: "text-info",
-    applied: "text-success",
-    cancelled: "text-secondary",
-    reversed: "text-danger",
-    total: "text-dark fw-bold",
-  };
-
-  const formatVal = (key, val) => {
-    if (val === null || val === undefined) return 0;
-
-    // 🧩 handle gender breakdown objects gracefully
-    if (typeof val === "object" && key.toLowerCase() === "gender_breakdown") {
-      const parts = Object.entries(val).map(([g, c]) => `${g}: ${c}`);
-      return parts.length ? parts.join(" / ") : "—";
-    }
-
-    const lower = key.toLowerCase();
-
-    const excludedExact = [
-      "pending",
-      "applied",
-      "cleared",
-      "cancelled",
-      "reversed",
-      "total_deposits",
-      "gender_breakdown",
-      "count",
-    ];
-
-    const shouldFormatAsCurrency =
-      !excludedExact.includes(lower) &&
-      (/_amount/.test(lower) || /_balance/.test(lower) || /total/.test(lower));
-
-    if (shouldFormatAsCurrency && !isNaN(val)) {
-      const num = parseFloat(val);
-      return `$${num.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-
-    return val;
-  };
-
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
 
 /* ============================================================
    🔎 Filter DOM
@@ -277,8 +206,10 @@ async function loadEntries(page = 1) {
     totalPages = Number(payload.pagination?.pageCount) || 1;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
 
+    if (payload.summary) {
+      renderModuleSummary(payload.summary);
+    }
     setupActionHandlers({
       entries,
       token,

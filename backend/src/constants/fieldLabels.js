@@ -971,6 +971,15 @@ export const FIELD_LABELS_AUTO_BILLING_RULE = {
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };
 
+/* -------------------- Billing Trigger -------------------- */
+export const FIELD_LABELS_BILLING_TRIGGER = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  module_key: "Module", trigger_status: "Trigger Status",
+  is_active: "Enabled",
+  created_at: "Created At", updated_at: "Updated At",
+  created_by_id: "Created By", updated_by_id: "Updated By"
+};
+
 /* -------------------- Message -------------------- */
 export const FIELD_LABELS_MESSAGE = {
   id: "ID", conversation_id: "Conversation",

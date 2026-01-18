@@ -496,3 +496,17 @@
   }
 
 }
+
+/* ============================================================
+   🔃 Sortable Table Headers
+============================================================ */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable .sort-icon {
+  font-size: 0.8rem;
+  opacity: 0.5;
+  margin-left: 4px;
+}

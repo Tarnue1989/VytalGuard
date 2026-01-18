@@ -336,6 +336,9 @@ export const getDashboardData = async (req, res) => {
       ["super admin", "superadmin"].includes((r.name || "").toLowerCase())
     );
 
+    /* ========================================================
+       🔹 LOAD DASHBOARD-ELIGIBLE FEATURE MODULES (FIXED)
+    ======================================================== */
     const modules = await FeatureModule.findAll({
       include: [{
         model: FeatureAccess,
@@ -351,22 +354,43 @@ export const getDashboardData = async (req, res) => {
       where: {
         enabled: true,
         status: "active",
+        visibility: { [Op.ne]: "hidden" },
         deleted_at: null,
-        ...(isSuperAdmin ? {} : { "$access.id$": { [Op.ne]: null } }),
+        ...(isSuperAdmin
+          ? {}
+          : {
+              tenant_scope: { [Op.in]: ["org", "facility"] },
+              "$access.id$": { [Op.ne]: null },
+            }),
       },
       order: [["dashboard_order", "ASC"]],
-      raw: true,
+      distinct: true,
+      subQuery: false,
     });
 
+    /* ========================================================
+       🎯 DASHBOARD INTENT FILTER (STRICT, FINAL)
+    ======================================================== */
     const dashboardModules = modules
-      .filter(m => isSuperAdmin || m.show_on_dashboard === true)
-      .sort((a, b) => a.dashboard_order - b.dashboard_order);
+      .filter(
+        m =>
+          m.show_on_dashboard === true &&
+          m.dashboard_type &&
+          m.dashboard_type !== "none"
+      )
+      .sort((a, b) => (a.dashboard_order || 0) - (b.dashboard_order || 0));
 
     const kpis = [];
 
+    /* ========================================================
+       📦 KPI BUILD
+    ======================================================== */
     for (const mod of dashboardModules) {
       const handler = KPI_HANDLERS[mod.key];
-      if (!handler) continue;
+      if (!handler) {
+        debug.warn("Dashboard KPI skipped (no handler)", mod.key);
+        continue;
+      }
 
       if (
         ["global_kpi", "global_chart"].includes(mod.dashboard_type) &&
@@ -430,6 +454,9 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📈 CHART BUILD
+    ======================================================== */
     const charts = [];
 
     for (const mod of dashboardModules) {
@@ -458,6 +485,9 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     const payload = {
       kpis,
       charts,
@@ -469,7 +499,7 @@ export const getDashboardData = async (req, res) => {
     };
 
     setCache(cacheKey, payload);
-    res.json(payload);
+    return res.json(payload);
 
   } catch (err) {
     logger.error("[dashboardController] FAILED", {
@@ -478,6 +508,6 @@ export const getDashboardData = async (req, res) => {
       userId: req.user?.id,
       organization_id: req.user?.organization_id || null,
     });
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };

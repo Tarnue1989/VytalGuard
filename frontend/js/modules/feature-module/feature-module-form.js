@@ -1,15 +1,34 @@
-// 📁 feature-module-form.js – Handles add/edit form for Feature Module
+// 📁 feature-module-form.js – Secure & Role-Aware Feature Module Form
+// ============================================================================
+// 🔹 Rule-driven validation (FEATURE_MODULE_FORM_RULES)
+// 🔹 Role-aware tenant enforcement
+// 🔹 Edit hydration (session + API)
+// 🔹 Dashboard field toggle safety
+// 🔹 Controller-faithful (no silent validation)
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
+  initPageGuard,
+  initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
 
+import { FEATURE_MODULE_FORM_RULES } from "./feature-module.form.rules.js";
+
 /* ============================================================
-   🔎 HELPERS
-   ============================================================ */
+   🧩 Helpers
+============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
@@ -18,7 +37,6 @@ function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
   if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
   try {
     return JSON.stringify(msg);
   } catch {
@@ -28,163 +46,236 @@ function normalizeMessage(result, fallback) {
 
 /* ============================================================
    📌 LOAD PARENT MODULES (TOP-LEVEL ONLY)
-   ============================================================ */
+============================================================ */
 async function loadParentModules() {
   try {
     const res = await authFetch("/api/features/feature-modules");
-    let result = {};
-    try { result = await res.json(); } catch {}
+    const json = await res.json();
+    const modules = json?.data?.records || [];
 
-    const modules = result?.data?.records || [];
     const parentSelect = document.getElementById("parent_id");
     if (!parentSelect) return;
 
-    parentSelect.innerHTML = `<option value="">-- None (Top-level) --</option>`;
+    parentSelect.innerHTML =
+      `<option value="">-- None (Top-level) --</option>`;
 
     modules
-      .filter(m => !m.parent_id)
-      .forEach(m => {
+      .filter((m) => !m.parent_id)
+      .forEach((m) => {
         parentSelect.insertAdjacentHTML(
           "beforeend",
           `<option value="${m.id}">${m.name}</option>`
         );
       });
   } catch (err) {
-    console.error("❌ Failed to load parent modules:", err);
-    showToast("❌ Could not load parent module list");
+    console.error(err);
+    showToast("❌ Failed to load parent modules");
   }
 }
 
 /* ============================================================
    🎛️ DASHBOARD FIELD TOGGLE
-   ============================================================ */
+============================================================ */
 function toggleDashboardFields(show) {
-  const typeEl = document.getElementById("dashboard_type")?.closest(".col-xxl-3");
-  const orderEl = document.getElementById("dashboard_order")?.closest(".col-xxl-3");
+  const typeEl =
+    document.getElementById("dashboard_type")?.closest(".col-xxl-3");
+  const orderEl =
+    document.getElementById("dashboard_order")?.closest(".col-xxl-3");
 
   if (typeEl) typeEl.style.display = show ? "" : "none";
   if (orderEl) orderEl.style.display = show ? "" : "none";
 }
 
 /* ============================================================
-   🚀 INIT FORM
-   ============================================================ */
+   🚀 Main Setup
+============================================================ */
 export async function setupFeatureModuleFormSubmission({ form }) {
-  const sessionId = sessionStorage.getItem("featureModuleEditId");
-  const queryId = getQueryParam("id");
-  const moduleId = sessionId || queryId;
-  const isEdit = !!moduleId;
+  initPageGuard(autoPagePermissionKey());
+  initLogoutWatcher();
+  enableLiveValidation(form);
 
-  /* ================= UI TITLES ================= */
+  const moduleId =
+    sessionStorage.getItem("featureModuleEditId") ||
+    getQueryParam("id");
+
+  const isEdit = Boolean(moduleId);
+
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  if (titleEl && submitBtn) {
-    titleEl.textContent = isEdit ? "Edit Feature Module" : "Add Feature Module";
-    submitBtn.innerHTML = isEdit
-      ? `<i class="ri-save-3-line me-1"></i> Update Module`
-      : `<i class="ri-add-line me-1"></i> Add Module`;
-  }
+  const submitBtn = form.querySelector("button[type=submit]");
 
-  /* ================= LOAD DEPENDENCIES ================= */
+  const setFormTitle = (txt, icon) => {
+    if (titleEl) titleEl.textContent = txt;
+    if (submitBtn)
+      submitBtn.innerHTML = `<i class="${icon} me-1"></i> ${txt}`;
+  };
+
+  setFormTitle(
+    isEdit ? "Update Feature Module" : "Add Feature Module",
+    "ri-save-3-line"
+  );
+
+  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+
+  /* ============================================================
+     📦 Dependencies
+  ============================================================ */
   await loadParentModules();
 
-  /* ================= PREFILL (EDIT MODE) ================= */
+  /* ============================================================
+     ✏️ PREFILL (EDIT MODE)
+  ============================================================ */
   if (isEdit) {
-    let entry = null;
     try {
-      const raw = sessionStorage.getItem("featureModuleEditPayload");
-      if (raw) entry = JSON.parse(raw);
+      showLoading();
+
+      let entry = JSON.parse(
+        sessionStorage.getItem("featureModuleEditPayload") || "null"
+      );
 
       if (!entry) {
-        showLoading();
-        const res = await authFetch(`/api/features/feature-modules/${moduleId}`);
-        let result = {};
-        try { result = await res.json(); } catch {}
-        entry = result?.data?.record || result?.data;
-        if (!res.ok || !entry) {
-          throw new Error(normalizeMessage(result, "❌ Failed to load module"));
-        }
+        const res = await authFetch(
+          `/api/features/feature-modules/${moduleId}`
+        );
+        const json = await res.json();
+        entry = json?.data?.record;
       }
 
-      document.getElementById("name").value = entry.name || "";
-      document.getElementById("key").value = entry.key || "";
-      document.getElementById("icon").value = entry.icon || "";
-      document.getElementById("category").value = entry.category || "";
-      document.getElementById("description").value = entry.description || "";
-      document.getElementById("route").value = entry.route || "";
-      document.getElementById("parent_id").value = entry.parent_id || "";
-      document.getElementById("tenant_scope").value = entry.tenant_scope || "org";
-      document.getElementById("order_index").value = entry.order_index ?? 0;
+      if (!entry) throw new Error("Feature module not found");
+
+      [
+        "name",
+        "key",
+        "icon",
+        "category",
+        "description",
+        "route",
+      ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = entry[id] || "";
+      });
+
+      document.getElementById("order_index").value =
+        entry.order_index ?? 0;
+
+      document.getElementById("tenant_scope").value =
+        entry.tenant_scope || "org";
+
+      document.getElementById("parent_id").value =
+        entry.parent_id || "";
+
+      document.getElementById("enabled").checked =
+        !!entry.enabled;
 
       if (Array.isArray(entry.tags)) {
-        document.getElementById("tags").value = entry.tags.join(", ");
+        document.getElementById("tags").value =
+          entry.tags.join(", ");
       }
 
-      if (entry.visibility) {
-        document.getElementById(`visibility_${entry.visibility}`)?.setAttribute("checked", true);
-      }
+      document
+        .querySelector(
+          `input[name="visibility"][value="${entry.visibility}"]`
+        )
+        ?.setAttribute("checked", true);
 
-      document.getElementById("enabled").checked = !!entry.enabled;
+      document
+        .querySelector(
+          `input[name="status"][value="${entry.status}"]`
+        )
+        ?.setAttribute("checked", true);
 
-      if (entry.status) {
-        document.getElementById(`status_${entry.status}`)?.setAttribute("checked", true);
-      }
+      document.getElementById("show_on_dashboard").checked =
+        !!entry.show_on_dashboard;
 
-      document.getElementById("show_on_dashboard").checked = !!entry.show_on_dashboard;
-      document.getElementById("dashboard_type").value = entry.dashboard_type || "none";
-      document.getElementById("dashboard_order").value = entry.dashboard_order ?? 0;
+      document.getElementById("dashboard_type").value =
+        entry.dashboard_type || "none";
+
+      document.getElementById("dashboard_order").value =
+        entry.dashboard_order ?? 0;
 
       toggleDashboardFields(!!entry.show_on_dashboard);
-
     } catch (err) {
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load module");
+      console.error(err);
+      showToast(err.message || "❌ Failed to load module");
     } finally {
       hideLoading();
     }
   }
 
-  /* ================= DASHBOARD TOGGLE ================= */
-  document.getElementById("show_on_dashboard")?.addEventListener("change", e => {
-    toggleDashboardFields(e.target.checked);
-  });
+  /* ============================================================
+     🎛️ Dashboard Toggle
+  ============================================================ */
+  document
+    .getElementById("show_on_dashboard")
+    ?.addEventListener("change", (e) =>
+      toggleDashboardFields(e.target.checked)
+    );
 
   toggleDashboardFields(
     document.getElementById("show_on_dashboard")?.checked
   );
 
-  /* ================= SUBMIT ================= */
-  form.onsubmit = async e => {
+  /* ============================================================
+     🛡️ SUBMIT — RULE-DRIVEN
+  ============================================================ */
+  form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of FEATURE_MODULE_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({
+          field: rule.id,
+          message: rule.message,
+        });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
     const payload = {
-      name: document.getElementById("name").value.trim(),
-      key: document.getElementById("key").value.trim(),
-      icon: document.getElementById("icon").value.trim(),
-      category: document.getElementById("category").value.trim(),
-      description: document.getElementById("description").value.trim(),
-      route: document.getElementById("route").value.trim(),
-      parent_id: document.getElementById("parent_id").value || null,
-      tenant_scope: document.getElementById("tenant_scope").value,
-      order_index: Number(document.getElementById("order_index").value || 0),
-      tags: document
-        .getElementById("tags")
-        .value.split(",")
-        .map(t => t.trim())
+      name: form.name.value.trim(),
+      key: form.key.value.trim(),
+      icon: form.icon.value.trim(),
+      category: form.category.value.trim(),
+      description: form.description.value.trim(),
+      route: form.route.value.trim(),
+      parent_id: form.parent_id.value || null,
+      tenant_scope: form.tenant_scope.value,
+      order_index: Number(form.order_index.value || 0),
+      tags: form.tags.value
+        .split(",")
+        .map((t) => t.trim())
         .filter(Boolean),
-      visibility: document.querySelector("input[name='visibility']:checked")?.value || "public",
-      enabled: document.getElementById("enabled").checked,
-      status: document.querySelector("input[name='status']:checked")?.value || "active",
-      show_on_dashboard: document.getElementById("show_on_dashboard").checked,
-      dashboard_type: document.getElementById("dashboard_type").value,
-      dashboard_order: Number(document.getElementById("dashboard_order").value || 0),
+      visibility:
+        form.querySelector("input[name='visibility']:checked")
+          ?.value || "public",
+      enabled: form.enabled.checked,
+      status:
+        form.querySelector("input[name='status']:checked")
+          ?.value || "active",
+      show_on_dashboard: form.show_on_dashboard.checked,
+      dashboard_type: form.dashboard_type.value,
+      dashboard_order: Number(form.dashboard_order.value || 0),
     };
 
-    /* ================= BASIC VALIDATION ================= */
-    if (!payload.name || !payload.key) {
-      showToast("❌ Name and Key are required");
-      return;
+    // 🔐 Frontend tenant safety
+    if (!userRole.includes("super")) {
+      if (payload.tenant_scope === "global") {
+        showToast("❌ Only super admins can assign global scope");
+        return;
+      }
     }
 
     try {
@@ -200,30 +291,43 @@ export async function setupFeatureModuleFormSubmission({ form }) {
         }
       );
 
-      let result = {};
-      try { result = await res.json(); } catch {}
+      const result = await res.json();
 
       if (!res.ok) {
-        throw new Error(normalizeMessage(result, "❌ Save failed"));
+        applyServerErrors(form, result?.errors);
+        throw new Error(
+          normalizeMessage(result, "Save failed")
+        );
       }
 
-      showToast(`✅ Module "${payload.name}" ${isEdit ? "updated" : "created"}`);
+      showToast(
+        isEdit
+          ? "✅ Feature module updated"
+          : "✅ Feature module created"
+      );
 
-      sessionStorage.removeItem("featureModuleEditPayload");
-      sessionStorage.removeItem("featureModuleEditId");
+      sessionStorage.clear();
       window.location.href = "/feature-module-list.html";
-
     } catch (err) {
-      console.error("❌ Submit error:", err);
+      console.error(err);
       showToast(err.message || "❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
 
-  /* ================= CANCEL ================= */
+  /* ============================================================
+     ⏮️ Cancel / Clear
+  ============================================================ */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    form.reset();
+    sessionStorage.clear();
     window.location.href = "/feature-module-list.html";
+  });
+
+  document.getElementById("clearBtn")?.addEventListener("click", () => {
+    clearFormErrors(form);
+    form.reset();
+    setFormTitle("Add Feature Module", "ri-save-3-line");
+    toggleDashboardFields(false);
   });
 }

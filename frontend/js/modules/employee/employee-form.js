@@ -216,15 +216,15 @@ export async function setupEmployeeFormSubmission({ form }) {
           "-- Select Organization --"
         );
         orgSelect.value = orgId;
-        orgSelect.dispatchEvent(new Event("change"));
       }
 
-      /* -------- Facility (optional) -------- */
+      /* -------- Facility (FIXED – DO NOT OVERWRITE) -------- */
       if (facSelect) {
         const facs = await loadFacilitiesLite(
           orgId ? { organization_id: orgId } : {},
-          true
+          true // ✅ REQUIRED
         );
+
         setupSelectOptions(
           facSelect,
           facs,
@@ -232,7 +232,10 @@ export async function setupEmployeeFormSubmission({ form }) {
           "name",
           "-- Select Facility --"
         );
-        if (facId) facSelect.value = facId;
+
+        if (facId) {
+          facSelect.value = facId;
+        }
       }
 
       /* -------- Department (FIXED BUG) -------- */

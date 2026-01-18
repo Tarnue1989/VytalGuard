@@ -1,10 +1,10 @@
 // 📁 role-actions.js – Full Permission-Driven Action Handlers for Roles
 // ============================================================================
 // 🧭 Master Pattern: vital-actions.js
-// 🔹 Follows enterprise-aligned permission scheme (roles:view, roles:edit...)
-// 🔹 Includes Superadmin bypass, normalized permissions
-// 🔹 Unified lifecycle (toggle-status, delete) + consistent UX/UI behavior
-// 🔹 All DOM IDs preserved exactly as in your HTML
+// 🔹 Action routing via data-action (DYNAMIC, enterprise-safe)
+// 🔹 Superadmin bypass + normalized permissions
+// 🔹 Unified lifecycle (view, edit, toggle-status, delete)
+// 🔹 All DOM IDs preserved exactly
 // ============================================================================
 
 import {
@@ -35,7 +35,7 @@ export function setupActionHandlers({
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
-  /* ---------------------- Normalize Permissions ---------------------- */
+  /* ===================== PERMISSIONS ===================== */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -48,9 +48,12 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
 
-  // ✅ Superadmin bypass
   const isSuperAdmin =
     (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
@@ -58,32 +61,32 @@ export function setupActionHandlers({
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalizedKey = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(key.toLowerCase().trim());
 
-  /* ---------------------- Handler Dispatcher ---------------------- */
+  /* ===================== DISPATCHER ===================== */
   async function handleActions(e) {
-    const btn = e.target.closest("button");
-    if (!btn || !btn.dataset.id) return;
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
 
-    const id = btn.dataset.id;
+    const { id, action } = btn.dataset;
+    if (!id || !action) return;
+
     let entry =
       (window.latestRoleEntries || entries || []).find(
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback: fetch full record if not cached
+    // fallback fetch
     if (!entry) {
       try {
         showLoading();
         const res = await authFetch(`/api/roles/${id}`);
-        const data = await res.json().catch(() => ({}));
-        entry = data?.data;
+        const json = await res.json().catch(() => ({}));
+        entry = json?.data || null;
       } catch {
-        return showToast("❌ Role not found");
+        showToast("❌ Role not found");
+        return;
       } finally {
         hideLoading();
       }
@@ -91,38 +94,41 @@ export function setupActionHandlers({
 
     if (!entry) return showToast("❌ Role data missing");
 
-    const cls = btn.classList;
+    /* ===================== ACTION ROUTES ===================== */
 
-    // --- View ---
-    if (cls.contains("view-btn")) {
+    // VIEW
+    if (action === "view") {
       if (!hasPerm("roles:view"))
         return showToast("⛔ You don't have permission to view roles");
       return handleView(entry);
     }
 
-    // --- Edit ---
-    if (cls.contains("edit-btn")) {
+    // EDIT
+    if (action === "edit") {
       if (!hasPerm("roles:edit"))
         return showToast("⛔ You don't have permission to edit roles");
       return handleEdit(entry);
     }
 
-    // --- Toggle Status (Activate/Deactivate) ---
-    if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("roles:toggle"))
+    // TOGGLE STATUS
+    if (action === "toggle-status") {
+      if (!hasPerm("roles:update"))
         return showToast("⛔ You don't have permission to toggle roles");
       return await handleToggleStatus(id, entry);
     }
 
-    // --- Delete ---
-    if (cls.contains("delete-btn")) {
+
+    // DELETE
+    if (action === "delete") {
       if (!hasPerm("roles:delete"))
         return showToast("⛔ You don't have permission to delete roles");
       return await handleDelete(id, entry);
     }
+
+    // Unknown action → safely ignore
   }
 
-  /* ---------------------- Handlers ---------------------- */
+  /* ===================== HANDLERS ===================== */
 
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
@@ -135,11 +141,14 @@ export function setupActionHandlers({
 
     sessionStorage.setItem("roleEditId", entry.id);
     sessionStorage.setItem("roleEditPayload", JSON.stringify(entry));
-    window.location.href = `add-role.html`;
+    window.location.href = "add-role.html";
   }
 
   async function handleToggleStatus(id, entry) {
-    const isActive = (entry.status || "").toLowerCase() === "active";
+    const isActive =
+      entry.is_active === true ||
+      (entry.status || "").toLowerCase() === "active";
+
     const confirmed = await showConfirm(
       isActive
         ? `Deactivate role "${entry.name}"?`
@@ -156,18 +165,15 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to toggle role status");
 
-      const newStatus = (
-        data?.data?.status || (isActive ? "inactive" : "active")
-      ).toLowerCase();
-      const roleName = entry?.name || data?.data?.name || "Role";
+      const newStatus =
+        (data?.data?.status ||
+          (isActive ? "inactive" : "active")).toLowerCase();
 
-      if (newStatus === "active") {
-        showToast(`✅ Role "${roleName}" has been activated`);
-      } else if (newStatus === "inactive") {
-        showToast(`✅ Role "${roleName}" has been deactivated`);
-      } else {
-        showToast(`✅ Role "${roleName}" status updated to ${newStatus}`);
-      }
+      showToast(
+        newStatus === "active"
+          ? `✅ Role "${entry.name}" activated`
+          : `✅ Role "${entry.name}" deactivated`
+      );
 
       window.latestRoleEntries = [];
       await loadEntries(currentPage);
@@ -187,9 +193,10 @@ export function setupActionHandlers({
       showLoading();
       const res = await authFetch(`/api/roles/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "❌ Failed to delete role");
+      if (!res.ok)
+        throw new Error(data.message || "❌ Failed to delete role");
 
-      showToast(`✅ Role "${entry.name}" deleted successfully`);
+      showToast(`✅ Role "${entry.name}" deleted`);
       window.latestRoleEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -200,7 +207,7 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Global Helpers ---------------------- */
+  /* ===================== GLOBAL HELPERS ===================== */
 
   const findEntry = (id) =>
     (window.latestRoleEntries || entries || []).find(
@@ -212,7 +219,6 @@ export function setupActionHandlers({
       return showToast("⛔ No permission to view roles");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Role not found for viewing");
   };
 
   window.editEntry = (id) => {
@@ -220,20 +226,19 @@ export function setupActionHandlers({
       return showToast("⛔ No permission to edit roles");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Role not found for editing");
   };
 
   window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("roles:toggle"))
+    if (!hasPerm("roles:update"))
       return showToast("⛔ No permission to toggle roles");
     const entry = findEntry(id);
-    await handleToggleStatus(id, entry);
+    if (entry) await handleToggleStatus(id, entry);
   };
 
   window.deleteEntry = async (id) => {
     if (!hasPerm("roles:delete"))
       return showToast("⛔ No permission to delete roles");
     const entry = findEntry(id);
-    await handleDelete(id, entry);
+    if (entry) await handleDelete(id, entry);
   };
 }

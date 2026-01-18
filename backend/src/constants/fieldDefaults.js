@@ -20,7 +20,7 @@ import {
   FIELD_ORDER_AUTO_BILLING_RULE, FIELD_ORDER_MESSAGE, FIELD_ORDER_MESSAGE_ATTACHMENT, FIELD_ORDER_CONVERSATION,
   FIELD_ORDER_TRIAGE_RECORD, 
   FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION, FIELD_ORDER_FINANCIAL_LEDGER,
-  FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_LAB_REQUEST_ITEM,  
+  FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_LAB_REQUEST_ITEM, FIELD_ORDER_BILLING_TRIGGER  
 
 } from "./fieldOrder.js";
 
@@ -419,6 +419,7 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
   ],
   staff: ["name", "price", "currency", "status"]
 };
+
 
 /* -------------------- Appointment -------------------- */
 export const FIELD_DEFAULTS_APPOINTMENT = {
@@ -876,17 +877,41 @@ export const FIELD_DEFAULTS_CURRENCY_RATE = {
   ],
   staff: ["from_currency", "to_currency", "rate", "status"]
 };
-
 /* -------------------- Auto Billing Rule -------------------- */
 export const FIELD_DEFAULTS_AUTO_BILLING_RULE = {
   admin: FIELD_ORDER_AUTO_BILLING_RULE,
+
   manager: [
-    "organization", "facility",
+    "organization_id", "facility_id",
     "trigger_feature_module", "trigger_module",
-    "billable_item", "auto_generate",
+    "billable_item_id", "auto_generate",
     "charge_mode", "default_price", "status"
   ],
-  staff: ["trigger_module", "billable_item", "charge_mode", "status"]
+
+  staff: [
+    "trigger_module",
+    "billable_item_id",
+    "charge_mode",
+    "status"
+  ]
+};
+
+/* -------------------- Billing Trigger -------------------- */
+export const FIELD_DEFAULTS_BILLING_TRIGGER = {
+  admin: FIELD_ORDER_BILLING_TRIGGER,
+
+  manager: [
+    "organization_id",
+    "facility_id",
+    "trigger_module",
+    "trigger_status",
+    "enabled"
+  ],
+
+  staff: [
+    "trigger_module",
+    "trigger_status"
+  ]
 };
 
 /* -------------------- Message -------------------- */

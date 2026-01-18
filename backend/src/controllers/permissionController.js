@@ -1,25 +1,56 @@
-// 📁 controllers/permissionController.js
+// 📁 backend/src/controllers/permissionController.js
+// ============================================================================
+// 🔐 Permission Controller – Enterprise Master Pattern (LOCKED)
+// ----------------------------------------------------------------------------
+// 🔹 Unified permission, validation, lifecycle, audit
+// 🔹 Master-aligned filtering + pagination
+// 🔹 Lite + grouping APIs preserved
+// 🔹 Safe soft-delete + restore-ready
+// ============================================================================
+
 import Joi from "joi";
 import { Op } from "sequelize";
 import { sequelize, Permission, Role, User } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { validate } from "../utils/validation.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 
 /* ============================================================
-   🔧 HELPERS
-   ============================================================ */
+   🔐 MODULE
+============================================================ */
+const MODULE_KEY = "permission";
+
+/* ============================================================
+   🔧 DEBUG
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("permissionController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔗 SHARED INCLUDES
+============================================================ */
 const PERMISSION_INCLUDES = [
-  { model: Role, as: "roles", through: { attributes: [] }, attributes: ["id", "name"], required: false },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"], required: false },
+  {
+    model: Role,
+    as: "roles",
+    through: { attributes: [] },
+    attributes: ["id", "name"],
+    required: false,
+  },
+  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA FACTORY
-   ============================================================ */
+   📋 VALIDATION SCHEMA (MASTER)
+============================================================ */
 function buildPermissionSchema(mode = "create") {
   const base = {
     key: Joi.string().max(120).required(),
@@ -31,20 +62,20 @@ function buildPermissionSchema(mode = "create") {
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach(k => { base[k] = base[k].optional(); });
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 GET ALL PERMISSIONS
-   ============================================================ */
+   📌 GET ALL PERMISSIONS (MASTER + FILTERS)
+============================================================ */
 export const getAllPermissions = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "permission",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -52,9 +83,19 @@ export const getAllPermissions = async (req, res) => {
 
     const options = buildQueryOptions(req, "key", "ASC");
 
+    delete options.filters?.dateRange;
+
+    options.where = { [Op.and]: [] };
+
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: { [Op.between]: [dateRange.start, dateRange.end] },
+      });
+    }
+
     if (options.search) {
-      options.where = {
-        ...options.where,
+      options.where[Op.and].push({
         [Op.or]: [
           { key: { [Op.iLike]: `%${options.search}%` } },
           { name: { [Op.iLike]: `%${options.search}%` } },
@@ -62,7 +103,7 @@ export const getAllPermissions = async (req, res) => {
           { module: { [Op.iLike]: `%${options.search}%` } },
           { category: { [Op.iLike]: `%${options.search}%` } },
         ],
-      };
+      });
     }
 
     const { count, rows } = await Permission.findAndCountAll({
@@ -71,11 +112,12 @@ export const getAllPermissions = async (req, res) => {
       order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "permission",
+      module: MODULE_KEY,
       action: "list",
       details: { query: req.query, returned: count },
     });
@@ -89,46 +131,49 @@ export const getAllPermissions = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("getAllPermissions FAILED", err);
     return error(res, "❌ Failed to load permissions", err);
   }
 };
 
 /* ============================================================
    📌 GET PERMISSION BY ID
-   ============================================================ */
+============================================================ */
 export const getPermissionById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const record = await Permission.findOne({ where: { id }, include: PERMISSION_INCLUDES });
+    const record = await Permission.findOne({
+      where: { id: req.params.id },
+      include: PERMISSION_INCLUDES,
+    });
+
     if (!record) return error(res, "❌ Permission not found", null, 404);
 
     await auditService.logAction({
       user: req.user,
-      module: "permission",
+      module: MODULE_KEY,
       action: "view",
-      entityId: id,
+      entityId: record.id,
       entity: record,
     });
 
-    return success(res, "✅ Permission loaded", { record });
+    return success(res, "✅ Permission loaded", record);
   } catch (err) {
     return error(res, "❌ Failed to load permission", err);
   }
 };
 
 /* ============================================================
-   📌 GET LITE PERMISSIONS (for dropdowns)
-   ============================================================ */
+   📌 GET LITE PERMISSIONS
+============================================================ */
 export const getLitePermissions = async (req, res) => {
   try {
-    const { q } = req.query;
-
     const where = {};
-    if (q) {
+
+    if (req.query.q) {
       where[Op.or] = [
-        { key: { [Op.iLike]: `%${q}%` } },
-        { name: { [Op.iLike]: `%${q}%` } },
-        { module: { [Op.iLike]: `%${q}%` } },
+        { key: { [Op.iLike]: `%${req.query.q}%` } },
+        { name: { [Op.iLike]: `%${req.query.q}%` } },
+        { module: { [Op.iLike]: `%${req.query.q}%` } },
       ];
     }
 
@@ -139,7 +184,7 @@ export const getLitePermissions = async (req, res) => {
       limit: 500,
     });
 
-    return success(res, "✅ Lite permission list loaded", { records });
+    return success(res, "✅ Lite permissions loaded", { records });
   } catch (err) {
     return error(res, "❌ Failed to load lite permissions", err);
   }
@@ -147,18 +192,26 @@ export const getLitePermissions = async (req, res) => {
 
 /* ============================================================
    📌 CREATE PERMISSION
-   ============================================================ */
+============================================================ */
 export const createPermission = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const schema = buildPermissionSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    const { value, errors } = validate(
+      buildPermissionSchema("create"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    const exists = await Permission.findOne({ where: { key: value.key }, paranoid: false, transaction: t });
+    const exists = await Permission.findOne({
+      where: { key: value.key },
+      paranoid: false,
+      transaction: t,
+    });
+
     if (exists) {
       await t.rollback();
       return error(res, "❌ Permission key already exists", null, 400);
@@ -168,40 +221,46 @@ export const createPermission = async (req, res) => {
       { ...value, created_by_id: req.user?.id || null },
       { transaction: t }
     );
+
     await t.commit();
 
-    const full = await Permission.findOne({ where: { id: created.id }, include: PERMISSION_INCLUDES });
-    await auditService.logAction({
-      user: req.user,
-      module: "permission",
-      action: "create",
-      entityId: created.id,
-      entity: full,
-      details: value,
+    const full = await Permission.findOne({
+      where: { id: created.id },
+      include: PERMISSION_INCLUDES,
     });
 
-    return success(res, "✅ Permission created", { record: full });
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      entityId: full.id,
+      entity: full,
+    });
+
+    return success(res, "✅ Permission created", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to create permission", err);
   }
 };
 
 /* ============================================================
    📌 UPDATE PERMISSION
-   ============================================================ */
+============================================================ */
 export const updatePermission = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const schema = buildPermissionSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    const { value, errors } = validate(
+      buildPermissionSchema("update"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    const record = await Permission.findOne({ where: { id }, transaction: t });
+    const record = await Permission.findByPk(req.params.id, { transaction: t });
     if (!record) {
       await t.rollback();
       return error(res, "❌ Permission not found", null, 404);
@@ -209,7 +268,7 @@ export const updatePermission = async (req, res) => {
 
     if (value.key) {
       const exists = await Permission.findOne({
-        where: { key: value.key, id: { [Op.ne]: id } },
+        where: { key: value.key, id: { [Op.ne]: record.id } },
         paranoid: false,
         transaction: t,
       });
@@ -219,34 +278,40 @@ export const updatePermission = async (req, res) => {
       }
     }
 
-    await record.update({ ...value, updated_by_id: req.user?.id || null }, { transaction: t });
+    await record.update(
+      { ...value, updated_by_id: req.user?.id || null },
+      { transaction: t }
+    );
+
     await t.commit();
 
-    const full = await Permission.findOne({ where: { id }, include: PERMISSION_INCLUDES });
-    await auditService.logAction({
-      user: req.user,
-      module: "permission",
-      action: "update",
-      entityId: id,
-      entity: full,
-      details: value,
+    const full = await Permission.findOne({
+      where: { id: record.id },
+      include: PERMISSION_INCLUDES,
     });
 
-    return success(res, "✅ Permission updated", { record: full });
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      entityId: full.id,
+      entity: full,
+    });
+
+    return success(res, "✅ Permission updated", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to update permission", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE PERMISSION (Soft Delete)
-   ============================================================ */
+   📌 DELETE PERMISSION (SOFT)
+============================================================ */
 export const deletePermission = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const record = await Permission.findOne({ where: { id }, transaction: t });
+    const record = await Permission.findByPk(req.params.id, { transaction: t });
     if (!record) {
       await t.rollback();
       return error(res, "❌ Permission not found", null, 404);
@@ -256,30 +321,34 @@ export const deletePermission = async (req, res) => {
     await record.destroy({ transaction: t });
     await t.commit();
 
-    const full = await Permission.findOne({ where: { id }, include: PERMISSION_INCLUDES, paranoid: false });
+    const full = await Permission.findOne({
+      where: { id: record.id },
+      include: PERMISSION_INCLUDES,
+      paranoid: false,
+    });
+
     await auditService.logAction({
       user: req.user,
-      module: "permission",
+      module: MODULE_KEY,
       action: "delete",
-      entityId: id,
+      entityId: record.id,
       entity: full,
     });
 
-    return success(res, "✅ Permission deleted", { record: full });
+    return success(res, "✅ Permission deleted", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete permission", err);
   }
 };
 
 /* ============================================================
-   📌 GET PERMISSIONS BY MODULE (Grouping API)
-   ============================================================ */
+   📌 GROUP BY MODULE
+============================================================ */
 export const getPermissionsByModule = async (req, res) => {
   try {
-    const { module } = req.query;
     const where = {};
-    if (module) where.module = module;
+    if (req.query.module) where.module = req.query.module;
 
     const records = await Permission.findAll({
       where,
@@ -287,7 +356,7 @@ export const getPermissionsByModule = async (req, res) => {
       order: [["module", "ASC"], ["key", "ASC"]],
     });
 
-    return success(res, "✅ Permissions grouped by module loaded", { records });
+    return success(res, "✅ Permissions grouped by module", { records });
   } catch (err) {
     return error(res, "❌ Failed to load permissions by module", err);
   }

@@ -2,7 +2,7 @@
 import { restoreSession, getUser, logout, authFetch } from "../authSession.js";
 
 /* -------------------- Route resolver -------------------- */
-// explicit maps for files whose names don't match the key 1:1
+// Explicit maps for files whose names don't match the key 1:1
 const ROUTE_MAP = {
   departments: "/department-list.html",
   facilities: "/facilities-list.html",
@@ -12,10 +12,11 @@ const ROUTE_MAP = {
   roles: "/role-list.html",
   users: "/users-list.html",
 };
+
 function resolveRoute(m) {
-  if (m?.route) return m.route;                       // ✅ prefer DB route
+  if (m?.route) return m.route; // ✅ prefer DB route
   if (m?.key && ROUTE_MAP[m.key]) return ROUTE_MAP[m.key];
-  // generic, safe fallback
+  // Generic safe fallback
   return `/${String(m?.key || "").replace(/_/g, "-")}-list.html`;
 }
 
@@ -33,40 +34,48 @@ export async function initDashboardSession() {
       user.name ||
       `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
       "User";
+
     const role = user.role || "";
 
     // Sidebar profile name
     const sidebarName = document.querySelector(".sidebar-profile .profile-name");
     if (sidebarName) sidebarName.textContent = displayName;
 
-    // Header settings name
+    // Header user name
     const headerName = document.querySelector("#userSettings h6");
     if (headerName) headerName.textContent = displayName;
 
-    // Header settings role
+    // Header role
     const headerRole = document.querySelector("#userSettings span.small");
     if (headerRole) headerRole.textContent = role;
   }
 
-  // ✅ Load sidebar menu after session & user info
+  // ✅ Load sidebar after session + user info
   await loadSidebarModules();
 
-  // Hook logout
+  // Logout hook
   const logoutBtn = document.getElementById("logoutBtn");
-  if (logoutBtn) logoutBtn.addEventListener("click", logout);
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      await logout();
+    });
+  }
 }
 
 /* -------------------- Load Sidebar Modules -------------------- */
 async function loadSidebarModules() {
   try {
-    const res = await authFetch(`/api/features/available-modules`);
+    const res = await authFetch("/api/features/available-modules");
     if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
 
     const data = await res.json();
-    const records =
-    Array.isArray(data.data?.records) ? data.data.records : [];    renderSidebarModules(records);
+    const records = Array.isArray(data.data?.records)
+      ? data.data.records
+      : [];
 
-    // wire submenu toggles once DOM is in place
+    renderSidebarModules(records);
+
+    // Wire submenu toggles after DOM render
     setupSubmenuToggles();
   } catch (err) {
     console.error("❌ Failed to load sidebar modules:", err);
@@ -78,13 +87,13 @@ export function renderSidebarModules(modules, container = null) {
   const sidebarMenu = container || document.querySelector(".sidebar-menu");
   if (!sidebarMenu) return;
 
-  // Only clear when rendering into the root menu
+  // Only clear root menu
   if (!container) sidebarMenu.innerHTML = "";
 
   modules.forEach((m) => {
     const li = document.createElement("li");
 
-    if (m.children && m.children.length > 0) {
+    if (Array.isArray(m.children) && m.children.length > 0) {
       // 📂 Parent with submenu
       li.innerHTML = `
         <a href="javascript:void(0)" class="nav-link has-submenu" aria-expanded="false">
@@ -94,10 +103,11 @@ export function renderSidebarModules(modules, container = null) {
         </a>
         <ul class="submenu"></ul>
       `;
+
       const submenu = li.querySelector(".submenu");
       renderSidebarModules(m.children, submenu); // 🔁 recursion
     } else {
-      // 📄 Leaf node (actual page)
+      // 📄 Leaf node
       const href = resolveRoute(m);
       li.innerHTML = `
         <a href="${href}" class="nav-link">
@@ -116,8 +126,10 @@ function setupSubmenuToggles() {
   document.querySelectorAll(".nav-link.has-submenu").forEach((link) => {
     link.addEventListener("click", (e) => {
       e.preventDefault();
+
       const expanded = link.getAttribute("aria-expanded") === "true";
       link.setAttribute("aria-expanded", String(!expanded));
+
       const parentLi = link.closest("li");
       if (parentLi) parentLi.classList.toggle("open", !expanded);
     });

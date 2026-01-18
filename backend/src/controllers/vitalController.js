@@ -15,16 +15,25 @@ import {
 } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { VITAL_STATUS, ADMISSION_STATUS } from "../constants/enums.js"; // ✅ added
+import { VITAL_STATUS, ADMISSION_STATUS } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { FIELD_VISIBILITY_VITAL } from "../constants/fieldVisibility.js";
 import { billingService } from "../services/billingService.js";
 import { shouldTriggerBilling } from "../constants/billing.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
 
 const MODULE_KEY = "vital";
 
-// 🔖 Local enum maps
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE (VITAL CONTROLLER)
+============================================================ */
+const DEBUG_OVERRIDE = true; // turn OFF in prod
+const debug = makeModuleLogger("vitalController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔖 ENUM MAPS
+============================================================ */
 const VS = {
   OPEN: VITAL_STATUS[0],
   IN_PROGRESS: VITAL_STATUS[1],
@@ -34,11 +43,10 @@ const VS = {
   VOIDED: VITAL_STATUS[5],
 };
 
-// ✅ Admission status map (enterprise-aligned, no hardcoding)
 const AS = {
   ADMITTED: ADMISSION_STATUS[0],
   IN_PROGRESS: ADMISSION_STATUS[1],
-  DISCHARGED: ADMISSION_STATUS[2] ?? "discharged", // fallback if present
+  DISCHARGED: ADMISSION_STATUS[2] ?? "discharged",
 };
 
 /* ============================================================
@@ -67,7 +75,7 @@ const VITAL_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA (Enterprise-Aligned: Medical Record Pattern)
+   📋 JOI SCHEMA
 ============================================================ */
 function buildVitalSchema(mode = "create") {
   const base = {
@@ -78,7 +86,6 @@ function buildVitalSchema(mode = "create") {
     triage_record_id: Joi.string().uuid().allow(null, ""),
     registration_log_id: Joi.string().uuid().allow(null, ""),
 
-    // Clinical data
     bp: Joi.string().max(50).allow("", null),
     pulse: Joi.number().allow(null),
     rr: Joi.number().allow(null),
@@ -96,14 +103,14 @@ function buildVitalSchema(mode = "create") {
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    Object.keys(base).forEach(k => (base[k] = base[k].optional()));
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 CREATE VITAL (Enterprise-Aligned)
+   📌 CREATE VITAL
 ============================================================ */
 export const createVital = async (req, res) => {
   const t = await sequelize.transaction();
@@ -116,17 +123,19 @@ export const createVital = async (req, res) => {
     });
     if (!allowed) return;
 
-    const schema = buildVitalSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
+    debug.log("create → incoming body", req.body);
+
+    const { value, error: validationError } = buildVitalSchema("create").validate(
+      req.body,
+      { stripUnknown: true }
+    );
     if (validationError) {
+      debug.warn("create → validation error", validationError);
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    // 🔄 Normalize UUID fields
-    const uuidFields = [
+    [
       "nurse_id",
       "consultation_id",
       "admission_id",
@@ -134,37 +143,27 @@ export const createVital = async (req, res) => {
       "registration_log_id",
       "organization_id",
       "facility_id",
-    ];
-    uuidFields.forEach((f) => {
-      if (value[f] === "") value[f] = null;
-    });
+    ].forEach(f => value[f] === "" && (value[f] = null));
 
-    // ✅ Default timestamp
     if (!value.recorded_at) value.recorded_at = new Date();
 
-    // 🧭 Org/facility logic (same as Medical Record)
     let orgId, facilityId;
     if (isSuperAdmin(req.user)) {
       orgId = value.organization_id;
       facilityId = value.facility_id;
       if (!orgId || !facilityId) {
         await t.rollback();
-        return error(
-          res,
-          "Organization and Facility are required for superadmin",
-          null,
-          400
-        );
+        return error(res, "Organization and Facility are required", null, 400);
       }
     } else {
       orgId = req.user.organization_id;
       facilityId = req.user.facility_id;
     }
 
-    // 👩‍⚕️ Nurse assignment
+    debug.log("create → resolved scope", { orgId, facilityId });
+
     const nurseId = value.nurse_id || req.user.employee_id || null;
 
-    // 🔗 Auto-link related entities (consultation/admission/triage)
     const linkFilters = { patient_id: value.patient_id, organization_id: orgId, facility_id: facilityId };
 
     const admission = await Admission.findOne({
@@ -188,7 +187,14 @@ export const createVital = async (req, res) => {
     });
     if (triage && !value.triage_record_id) value.triage_record_id = triage.id;
 
-    // 🩺 Create
+    debug.log("create → final payload", {
+      ...value,
+      nurse_id: nurseId,
+      organization_id: orgId,
+      facility_id: facilityId,
+      status: VS.OPEN,
+    });
+
     const created = await Vital.create(
       {
         ...value,
@@ -202,30 +208,28 @@ export const createVital = async (req, res) => {
     );
 
     await t.commit();
+    debug.log("create → committed", { vitalId: created.id });
 
-    const full = await Vital.findOne({
-      where: { id: created.id },
-      include: VITAL_INCLUDES,
-    });
+    const full = await Vital.findOne({ where: { id: created.id }, include: VITAL_INCLUDES });
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "create",
       entityId: created.id,
-      entity: created,
-      details: { ...value, status: VS.OPEN },
+      entity: full,
     });
 
-    return success(res, "✅ Vital created successfully", full);
+    return success(res, "✅ Vital created", full);
   } catch (err) {
     await t.rollback();
+    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create vital", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE VITAL (Enterprise-Aligned)
+   📌 UPDATE VITAL
 ============================================================ */
 export const updateVital = async (req, res) => {
   const t = await sequelize.transaction();
@@ -239,17 +243,19 @@ export const updateVital = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const schema = buildVitalSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
+    debug.log("update → incoming body", req.body);
+
+    const { value, error: validationError } = buildVitalSchema("update").validate(
+      req.body,
+      { stripUnknown: true }
+    );
     if (validationError) {
+      debug.warn("update → validation error", validationError);
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    // 🔄 Normalize UUID fields
-    const uuidFields = [
+    [
       "nurse_id",
       "consultation_id",
       "admission_id",
@@ -257,12 +263,8 @@ export const updateVital = async (req, res) => {
       "registration_log_id",
       "organization_id",
       "facility_id",
-    ];
-    uuidFields.forEach((f) => {
-      if (value[f] === "") value[f] = null;
-    });
+    ].forEach(f => value[f] === "" && (value[f] = null));
 
-    // ✅ Default timestamp
     if (!value.recorded_at) value.recorded_at = new Date();
 
     const record = await Vital.findOne({ where: { id }, transaction: t });
@@ -271,7 +273,8 @@ export const updateVital = async (req, res) => {
       return error(res, "Vital record not found", null, 404);
     }
 
-    // 🧭 Org/facility logic
+    debug.log("update → before", record.toJSON());
+
     let orgId, facilityId;
     if (isSuperAdmin(req.user)) {
       orgId = value.organization_id || record.organization_id;
@@ -283,17 +286,9 @@ export const updateVital = async (req, res) => {
       value.facility_id = facilityId;
     }
 
+    debug.log("update → resolved scope", { orgId, facilityId });
+
     const nurseId = value.nurse_id || record.nurse_id || req.user.employee_id || null;
-
-    // 🔗 Re-resolve linked records if needed
-    const linkFilters = { patient_id: value.patient_id || record.patient_id, organization_id: orgId, facility_id: facilityId };
-
-    const admission = await Admission.findOne({
-      where: { ...linkFilters, status: { [Op.in]: [AS.ADMITTED, AS.IN_PROGRESS] } },
-      order: [["created_at", "DESC"]],
-      transaction: t,
-    });
-    if (admission && !value.admission_id) value.admission_id = admission.id;
 
     await record.update(
       {
@@ -306,7 +301,10 @@ export const updateVital = async (req, res) => {
       { transaction: t }
     );
 
+    debug.log("update → after", record.toJSON());
+
     await t.commit();
+    debug.log("update → committed", { vitalId: id });
 
     const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
 
@@ -316,20 +314,19 @@ export const updateVital = async (req, res) => {
       action: "update",
       entityId: id,
       entity: full,
-      details: value,
     });
 
-    return success(res, "✅ Vital updated successfully", full);
+    return success(res, "✅ Vital updated", full);
   } catch (err) {
     await t.rollback();
+    debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update vital", err);
   }
 };
 
-
 /* ============================================================ 
-   📌 GET ALL VITALS (with labels)
-   ============================================================ */
+   📌 GET ALL VITALS (Enterprise-Mirrored)
+============================================================ */
 export const getAllVitals = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -340,6 +337,8 @@ export const getAllVitals = async (req, res) => {
     });
     if (!allowed) return;
 
+    debug.log("list → incoming query", req.query);
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_VITAL[role] || FIELD_VISIBILITY_VITAL.staff;
@@ -347,28 +346,26 @@ export const getAllVitals = async (req, res) => {
     const options = buildQueryOptions(req, "recorded_at", "DESC", visibleFields);
     options.where = options.where || {};
 
-    // 🔒 Org/facility scoping
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
       if (role === "facility_head") {
         options.where.facility_id = req.user.facility_id;
       }
     } else {
-      if (req.query.organization_id) {
+      if (req.query.organization_id)
         options.where.organization_id = req.query.organization_id;
-      }
-      if (req.query.facility_id) {
+      if (req.query.facility_id)
         options.where.facility_id = req.query.facility_id;
-      }
     }
 
-    // ✅ Direct filters
+    debug.log("list → resolved scope", options.where);
+
+    /* ================= FILTERS ================= */
     if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
     if (req.query.nurse_id) options.where.nurse_id = req.query.nurse_id;
-    if (req.query.doctor_id) options.where.doctor_id = req.query.doctor_id;
     if (req.query.status) options.where.status = req.query.status;
 
-    // ✅ Date filters
     if (req.query["created_at[gte]"]) {
       options.where.recorded_at = {
         ...(options.where.recorded_at || {}),
@@ -382,15 +379,19 @@ export const getAllVitals = async (req, res) => {
       };
     }
 
-    // 🔎 Unified search (bp, patient, nurse, etc.)
+    /* ================= SEARCH ================= */
     if (options.search) {
       const term = `%${options.search}%`;
       options.where[Op.or] = [
         { bp: { [Op.iLike]: term } },
         { position: { [Op.iLike]: term } },
         { status: { [Op.iLike]: term } },
-        sequelize.where(sequelize.cast(sequelize.col("pulse"), "TEXT"), { [Op.iLike]: term }),
-        sequelize.where(sequelize.cast(sequelize.col("temp"), "TEXT"), { [Op.iLike]: term }),
+        sequelize.where(sequelize.cast(sequelize.col("pulse"), "TEXT"), {
+          [Op.iLike]: term,
+        }),
+        sequelize.where(sequelize.cast(sequelize.col("temp"), "TEXT"), {
+          [Op.iLike]: term,
+        }),
         { "$patient.first_name$": { [Op.iLike]: term } },
         { "$patient.last_name$": { [Op.iLike]: term } },
         { "$patient.pat_no$": { [Op.iLike]: term } },
@@ -402,7 +403,11 @@ export const getAllVitals = async (req, res) => {
         options.include.push({ model: Patient, as: "patient", attributes: [] });
       }
       if (!options.include.find(i => i.as === "nurse")) {
-        options.include.push({ model: Employee.unscoped(), as: "nurse", attributes: [] });
+        options.include.push({
+          model: Employee.unscoped(),
+          as: "nurse",
+          attributes: [],
+        });
       }
     }
 
@@ -414,29 +419,38 @@ export const getAllVitals = async (req, res) => {
       limit: options.limit,
     });
 
-    // 🏷️ Add friendly labels
+    debug.log("list → result count", count);
+
     const records = rows.map(r => {
-      const plain = r.get({ plain: true });
-      const patientLabel = plain.patient
-        ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
+      const p = r.get({ plain: true });
+      const patientLabel = p.patient
+        ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
         : "Unknown Patient";
-      const nurseLabel = plain.nurse
-        ? `${plain.nurse.first_name} ${plain.nurse.last_name}`
+      const nurseLabel = p.nurse
+        ? `${p.nurse.first_name} ${p.nurse.last_name}`
         : "No Nurse";
-      const dateLabel = plain.recorded_at
-        ? new Date(plain.recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      const dateLabel = p.recorded_at
+        ? new Date(p.recorded_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
         : "Unknown Date";
 
       const vitalsSummary = [
-        plain.bp ? `BP: ${plain.bp}` : null,
-        plain.pulse ? `Pulse: ${plain.pulse}` : null,
-        plain.temp ? `Temp: ${plain.temp}` : null,
-        plain.oxygen ? `O₂: ${plain.oxygen}` : null,
-      ].filter(Boolean).join(" · ");
+        p.bp ? `BP: ${p.bp}` : null,
+        p.pulse ? `Pulse: ${p.pulse}` : null,
+        p.temp ? `Temp: ${p.temp}` : null,
+        p.oxygen ? `O₂: ${p.oxygen}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
       return {
-        ...plain,
-        label: `${dateLabel} · ${patientLabel} · ${vitalsSummary || "Vitals"} · ${plain.status || ""}`,
+        ...p,
+        label: `${dateLabel} · ${patientLabel} · ${
+          vitalsSummary || "Vitals"
+        } · ${p.status || ""}`,
         patient_label: patientLabel,
         nurse_label: nurseLabel,
       };
@@ -458,13 +472,14 @@ export const getAllVitals = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("getAllVitals → FAILED", err);
     return error(res, "❌ Failed to load vitals", err);
   }
 };
 
 /* ============================================================
-   📌 GET VITAL BY ID (with labels)
-   ============================================================ */
+   📌 GET VITAL BY ID (Enterprise-Mirrored)
+============================================================ */
 export const getVitalById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -483,52 +498,65 @@ export const getVitalById = async (req, res) => {
       where.organization_id = req.user.organization_id;
       if (role === "facility_head") where.facility_id = req.user.facility_id;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
+
+    debug.log("view → where", where);
 
     const record = await Vital.findOne({ where, include: VITAL_INCLUDES });
     if (!record) return error(res, "❌ Vital not found", null, 404);
 
-    const plain = record.get({ plain: true });
-    const patientLabel = plain.patient
-      ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
+    const p = record.get({ plain: true });
+    const patientLabel = p.patient
+      ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
       : "Unknown Patient";
-    const nurseLabel = plain.nurse
-      ? `${plain.nurse.first_name} ${plain.nurse.last_name}`
+    const nurseLabel = p.nurse
+      ? `${p.nurse.first_name} ${p.nurse.last_name}`
       : "No Nurse";
-    const dateLabel = plain.recorded_at
-      ? new Date(plain.recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    const dateLabel = p.recorded_at
+      ? new Date(p.recorded_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
       : "Unknown Date";
 
     const vitalsSummary = [
-      plain.bp ? `BP: ${plain.bp}` : null,
-      plain.pulse ? `Pulse: ${plain.pulse}` : null,
-      plain.temp ? `Temp: ${plain.temp}` : null,
-      plain.oxygen ? `O₂: ${plain.oxygen}` : null,
-    ].filter(Boolean).join(" · ");
+      p.bp ? `BP: ${p.bp}` : null,
+      p.pulse ? `Pulse: ${p.pulse}` : null,
+      p.temp ? `Temp: ${p.temp}` : null,
+      p.oxygen ? `O₂: ${p.oxygen}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
-    plain.label = `${dateLabel} · ${patientLabel} · ${vitalsSummary || "Vitals"} · ${plain.status || ""}`;
-    plain.patient_label = patientLabel;
-    plain.nurse_label = nurseLabel;
+    p.label = `${dateLabel} · ${patientLabel} · ${
+      vitalsSummary || "Vitals"
+    } · ${p.status || ""}`;
+    p.patient_label = patientLabel;
+    p.nurse_label = nurseLabel;
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "view",
       entityId: id,
-      entity: plain,
+      entity: p,
     });
 
-    return success(res, "✅ Vital loaded", plain);
+    return success(res, "✅ Vital loaded", p);
   } catch (err) {
+    debug.error("getVitalById → FAILED", err);
     return error(res, "❌ Failed to load vital", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE VITAL STATUS
-   ============================================================ */
+   📌 TOGGLE VITAL STATUS (Enterprise-Mirrored)
+============================================================ */
 export const toggleVitalStatus = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -547,9 +575,6 @@ export const toggleVitalStatus = async (req, res) => {
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
       if (role === "facility_head") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
     }
 
     const record = await Vital.findOne({ where, transaction: t });
@@ -558,12 +583,13 @@ export const toggleVitalStatus = async (req, res) => {
       return error(res, "❌ Vital not found", null, 404);
     }
 
-    const oldStatus = record.status;
-    let newStatus;
+    debug.log("toggle → before", record.toJSON());
 
-    if (record.status === VS.COMPLETED) newStatus = VS.VOIDED;
-    else if (record.status === VS.VOIDED) newStatus = VS.COMPLETED;
-    else newStatus = record.status;
+    const oldStatus = record.status;
+    let newStatus = oldStatus;
+
+    if (oldStatus === VS.COMPLETED) newStatus = VS.VOIDED;
+    else if (oldStatus === VS.VOIDED) newStatus = VS.COMPLETED;
 
     await record.update(
       { status: newStatus, updated_by_id: req.user?.id || null },
@@ -584,6 +610,7 @@ export const toggleVitalStatus = async (req, res) => {
     }
 
     await t.commit();
+    debug.log("toggle → committed", { id, from: oldStatus, to: newStatus });
 
     const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
 
@@ -599,13 +626,14 @@ export const toggleVitalStatus = async (req, res) => {
     return success(res, `✅ Vital status set to ${newStatus}`, full);
   } catch (err) {
     await t.rollback();
+    debug.error("toggleVitalStatus → FAILED", err);
     return error(res, "❌ Failed to toggle vital status", err);
   }
 };
 
 /* ============================================================
-   📌 FINALIZE VITAL (in_progress → completed)
-   ============================================================ */
+   📌 FINALIZE VITAL (Enterprise-Mirrored)
+============================================================ */
 export const finalizeVital = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -618,6 +646,8 @@ export const finalizeVital = async (req, res) => {
       return error(res, "❌ Only in-progress vitals can be finalized", null, 400);
     }
 
+    debug.log("finalize → before", record.toJSON());
+
     const oldStatus = record.status;
 
     await record.update(
@@ -625,7 +655,7 @@ export const finalizeVital = async (req, res) => {
       { transaction: t }
     );
 
-    if (oldStatus !== VS.COMPLETED && shouldTriggerBilling(MODULE_KEY, VS.COMPLETED)) {
+    if (shouldTriggerBilling(MODULE_KEY, VS.COMPLETED)) {
       await billingService.triggerAutoBilling({
         module: MODULE_KEY,
         entity: record,
@@ -639,6 +669,7 @@ export const finalizeVital = async (req, res) => {
     }
 
     await t.commit();
+    debug.log("finalize → committed", { id });
 
     const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
 
@@ -654,13 +685,14 @@ export const finalizeVital = async (req, res) => {
     return success(res, "✅ Vital finalized", full);
   } catch (err) {
     await t.rollback();
+    debug.error("finalizeVital → FAILED", err);
     return error(res, "❌ Failed to finalize vital", err);
   }
 };
 
 /* ============================================================
-   📌 VOID VITAL (any → voided, admin/superadmin only)
-   ============================================================ */
+   📌 VOID VITAL (Enterprise-Mirrored)
+============================================================ */
 export const voidVital = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -670,8 +702,16 @@ export const voidVital = async (req, res) => {
     }
 
     const { id } = req.params;
+
+    debug.log("void → incoming", { id });
+
     const record = await Vital.findByPk(id, { transaction: t });
-    if (!record) return error(res, "❌ Vital not found", null, 404);
+    if (!record) {
+      await t.rollback();
+      return error(res, "❌ Vital not found", null, 404);
+    }
+
+    debug.log("void → before", record.toJSON());
 
     await record.update(
       { status: VS.VOIDED, updated_by_id: req.user?.id || null },
@@ -691,7 +731,12 @@ export const voidVital = async (req, res) => {
 
     await t.commit();
 
-    const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
+    debug.log("void → committed", { id });
+
+    const full = await Vital.findOne({
+      where: { id },
+      include: VITAL_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -704,13 +749,14 @@ export const voidVital = async (req, res) => {
     return success(res, "✅ Vital voided", full);
   } catch (err) {
     await t.rollback();
+    debug.error("voidVital → FAILED", err);
     return error(res, "❌ Failed to void vital", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE VITAL (Soft Delete with Audit)
-   ============================================================ */
+   📌 DELETE VITAL (Enterprise-Mirrored)
+============================================================ */
 export const deleteVital = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -731,18 +777,31 @@ export const deleteVital = async (req, res) => {
       if (role === "facility_head") where.facility_id = req.user.facility_id;
     }
 
+    debug.log("delete → where", where);
+
     const record = await Vital.findOne({ where, transaction: t });
     if (!record) {
       await t.rollback();
       return error(res, "❌ Vital not found", null, 404);
     }
 
-    await record.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    debug.log("delete → before", record.toJSON());
+
+    await record.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await record.destroy({ transaction: t });
 
     await t.commit();
 
-    const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES, paranoid: false });
+    debug.log("delete → committed", { id });
+
+    const full = await Vital.findOne({
+      where: { id },
+      include: VITAL_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -755,13 +814,14 @@ export const deleteVital = async (req, res) => {
     return success(res, "✅ Vital deleted", full);
   } catch (err) {
     await t.rollback();
+    debug.error("deleteVital → FAILED", err);
     return error(res, "❌ Failed to delete vital", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL VITALS LITE (with ?q= support)
-   ============================================================ */
+   📌 GET ALL VITALS LITE (Enterprise-Mirrored)
+============================================================ */
 export const getAllVitalsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -775,14 +835,18 @@ export const getAllVitalsLite = async (req, res) => {
     const { q } = req.query;
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    const where = { status: { [Op.in]: [VS.COMPLETED, VS.VERIFIED] } };
+    const where = {
+      status: { [Op.in]: [VS.COMPLETED, VS.VERIFIED] },
+    };
 
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
       if (role === "facility_head") where.facility_id = req.user.facility_id;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     if (q) {
@@ -793,12 +857,22 @@ export const getAllVitalsLite = async (req, res) => {
       ];
     }
 
+    debug.log("list_lite → where", where);
+
     const vitals = await Vital.findAll({
       where,
       attributes: ["id", "bp", "pulse", "rr", "temp", "recorded_at"],
       include: [
-        { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-        { model: Employee.unscoped(), as: "nurse", attributes: ["id", "first_name", "last_name"] },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
+        {
+          model: Employee.unscoped(),
+          as: "nurse",
+          attributes: ["id", "first_name", "last_name"],
+        },
       ],
       order: [["recorded_at", "DESC"]],
       limit: 20,
@@ -806,8 +880,12 @@ export const getAllVitalsLite = async (req, res) => {
 
     const result = vitals.map(v => ({
       id: v.id,
-      patient: v.patient ? `${v.patient.pat_no} - ${v.patient.first_name} ${v.patient.last_name}` : "",
-      nurse: v.nurse ? `${v.nurse.first_name} ${v.nurse.last_name}` : "",
+      patient: v.patient
+        ? `${v.patient.pat_no} - ${v.patient.first_name} ${v.patient.last_name}`
+        : "",
+      nurse: v.nurse
+        ? `${v.nurse.first_name} ${v.nurse.last_name}`
+        : "",
       summary: `BP: ${v.bp}, P: ${v.pulse}, T: ${v.temp}`,
       recorded_at: v.recorded_at,
     }));
@@ -821,16 +899,21 @@ export const getAllVitalsLite = async (req, res) => {
 
     return success(res, "✅ Vitals loaded (lite)", { records: result });
   } catch (err) {
+    debug.error("getAllVitalsLite → FAILED", err);
     return error(res, "❌ Failed to load vitals (lite)", err);
   }
 };
+
 /* ============================================================
-   📌 START VITAL (open → in_progress)
-   ============================================================ */
+   📌 START VITAL (Enterprise-Mirrored)
+============================================================ */
 export const startVital = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
+
+    debug.log("start → incoming", { id });
+
     const record = await Vital.findByPk(id, { transaction: t });
     if (!record) return error(res, "❌ Vital not found", null, 404);
 
@@ -838,6 +921,8 @@ export const startVital = async (req, res) => {
       await t.rollback();
       return error(res, "❌ Only open vitals can be started", null, 400);
     }
+
+    debug.log("start → before", record.toJSON());
 
     const oldStatus = record.status;
 
@@ -848,7 +933,12 @@ export const startVital = async (req, res) => {
 
     await t.commit();
 
-    const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
+    debug.log("start → committed", { id });
+
+    const full = await Vital.findOne({
+      where: { id },
+      include: VITAL_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -862,12 +952,14 @@ export const startVital = async (req, res) => {
     return success(res, "✅ Vital started", full);
   } catch (err) {
     await t.rollback();
+    debug.error("startVital → FAILED", err);
     return error(res, "❌ Failed to start vital", err);
   }
 };
+
 /* ============================================================
-   📌 VERIFY VITAL (completed → verified)
-   ============================================================ */
+   📌 VERIFY VITAL (Enterprise-Mirrored)
+============================================================ */
 export const verifyVital = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -877,6 +969,9 @@ export const verifyVital = async (req, res) => {
     }
 
     const { id } = req.params;
+
+    debug.log("verify → incoming", { id });
+
     const record = await Vital.findByPk(id, { transaction: t });
     if (!record) return error(res, "❌ Vital not found", null, 404);
 
@@ -884,6 +979,8 @@ export const verifyVital = async (req, res) => {
       await t.rollback();
       return error(res, "❌ Only completed vitals can be verified", null, 400);
     }
+
+    debug.log("verify → before", record.toJSON());
 
     const oldStatus = record.status;
 
@@ -894,7 +991,12 @@ export const verifyVital = async (req, res) => {
 
     await t.commit();
 
-    const full = await Vital.findOne({ where: { id }, include: VITAL_INCLUDES });
+    debug.log("verify → committed", { id });
+
+    const full = await Vital.findOne({
+      where: { id },
+      include: VITAL_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -908,6 +1010,7 @@ export const verifyVital = async (req, res) => {
     return success(res, "✅ Vital verified", full);
   } catch (err) {
     await t.rollback();
+    debug.error("verifyVital → FAILED", err);
     return error(res, "❌ Failed to verify vital", err);
   }
 };

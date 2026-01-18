@@ -1,10 +1,9 @@
-// 📁 department-actions.js – Full Permission-Driven Action Handlers for Departments
+// 📁 department-actions.js – Enterprise Master Pattern (Departments)
 // ============================================================================
-// 🧭 Master Pattern: role-actions.js / vital-actions.js
-// 🔹 Follows enterprise-aligned permission scheme (departments:view, edit, delete, etc.)
-// 🔹 Includes Superadmin bypass, normalized permissions
-// 🔹 Unified lifecycle: view / edit / toggle / restore / delete
-// 🔹 All DOM IDs preserved exactly
+// 🧭 Mirrors patient-actions.js exactly
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / toggle-status / delete / restore
+// 🔹 Keeps all DOM IDs, routes, and UI behavior intact
 // ============================================================================
 
 import {
@@ -17,6 +16,9 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./department-render.js";
 
+/**
+ * Unified permission-aware action handler for Department module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -24,19 +26,20 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions, roleNames }
+  user, // { role, permissions, roleNames }
 }) {
+  const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("departmentTableBody");
   const cardContainer = document.getElementById("departmentList");
 
-  // 🧠 Cache latest entries for global access
+  // 🗂️ Cache latest entries
   window.latestDepartmentEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🧩 Normalize Permissions
+     🔑 Normalize Permissions
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -50,24 +53,27 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      p.toLowerCase().trim()
+    )
+  );
 
-  // ✅ Superadmin bypass
+  // 🧠 Superadmin bypass
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalizedKey = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  // ✅ Permission checker
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     ⚙️ Central Dispatcher
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -79,7 +85,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // Fallback fetch if missing
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -97,35 +103,31 @@ export function setupActionHandlers({
 
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("departments:view"))
         return showToast("⛔ You don't have permission to view departments");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("departments:edit"))
         return showToast("⛔ You don't have permission to edit departments");
       return handleEdit(entry);
     }
 
-    // --- Toggle (Activate / Deactivate) ---
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("departments:toggle"))
-        return showToast("⛔ You don't have permission to toggle departments");
+      if (!hasPerm("departments:toggle-status"))
+        return showToast("⛔ You don't have permission to change status");
       return await handleToggleStatus(id, entry);
     }
 
-    // --- Delete ---
+
     if (cls.contains("delete-btn")) {
       if (!hasPerm("departments:delete"))
         return showToast("⛔ You don't have permission to delete departments");
       return await handleDelete(id, entry);
     }
 
-    // --- Restore ---
     if (cls.contains("restore-btn")) {
       if (!hasPerm("departments:restore"))
         return showToast("⛔ You don't have permission to restore departments");
@@ -134,22 +136,24 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🧠 Action Handlers
+     ⚙️ Action Handlers
   ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Department Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
-    if (sharedState?.currentEditIdRef)
-      sharedState.currentEditIdRef.value = entry.id;
-
+    if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("departmentEditId", entry.id);
     sessionStorage.setItem("departmentEditPayload", JSON.stringify(entry));
-    window.location.href = `add-department.html`;
+    window.location.href = "add-department.html";
   }
 
+  // 🔄 Toggle Status
   async function handleToggleStatus(id, entry) {
     const isActive = (entry.status || "").toLowerCase() === "active";
     const confirmed = await showConfirm(
@@ -168,15 +172,14 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to toggle department status");
 
-      const newStatus = (
-        data?.data?.status || (isActive ? "inactive" : "active")
-      ).toLowerCase();
-      const deptName = entry?.name || data?.data?.name || "Department";
+      const newStatus =
+        (data?.data?.status ||
+          (isActive ? "inactive" : "active")).toLowerCase();
 
       showToast(
         newStatus === "active"
-          ? `✅ Department "${deptName}" has been activated`
-          : `✅ Department "${deptName}" has been deactivated`
+          ? `✅ Department "${entry.name}" activated`
+          : `✅ Department "${entry.name}" deactivated`
       );
 
       window.latestDepartmentEntries = [];
@@ -189,6 +192,7 @@ export function setupActionHandlers({
     }
   }
 
+  // 🗑️ Delete
   async function handleDelete(id, entry) {
     const confirmed = await showConfirm(
       `Delete department "${entry.name}" permanently?`
@@ -197,7 +201,9 @@ export function setupActionHandlers({
 
     try {
       showLoading();
-      const res = await authFetch(`/api/departments/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/departments/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete department");
@@ -213,6 +219,7 @@ export function setupActionHandlers({
     }
   }
 
+  // ♻️ Restore
   async function handleRestore(id, entry) {
     const confirmed = await showConfirm(
       `Restore department "${entry.name}" record?`
@@ -240,44 +247,43 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🌐 Global Helpers
+     🌍 Global Helpers (Inline Triggers)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestDepartmentEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewDepartment = (id) => {
     if (!hasPerm("departments:view"))
       return showToast("⛔ No permission to view departments");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Department not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editDepartment = (id) => {
     if (!hasPerm("departments:edit"))
       return showToast("⛔ No permission to edit departments");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Department not found for editing");
   };
 
-  window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("departments:toggle"))
+  window.toggleDepartmentStatus = async (id) => {
+    if (!hasPerm("departments:toggle-status"))
       return showToast("⛔ No permission to toggle departments");
     const entry = findEntry(id);
     await handleToggleStatus(id, entry);
   };
 
-  window.deleteEntry = async (id) => {
+
+  window.deleteDepartment = async (id) => {
     if (!hasPerm("departments:delete"))
       return showToast("⛔ No permission to delete departments");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
 
-  window.restoreEntry = async (id) => {
+  window.restoreDepartment = async (id) => {
     if (!hasPerm("departments:restore"))
       return showToast("⛔ No permission to restore departments");
     const entry = findEntry(id);

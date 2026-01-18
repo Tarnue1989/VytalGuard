@@ -1,12 +1,12 @@
 // 📁 backend/src/controllers/depositController.js
 // ============================================================================
-// 💰 Deposit Controller – Enterprise Master Pattern (Aligned with Appointments)
+// 💰 Deposit Controller – Enterprise Master Pattern (Central Parity)
 // ----------------------------------------------------------------------------
 // 🔹 Unified pagination, filtering, summary, and audit behavior
-// 🔹 Includes lifecycle + aggregates via buildDynamicSummary()
-// 🔹 Fully tenant-safe (organization/facility scoped)
+// 🔹 Ledger-first via financialService
+// 🔹 Role-safe tenant resolution (no hardcoding)
+// 🔹 Detail lifecycle + aggregate summary
 // ============================================================================
-
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -18,39 +18,53 @@ import {
   Facility,
   User,
 } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { validate } from "../utils/validation.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
 import { DEPOSIT_STATUS, PAYMENT_METHODS } from "../constants/enums.js";
+import { FIELD_VISIBILITY_DEPOSIT } from "../constants/fieldVisibility.js";
+
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
-import { FIELD_VISIBILITY_DEPOSIT } from "../constants/fieldVisibility.js";
-import { buildDynamicSummary } from "../utils/summaryHelper.js"; // 🧠 Summary Helper
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
+/* ============================================================
+   🔐 MODULE
+============================================================ */
 const MODULE_KEY = "deposits";
 
-// 🔖 Local enum map (extended for full financial lifecycle)
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE
+============================================================ */
+const DEBUG_OVERRIDE = false; // 👈 flip only when needed
+const debug = makeModuleLogger("depositController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM-SAFE)
+============================================================ */
 const DS = {
-  PENDING: DEPOSIT_STATUS[0],                      // "pending"
-  CLEARED: DEPOSIT_STATUS[1],                      // "cleared"
-  APPLIED: DEPOSIT_STATUS[2],                      // "applied"
-  CANCELLED: DEPOSIT_STATUS[3],                    // "cancelled"
-  REVERSED: DEPOSIT_STATUS[4] || "reversed",       // "reversed"
-  VOIDED: DEPOSIT_STATUS[5] || "voided",           // 🆕 administrative nullify
-  VERIFIED: DEPOSIT_STATUS[6] || "verified",       // 🆕 audited & locked
+  PENDING: DEPOSIT_STATUS[0],
+  CLEARED: DEPOSIT_STATUS[1],
+  APPLIED: DEPOSIT_STATUS[2],
+  CANCELLED: DEPOSIT_STATUS[3],
+  REVERSED: DEPOSIT_STATUS[4] || "reversed",
+  VOIDED: DEPOSIT_STATUS[5] || "voided",
+  VERIFIED: DEPOSIT_STATUS[6] || "verified",
 };
 
 /* ============================================================
-   🔧 Helpers
-============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map((r) => r.toLowerCase()).includes("superadmin");
-}
-
-/* ============================================================
-   🔗 Shared includes
+   🔗 SHARED INCLUDES
 ============================================================ */
 const DEPOSIT_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
@@ -63,7 +77,7 @@ const DEPOSIT_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 Joi schema factory (Payment-aligned)
+   📋 ROLE-AWARE JOI SCHEMA
 ============================================================ */
 function buildDepositSchema(userRole, mode = "create") {
   const base = {
@@ -75,12 +89,12 @@ function buildDepositSchema(userRole, mode = "create") {
     notes: Joi.string().allow(null, ""),
     reason: Joi.string().allow(null, ""),
 
-    // 🔒 status is always service-controlled
+    // 🔒 service-controlled
     status: Joi.forbidden(),
 
-    // 🔑 ALLOW tenant fields (controller decides authority)
-    organization_id: Joi.string().uuid().optional(),
-    facility_id: Joi.string().uuid().optional(),
+    // 🔐 tenant fields resolved by util
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
   };
 
   if (mode === "update") {
@@ -92,11 +106,10 @@ function buildDepositSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 GET ALL DEPOSITS (with Dynamic Summary)
-   ============================================================ */
+   📌 GET ALL DEPOSITS (MASTER + DETAIL SUMMARY)
+============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
-    // 🔐 Permission Check
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -105,71 +118,101 @@ export const getAllDeposits = async (req, res) => {
     });
     if (!allowed) return;
 
-    // 👤 Role Context
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    const role =
+      (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_DEPOSIT[role] || FIELD_VISIBILITY_DEPOSIT.staff;
 
-    // 🔎 Build Query Options
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-    options.where = options.where || {};
 
-    /* ============================================================
-       📅 Manual Bridge for Frontend Date Filters
-       (created_from / created_to → created_at[gte]/[lt])
-    ============================================================ */
-    if (req.query.created_from || req.query.created_to) {
-      const range = {};
-      if (req.query.created_from) {
-        range[Op.gte] = new Date(req.query.created_from);
-      }
-      if (req.query.created_to) {
-        const end = new Date(req.query.created_to);
-        if (!isNaN(end)) end.setDate(end.getDate() + 1); // inclusive end date
-        range[Op.lt] = end;
-      }
-      options.where.created_at = range;
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
     }
 
-    /* ============================================================
-       🏢 Scope Enforcement (Multi-Tenant Safe)
-    ============================================================ */
+    /* ========================================================
+       🔐 TENANT SCOPE (CENTRAL PARITY)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") {
-        options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
       }
     } else {
       if (req.query.organization_id) {
-        options.where.organization_id = req.query.organization_id;
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
       }
       if (req.query.facility_id) {
-        options.where.facility_id = req.query.facility_id;
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     }
 
-    /* ============================================================
-       🎯 Additional Filters
-    ============================================================ */
-    if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
-    if (req.query.applied_invoice_id)
-      options.where.applied_invoice_id = req.query.applied_invoice_id;
-    if (req.query.method) options.where.method = req.query.method;
-    if (req.query.status) options.where.status = req.query.status;
-
-    // 🔍 Search (Transaction Ref / Notes / Status)
-    if (options.search) {
-      const term = `%${options.search}%`;
-      options.where[Op.or] = [
-        { transaction_ref: { [Op.iLike]: term } },
-        { notes: { [Op.iLike]: term } },
-        { status: { [Op.iLike]: term } },
-      ];
+    /* ========================================================
+       🎯 ADDITIONAL FILTERS
+    ======================================================== */
+    if (req.query.patient_id) {
+      options.where[Op.and].push({
+        patient_id: req.query.patient_id,
+      });
     }
 
-    /* ============================================================
-       📦 Fetch Paginated Results
-    ============================================================ */
+    if (req.query.applied_invoice_id) {
+      options.where[Op.and].push({
+        applied_invoice_id: req.query.applied_invoice_id,
+      });
+    }
+
+    if (req.query.method) {
+      options.where[Op.and].push({
+        method: req.query.method,
+      });
+    }
+
+    if (req.query.status) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
+    if (options.search) {
+      options.where[Op.and].push({
+        [Op.or]: [
+          { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
+          { notes: { [Op.iLike]: `%${options.search}%` } },
+          { status: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
+    }
+
+    /* ========================================================
+       🗂️ QUERY
+    ======================================================== */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -179,20 +222,17 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
-    /* ============================================================
-       🧠 Lifecycle + Aggregate Summary
-    ============================================================ */
+    /* ========================================================
+       🧠 DETAIL SUMMARY (CENTRAL STYLE)
+    ======================================================== */
     const summary = await buildDynamicSummary({
       model: Deposit,
-      options,
-      statusEnums: Object.values(DEPOSIT_STATUS),
+      baseWhere: options.where,
+      statusEnums: Object.values(DS),
       includeGender: true,
       genderJoin: { model: Patient, as: "patient" },
     });
 
-    /* ============================================================
-       🧾 Audit Trail
-    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -200,25 +240,23 @@ export const getAllDeposits = async (req, res) => {
       details: { query: req.query, returned: count },
     });
 
-    /* ============================================================
-       ✅ Unified Response
-    ============================================================ */
     return success(res, "✅ Deposits loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
-      summary, // ← lifecycle + totals + gender breakdown
     });
   } catch (err) {
+    debug.error("getAllDeposits → FAILED", err);
     return error(res, "❌ Failed to load deposits", err);
   }
 };
 
 /* ============================================================
-   📌 GET DEPOSIT BY ID
+   📌 GET DEPOSIT BY ID (MASTER PARITY)
 ============================================================ */
 export const getDepositById = async (req, res) => {
   try {
@@ -231,32 +269,45 @@ export const getDepositById = async (req, res) => {
     if (!allowed) return;
 
     const where = { id: req.params.id };
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    } else {
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    const record = await Deposit.findOne({ where, include: DEPOSIT_INCLUDES });
-    if (!record) return error(res, "❌ Deposit not found", null, 404);
+    const record = await Deposit.findOne({
+      where,
+      include: DEPOSIT_INCLUDES,
+    });
+
+    if (!record) {
+      return error(res, "❌ Deposit not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "view",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
     return success(res, "✅ Deposit loaded", record);
   } catch (err) {
+    debug.error("getDepositById → FAILED", err);
     return error(res, "❌ Failed to load deposit", err);
   }
 };
 
 /* ============================================================
-   📌 CREATE DEPOSIT  (Payment-Aligned)
+   📌 CREATE DEPOSIT (LEDGER FIRST – PARITY)
 ============================================================ */
 export const createDeposit = async (req, res) => {
   const t = await sequelize.transaction();
@@ -269,24 +320,29 @@ export const createDeposit = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildDepositSchema(role, "create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+    const role =
+      (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+    const { value, errors } = validate(
+      buildDepositSchema(role, "create"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    // 🔐 Tenant scope (AUTHORITATIVE – same as Payment)
-    if (!isSuperAdmin(req.user)) {
-      value.organization_id = req.user.organization_id;
-      value.facility_id = req.user.facility_id;
-    }
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     const { deposit, invoice } = await financialService.applyDeposit({
       ...value,
+      organization_id: orgId,
+      facility_id: facilityId,
       user: req.user,
       t,
     });
@@ -306,16 +362,19 @@ export const createDeposit = async (req, res) => {
       entity: full,
     });
 
-    return success(res, "✅ Deposit created", { deposit: full, invoice });
+    return success(res, "✅ Deposit created", {
+      deposit: full,
+      invoice,
+    });
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("createDeposit → FAILED", err);
     return error(res, "❌ Failed to create deposit", err);
   }
 };
 
-
 /* ============================================================
-   📌 UPDATE DEPOSIT  (Payment-Aligned)
+   📌 UPDATE DEPOSIT (LEDGER SAFE – PARITY)
 ============================================================ */
 export const updateDeposit = async (req, res) => {
   const t = await sequelize.transaction();
@@ -328,29 +387,33 @@ export const updateDeposit = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildDepositSchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+    const role =
+      (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+    const { value, errors } = validate(
+      buildDepositSchema(role, "update"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    const record = await Deposit.findByPk(req.params.id, { transaction: t });
+    const record = await Deposit.findByPk(req.params.id, {
+      transaction: t,
+    });
+
     if (!record) {
       await t.rollback();
       return error(res, "❌ Deposit not found", null, 404);
     }
 
-    // 🔒 Lifecycle guard
     if (record.status !== DS.PENDING) {
       await t.rollback();
       return error(res, "❌ Only pending deposits can be updated", null, 400);
     }
 
-    // 🔒 Amount change requires reason
     if (
       value.amount &&
       parseFloat(value.amount) !== parseFloat(record.amount) &&
@@ -365,14 +428,19 @@ export const updateDeposit = async (req, res) => {
       );
     }
 
-    // 🔐 Tenant scope (AUTHORITATIVE – same as Payment)
-    if (!isSuperAdmin(req.user)) {
-      value.organization_id = req.user.organization_id;
-      value.facility_id = req.user.facility_id;
-    }
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     await record.update(
-      { ...value, updated_by_id: req.user?.id || null },
+      {
+        ...value,
+        organization_id: orgId,
+        facility_id: facilityId,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
 
@@ -393,27 +461,41 @@ export const updateDeposit = async (req, res) => {
 
     return success(res, "✅ Deposit updated", full);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("updateDeposit → FAILED", err);
     return error(res, "❌ Failed to update deposit", err);
   }
 };
 
-
-// TOGGLE STATUS
+/* ============================================================
+   📌 TOGGLE DEPOSIT STATUS (LEDGER FIRST – MASTER PARITY)
+============================================================ */
 export const toggleDepositStatus = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
-    const { deposit, newStatus } = await financialService.toggleDepositStatus({
-      deposit_id: id,
-      user: req.user,
-      t,
-    });
+    const { deposit, newStatus } =
+      await financialService.toggleDepositStatus({
+        deposit_id: id,
+        user: req.user,
+        t,
+      });
 
     await t.commit();
 
-    const full = await Deposit.findOne({ where: { id }, include: DEPOSIT_INCLUDES });
+    const full = await Deposit.findOne({
+      where: { id: deposit.id },
+      include: DEPOSIT_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -424,16 +506,30 @@ export const toggleDepositStatus = async (req, res) => {
       details: { to: newStatus },
     });
 
-    return success(res, `✅ Deposit status changed → ${newStatus}`, full);
+    return success(
+      res,
+      `✅ Deposit status changed → ${newStatus}`,
+      full
+    );
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to toggle deposit status", err);
   }
 };
 
-// APPLY TO INVOICE
+/* ============================================================
+   📌 APPLY DEPOSIT TO INVOICE (LEDGER FIRST – PARITY)
+============================================================ */
 export const applyDepositToInvoice = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
     const { invoice_id, amount } = req.body;
 
@@ -444,13 +540,11 @@ export const applyDepositToInvoice = async (req, res) => {
       return error(res, "❌ Valid amount is required", null, 400);
     }
 
-    // 🧩 Fetch deposit record
     const deposit = await Deposit.findByPk(id);
     if (!deposit) {
       return error(res, "❌ Deposit not found", null, 404);
     }
 
-    // 🚫 Enforce correct financial flow
     if (![DS.CLEARED, DS.APPLIED].includes(deposit.status)) {
       return error(
         res,
@@ -460,8 +554,7 @@ export const applyDepositToInvoice = async (req, res) => {
       );
     }
 
-    // ✅ Perform financial application
-    const { application, updatedDeposit, invoice } =
+    const { application, invoice } =
       await financialService.applyDepositToInvoice({
         deposit_id: id,
         invoice_id,
@@ -474,7 +567,6 @@ export const applyDepositToInvoice = async (req, res) => {
       include: DEPOSIT_INCLUDES,
     });
 
-    // 🧾 Audit Log
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -484,30 +576,47 @@ export const applyDepositToInvoice = async (req, res) => {
       details: { invoice_id, amount },
     });
 
-    return success(res, `✅ Applied ${amount} from deposit → invoice`, {
-      application,
-      deposit: full,
-      invoice,
-    });
+    return success(
+      res,
+      `✅ Applied ${amount} from deposit → invoice`,
+      {
+        application,
+        deposit: full,
+        invoice,
+      }
+    );
   } catch (err) {
     return error(res, "❌ Failed to apply deposit to invoice", err);
   }
 };
 
-// REVERSE
+/* ============================================================
+   📌 REVERSE DEPOSIT (ADMIN / SUPERADMIN – PARITY)
+============================================================ */
 export const reverseDeposit = async (req, res) => {
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "❌ Only admin/superadmin can reverse deposits", null, 403);
-    }
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "reverse",
+      res,
+    });
+    if (!allowed) return;
 
     const { id } = req.params;
+
     const record = await Deposit.findByPk(id);
-    if (!record) return error(res, "❌ Deposit not found", null, 404);
+    if (!record) {
+      return error(res, "❌ Deposit not found", null, 404);
+    }
 
     if (![DS.CLEARED, DS.APPLIED].includes(record.status)) {
-      return error(res, "❌ Only cleared or applied deposits can be reversed", null, 400);
+      return error(
+        res,
+        "❌ Only cleared or applied deposits can be reversed",
+        null,
+        400
+      );
     }
 
     await financialService.reverseTransaction({
@@ -529,7 +638,9 @@ export const reverseDeposit = async (req, res) => {
       action: "reverse",
       entityId: id,
       entity: full,
-      details: { reason: req.body?.reason || "manual reversal" },
+      details: {
+        reason: req.body?.reason || "manual reversal",
+      },
     });
 
     return success(res, "✅ Deposit reversed", full);
@@ -538,11 +649,22 @@ export const reverseDeposit = async (req, res) => {
   }
 };
 
-// DELETE
+/* ============================================================
+   📌 DELETE DEPOSIT (LEDGER SAFE – PARITY)
+============================================================ */
 export const deleteDeposit = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
     const record = await Deposit.findByPk(id, { transaction: t });
     if (!record) {
       await t.rollback();
@@ -551,14 +673,27 @@ export const deleteDeposit = async (req, res) => {
 
     if (record.status !== DS.PENDING) {
       await t.rollback();
-      return error(res, "❌ Only pending deposits can be deleted", null, 400);
+      return error(
+        res,
+        "❌ Only pending deposits can be deleted",
+        null,
+        400
+      );
     }
 
-    await record.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await record.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await record.destroy({ transaction: t });
+
     await t.commit();
 
-    const full = await Deposit.findOne({ where: { id }, include: DEPOSIT_INCLUDES, paranoid: false });
+    const full = await Deposit.findOne({
+      where: { id },
+      include: DEPOSIT_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -570,53 +705,66 @@ export const deleteDeposit = async (req, res) => {
 
     return success(res, "✅ Deposit deleted", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete deposit", err);
   }
 };
 
-// LITE LIST (FIXED for patient_id filtering)
+/* ============================================================
+   📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY)
+============================================================ */
 export const getAllDepositsLite = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
     const { q, patient_id } = req.query;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+    const where = { [Op.and]: [] };
 
-    const where = {};
-
-    // ─────────────────────────────────────────────
-    // 🔐 RBAC: Tenant-level filtering
-    // ─────────────────────────────────────────────
+    /* ========================================================
+       🔐 TENANT SCOPE
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
     } else {
-      if (req.query.organization_id)
-        where.organization_id = req.query.organization_id;
-
-      if (req.query.facility_id)
-        where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    // ─────────────────────────────────────────────
-    // 🔥 REQUIRED: Deposit must belong to the patient
-    // ─────────────────────────────────────────────
     if (patient_id) {
-      where.patient_id = patient_id;
+      where[Op.and].push({ patient_id });
     }
 
-    // ─────────────────────────────────────────────
-    // 🔍 Optional search filter
-    // ─────────────────────────────────────────────
     if (q) {
-      where[Op.or] = [
-        { transaction_ref: { [Op.iLike]: `%${q}%` } },
-        { method: { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { transaction_ref: { [Op.iLike]: `%${q}%` } },
+          { method: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
-    // ─────────────────────────────────────────────
-    // 📦 Query DB
-    // ─────────────────────────────────────────────
     const deposits = await Deposit.findAll({
       where,
       attributes: [
@@ -645,10 +793,7 @@ export const getAllDepositsLite = async (req, res) => {
       limit: 20,
     });
 
-    // ─────────────────────────────────────────────
-    // 🏷️ Format result for suggestion dropdown
-    // ─────────────────────────────────────────────
-    const result = deposits.map((d) => ({
+    const records = deposits.map((d) => ({
       id: d.id,
       label: `${d.transaction_ref || d.id} - ${d.amount}`,
       amount: d.amount,
@@ -657,38 +802,64 @@ export const getAllDepositsLite = async (req, res) => {
       patient: d.patient
         ? `${d.patient.pat_no} - ${d.patient.first_name} ${d.patient.last_name}`
         : "",
-      invoice: d.appliedInvoice ? d.appliedInvoice.invoice_number : "",
+      invoice: d.appliedInvoice
+        ? d.appliedInvoice.invoice_number
+        : "",
       created_at: d.created_at,
     }));
 
-    // Optional audit
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, patient_id: patient_id || null, query: q || null },
+      details: {
+        count: records.length,
+        patient_id: patient_id || null,
+        query: q || null,
+      },
     });
 
-    return success(res, "Deposits loaded (lite)", { records: result });
+    return success(res, "Deposits loaded (lite)", {
+      records,
+    });
   } catch (err) {
-    return error(res, "Failed to load deposits (lite)", err);
+    return error(res, "❌ Failed to load deposits (lite)", err);
   }
 };
 
-// CANCEL (only pending deposits)
+/* ============================================================
+   📌 CANCEL DEPOSIT (PENDING ONLY – PARITY)
+============================================================ */
 export const cancelDeposit = async (req, res) => {
   try {
-    const { id } = req.params;
-    const record = await Deposit.findByPk(id);
-    if (!record) return error(res, "❌ Deposit not found", null, 404);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "cancel",
+      res,
+    });
+    if (!allowed) return;
 
-    if (record.status !== DS.PENDING) {
-      return error(res, "❌ Only pending deposits can be cancelled", null, 400);
+    const { id } = req.params;
+
+    const record = await Deposit.findByPk(id);
+    if (!record) {
+      return error(res, "❌ Deposit not found", null, 404);
     }
 
-    await record.update(
-      { status: DS.CANCELLED, updated_by_id: req.user?.id || null }
-    );
+    if (record.status !== DS.PENDING) {
+      return error(
+        res,
+        "❌ Only pending deposits can be cancelled",
+        null,
+        400
+      );
+    }
+
+    await record.update({
+      status: DS.CANCELLED,
+      updated_by_id: req.user?.id || null,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -703,20 +874,21 @@ export const cancelDeposit = async (req, res) => {
     return error(res, "❌ Failed to cancel deposit", err);
   }
 };
+
 /* ============================================================
-   📌 VERIFY DEPOSIT
-   ============================================================ */
+   📌 VERIFY DEPOSIT (SERVICE CONTROLLED)
+============================================================ */
 export const verifyDeposit = async (req, res) => {
   try {
-    const { id } = req.params;
-
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "deposits",
+      module: MODULE_KEY,
       action: "verify",
       res,
     });
     if (!allowed) return;
+
+    const { id } = req.params;
 
     const { deposit } = await financialService.verifyDeposit({
       deposit_id: id,
@@ -725,7 +897,7 @@ export const verifyDeposit = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "deposits",
+      module: MODULE_KEY,
       action: "verify",
       entityId: id,
       entity: deposit,
@@ -738,20 +910,20 @@ export const verifyDeposit = async (req, res) => {
 };
 
 /* ============================================================
-   📌 VOID DEPOSIT
-   ============================================================ */
+   📌 VOID DEPOSIT (SERVICE CONTROLLED)
+============================================================ */
 export const voidDeposit = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { reason } = req.body;
-
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "deposits",
+      module: MODULE_KEY,
       action: "void",
       res,
     });
     if (!allowed) return;
+
+    const { id } = req.params;
+    const { reason } = req.body;
 
     const { deposit } = await financialService.voidDeposit({
       deposit_id: id,
@@ -761,7 +933,7 @@ export const voidDeposit = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "deposits",
+      module: MODULE_KEY,
       action: "void",
       entityId: id,
       entity: deposit,
@@ -775,32 +947,63 @@ export const voidDeposit = async (req, res) => {
 };
 
 /* ============================================================
-   ♻️ RESTORE (for deleted/voided/cancelled/reversed deposits)
+   ♻️ RESTORE DEPOSIT (PARITY)
 ============================================================ */
 export const restoreDeposit = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "restore",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
-    const record = await Deposit.findByPk(id, { paranoid: false, transaction: t });
+
+    const record = await Deposit.findByPk(id, {
+      paranoid: false,
+      transaction: t,
+    });
+
     if (!record) {
       await t.rollback();
       return error(res, "❌ Deposit not found", null, 404);
     }
 
-    // Only allow restore for deleted/voided/cancelled/reversed
-    if (!["deleted", "voided", "cancelled", "reversed"].includes(record.status)) {
+    if (
+      ![
+        DS.CANCELLED,
+        DS.VOIDED,
+        DS.REVERSED,
+        ].includes(record.status)
+    ) {
       await t.rollback();
-      return error(res, "❌ Only deleted/voided/cancelled/reversed deposits can be restored", null, 400);
+      return error(
+        res,
+        "❌ Only deleted/voided/cancelled/reversed deposits can be restored",
+        null,
+        400
+      );
     }
 
     await record.restore({ transaction: t });
     await record.update(
-      { status: DS.PENDING, updated_by_id: req.user?.id || null },
+      {
+        status: DS.PENDING,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
+
     await t.commit();
 
-    const full = await Deposit.findOne({ where: { id }, include: DEPOSIT_INCLUDES });
+    const full = await Deposit.findOne({
+      where: { id },
+      include: DEPOSIT_INCLUDES,
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,

@@ -18,6 +18,49 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 
 /* ============================================================
+   🔃 Sortable Fields (TABLE ONLY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "pat_no",
+  "first_name",
+  "last_name",
+  "gender",
+  "registration_status",
+  "date_of_birth",
+  "created_at",
+  "updated_at",
+
+  // ✅ JOIN-BASED SORTS (backend-supported)
+  "organization",
+  "facility",
+]);
+
+
+/* ============================================================
+   🔃 Sort State (TABLE ONLY – LOCAL UI STATE)
+   ❗ MAIN owns backend state
+============================================================ */
+let sortBy = localStorage.getItem("patientSortBy") || "";
+let sortDir = localStorage.getItem("patientSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  // 💾 persist UI state
+  localStorage.setItem("patientSortBy", sortBy);
+  localStorage.setItem("patientSortDir", sortDir);
+
+  // 🔗 bridge to MAIN (ONLY correct reload path)
+  window.setPatientSort?.(sortBy, sortDir);
+  window.loadPatientPage?.(1);
+}
+
+/* ============================================================
    🎛️ Action Buttons
 ============================================================ */
 function getPatientActionButtons(entry, user) {
@@ -31,7 +74,7 @@ function getPatientActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head (UNCHANGED)
+   🧱 Dynamic Table Head (SORTABLE)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -43,15 +86,44 @@ export function renderDynamicTableHead(visibleFields) {
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
-      FIELD_LABELS_PATIENT[field] || field.replace(/_/g, " ");
+    const label = FIELD_LABELS_PATIENT[field] || field;
+
+    // ❌ actions column not sortable
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
     th.dataset.key = field;
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc"
+          ? "ri-arrow-up-line"
+          : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
 
+  /* === column resize stays intact === */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
@@ -162,6 +234,7 @@ function renderValue(entry, field, viewMode = "card") {
       return entry[field] != null ? String(entry[field]) : "—";
   }
 }
+
 /* ============================================================
    🗂️ CARD RENDERER — ENTITY SYSTEM (PATIENT | FINAL + AUDIT)
 ============================================================ */
@@ -181,7 +254,6 @@ export function renderCard(entry, visibleFields, user) {
       .filter(Boolean)
       .join(" ") || "Unnamed Patient";
 
-  /* ================= HEADER ================= */
   const status = (entry.registration_status || "").toLowerCase();
 
   const header = `
@@ -200,11 +272,11 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= CONTEXT ================= */
   const contextItems = [];
   if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
   if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
-  if (has("date_of_birth")) contextItems.push(`🎂 DOB: ${formatDate(entry.date_of_birth)}`);
+  if (has("date_of_birth"))
+    contextItems.push(`🎂 DOB: ${formatDate(entry.date_of_birth)}`);
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
@@ -212,27 +284,27 @@ export function renderCard(entry, visibleFields, user) {
        </div>`
     : "";
 
-  /* ================= BODY ================= */
   const left = [];
   const right = [];
 
-  // Demographics
   if (has("gender")) left.push(fieldRow("Gender", entry.gender));
   if (has("marital_status")) left.push(fieldRow("Marital Status", entry.marital_status));
   if (has("religion")) left.push(fieldRow("Religion", entry.religion));
   if (has("profession")) left.push(fieldRow("Profession", entry.profession));
 
-  // IDs
   if (has("national_id")) left.push(fieldRow("National ID", entry.national_id));
-  if (has("insurance_number")) left.push(fieldRow("Insurance No.", entry.insurance_number));
-  if (has("passport_number")) left.push(fieldRow("Passport No.", entry.passport_number));
+  if (has("insurance_number"))
+    left.push(fieldRow("Insurance No.", entry.insurance_number));
+  if (has("passport_number"))
+    left.push(fieldRow("Passport No.", entry.passport_number));
 
-  // Contact + Media
   if (has("phone_number")) right.push(fieldRow("Phone", entry.phone_number));
   if (has("email_address")) right.push(fieldRow("Email", entry.email_address));
   if (has("home_address")) right.push(fieldRow("Address", entry.home_address));
-  if (has("photo_path")) right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
-  if (has("qr_code_path")) right.push(fieldRow("QR Code", renderValue(entry, "qr_code_path")));
+  if (has("photo_path"))
+    right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
+  if (has("qr_code_path"))
+    right.push(fieldRow("QR Code", renderValue(entry, "qr_code_path")));
 
   const body = `
     <div class="entity-card-body">
@@ -241,61 +313,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= AUTO EXTRA ================= */
-  const usedFields = new Set([
-    "pat_no","first_name","middle_name","last_name",
-    "registration_status","organization","facility","date_of_birth",
-    "gender","marital_status","religion","profession",
-    "national_id","insurance_number","passport_number",
-    "phone_number","email_address","home_address",
-    "photo_path","qr_code_path","notes",
-    "created_at","updated_at","deleted_at",
-    "createdBy","updatedBy","deletedBy",
-    "actions"
-  ]);
-
-  const extraFields = visibleFields
-    .filter(f => !usedFields.has(f))
-    .map(f => fieldRow(FIELD_LABELS_PATIENT[f] || f, renderValue(entry, f)));
-
-  const extrasSection = extraFields.length
-    ? `<details class="entity-notes">
-         <summary>More Details</summary>
-         <div class="entity-card-body">
-           <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
-           <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
-         </div>
-       </details>`
-    : "";
-
-  /* ================= AUDIT (NEW) ================= */
-  const audit =
-    has("created_at") || has("updated_at")
-      ? `<details class="entity-notes">
-           <summary>Audit</summary>
-           <div class="entity-card-body">
-             <div>
-               ${has("createdBy") ? fieldRow("Created By", renderValue(entry, "createdBy")) : ""}
-               ${has("created_at") ? fieldRow("Created At", renderValue(entry, "created_at")) : ""}
-             </div>
-             <div>
-               ${has("updatedBy") ? fieldRow("Updated By", renderValue(entry, "updatedBy")) : ""}
-               ${has("updated_at") ? fieldRow("Updated At", renderValue(entry, "updated_at")) : ""}
-             </div>
-           </div>
-         </details>`
-      : "";
-
-  /* ================= NOTES ================= */
-  const notes =
-    has("notes") && entry.notes
-      ? `<details class="entity-notes">
-           <summary>Notes</summary>
-           <p>${entry.notes}</p>
-         </details>`
-      : "";
-
-  /* ================= ACTIONS ================= */
   const actions = has("actions")
     ? `<div class="entity-card-footer">
          ${getPatientActionButtons(entry, user)}
@@ -307,9 +324,6 @@ export function renderCard(entry, visibleFields, user) {
       ${header}
       ${context}
       ${body}
-      ${extrasSection}
-      ${audit}
-      ${notes}
       ${actions}
     </div>
   `;

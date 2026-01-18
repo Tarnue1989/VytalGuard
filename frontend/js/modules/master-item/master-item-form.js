@@ -1,10 +1,12 @@
-// 📁 master-item-form.js – Secure & Role-Aware Master Item Form (Enterprise-Aligned + Dynamic Module Support)
+// 📁 master-item-form.js – Secure & Role-Aware Master Item Form (ENTERPRISE PARITY)
 // ============================================================================
-// 🧭 Master Pattern: master-item-category-form.js / autoBillingRule-form.js
-// 🔹 Adds dynamic Feature Module search (UUID-safe)
-// 🔹 Enterprise submission flow, permission logic, and UI behavior
-// 🔹 Smart field toggling by item type (drug, consumable, service)
-// 🔹 100% ID & DOM consistency with linked backend + HTML
+// 🧭 FULL PARITY WITH department-form.js
+// 🔹 Rule-driven validation (NO silent rules, NO HTML validation)
+// 🔹 Role-aware org / facility handling
+// 🔹 Clean payload normalization (UUID | null)
+// 🔹 Feature Module dynamic search (UUID-safe)
+// 🔹 Smart field toggling by item type
+// 🔹 Controller-faithful submission flow
 // ============================================================================
 
 import {
@@ -16,22 +18,32 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   loadDepartmentsLite,
   loadMasterItemCategoriesLite,
   setupSelectOptions,
-  setupSuggestionInputDynamic, // ✅ for Feature Module dynamic search
+  setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import { MASTER_ITEM_FORM_RULES } from "./master-item.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
+
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
@@ -43,12 +55,13 @@ function normalizeMessage(result, fallback) {
     return fallback;
   }
 }
+
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
 
 /* ============================================================
-   ⚙️ Smart Field Visibility (Driven by Item Type)
+   ⚙️ Item-Type Driven Field Rules
 ============================================================ */
 const ITEM_TYPE_FIELD_RULES = {
   drug: [
@@ -64,8 +77,8 @@ const ITEM_TYPE_FIELD_RULES = {
   service: ["test_method", "sample_required"],
 };
 
-function toggleFieldsByItemType(itemType) {
-  const allFields = [
+function toggleFieldsByItemType(type) {
+  const all = [
     "generic_group",
     "strength",
     "dosage_form",
@@ -77,50 +90,47 @@ function toggleFieldsByItemType(itemType) {
     "sample_required",
     "test_method",
   ];
-  const fieldsToShow = ITEM_TYPE_FIELD_RULES[itemType] || [];
 
-  allFields.forEach((fid) => {
-    const wrapper = document
-      .getElementById(fid)
+  const show = ITEM_TYPE_FIELD_RULES[type] || [];
+
+  all.forEach((id) => {
+    const wrap = document
+      .getElementById(id)
       ?.closest(".col-xxl-3, .col-xxl-4, .col-xxl-6, .col-sm-6, .col-sm-12");
-    if (!wrapper) return;
-    wrapper.classList.toggle("d-none", !fieldsToShow.includes(fid));
+    if (wrap) wrap.classList.toggle("d-none", !show.includes(id));
   });
 }
 
 /* ============================================================
-   🚀 Setup Master Item Form Submission
+   🚀 Main Setup
 ============================================================ */
 export async function setupMasterItemFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const sessionId = sessionStorage.getItem("masterItemEditId");
-  const queryId = getQueryParam("id");
-  const itemId = sessionId || queryId;
-  const isEdit = !!itemId;
+  const itemId =
+    sessionStorage.getItem("masterItemEditId") || getQueryParam("id");
+  const isEdit = Boolean(itemId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
 
   const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Master Item");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Item`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Master Item");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Item`);
-    }
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Master Item" : "Add Master Item";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Item`
+          : `<i class="ri-add-line me-1"></i> Add Item`;
   };
   setUI(isEdit ? "edit" : "add");
 
-  /* ============================================================
-     🌐 DOM References
-  ============================================================ */
+  /* ---------------- DOM ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const deptSelect = document.getElementById("departmentSelect");
@@ -128,82 +138,81 @@ export async function setupMasterItemFormSubmission({ form }) {
   const itemTypeSelect = document.getElementById("itemType");
   const codeInput = document.getElementById("code");
 
-  // ✅ New Feature Module field
   const featureModuleInput = document.getElementById("featureModuleInput");
   const featureModuleId = document.getElementById("featureModuleId");
-  const featureModuleSuggestions = document.getElementById("featureModuleSuggestions");
+  const featureModuleSuggestions = document.getElementById(
+    "featureModuleSuggestions"
+  );
+
+  const role = (localStorage.getItem("userRole") || "").toLowerCase();
 
   /* ============================================================
-     🧭 Prefill Dropdowns (Org/Facility/Dept/Category)
+     🌐 Dropdowns
   ============================================================ */
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
   try {
-    // Categories
-    try {
-      const cats = await loadMasterItemCategoriesLite({ status: "active" }, true);
-      setupSelectOptions(catSelect, cats, "id", "name", "-- Select Category --");
-    } catch (err) {
-      console.warn("⚠️ Could not load categories:", err);
-    }
+    setupSelectOptions(
+      catSelect,
+      await loadMasterItemCategoriesLite({ status: "active" }, true),
+      "id",
+      "name",
+      "-- Select Category --"
+    );
 
-    // Auto-fill code from selected category
     catSelect?.addEventListener("change", () => {
-      const selectedOption = catSelect.options[catSelect.selectedIndex];
-      const catCode = selectedOption?.dataset.code;
-      codeInput.value = catCode ? catCode.trim().toLowerCase() : "";
+      const opt = catSelect.options[catSelect.selectedIndex];
+      codeInput.value = opt?.dataset?.code || "";
     });
 
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (role.includes("super")) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
 
-      const depts = await loadDepartmentsLite({}, true);
-      setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
+      setupSelectOptions(
+        deptSelect,
+        await loadDepartmentsLite({}, true),
+        "id",
+        "name",
+        "-- Select Department --"
+      );
 
       orgSelect?.addEventListener("change", async () => {
-        try {
-          const orgId = orgSelect.value;
-          const facs = await loadFacilitiesLite(
-            orgId ? { organization_id: orgId } : {},
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgSelect.value ? { organization_id: orgSelect.value } : {},
             true
-          );
-          setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-        } catch (err) {
-          console.error("❌ Facilities reload failed:", err);
-          showToast("❌ Could not load facilities for organization");
-        }
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
       });
-    } else if (userRole.includes("admin")) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-
-      const depts = await loadDepartmentsLite({}, true);
-      setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
 
-      try {
-        const depts = await loadDepartmentsLite({}, true);
-        setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
-      } catch (err) {
-        console.warn("⚠️ Could not load departments:", err);
-      }
+      setupSelectOptions(
+        deptSelect,
+        await loadDepartmentsLite({}, true),
+        "id",
+        "name",
+        "-- Select Department --"
+      );
     }
-  } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
-  }
 
-  /* ============================================================
-     🔍 Dynamic Feature Module Search (same as autoBillingRule)
-  ============================================================ */
-  try {
     setupSuggestionInputDynamic(
       featureModuleInput,
       featureModuleSuggestions,
@@ -214,160 +223,164 @@ export async function setupMasterItemFormSubmission({ form }) {
       },
       "name"
     );
-  } catch (err) {
-    console.error("⚠️ Feature Module search initialization failed:", err);
+  } catch {
+    showToast("❌ Failed to load reference data");
   }
 
-  /* ============================================================
-     🧩 Dynamic Toggle by Item Type
-  ============================================================ */
-  itemTypeSelect?.addEventListener("change", (e) => {
-    const selectedType = e.target.value;
-    toggleFieldsByItemType(selectedType);
-  });
+  itemTypeSelect?.addEventListener("change", (e) =>
+    toggleFieldsByItemType(e.target.value)
+  );
 
   /* ============================================================
-     ✏️ Prefill if Editing
+     ✏️ Prefill
   ============================================================ */
-  if (isEdit && itemId) {
+  if (isEdit) {
     try {
       showLoading();
-      const res = await authFetch(`/api/master-items/${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/master-items/${itemId}`);
       const result = await res.json().catch(() => ({}));
-      hideLoading();
+      if (!res.ok)
+        throw new Error(normalizeMessage(result, "Failed to load item"));
 
-      if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load item"));
-      const entry = result?.data;
-      if (!entry) return;
+      const e = result?.data?.records?.[0];
+      if (!e) return;
 
-      // Populate fields
-      document.getElementById("name").value = entry.name || "";
-      codeInput.value = entry.code || "";
-      document.getElementById("generic_group").value = entry.generic_group || "";
-      document.getElementById("strength").value = entry.strength || "";
-      document.getElementById("dosage_form").value = entry.dosage_form || "";
-      document.getElementById("unit").value = entry.unit || "";
-      document.getElementById("reorder_level").value = entry.reorder_level || 0;
-      document.getElementById("reference_price").value = entry.reference_price || 0;
-      document.getElementById("currency").value = entry.currency || "";
-      document.getElementById("test_method").value = entry.test_method || "";
-      document.getElementById("is_controlled").checked = !!entry.is_controlled;
-      document.getElementById("sample_required").checked = !!entry.sample_required;
 
-      orgSelect.value = entry.organization_id || "";
-      facSelect.value = entry.facility_id || "";
-      deptSelect.value = entry.department_id || "";
-      catSelect.value = entry.category_id || "";
-      itemTypeSelect.value = entry.item_type || "";
+      [
+        "name",
+        "generic_group",
+        "strength",
+        "dosage_form",
+        "unit",
+        "currency",
+        "test_method",
+      ].forEach((f) => {
+        const el = document.getElementById(f);
+        if (el) el.value = e[f] || "";
+      });
 
-      // ✅ Prefill Feature Module
-      featureModuleInput.value = entry.feature_module?.name || "";
-      featureModuleId.value = entry.feature_module_id || "";
+      codeInput.value = e.code || "";
+      document.getElementById("reorder_level").value = e.reorder_level || 0;
+      document.getElementById("reference_price").value =
+        e.reference_price || 0;
 
-      if (entry.status) {
-        const radio = document.getElementById(`status_${entry.status.toLowerCase()}`);
-        if (radio) radio.checked = true;
-      }
+      document.getElementById("is_controlled").checked = !!e.is_controlled;
+      document.getElementById("sample_required").checked =
+        !!e.sample_required;
 
-      toggleFieldsByItemType(entry.item_type);
+      orgSelect.value = e.organization_id || "";
+      facSelect.value = e.facility_id || "";
+      deptSelect.value = e.department_id || "";
+      catSelect.value = e.category_id || "";
+      itemTypeSelect.value = e.item_type || "";
+
+      featureModuleInput.value = e.feature_module?.name || "";
+      featureModuleId.value = e.feature_module_id || "";
+
+      document
+        .getElementById(`status_${e.status}`)
+        ?.setAttribute("checked", true);
+
+      toggleFieldsByItemType(e.item_type);
+      setUI("edit");
     } catch (err) {
+      showToast(err.message);
+    } finally {
       hideLoading();
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load item");
     }
-  } else {
-    toggleFieldsByItemType("");
   }
 
   /* ============================================================
-     💾 Submit Handler
+     🛡️ Submit (RULE-DRIVEN)
   ============================================================ */
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    if (!e.isTrusted) return;
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    clearFormErrors(form);
+
+    const errors = [];
+    for (const rule of MASTER_ITEM_FORM_RULES) {
+      if (rule.when && !rule.when()) continue;
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
     const payload = {
-      name: (document.getElementById("name")?.value || "").trim(),
-      code: (codeInput?.value || "").trim(),
-      generic_group: (document.getElementById("generic_group")?.value || "").trim(),
-      strength: (document.getElementById("strength")?.value || "").trim(),
-      dosage_form: (document.getElementById("dosage_form")?.value || "").trim(),
-      unit: (document.getElementById("unit")?.value || "").trim(),
+      name: document.getElementById("name").value.trim(),
+      code: codeInput.value.trim(),
+      generic_group: document.getElementById("generic_group")?.value || "",
+      strength: document.getElementById("strength")?.value || "",
+      dosage_form: document.getElementById("dosage_form")?.value || "",
+      unit: document.getElementById("unit")?.value || "",
       reorder_level: +document.getElementById("reorder_level")?.value || 0,
-      reference_price: +document.getElementById("reference_price")?.value || 0,
-      currency: (document.getElementById("currency")?.value || "").trim(),
-      test_method: (document.getElementById("test_method")?.value || "").trim(),
+      reference_price:
+        +document.getElementById("reference_price")?.value || 0,
+      currency: document.getElementById("currency")?.value || "",
+      test_method: document.getElementById("test_method")?.value || "",
       is_controlled: !!document.getElementById("is_controlled")?.checked,
-      sample_required: !!document.getElementById("sample_required")?.checked,
-      item_type: itemTypeSelect?.value || null,
-      category_id: normalizeUUID(catSelect?.value),
-      department_id: normalizeUUID(deptSelect?.value),
+      sample_required:
+        !!document.getElementById("sample_required")?.checked,
+      item_type: itemTypeSelect.value,
+      category_id: normalizeUUID(catSelect.value),
+      department_id: normalizeUUID(deptSelect.value),
       organization_id: normalizeUUID(orgSelect?.value),
       facility_id: normalizeUUID(facSelect?.value),
-      feature_module_id: normalizeUUID(featureModuleId?.value), // ✅ Send as UUID
+      feature_module_id: normalizeUUID(featureModuleId.value),
       status:
-        document.querySelector("input[name='status']:checked")?.value || "active",
+        document.querySelector("input[name='status']:checked")?.value ||
+        "active",
     };
-
-    if (!payload.name) return showToast("❌ Item Name is required");
-    if (!payload.code) return showToast("❌ Item Code is required");
 
     try {
       showLoading();
-      const url = isEdit ? `/api/master-items/${itemId}` : `/api/master-items`;
-      const method = isEdit ? "PUT" : "POST";
-
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await res.json().catch(() => ({}));
-
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      showToast(
-        isEdit
-          ? "✅ Item updated successfully"
-          : "✅ Item created successfully"
+      const res = await authFetch(
+        isEdit ? `/api/master-items/${itemId}` : "/api/master-items",
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
       );
 
-      sessionStorage.removeItem("masterItemEditId");
-      sessionStorage.removeItem("masterItemEditPayload");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
 
-      if (isEdit) window.location.href = "/master-items-list.html";
-      else {
-        form.reset();
-        setUI("add");
-        document.getElementById("status_active")?.setAttribute("checked", true);
-        toggleFieldsByItemType("");
-      }
+      showToast(
+        isEdit ? "✅ Item updated successfully" : "✅ Item created successfully"
+      );
+      sessionStorage.clear();
+      window.location.href = "/master-items-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
-      showToast(err.message || "❌ Submission error");
+      showToast(err.message);
     } finally {
       hideLoading();
     }
   };
 
-  /* ============================================================
-     🚪 Cancel / Clear
-  ============================================================ */
   cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("masterItemEditId");
-    sessionStorage.removeItem("masterItemEditPayload");
+    sessionStorage.clear();
     window.location.href = "/master-items-list.html";
   });
 
   clearBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("masterItemEditId");
-    sessionStorage.removeItem("masterItemEditPayload");
+    clearFormErrors(form);
     form.reset();
     setUI("add");
-    document.getElementById("status_active")?.setAttribute("checked", true);
+    document
+      .getElementById("status_active")
+      ?.setAttribute("checked", true);
     toggleFieldsByItemType("");
   });
 }

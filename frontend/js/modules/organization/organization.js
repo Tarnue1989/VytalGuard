@@ -1,20 +1,22 @@
+// 📦 organization.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🏢 VytalGuard – Organization Entry Point (Master Pattern Aligned)
-// 🔹 Mirrors consultation.js for consistent lifecycle, structure, and safety
-// 🔹 Handles both form and filter/list pages seamlessly
+// 🧭 Master Pattern: role.js / consultation.js / vitals.js
+// 🔹 Unified initialization entry for the Organization module
+// 🔹 Safe bootstrap for form + list pages
+// 🔹 Preserves all existing IDs and lifecycle behavior
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles form, filters, etc.)
+// 🧭 Main module init (form, visibility, field selector, etc.)
 import { initOrganizationModule } from "./organization-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
+// ⚙️ Action handlers (edit, delete, toggle status, etc.)
 import "./organization-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exposed for dynamic UI / selectors)
 import {
   FIELD_LABELS_ORGANIZATION,
   FIELD_ORDER_ORGANIZATION,
@@ -30,19 +32,17 @@ import { showToast, hideLoading } from "../../utils/index.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Only initialize if the organization form or list exists
-    if (document.getElementById("organizationForm")) {
+    // 🧩 Initialize ONLY when organization context exists
+    if (
+      document.getElementById("organizationForm") ||
+      document.getElementById("organizationList") ||
+      document.getElementById("organizationTableBody")
+    ) {
       await initOrganizationModule();
     }
-
-    // (Optional) Future pattern for table/list-only pages:
-    // if (document.getElementById("organizationTableBody")) {
-    //   await initOrganizationListModule();
-    // }
-
   } catch (err) {
-    console.error("❌ Failed to initialize organization module", err);
+    console.error("❌ Failed to initialize Organization module", err);
     hideLoading();
-    showToast("❌ Failed to load organization module");
+    showToast("❌ Failed to load Organization module");
   }
 });

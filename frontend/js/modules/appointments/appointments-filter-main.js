@@ -1,76 +1,81 @@
-// 📦 appointment-filter-main.js – Filters + Table/Card (Enterprise Pattern Aligned)
+// 📦 appointment-filter-main.js – Enterprise Filter + Table/Card (MASTER FINAL)
 // ============================================================================
-// 🔹 Fully synchronized with appointments-list.html structure
-// 🔹 Adds working Search, Clear, and View toggle buttons
-// 🔹 Retains enterprise summary, pagination, export, and role logic
+// 🔹 Mirrors feature-access-filter-main.js EXACTLY
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (never DB column)
+// 🔹 Org / Facility / Department fully wired
 // ============================================================================
 
 import {
-  showToast,
-  showLoading,
-  hideLoading,
-  initPageGuard,
-  autoPagePermissionKey,
-  setupToggleSection,
-  renderPaginationControls,
-  initLogoutWatcher,
+  showToast, showLoading, hideLoading,
+  initPageGuard, setupToggleSection,
+  renderPaginationControls, initLogoutWatcher,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
-  loadEmployeesLite,
   loadDepartmentsLite,
-  setupSelectOptions,
   setupSuggestionInputDynamic,
+  setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./appointments-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./appointments-render.js";
+
 import { setupActionHandlers } from "./appointments-actions.js";
+
 import {
   FIELD_ORDER_APPOINTMENT,
   FIELD_DEFAULTS_APPOINTMENT,
+  FIELD_LABELS_APPOINTMENT,
 } from "./appointments-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("appointmentView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "appointment",
@@ -79,11 +84,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_APPOINTMENT,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -91,162 +99,129 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterDoctor = document.getElementById("filterDoctor");
-const filterDoctorHidden = document.getElementById("filterDoctorId");
-const filterDoctorSuggestions = document.getElementById("filterDoctorSuggestions");
-const filterDepartment = document.getElementById("filterDepartment");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = id => document.getElementById(id);
 
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
+const globalSearch = qs("globalSearch");
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterDepartment = qs("filterDepartment");
+const filterStatus = qs("filterStatus");
+
+const filterPatient = qs("filterPatient");
+const filterPatientId = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterDoctor = qs("filterDoctor");
+const filterDoctorId = qs("filterDoctorId");
+const filterDoctorSuggestions = qs("filterDoctorSuggestions");
+
+const dateRange = qs("dateRange");
 
 /* ============================================================
-   📊 Appointment Summary Renderer
+   🔃 SORT BRIDGE (TABLE HEAD)
 ============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
-
-  const colorMap = {
-    scheduled: "text-primary",
-    in_progress: "text-warning",
-    completed: "text-success",
-    verified: "text-info",
-    cancelled: "text-danger",
-    no_show: "text-muted",
-    voided: "text-danger",
-    total: "text-dark fw-bold",
-  };
-
-  const formatValue = (val) => (val === null || val === undefined ? 0 : val);
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 justify-content-start align-items-center fw-semibold small mb-3">
-      ${keys
-        .map((key) => {
-          const val = formatValue(summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
+window.setAppointmentSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadAppointmentPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination / State
+   📄 PAGINATION
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("appointmentView") || "table";
-
-const savedLimit = parseInt(localStorage.getItem("appointmentPageLimit") || "25", 10);
-let getPagination = initPaginationControl("appointment", loadEntries, savedLimit);
-
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("appointmentPageLimit", newLimit);
-    getPagination = initPaginationControl("appointment", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+const getPagination = initPaginationControl(
+  "appointment",
+  loadEntries,
+  Number(localStorage.getItem("appointmentPageLimit") || 25)
+);
 
 /* ============================================================
-   📋 Filters + Reset
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterStatus,
+    filterOrg,
+    filterFacility,
+    filterDepartment,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+
+/* ============================================================
+   📋 FILTER BUILDER (ID-ONLY)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    doctor_id: filterDoctorHidden?.value || "",
-    department_id: filterDepartment?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    department_id: filterDepartment?.value,
+    patient_id: filterPatientId?.value,
+    doctor_id: filterDoctorId?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
-function clearFilters() {
-  [
-    filterOrg,
-    filterFacility,
-    filterPatient,
-    filterPatientHidden,
-    filterDoctor,
-    filterDoctorHidden,
-    filterDepartment,
-    filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
-    if (el) el.value = "";
-  });
-  if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
-  if (filterDoctorSuggestions) filterDoctorSuggestions.innerHTML = "";
-}
-
 /* ============================================================
-   📦 Load Appointments (with Summary)
+   📦 LOAD ENTRIES (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
+    if (f.search) q.set("search", f.search);
+    if (f.dateRange) q.set("dateRange", f.dateRange);
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_APPOINTMENT.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    [
+      "organization_id",
+      "facility_id",
+      "department_id",
+      "patient_id",
+      "doctor_id",
+      "status",
+    ].forEach(k => f[k] && q.set(k, f[k]));
 
     const res = await authFetch(`/api/appointments?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "APPOINTMENTS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -259,13 +234,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load appointments");
   } finally {
     hideLoading();
@@ -273,99 +248,69 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🔘 Search & Clear Buttons
+   🧭 VIEW TOGGLE
 ============================================================ */
-if (filterBtn) filterBtn.addEventListener("click", async () => await loadEntries(1));
-
-if (resetFilterBtn)
-  resetFilterBtn.addEventListener("click", async () => {
-    clearFilters();
-    await loadEntries(1);
-  });
-
-/* ============================================================
-   🪟 View Toggle (Table ↔ Card)
-============================================================ */
-const cardViewBtn = document.getElementById("cardViewBtn");
-const tableViewBtn = document.getElementById("tableViewBtn");
-const tableContainer = document.querySelector(".table-container");
-const cardList = document.getElementById("appointmentList");
-
-function setViewMode(mode) {
-  viewMode = mode;
-  localStorage.setItem("appointmentView", mode);
-
-  if (mode === "table") {
-    tableContainer?.classList.add("active");
-    cardList?.classList.remove("active");
-    tableViewBtn?.classList.add("active");
-    cardViewBtn?.classList.remove("active");
-  } else {
-    tableContainer?.classList.remove("active");
-    cardList?.classList.add("active");
-    cardViewBtn?.classList.add("active");
-    tableViewBtn?.classList.remove("active");
-  }
-
+qs("tableViewBtn").onclick = () => {
+  viewMode = "table";
+  localStorage.setItem("appointmentView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-}
+};
 
-cardViewBtn?.addEventListener("click", () => setViewMode("card"));
-tableViewBtn?.addEventListener("click", () => setViewMode("table"));
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("appointmentView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
 
 /* ============================================================
-   ⬇️ Export Tools (Summary-Inclusive)
+   🔄 RESET FILTERS
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `appointments_${new Date().toISOString().slice(0, 10)}.xlsx`);
+qs("resetFilterBtn").onclick = () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterDepartment,
+    filterStatus,
+    filterPatient,
+    filterPatientId,
+    filterDoctor,
+    filterDoctorId,
+    dateRange,
+  ].forEach(el => el && (el.value = "", el.dataset && (el.dataset.value = "")));
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector = viewMode === "table" ? ".table-container" : "#appointmentList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
+  filterPatientSuggestions.innerHTML = "";
+  filterDoctorSuggestions.innerHTML = "";
 
-      const summaryEl = document.getElementById("moduleSummary");
-      const summaryHTML = summaryEl
-        ? `<div class="export-summary mb-3 border rounded p-2 bg-light" 
-              style="background:#fafafa;font-size:11px;text-align:center;">
-              <h5 class="fw-bold mb-2">Appointment Summary</h5>
-              ${summaryEl.innerHTML}
-           </div>`
-        : "";
-
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Appointment_List", "#exportWrapper", "portrait", true);
-      setTimeout(() => tempDiv.remove(), 1200);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
-  };
+  loadEntries(1);
+};
 
 /* ============================================================
-   🚀 Init Module
+   ⬇️ EXPORT
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_APPOINTMENT),
+    `appointments_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Appointments List",
+    viewMode === "table" ? ".table-container" : "#appointmentList",
+    "landscape"
+  );
+});
+
+/* ============================================================
+   🚀 INIT
 ============================================================ */
 export async function initAppointmentModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible = localStorage.getItem("appointmentFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -374,13 +319,21 @@ export async function initAppointmentModule() {
     "appointmentFilterVisible"
   );
 
+  const enforce = i => {
+    i.addEventListener("input", () => (i.dataset.value = ""));
+    i.addEventListener("blur", () => !i.dataset.value && (i.value = ""));
+  };
+  [filterPatient, filterDoctor].forEach(enforce);
+
   setupSuggestionInputDynamic(
     filterPatient,
     filterPatientSuggestions,
     "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      filterPatient.value = selected?.label || "";
+    s => {
+      filterPatient.value = s.label;
+      filterPatientId.value = s.id;
+      filterPatient.dataset.value = s.id;
+      loadEntries(1);
     },
     "label"
   );
@@ -389,57 +342,50 @@ export async function initAppointmentModule() {
     filterDoctor,
     filterDoctorSuggestions,
     "/api/lite/employees",
-    (selected) => {
-      filterDoctorHidden.value = selected?.id || "";
-      filterDoctor.value = selected?.full_name || "";
+    s => {
+      filterDoctor.value = s.full_name;
+      filterDoctorId.value = s.id;
+      filterDoctor.dataset.value = s.id;
+      loadEntries(1);
     },
     "full_name"
   );
 
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+  if (userRole.includes("super")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      }
-
-      await reloadFacilities();
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      filterFacility?.closest(".form-group")?.classList.add("hidden");
-    }
+    };
 
-    const depts = await loadDepartmentsLite({}, true);
-    setupSelectOptions(filterDepartment, depts, "id", "name", "-- All Departments --");
-  } catch (err) {
-    console.error("❌ preload dropdowns failed:", err);
-    showToast("❌ Failed to load filter dropdowns");
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
+
+  setupSelectOptions(
+    filterDepartment,
+    await loadDepartmentsLite({}, true),
+    "id",
+    "name",
+    "-- All Departments --"
+  );
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initAppointmentModule().catch((err) =>
-    console.error("initAppointmentModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initAppointmentModule)
+  : initAppointmentModule();
