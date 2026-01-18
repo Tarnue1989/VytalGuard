@@ -48,9 +48,14 @@
 }
 
 /* Active cards → LET cards.css decide layout (grid) */
-.card-list.active {
-  display: grid !important;
+.card-list.active{
+  display:grid !important;
+  gap:0.75rem !important;  /* ✅ must match cards.css */
+  align-items:stretch;
+  grid-template-columns:repeat(3, minmax(0, 1fr)) !important;
 }
+
+
 
 /* =============================================================
    MOBILE VIEW (CARDS ONLY)
@@ -114,3 +119,34 @@ form .row[class*="gx-"],
   --bs-gutter-x: 0.75rem !important;
   --bs-gutter-y: 0.25rem !important;
 }
+
+/* =============================================================
+   FIX: Right-most vertical line extends fully
+============================================================= */
+
+/* Draw right edge INSIDE table */
+.data-table {
+  box-shadow:
+    inset -1px 0 0 #e5e7eb,   /* RIGHT vertical line */
+    inset 0 -2px 0 #d1d5db;  /* bottom edge (keep) */
+}
+
+/* Keep last column clean (no double line) */
+.data-table tbody td:last-child {
+  border-right: none !important;
+}
+/* =============================================================
+   FIX: main.css removes borders on last row
+============================================================= */
+
+/* Restore borders on last row cells */
+.data-table.table tbody tr:last-child td {
+  border-bottom: 1px solid #e5e7eb !important;
+  border-right: 1px solid #e5e7eb !important;
+}
+
+/* Keep last column clean */
+.data-table.table tbody tr:last-child td:last-child {
+  border-right: none !important;
+}
+

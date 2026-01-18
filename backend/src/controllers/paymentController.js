@@ -476,11 +476,11 @@ export const deletePayment = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL PAYMENTS (Enterprise Pattern + Dynamic Summary)
+   📌 GET ALL PAYMENTS (Enterprise Pattern + FLAT Summary)
 ============================================================ */
 export const getAllPayments = async (req, res) => {
   try {
-    // 🔐 Permission check
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -490,36 +490,47 @@ export const getAllPayments = async (req, res) => {
     if (!allowed) return;
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const visibleFields = FIELD_VISIBILITY_PAYMENT[role] || FIELD_VISIBILITY_PAYMENT.staff;
+    const visibleFields =
+      FIELD_VISIBILITY_PAYMENT[role] || FIELD_VISIBILITY_PAYMENT.staff;
 
-    // 🧩 Build query options
+    /* ================= QUERY OPTIONS ================= */
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
     options.where = options.where || {};
 
-    // 🏢 Multi-tenant scope
+    /* ================= MULTI-TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") options.where.facility_id = req.user.facility_id;
+      if (role === "facility_head") {
+        options.where.facility_id = req.user.facility_id;
+      }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        options.where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        options.where.facility_id = req.query.facility_id;
     }
 
-    // 🎯 Filters
+    /* ================= FILTERS ================= */
     if (req.query.invoice_id) options.where.invoice_id = req.query.invoice_id;
     if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
     if (req.query.method) options.where.method = req.query.method;
     if (req.query.status) options.where.status = req.query.status;
 
-    // 📅 Date filters
+    /* ================= DATE FILTERS ================= */
     if (req.query["created_at[gte]"]) {
-      options.where.created_at = { ...(options.where.created_at || {}), [Op.gte]: req.query["created_at[gte]"] };
+      options.where.created_at = {
+        ...(options.where.created_at || {}),
+        [Op.gte]: req.query["created_at[gte]"],
+      };
     }
     if (req.query["created_at[lte]"]) {
-      options.where.created_at = { ...(options.where.created_at || {}), [Op.lte]: req.query["created_at[lte]"] };
+      options.where.created_at = {
+        ...(options.where.created_at || {}),
+        [Op.lte]: req.query["created_at[lte]"],
+      };
     }
 
-    // 🔍 Smart search
+    /* ================= SMART SEARCH ================= */
     if (options.search) {
       const term = `%${options.search}%`;
       options.where[Op.or] = [
@@ -530,14 +541,25 @@ export const getAllPayments = async (req, res) => {
         { "$patient.last_name$": { [Op.iLike]: term } },
         { "$invoice.invoice_number$": { [Op.iLike]: term } },
       ];
+
       options.include = options.include || [];
-      if (!options.include.find((i) => i.as === "patient"))
-        options.include.push({ model: Patient, as: "patient", attributes: [] });
-      if (!options.include.find((i) => i.as === "invoice"))
-        options.include.push({ model: Invoice, as: "invoice", attributes: [] });
+      if (!options.include.find((i) => i.as === "patient")) {
+        options.include.push({
+          model: Patient,
+          as: "patient",
+          attributes: [],
+        });
+      }
+      if (!options.include.find((i) => i.as === "invoice")) {
+        options.include.push({
+          model: Invoice,
+          as: "invoice",
+          attributes: [],
+        });
+      }
     }
 
-    // 📦 Fetch paginated records
+    /* ================= FETCH RECORDS ================= */
     const { count, rows } = await Payment.findAndCountAll({
       where: options.where,
       include: [...PAYMENT_INCLUDES, ...(options.include || [])],
@@ -547,8 +569,8 @@ export const getAllPayments = async (req, res) => {
       distinct: true,
     });
 
-    // 🧠 Lifecycle + Aggregate Summary (added)
-    const summary = await buildDynamicSummary({
+    /* ================= RAW SUMMARY ================= */
+    const rawSummary = await buildDynamicSummary({
       model: Payment,
       options,
       statusEnums: Object.values(PAYMENT_STATUS),
@@ -556,15 +578,49 @@ export const getAllPayments = async (req, res) => {
       genderJoin: { model: Patient, as: "patient" },
     });
 
-    // 🧾 Transform records
+    /* ============================================================
+       🔄 FLATTEN SUMMARY (API CONTRACT – CRITICAL)
+       ✔ No nested objects
+       ✔ Clear meaning
+       ✔ Frontend-agnostic
+    ============================================================ */
+    const summary = {
+      /* ---- totals ---- */
+      total_payments: rawSummary?.total_payments ?? 0,
+      total_amount: rawSummary?.total_amount ?? 0,
+
+      /* ---- status counts ---- */
+      pending: rawSummary?.by_status?.pending ?? 0,
+      completed: rawSummary?.by_status?.completed ?? 0,
+      verified: rawSummary?.by_status?.verified ?? 0,
+      cancelled: rawSummary?.by_status?.cancelled ?? 0,
+      failed: rawSummary?.by_status?.failed ?? 0,
+      reversed: rawSummary?.by_status?.reversed ?? 0,
+      voided: rawSummary?.by_status?.voided ?? 0,
+
+      /* ---- payment methods ---- */
+      cash: rawSummary?.by_method?.cash ?? 0,
+      card: rawSummary?.by_method?.card ?? 0,
+      transfer: rawSummary?.by_method?.transfer ?? 0,
+      mobile_money: rawSummary?.by_method?.mobile_money ?? 0,
+      cheque: rawSummary?.by_method?.cheque ?? 0,
+
+      /* ---- shared breakdowns ---- */
+      gender_breakdown: rawSummary?.gender_breakdown || {},
+    };
+
+    /* ================= TRANSFORM RECORDS ================= */
     const records = rows.map((r) => {
       const plain = r.get({ plain: true });
+
       const patientLabel = plain.patient
         ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
         : "Unknown Patient";
+
       const invoiceLabel = plain.invoice
         ? `${plain.invoice.invoice_number} (Bal: ${plain.invoice.balance})`
         : "No Invoice";
+
       const dateLabel = plain.created_at
         ? new Date(plain.created_at).toLocaleDateString("en-US", {
             month: "short",
@@ -581,7 +637,7 @@ export const getAllPayments = async (req, res) => {
       };
     });
 
-    // 🧾 Audit trail
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -589,7 +645,7 @@ export const getAllPayments = async (req, res) => {
       details: { query: req.query, returned: count },
     });
 
-    // ✅ Unified response
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Payments loaded", {
       records,
       pagination: {
@@ -597,7 +653,7 @@ export const getAllPayments = async (req, res) => {
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
-      summary, // ← includes total_amount, by method/status, gender breakdown, etc.
+      summary, // ✅ FLAT, CLEAR, SCALABLE
     });
   } catch (err) {
     return error(res, "❌ Failed to load payments", err);

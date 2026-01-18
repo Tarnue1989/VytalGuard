@@ -1,27 +1,52 @@
-// 📦 feature-module.js – Entry point
+// 📦 feature-module.js – Enterprise Entry Point (Master Pattern Aligned)
+// ============================================================================
+// 🔹 Mirrors patient.js, employee.js, consultation.js
+// 🔹 Safe boot with page-type detection (form vs list)
+// 🔹 No double init, no UI breakage
+// ============================================================================
 
-// ✅ Main module init
+/* ============================================================
+   ✅ Imports
+============================================================ */
+
+// 🧭 FORM initializer (add / edit page)
 import { initFeatureModule } from "./feature-module-main.js";
 
-// ✅ Load action handlers (view, edit, delete, toggle)
+// ⚙️ Action handlers (view, edit, toggle, delete)
 import "./feature-module-actions.js";
 
 // 🛠️ Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
-// ✅ Async-safe startup
+/* ============================================================
+   🚀 DOM-Ready Bootstrap
+============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const form = document.getElementById("featureModuleForm");
-    if (form) {
+    /**
+     * 🔹 FORM MODE ONLY
+     * feature-module-main.js is FORM-ONLY
+     */
+    if (document.getElementById("featureModuleForm")) {
       await initFeatureModule();
     }
-  } catch (err) {
-    console.error("❌ Failed to initialize feature module", err);
-    hideLoading(); // ensure spinner doesn’t hang
-    showToast("❌ Failed to load feature module");
 
-    // Optional: hide form container to prevent broken UI
+    /**
+     * 🔹 LIST MODE
+     * feature-module-filter-main.js bootstraps itself
+     * so we intentionally DO NOTHING here
+     */
+
+  } catch (err) {
+    console.error("❌ Failed to initialize Feature Module:", err);
+
+    // 🧯 Prevent stuck spinner
+    hideLoading();
+
+    // 🔔 User feedback
+    showToast("❌ Failed to load Feature Module");
+
+    // 🧱 Prevent broken form UI
     document.getElementById("formContainer")?.classList.add("hidden");
   }
 });

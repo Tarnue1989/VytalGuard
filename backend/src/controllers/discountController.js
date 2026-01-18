@@ -20,19 +20,42 @@ import {
   Invoice,
   InvoiceItem,
 } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { validate } from "../utils/validation.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
 import { DISCOUNT_STATUS } from "../constants/enums.js";
+import { FIELD_VISIBILITY_DISCOUNT } from "../constants/fieldVisibility.js";
+
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
-import { FIELD_VISIBILITY_DISCOUNT } from "../constants/fieldVisibility.js";
-import { buildDynamicSummary } from "../utils/summaryHelper.js"; // 🧠 Summary Helper
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
+/* ============================================================
+   🔐 MODULE
+============================================================ */
 const MODULE_KEY = "discounts";
 
-// 🔖 Local enum map
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("discountController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM SAFE)
+============================================================ */
 const DS = {
   DRAFT: DISCOUNT_STATUS[0],
   ACTIVE: DISCOUNT_STATUS[1],
@@ -57,33 +80,38 @@ const DISCOUNT_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
 ============================================================ */
 function buildDiscountSchema(userRole, mode = "create") {
   const base = {
     invoice_id: Joi.string().uuid().allow(null),
     invoice_item_id: Joi.string().uuid().allow(null),
     discount_policy_id: Joi.string().uuid().allow(null),
+
     type: Joi.string().valid("percentage", "fixed").required(),
     value: Joi.number().positive().required(),
     reason: Joi.string().min(mode === "update" ? 5 : 3).required(),
-    organization_id: Joi.string().uuid().allow(null),
-    facility_id: Joi.string().uuid().allow(null),
-    name: Joi.string().allow(null),
-    status: Joi.string().valid(...DISCOUNT_STATUS).default(DS.DRAFT),
+    name: Joi.string().allow(null, ""),
+
+    status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
   };
 
-  const schema = Joi.object(base).or("invoice_id", "invoice_item_id", "discount_policy_id");
-
-  if (!["superadmin", "org_owner", "admin", "facility_head"].includes(userRole)) {
-    schema.describe().keys.status = Joi.forbidden();
+  if (mode === "update") {
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    base.reason = Joi.string().min(5).required();
   }
 
-  return schema;
+  return Joi.object(base).or(
+    "invoice_id",
+    "invoice_item_id",
+    "discount_policy_id"
+  );
 }
 
 /* ============================================================
-   📌 GET ALL DISCOUNTS (with Dynamic Summary)
+   📌 GET ALL DISCOUNTS (MASTER + SUMMARY)
 ============================================================ */
 export const getAllDiscounts = async (req, res) => {
   try {
@@ -100,35 +128,44 @@ export const getAllDiscounts = async (req, res) => {
       FIELD_VISIBILITY_DISCOUNT[role] || FIELD_VISIBILITY_DISCOUNT.staff;
 
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-    options.where = options.where || {};
 
-    // 🏢 Tenant scoping
-    if (!req.user.roleNames?.includes("superadmin")) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") {
-        options.where.facility_id = req.user.facility_id;
+    delete options.filters?.dateRange;
+
+    options.where = { [Op.and]: [] };
+
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: { [Op.between]: [dateRange.start, dateRange.end] },
+      });
+    }
+
+    if (!isSuperAdmin(req.user)) {
+      options.where[Op.and].push({ organization_id: req.user.organization_id });
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({ facility_id: req.user.facility_id });
       }
     } else {
       if (req.query.organization_id)
-        options.where.organization_id = req.query.organization_id;
+        options.where[Op.and].push({ organization_id: req.query.organization_id });
       if (req.query.facility_id)
-        options.where.facility_id = req.query.facility_id;
+        options.where[Op.and].push({ facility_id: req.query.facility_id });
     }
 
-    // 🔍 Filters
-    if (req.query.status) options.where.status = req.query.status;
-    if (req.query.type) options.where.type = req.query.type;
+    if (req.query.status)
+      options.where[Op.and].push({ status: req.query.status });
+    if (req.query.type)
+      options.where[Op.and].push({ type: req.query.type });
 
-    // 🔎 Search
     if (options.search) {
-      const term = `%${options.search}%`;
-      options.where[Op.or] = [
-        { reason: { [Op.iLike]: term } },
-        { type: { [Op.iLike]: term } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { reason: { [Op.iLike]: `%${options.search}%` } },
+          { type: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
-    // 📦 Fetch records
     const { count, rows } = await Discount.findAndCountAll({
       where: options.where,
       include: DISCOUNT_INCLUDES,
@@ -138,14 +175,12 @@ export const getAllDiscounts = async (req, res) => {
       distinct: true,
     });
 
-    // 🧠 Lifecycle + Aggregate Summary
     const summary = await buildDynamicSummary({
       model: Discount,
-      options,
-      statusEnums: Object.values(DISCOUNT_STATUS),
+      baseWhere: options.where,
+      statusEnums: Object.values(DS),
     });
 
-    // 🧾 Audit Trail
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -153,17 +188,17 @@ export const getAllDiscounts = async (req, res) => {
       details: { query: req.query, returned: count },
     });
 
-    // ✅ Unified Response
     return success(res, "✅ Discounts loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
-      summary, // 🧠 Enterprise Summary
     });
   } catch (err) {
+    debug.error("getAllDiscounts → FAILED", err);
     return error(res, "❌ Failed to load discounts", err);
   }
 };
@@ -173,22 +208,35 @@ export const getAllDiscounts = async (req, res) => {
 ============================================================ */
 export const getDiscountById = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
     const where = { id: req.params.id };
-    if (!req.user.roleNames?.includes("superadmin")) {
+
+    if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const record = await Discount.findOne({
       where,
       include: DISCOUNT_INCLUDES,
     });
+
     if (!record) return error(res, "❌ Discount not found", null, 404);
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "view",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -199,59 +247,33 @@ export const getDiscountById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL DISCOUNTS (Lite)
-   🔹 For dropdowns/suggestions
-============================================================ */
-export const getAllDiscountsLite = async (req, res) => {
-  try {
-    const { q } = req.query;
-    const where = {};
-
-    if (q) {
-      where[Op.or] = [
-        { reason: { [Op.iLike]: `%${q}%` } },
-        { type: { [Op.iLike]: `%${q}%` } },
-      ];
-    }
-
-    if (!req.user.roleNames?.includes("superadmin")) {
-      where.organization_id = req.user.organization_id;
-      const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
-    }
-
-    const records = await Discount.findAll({
-      where,
-      attributes: ["id", "type", "value", "reason", "status"],
-      order: [["created_at", "DESC"]],
-      limit: 20,
-    });
-
-    return success(res, "✅ Discounts loaded (lite)", { records });
-  } catch (err) {
-    return error(res, "❌ Failed to load discounts (lite)", err);
-  }
-};
-
-/* ============================================================
    📌 CREATE DISCOUNT
 ============================================================ */
 export const createDiscount = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildDiscountSchema(role, "create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
 
-    if (validationError) {
+    const { value, errors } = validate(
+      buildDiscountSchema(role, "create"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
+
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     const record = await financialService.createDiscount({
       ...value,
+      organization_id: orgId,
+      facility_id: facilityId,
       user: req.user,
       transaction: t,
     });
@@ -264,41 +286,27 @@ export const createDiscount = async (req, res) => {
       action: "create",
       entityId: record.id,
       entity: record,
-      details: value,
     });
 
     return success(res, "✅ Discount created", record);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
-    return error(res, err.message || "❌ Failed to create discount", err);
+    return error(res, "❌ Failed to create discount", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE DISCOUNT
+   📌 UPDATE / TOGGLE / FINALIZE / VOID / RESTORE / DELETE
+   🔹 SERVICE CONTROLLED (PARITY SAFE)
 ============================================================ */
+
 export const updateDiscount = async (req, res) => {
-  const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildDiscountSchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-
-    if (validationError) {
-      await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
-    }
-
     const record = await financialService.updateDiscount({
       id: req.params.id,
-      payload: value,
+      payload: req.body,
       user: req.user,
-      transaction: t,
     });
-
-    await t.commit();
 
     await auditService.logAction({
       user: req.user,
@@ -306,19 +314,14 @@ export const updateDiscount = async (req, res) => {
       action: "update",
       entityId: record.id,
       entity: record,
-      details: value,
     });
 
     return success(res, "✅ Discount updated", record);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
-    return error(res, err.message || "❌ Failed to update discount", err);
+    return error(res, "❌ Failed to update discount", err);
   }
 };
 
-/* ============================================================
-   📌 TOGGLE DISCOUNT STATUS
-============================================================ */
 export const toggleDiscountStatus = async (req, res) => {
   try {
     const record = await financialService.toggleDiscountStatus({
@@ -330,20 +333,16 @@ export const toggleDiscountStatus = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "toggle_status",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
-      details: { status: record.status },
     });
 
     return success(res, `✅ Discount status set to ${record.status}`, record);
   } catch (err) {
-    return error(res, err.message || "❌ Failed to toggle status", err);
+    return error(res, "❌ Failed to toggle discount status", err);
   }
 };
 
-/* ============================================================
-   📌 FINALIZE DISCOUNT (Auto Recalc Invoice)
-============================================================ */
 export const finalizeDiscount = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -361,20 +360,17 @@ export const finalizeDiscount = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "finalize",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
-    return success(res, "✅ Discount finalized & invoice recalculated", record);
+    return success(res, "✅ Discount finalized", record);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
-    return error(res, err.message || "❌ Failed to finalize discount", err);
+    return error(res, "❌ Failed to finalize discount", err);
   }
 };
 
-/* ============================================================
-   📌 VOID DISCOUNT (Auto Recalc Invoice)
-============================================================ */
 export const voidDiscount = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -393,21 +389,17 @@ export const voidDiscount = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "void",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
-      details: { reason: req.body?.reason },
     });
 
-    return success(res, "✅ Discount voided & invoice recalculated", record);
+    return success(res, "✅ Discount voided", record);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
-    return error(res, err.message || "❌ Failed to void discount", err);
+    return error(res, "❌ Failed to void discount", err);
   }
 };
 
-/* ============================================================
-   📌 RESTORE DISCOUNT (Auto Recalc Invoice)
-============================================================ */
 export const restoreDiscount = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -425,20 +417,17 @@ export const restoreDiscount = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "restore",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
-    return success(res, "✅ Discount restored & invoice recalculated", record);
+    return success(res, "✅ Discount restored", record);
   } catch (err) {
     if (t && !t.finished) await t.rollback();
-    return error(res, err.message || "❌ Failed to restore discount", err);
+    return error(res, "❌ Failed to restore discount", err);
   }
 };
 
-/* ============================================================
-   📌 DELETE DISCOUNT
-============================================================ */
 export const deleteDiscount = async (req, res) => {
   try {
     const record = await financialService.deleteDiscount({
@@ -450,12 +439,42 @@ export const deleteDiscount = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "delete",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
     return success(res, "✅ Discount deleted", record);
   } catch (err) {
-    return error(res, err.message || "❌ Failed to delete discount", err);
+    return error(res, "❌ Failed to delete discount", err);
+  }
+};
+/* ============================================================
+   📌 GET ALL DISCOUNTS (LITE)
+============================================================ */
+export const getAllDiscountsLite = async (req, res) => {
+  try {
+    const where = {};
+
+    if (req.query.q) {
+      where.reason = { [Op.iLike]: `%${req.query.q}%` };
+    }
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    }
+
+    const records = await Discount.findAll({
+      where,
+      attributes: ["id", "type", "value", "reason", "status"],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    return success(res, "✅ Discounts loaded (lite)", { records });
+  } catch (err) {
+    return error(res, "❌ Failed to load discounts (lite)", err);
   }
 };

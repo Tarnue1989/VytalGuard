@@ -1,11 +1,9 @@
-// 📁 department-form.js – Secure & Role-Aware Department Form (Enterprise-Aligned)
+// 📁 department-form.js – Secure & Role-Aware Department Form (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: role-form.js / vital-form.js
-// 🔹 Uses shared roleResolver util (SINGLE SOURCE OF TRUTH)
-// 🔹 Supports ORG-WIDE + FACILITY-SCOPED departments
-// 🔹 Facility optional for org admins
+// 🔹 Rule-driven validation (DEPARTMENT_FORM_RULES)
+// 🔹 Role-aware org/fac handling (super / org / facility)
 // 🔹 Clean payload normalization (UUID | null)
-// 🔹 Preserves ALL existing IDs & behavior
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
 // ============================================================================
 
 import {
@@ -13,9 +11,15 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
 
 import { authFetch } from "../../authSession.js";
 
@@ -31,8 +35,10 @@ import {
   getOrganizationId,
 } from "../../utils/roleResolver.js";
 
+import { DEPARTMENT_FORM_RULES } from "./department.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
@@ -55,230 +61,160 @@ function normalizeUUID(val) {
 }
 
 /* ============================================================
-   🚀 Setup Department Form
+   🚀 Main Setup
 ============================================================ */
 export async function setupDepartmentFormSubmission({ form }) {
-  // 🔐 Auth Guard
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const sessionId = sessionStorage.getItem("departmentEditId");
-  const queryId = getQueryParam("id");
-  const depId = sessionId || queryId;
-  const isEdit = !!depId;
+  const depId =
+    sessionStorage.getItem("departmentEditId") || getQueryParam("id");
+  const isEdit = Boolean(depId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
 
   const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Department");
-      submitBtn &&
-        (submitBtn.innerHTML =
-          `<i class="ri-save-3-line me-1"></i> Update Department`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Department");
-      submitBtn &&
-        (submitBtn.innerHTML =
-          `<i class="ri-add-line me-1"></i> Add Department`);
-    }
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Department" : "Add Department";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Department`
+          : `<i class="ri-add-line me-1"></i> Add Department`;
   };
   setUI(isEdit ? "edit" : "add");
 
-  /* ============================================================
-     🌐 DOM References
-  ============================================================ */
+  /* ---------------- DOM Refs ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const headInput = document.getElementById("headInput");
   const headHidden = document.getElementById("headId");
   const headSuggestions = document.getElementById("headSuggestions");
 
-  /* ============================================================
-     🧭 Role Resolution (SHARED UTIL)
-  ============================================================ */
+  /* ---------------- Role ---------------- */
   const userRole = resolveUserRole();
   const isSuper = userRole === "superadmin";
   const isOrgAdmin = userRole === "organization_admin";
 
   /* ============================================================
-     🧭 Prefill Dropdowns & Suggestions
+     🌐 Dropdowns & Suggestions
   ============================================================ */
   try {
     if (isSuper) {
-      // 🔹 Superadmin → org + facility selectable
-      const orgs = await loadOrganizationsLite();
       setupSelectOptions(
         orgSelect,
-        orgs,
+        await loadOrganizationsLite(),
         "id",
         "name",
         "-- Select Organization --"
       );
 
-      async function reloadFacilities(orgId = null) {
-      const facs = await loadFacilitiesLite(
-        { organization_id: orgId ?? getOrganizationId() },
-        true
-      );
-
-
+      const reloadFacilities = async (orgId = null) => {
         setupSelectOptions(
           facSelect,
-          facs,
+          await loadFacilitiesLite(
+            { organization_id: orgId ?? getOrganizationId() },
+            true
+          ),
           "id",
           "name",
           "-- Select Facility (optional) --"
         );
-      }
+      };
 
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-
-    } else if (isOrgAdmin) {
-      // 🔹 Org admin → facilities scoped to org (optional)
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-
-      const facs = await loadFacilitiesLite(
-        { organization_id: getOrganizationId() },
-        true
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
       );
-
-
+    } else if (isOrgAdmin) {
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
       setupSelectOptions(
         facSelect,
-        facs,
+        await loadFacilitiesLite(
+          { organization_id: getOrganizationId() },
+          true
+        ),
         "id",
         "name",
         "-- Select Facility (optional) --"
       );
-
     } else {
-      // 🔹 Facility-scoped / staff
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // ✅ Head of Department (Employee suggestion)
+    // Head of Department (Employee suggestion)
     setupSuggestionInputDynamic(
       headInput,
       headSuggestions,
       "/api/lite/employees",
       (selected) => {
         headHidden.value = selected?.id || "";
-        headInput.value =
-          selected?.label ||
-          (selected?.employee_no && selected?.full_name
-            ? `${selected.full_name} (${selected.employee_no})`
-            : selected?.full_name || "");
+        headInput.value = selected?.label || selected?.full_name || "";
       },
       "label"
     );
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-    ✏️ Prefill if Editing
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit && depId) {
     try {
       showLoading();
 
-      const res = await authFetch(`/api/departments/${depId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
+      const res = await authFetch(`/api/departments/${depId}`);
       const result = await res.json().catch(() => ({}));
-      hideLoading();
 
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(
           normalizeMessage(result, "Failed to load department")
         );
-      }
 
       const entry = result?.data;
       if (!entry) return;
 
-      /* ============================
-        📝 Basic fields
-      ============================ */
       document.getElementById("name").value = entry.name || "";
       document.getElementById("code").value = entry.code || "";
       document.getElementById("description").value =
         entry.description || "";
 
-      /* ========================================================
-        🏢 SUPERADMIN — preload + set organization
-      ======================================================== */
       if (isSuper && entry.organization_id) {
-        // Ensure org selector is visible
-        orgSelect.closest(".form-group")?.classList.remove("hidden");
-
-        const orgs = await loadOrganizationsLite();
+        orgSelect?.closest(".form-group")?.classList.remove("hidden");
         setupSelectOptions(
           orgSelect,
-          orgs,
+          await loadOrganizationsLite(),
           "id",
           "name",
           "-- Select Organization --"
         );
-
         orgSelect.value = entry.organization_id;
 
-        // Load facilities for this org
-        const facs = await loadFacilitiesLite(
-          { organization_id: entry.organization_id },
-          true
-        );
         setupSelectOptions(
           facSelect,
-          facs,
-          "id",
-          "name",
-          "-- Select Facility (optional) --"
-        );
-      }
-      /* ========================================================
-        🏥 ORG ADMIN — reload facilities for edit
-        (THIS IS THE MISSING PIECE)
-      ======================================================== */
-      if (isOrgAdmin && entry.organization_id) {
-        const facs = await loadFacilitiesLite(
-          { organization_id: entry.organization_id },
-          true
-        );
-
-        setupSelectOptions(
-          facSelect,
-          facs,
+          await loadFacilitiesLite(
+            { organization_id: entry.organization_id },
+            true
+          ),
           "id",
           "name",
           "-- Select Facility (optional) --"
         );
       }
 
-      /* ========================================================
-        🏥 FACILITY — FIX (ORG ADMIN + SUPERADMIN)
-        IMPORTANT: must UNHIDE before setting value
-      ======================================================== */
       if (isOrgAdmin || isSuper) {
-        facSelect.closest(".form-group")?.classList.remove("hidden");
+        facSelect?.closest(".form-group")?.classList.remove("hidden");
+        if (entry.facility_id) facSelect.value = entry.facility_id;
       }
 
-      if (entry.facility_id) {
-        facSelect.value = entry.facility_id;
-      }
-
-      /* ========================================================
-        👤 Head of Department
-      ======================================================== */
       if (entry.head_of_department) {
         const h = entry.head_of_department;
         headInput.value = [h.first_name, h.middle_name, h.last_name]
@@ -287,54 +223,58 @@ export async function setupDepartmentFormSubmission({ form }) {
         headHidden.value = h.id;
       }
 
-      /* ========================================================
-        🔘 Status
-      ======================================================== */
       if (entry.status) {
-        const radio = document.getElementById(
-          `status_${entry.status.toLowerCase()}`
-        );
-        if (radio) radio.checked = true;
+        document
+          .getElementById(`status_${entry.status}`)
+          ?.setAttribute("checked", true);
       }
 
+      setUI("edit");
     } catch (err) {
-      hideLoading();
       showToast(err.message || "❌ Could not load department");
+    } finally {
+      hideLoading();
     }
   }
 
-
   /* ============================================================
-     💾 Submit Handler
+     🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-const payload = {
-  name: document.getElementById("name")?.value.trim(),
-  code: document.getElementById("code")?.value.trim(),
-  description:
-    document.getElementById("description")?.value.trim() || "",
-  status:
-    document.querySelector("input[name='status']:checked")?.value ||
-    "active",
+    const errors = [];
+    for (const rule of DEPARTMENT_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
 
-  // Superadmin may send org, others rely on backend
-  organization_id: isSuper
-    ? normalizeUUID(orgSelect?.value)
-    : null,
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
-  // 🔥 ALWAYS send facility_id (UUID or null)
-  facility_id: normalizeUUID(facSelect?.value),
-
-  head_of_department_id: normalizeUUID(headHidden?.value),
-};
-
-    if (!payload.name)
-      return showToast("❌ Department Name is required");
-    if (!payload.code)
-      return showToast("❌ Department Code is required");
+    const payload = {
+      name: document.getElementById("name")?.value.trim(),
+      code: document.getElementById("code")?.value.trim(),
+      description:
+        document.getElementById("description")?.value.trim() || "",
+      status:
+        document.querySelector("input[name='status']:checked")?.value ||
+        "active",
+      organization_id: isSuper
+        ? normalizeUUID(orgSelect?.value)
+        : null,
+      facility_id: normalizeUUID(facSelect?.value),
+      head_of_department_id: normalizeUUID(headHidden?.value),
+    };
 
     try {
       showLoading();
@@ -358,19 +298,8 @@ const payload = {
       showToast(
         isEdit ? "✅ Department updated" : "✅ Department created"
       );
-
-      sessionStorage.removeItem("departmentEditId");
-      sessionStorage.removeItem("departmentEditPayload");
-
-      if (isEdit) {
-        window.location.href = "/departments-list.html";
-      } else {
-        form.reset();
-        setUI("add");
-        document
-          .getElementById("status_active")
-          ?.setAttribute("checked", true);
-      }
+      sessionStorage.clear();
+      window.location.href = "/departments-list.html";
     } catch (err) {
       showToast(err.message || "❌ Submission error");
     } finally {
@@ -379,7 +308,7 @@ const payload = {
   };
 
   /* ============================================================
-     🚪 Cancel / Clear
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.clear();
@@ -387,7 +316,7 @@ const payload = {
   });
 
   clearBtn?.addEventListener("click", () => {
-    sessionStorage.clear();
+    clearFormErrors(form);
     form.reset();
     setUI("add");
     document

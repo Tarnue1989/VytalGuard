@@ -1,52 +1,79 @@
-// 📁 backend/src/controllers/supplierController.js
+// 📁 controllers/supplierController.js
 import Joi from "joi";
 import { Op } from "sequelize";
-import { sequelize, Supplier, Facility, Organization, User } from "../models/index.js";
+import {
+  sequelize,
+  Supplier,
+  Organization,
+  Facility,
+  User,
+} from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { SUPPLIER_STATUS } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
-import { FIELD_VISIBILITY_SUPPLIER } from "../constants/fieldVisibility.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { validate } from "../utils/validation.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 
+const MODULE_KEY = "supplier";
 /* ============================================================
-   🧩 ENUM NORMALIZATION (Safe even if object-based)
+   🧩 ENUM NORMALIZATION (SAFE)
 ============================================================ */
 const SUPPLIER_STATUS_VALUES = Array.isArray(SUPPLIER_STATUS)
   ? SUPPLIER_STATUS
   : Object.values(SUPPLIER_STATUS || {});
 
-const SS = {
-  ACTIVE: SUPPLIER_STATUS_VALUES.find(v => v === "active") || SUPPLIER_STATUS_VALUES[0],
-  INACTIVE: SUPPLIER_STATUS_VALUES.find(v => v === "inactive") || SUPPLIER_STATUS_VALUES[1],
-};
-
 /* ============================================================
-   🔧 ROLE HELPER
+   🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map(r => r.toLowerCase()).includes("superadmin");
-}
+const DEBUG_OVERRIDE = true;
+const debug = makeModuleLogger("supplierController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
 const SUPPLIER_INCLUDES = [
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+    required: true,
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "createdBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "updatedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "deletedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA (Deposit-Consistent)
-   - Joi validates shape ONLY
-   - Tenant & status enforced by controller
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
 ============================================================ */
-function buildSupplierSchema(mode = "create") {
+function buildSupplierSchema(userRole, mode = "create") {
   const base = {
     name: Joi.string().max(150).required(),
     contact_name: Joi.string().allow("", null),
@@ -54,96 +81,86 @@ function buildSupplierSchema(mode = "create") {
     contact_phone: Joi.string().allow("", null),
     address: Joi.string().allow("", null),
     notes: Joi.string().allow("", null),
-
-    // 🔒 lifecycle / service controlled
-    status: Joi.forbidden(),
-
-    // 🔑 allowed but NOT authoritative
-    organization_id: Joi.string().uuid().optional(),
-    facility_id: Joi.string().uuid().optional(),
+    status: Joi.string()
+      .valid(...SUPPLIER_STATUS)
+      .default(SUPPLIER_STATUS[0]),
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach(k => {
-      base[k] = base[k].optional();
-    });
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+  }
+
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().required();
+    base.facility_id = Joi.string().uuid().optional();
+  }
+
+  if (userRole !== "superadmin") {
+    base.organization_id = Joi.forbidden();
+    base.facility_id = Joi.forbidden();
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   🧭 TENANT RESOLVER (Single Source of Truth)
-============================================================ */
-function resolveSupplierTenant({ user, role, value }) {
-  let organization_id = user.organization_id || null;
-  let facility_id = null;
-
-  if (isSuperAdmin(user)) {
-    organization_id = value.organization_id || null;
-    facility_id = value.facility_id || null;
-  } else if (role === "org_owner") {
-    facility_id = value.facility_id || null;
-  } else if (role === "admin") {
-    facility_id = value.facility_id || user.facility_id || null;
-  } else if (role === "facility_head") {
-    facility_id = user.facility_id;
-  } else {
-    facility_id = user.facility_id || null;
-  }
-
-  if (!organization_id) {
-    throw new Error("Missing organization assignment");
-  }
-
-  return { organization_id, facility_id };
-}
-
-/* ============================================================
-   📌 CREATE SUPPLIER (Deposit-Consistent)
+   📌 CREATE SUPPLIER (MASTER PARITY)
 ============================================================ */
 export const createSupplier = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "create",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildSupplierSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+    const { value, errors } = validate(
+      buildSupplierSchema(
+        isSuperAdmin(req.user) ? "superadmin" : "org_user",
+        "create"
+      ),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    const { organization_id, facility_id } = resolveSupplierTenant({
+    const { orgId, facilityId } = resolveOrgFacility({
       user: req.user,
-      role,
       value,
+      body: req.body,
     });
 
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
+
     const exists = await Supplier.findOne({
-      where: { organization_id, facility_id, name: value.name },
+      where: {
+        name: value.name,
+        organization_id: orgId,
+        facility_id: facilityId || null,
+      },
       paranoid: false,
+      transaction: t,
     });
+
     if (exists) {
       await t.rollback();
-      return error(res, "Supplier already exists in this scope", null, 400);
+      return error(res, "Supplier already exists", null, 400);
     }
 
     const created = await Supplier.create(
       {
         ...value,
-        organization_id,
-        facility_id,
-        status: SS.ACTIVE,
+        organization_id: orgId,
+        facility_id: facilityId || null,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -158,47 +175,60 @@ export const createSupplier = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "create",
       entityId: created.id,
       entity: full,
+      details: value,
     });
 
     return success(res, "✅ Supplier created", full);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create supplier", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE SUPPLIER (No Tenant Movement)
+   📌 UPDATE SUPPLIER (MASTER PARITY)
 ============================================================ */
 export const updateSupplier = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    debug.log("update → incoming", {
+      id: req.params.id,
+      body: req.body,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildSupplierSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+    const { value, errors } = validate(
+      buildSupplierSchema(
+        isSuperAdmin(req.user) ? "superadmin" : "org_user",
+        "update"
+      ),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    const where = { id };
+    const where = { id: req.params.id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const supplier = await Supplier.findOne({ where, transaction: t });
@@ -207,32 +237,22 @@ export const updateSupplier = async (req, res) => {
       return error(res, "Supplier not found", null, 404);
     }
 
-    // 🔒 prevent tenant movement (deposit rule)
-    if (!isSuperAdmin(req.user)) {
-      delete value.organization_id;
-      delete value.facility_id;
-    } else {
-      const resolved = resolveSupplierTenant({
-        user: req.user,
-        role,
-        value,
+    if (value.name) {
+      const exists = await Supplier.findOne({
+        where: {
+          name: value.name,
+          organization_id: supplier.organization_id,
+          facility_id: supplier.facility_id,
+          id: { [Op.ne]: supplier.id },
+        },
+        paranoid: false,
+        transaction: t,
       });
-      value.organization_id = resolved.organization_id;
-      value.facility_id = resolved.facility_id;
-    }
 
-    const exists = await Supplier.findOne({
-      where: {
-        organization_id: supplier.organization_id,
-        facility_id: supplier.facility_id,
-        name: value.name,
-        id: { [Op.ne]: id },
-      },
-      paranoid: false,
-    });
-    if (exists) {
-      await t.rollback();
-      return error(res, "Supplier name already in use in this scope", null, 400);
+      if (exists) {
+        await t.rollback();
+        return error(res, "Supplier name already in use", null, 400);
+      }
     }
 
     await supplier.update(
@@ -246,46 +266,154 @@ export const updateSupplier = async (req, res) => {
     await t.commit();
 
     const full = await Supplier.findOne({
-      where: { id },
+      where: { id: supplier.id },
       include: SUPPLIER_INCLUDES,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: supplier.id,
       entity: full,
+      details: value,
     });
 
     return success(res, "✅ Supplier updated", full);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update supplier", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE SUPPLIER (Soft Delete)
+   📌 GET SUPPLIER BY ID (MASTER PARITY)
+============================================================ */
+export const getSupplierById = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (!isOrgLevelUser(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    }
+
+    const supplier = await Supplier.findOne({
+      where,
+      include: SUPPLIER_INCLUDES,
+    });
+
+    if (!supplier) {
+      return error(res, "Supplier not found", null, 404);
+    }
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "view",
+      entityId: supplier.id,
+      entity: supplier,
+    });
+
+    return success(res, "✅ Supplier loaded", supplier);
+  } catch (err) {
+    debug.error("view → FAILED", err);
+    return error(res, "❌ Failed to load supplier", err);
+  }
+};
+
+/* ============================================================
+   📌 TOGGLE SUPPLIER STATUS (MASTER PARITY)
+============================================================ */
+export const toggleSupplierStatus = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    }
+
+    const supplier = await Supplier.findOne({ where });
+    if (!supplier) {
+      return error(res, "Supplier not found", null, 404);
+    }
+
+    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS;
+    const newStatus = supplier.status === ACTIVE ? INACTIVE : ACTIVE;
+
+    await supplier.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
+
+    const full = await Supplier.findOne({
+      where: { id: supplier.id },
+      include: SUPPLIER_INCLUDES,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "toggle_status",
+      entityId: supplier.id,
+      entity: full,
+      details: { from: supplier.status, to: newStatus },
+    });
+
+    return success(
+      res,
+      `✅ Supplier status toggled to ${newStatus}`,
+      full
+    );
+  } catch (err) {
+    debug.error("toggle_status → FAILED", err);
+    return error(res, "❌ Failed to toggle supplier status", err);
+  }
+};
+
+/* ============================================================
+   📌 DELETE SUPPLIER (MASTER PARITY)
 ============================================================ */
 export const deleteSupplier = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+    const where = { id: req.params.id };
 
-    const where = { id };
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const supplier = await Supplier.findOne({ where, transaction: t });
@@ -294,147 +422,160 @@ export const deleteSupplier = async (req, res) => {
       return error(res, "Supplier not found", null, 404);
     }
 
-    await supplier.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await supplier.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await supplier.destroy({ transaction: t });
     await t.commit();
 
     const full = await Supplier.findOne({
-      where: { id },
+      where: { id: supplier.id },
       include: SUPPLIER_INCLUDES,
       paranoid: false,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "delete",
-      entityId: id,
+      entityId: supplier.id,
       entity: full,
     });
 
-    return success(res, "✅ Supplier deleted successfully", full);
+    return success(res, "✅ Supplier deleted", full);
   } catch (err) {
     await t.rollback();
-    console.error("❌ Supplier delete error:", err);
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete supplier", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE SUPPLIER STATUS (Active ↔ Inactive)
-============================================================ */
-export const toggleSupplierStatus = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: "supplier",
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
-    }
-
-    const supplier = await Supplier.findOne({ where });
-    if (!supplier) return error(res, "Supplier not found", null, 404);
-
-    const SUPPLIER_STATUS_VALUES = Array.isArray(SUPPLIER_STATUS)
-      ? SUPPLIER_STATUS
-      : Object.values(SUPPLIER_STATUS || {});
-
-    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS_VALUES;
-    const newStatus = supplier.status === ACTIVE ? INACTIVE : ACTIVE;
-
-    await supplier.update({ status: newStatus, updated_by_id: req.user?.id || null });
-
-    const full = await Supplier.findOne({ where: { id }, include: SUPPLIER_INCLUDES });
-
-    await auditService.logAction({
-      user: req.user,
-      module: "supplier",
-      action: "toggle_status",
-      entityId: id,
-      entity: full,
-      details: { from: supplier.status, to: newStatus },
-    });
-
-    return success(res, `✅ Supplier status set to ${newStatus}`, full);
-  } catch (err) {
-    console.error("❌ Toggle supplier status error:", err);
-    return error(res, "❌ Failed to toggle supplier status", err);
-  }
-};
-
-/* ============================================================
-   📌 GET ALL SUPPLIERS (Paginated)
+   📌 GET ALL SUPPLIERS (MASTER PARITY + SUMMARY)
 ============================================================ */
 export const getAllSuppliers = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const visibleFields =
-      FIELD_VISIBILITY_SUPPLIER[role] || FIELD_VISIBILITY_SUPPLIER.staff;
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
+    const options = buildQueryOptions(req, "name", "ASC");
 
-    const options = buildQueryOptions(req, "name", "ASC", visibleFields);
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
 
-    // 🔒 Scope by role
+    /* ========================================================
+       🧱 WHERE ROOT
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where = {
-        ...(options.where || {}),
+      options.where[Op.and].push({
         organization_id: req.user.organization_id,
-      };
-      if (role === "facility_head") options.where.facility_id = req.user.facility_id;
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else if (req.query.organization_id) {
+      options.where[Op.and].push({
+        organization_id: req.query.organization_id,
+      });
     }
 
-    // 🧭 Global (UUID search)
-    if (req.query.global) {
-      options.where = { ...(options.where || {}), id: req.query.global };
+    /* ========================================================
+       🔍 GLOBAL SEARCH (MASTER)
+    ======================================================== */
+    if (options.search) {
+      options.where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { contact_name: { [Op.iLike]: `%${options.search}%` } },
+          { contact_email: { [Op.iLike]: `%${options.search}%` } },
+          { contact_phone: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
-    // 🔎 Text search
-    if (options.search && !req.query.global) {
-      options.where[Op.or] = [
-        { name: { [Op.iLike]: `%${options.search}%` } },
-        { contact_name: { [Op.iLike]: `%${options.search}%` } },
-        { contact_email: { [Op.iLike]: `%${options.search}%` } },
-        { contact_phone: { [Op.iLike]: `%${options.search}%` } },
-      ];
+    /* ========================================================
+       📌 STATUS FILTER (ENUM SAFE)
+    ======================================================== */
+    if (
+      req.query.status &&
+      SUPPLIER_STATUS_VALUES.includes(req.query.status)
+    ) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
     }
 
+    /* ========================================================
+       🗂️ QUERY EXECUTION
+    ======================================================== */
     const { count, rows } = await Supplier.findAndCountAll({
       where: options.where,
-      attributes: options.attributes
-        ? [...new Set(["id", "created_at", "updated_at", ...options.attributes])]
-        : undefined,
-      include: [...SUPPLIER_INCLUDES, ...(options.include || [])],
-      order: options.order?.length ? options.order : [["name", "ASC"]],
+      include: SUPPLIER_INCLUDES,
+      order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
     });
 
+    /* ========================================================
+       📊 SUMMARY (MASTER PARITY)
+    ======================================================== */
+    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS_VALUES;
+
+    const summary = {
+      total: count,
+      active: rows.filter(r => r.status === ACTIVE).length,
+      inactive: rows.filter(r => r.status === INACTIVE).length,
+    };
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "list",
       details: { query: req.query, returned: count },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Suppliers loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -442,113 +583,86 @@ export const getAllSuppliers = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Load suppliers error:", err);
+    debug.error("list → FAILED", err);
     return error(res, "❌ Failed to load suppliers", err);
   }
 };
 
 /* ============================================================
-   📌 GET SUPPLIER BY ID
-============================================================ */
-export const getSupplierById = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: "supplier",
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
-    }
-
-    const supplier = await Supplier.findOne({ where, include: SUPPLIER_INCLUDES });
-    if (!supplier) return error(res, "❌ Supplier not found", null, 404);
-
-    await auditService.logAction({
-      user: req.user,
-      module: "supplier",
-      action: "view",
-      entityId: id,
-      entity: supplier,
-    });
-
-    return success(res, "✅ Supplier loaded", supplier);
-  } catch (err) {
-    console.error("❌ Load supplier error:", err);
-    return error(res, "❌ Failed to load supplier", err);
-  }
-};
-
-/* ============================================================
-   📌 GET ALL SUPPLIERS (Lite / Autocomplete)
+   📌 GET ALL SUPPLIERS LITE (MASTER PARITY)
 ============================================================ */
 export const getAllSuppliersLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
     const { q } = req.query;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    const SUPPLIER_STATUS_VALUES = Array.isArray(SUPPLIER_STATUS)
-      ? SUPPLIER_STATUS
-      : Object.values(SUPPLIER_STATUS || {});
-    const ACTIVE = SUPPLIER_STATUS_VALUES.find(v => v === "active") || "active";
+    /* ========================================================
+       🧱 WHERE ROOT (SAFE)
+    ======================================================== */
+    const where = { [Op.and]: [] };
 
-    const where = { deleted_at: null, status: ACTIVE };
-
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+    /* ========================================================
+       📌 STATUS FILTER (ENUM-SAFE)
+    ======================================================== */
+    if (SUPPLIER_STATUS_VALUES.length) {
+      where[Op.and].push({
+        status: SUPPLIER_STATUS_VALUES[0],
+      });
     }
 
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    }
+
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { contact_name: { [Op.iLike]: `%${q}%` } },
-        { contact_email: { [Op.iLike]: `%${q}%` } },
-        { contact_phone: { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${q}%` } },
+          { contact_name: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
     const suppliers = await Supplier.findAll({
       where,
-      attributes: ["id", "name", "contact_name", "contact_email", "contact_phone"],
+      attributes: ["id", "name"],
       order: [["name", "ASC"]],
       limit: 20,
     });
 
-    const result = suppliers.map(s => ({
-      id: s.id,
-      name: s.name,
-      label: s.contact_name ? `${s.name} (${s.contact_name})` : s.name,
-      contact_email: s.contact_email || "",
-      contact_phone: s.contact_phone || "",
-    }));
-
     await auditService.logAction({
       user: req.user,
-      module: "supplier",
+      module: MODULE_KEY,
       action: "list_lite",
-      details: { query: q || null, count: result.length },
+      details: { q: q || null, count: suppliers.length },
     });
 
-    return success(res, "✅ Suppliers loaded (lite)", { records: result });
+    return success(res, "✅ Suppliers loaded (lite)", {
+      records: suppliers,
+    });
   } catch (err) {
-    console.error("❌ Load suppliers (lite) error:", err);
+    debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load suppliers (lite)", err);
   }
 };

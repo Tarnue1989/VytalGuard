@@ -1,9 +1,10 @@
-// 📦 role-main.js – Form-only loader for Role (Enterprise-Aligned)
+// 📦 role-main.js – Form-only loader for Role (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: vital-main.js
-// 🔹 Maintains identical enterprise structure for consistency across modules
-// 🔹 Includes role normalization, visibility toggling, shared state, and resetForm()
-// 🔹 Preserves all original HTML IDs for full UI compatibility
+// 🧭 Mirrors patient-main.js structure
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration
 // ============================================================================
 
 import {
@@ -20,15 +21,11 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-// Automatically resolves correct permission ("roles:create" / "roles:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -43,33 +40,27 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
-  if (form) form.reset();
+  form?.reset();
 
-  // Clear cached edit session
   sessionStorage.removeItem("roleEditId");
   sessionStorage.removeItem("roleEditPayload");
 
-  // Clear key text fields
-  ["name", "code", "description"].forEach((id) => {
+  ["name", "code", "description"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Dropdown resets
-  ["organizationSelect", "facilitySelect"].forEach((id) => {
+  ["organizationSelect", "facilitySelect"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Default radios
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
-  const customRadio = document.getElementById("is_system_false");
-  if (customRadio) customRadio.checked = true;
+  document.getElementById("status_active")?.setAttribute("checked", true);
+  document.getElementById("is_system_false")?.setAttribute("checked", true);
 }
 
 /* ============================================================
@@ -88,52 +79,45 @@ function hideForm() {
   localStorage.setItem("roleFormVisible", "false");
 }
 
-// Expose globally for reuse by action handlers
+// 🔗 Expose for action handlers
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
    🔘 Button Wiring
 ============================================================ */
-if (cancelBtn) {
-  cancelBtn.onclick = () => {
+cancelBtn &&
+  (cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/roles-list.html"; // ✅ plural redirect
-  };
-}
+    window.location.href = "/roles-list.html";
+  });
 
-if (clearBtn) clearBtn.onclick = resetForm;
+clearBtn && (clearBtn.onclick = resetForm);
 
-if (desktopAddBtn) {
-  desktopAddBtn.onclick = () => {
-    // Purge stale edit data
+desktopAddBtn &&
+  (desktopAddBtn.onclick = () => {
     sessionStorage.removeItem("roleEditId");
     sessionStorage.removeItem("roleEditPayload");
-
-    // Reset form for Add mode
     resetForm();
     showForm();
-  };
-}
+  });
 
 /* ============================================================
-   🧠 Loader (no-op)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles this
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initRoleModule() {
-  // Restore last form visibility state
-  const visible = localStorage.getItem("roleFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  localStorage.getItem("roleFormVisible") === "true"
+    ? showForm()
+    : hideForm();
 
-  // Initialize form submission
-  if (form) {
+  form &&
     setupRoleFormSubmission({
       form,
       token,
@@ -141,12 +125,10 @@ export async function initRoleModule() {
       resetForm,
       loadEntries,
     });
-  }
 
-  // Hide list panel on standalone form
   localStorage.setItem("rolePanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  /* -------- Normalize user role -------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -154,7 +136,6 @@ export async function initRoleModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
   setupFieldSelector({
     module: "roles",
     fieldLabels: FIELD_LABELS_ROLE,
@@ -164,8 +145,6 @@ export async function initRoleModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   (Optional) Sync Stub
 ============================================================ */
-export function syncRefsToState() {
-  // Reserved for advanced reactive behavior
-}
+export function syncRefsToState() {}

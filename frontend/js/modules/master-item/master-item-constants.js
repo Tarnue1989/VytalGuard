@@ -1,4 +1,4 @@
-// 📁 master-item-constants.js – Enterprise-Aligned Master Pattern (Upgraded)
+// 📁 master-item-constants.js – Enterprise-Aligned Master Pattern (FINAL)
 // ============================================================================
 // 🔹 Pattern Source: master-item-category-constants.js / vital-constants.js
 // 🔹 Structural Consistency: Field labels, order, and role-based visibility
@@ -8,14 +8,11 @@
 
 /* ============================================================
    🏷️ Field Labels
-   ------------------------------------------------------------
-   Aligned with enterprise pattern naming + tooltip standard.
-   Each key must match the field ID in your HTML / backend model.
 ============================================================ */
 export const FIELD_LABELS_MASTER_ITEM = {
   organization: "Organization",
   facility: "Facility",
-  feature_module: "Feature Module", // ✅ newly added linkage field
+  feature_module: "Feature Module",
   name: "Item Name",
   code: "Item Code",
   description: "Description",
@@ -44,13 +41,11 @@ export const FIELD_LABELS_MASTER_ITEM = {
 
 /* ============================================================
    📋 Field Order
-   ------------------------------------------------------------
-   Consistent across all master modules for unified table layout.
 ============================================================ */
 export const FIELD_ORDER_MASTER_ITEM = [
   "organization",
   "facility",
-  "feature_module", // ✅ consistent with DB + UI alignment
+  "feature_module",
   "name",
   "code",
   "description",
@@ -79,16 +74,12 @@ export const FIELD_ORDER_MASTER_ITEM = [
 
 /* ============================================================
    👥 Role-Based Field Visibility Defaults
-   ------------------------------------------------------------
-   🧩 Admin: Full visibility (org + facility + audit metadata)
-   🧩 Manager: Scoped visibility (facility + audit trail)
-   🧩 Staff: Operational essentials only
 ============================================================ */
 export const FIELD_DEFAULTS_MASTER_ITEM = {
   admin: [
     "organization",
     "facility",
-    "feature_module", // ✅ added for admin
+    "feature_module",
     "name",
     "code",
     "description",
@@ -118,7 +109,7 @@ export const FIELD_DEFAULTS_MASTER_ITEM = {
   manager: [
     "organization",
     "facility",
-    "feature_module", // ✅ visible for managers too
+    "feature_module",
     "name",
     "code",
     "description",

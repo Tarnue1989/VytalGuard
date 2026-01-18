@@ -1,8 +1,8 @@
 // ============================================================================
-// 🏥 VytalGuard – Facility Form Controller (Enterprise Master Pattern Aligned)
-// 🔹 Mirrors organization-main.js for unified add/edit lifecycle
+// 🏥 VytalGuard – Facility Form Controller (Enterprise Master Pattern UPGRADED)
+// 🔹 Mirrors add-role.js / organization-main.js lifecycle
 // 🔹 Auth Guard + Logout Watcher + Prefill + Safe Reset
-// 🔹 Preserves all IDs, fields, and existing dynamic behavior
+// 🔹 MATCHES CURRENT FACILITY HTML (name-based fields)
 // ============================================================================
 
 import { setupFacilityFormSubmission } from "./facility-form.js";
@@ -15,12 +15,16 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 import { authFetch } from "../../authSession.js";
+import {
+  loadOrganizationsLite,
+  setupSelectOptions,
+} from "../../utils/data-loaders.js";
 
-// 🔐 Auth Guard – permission auto-resolved from backend ("facilities:create/edit")
+// 🔐 Auth Guard – permission auto-resolved from backend
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// Shared reference (consistent with other modules)
+// Shared reference (master parity)
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -35,23 +39,24 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
-  // 🩺 Reset org dynamic inputs
-  const orgInput = document.getElementById("organizationInput");
-  const orgHidden = document.getElementById("organization_id");
-  if (orgInput) orgInput.value = "";
-  if (orgHidden) orgHidden.value = "";
+  // Reset organization select
+  const orgSelect = document.getElementById("organizationSelect");
+  if (orgSelect) orgSelect.value = "";
 
-  // 🔄 Reset status
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Reset status → active
+  form
+    .querySelector(`input[name="status"][value="active"]`)
+    ?.setAttribute("checked", true);
 
-  // 🏷 UI back to Add mode
+  // UI → Add mode
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Facility";
 
   const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Create Facility`;
+  if (submitBtn) {
+    submitBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Facility`;
+  }
 }
 
 /* ============================================================
@@ -61,7 +66,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("facilityForm");
   if (!form) return;
 
-  // 🧩 Hook up unified form submission
+  const orgSelect = document.getElementById("organizationSelect");
+
+  /* ==========================================================
+     🧾 Form Submission (DELEGATED)
+  ========================================================== */
   setupFacilityFormSubmission({
     form,
     token,
@@ -70,62 +79,73 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadEntries: null,
   });
 
-  // ============================================================
-  // ✏️ Edit Mode Handling (Session or Query Param)
-  // ============================================================
+  /* ==========================================================
+     ✏️ Edit Mode Handling (CACHE → QUERY → API)
+  ========================================================== */
   const editId = sessionStorage.getItem("facilityEditId");
   const rawPayload = sessionStorage.getItem("facilityEditPayload");
 
   async function applyPrefill(entry) {
-    document.getElementById("name").value = entry.name || "";
-    document.getElementById("code").value = entry.code || "";
-    document.getElementById("address").value = entry.address || "";
-    document.getElementById("phone").value = entry.phone || "";
-    document.getElementById("email").value = entry.email || "";
+    const setVal = (name, value) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (el) el.value = value ?? "";
+    };
 
+    setVal("name", entry.name);
+    setVal("code", entry.code);
+    setVal("address", entry.address);
+    setVal("phone", entry.phone);
+    setVal("email", entry.email);
+
+    // Status
     if (entry.status) {
-      const statusEl = document.getElementById(
-        `status_${entry.status.toLowerCase()}`
+      form
+        .querySelector(
+          `input[name="status"][value="${entry.status.toLowerCase()}"]`
+        )
+        ?.setAttribute("checked", true);
+    }
+
+    // Organization (SuperAdmin only)
+    if (entry.organization_id && orgSelect) {
+      const orgs = await loadOrganizationsLite();
+      setupSelectOptions(
+        orgSelect,
+        orgs,
+        "id",
+        "name",
+        "-- Select Organization --"
       );
-      if (statusEl) statusEl.checked = true;
+      orgSelect.value = entry.organization_id;
     }
 
-    // 🧩 Prefill Organization
-    const orgInput = document.getElementById("organizationInput");
-    const orgHidden = document.getElementById("organization_id");
-    if (orgInput && orgHidden) {
-      orgInput.value = entry.organization?.name || "";
-      orgHidden.value = entry.organization_id || entry.organization?.id || "";
-    }
-
-    // 🏷 Switch UI to Edit mode
+    // UI → Edit mode
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Facility";
 
     const submitBtn = form.querySelector("button[type=submit]");
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Facility`;
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        `<i class="ri-save-3-line me-1"></i> Update Facility`;
+    }
   }
 
-  /* ============================================================
-     1️⃣ Cached Edit Session Payload
-  ============================================================ */
+  /* ==========================================================
+     1️⃣ Cached Edit Session
+  ========================================================== */
   if (editId && rawPayload) {
     try {
-      const entry = JSON.parse(rawPayload);
       sharedState.currentEditIdRef.value = editId;
-      await applyPrefill(entry);
+      await applyPrefill(JSON.parse(rawPayload));
     } catch (err) {
-      console.error("❌ Failed to parse cached edit payload:", err);
+      console.error("❌ Cached facility load failed:", err);
       showToast("❌ Could not load cached facility for editing");
     }
   } else {
-    /* ============================================================
+    /* ========================================================
        2️⃣ Fallback: ?id Query Parameter
-    ============================================================ */
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-
+    ======================================================== */
+    const id = new URLSearchParams(window.location.search).get("id");
     if (id) {
       sharedState.currentEditIdRef.value = id;
       try {
@@ -135,20 +155,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         const entry = result?.data;
 
         if (!res.ok || !entry)
-          throw new Error(result.message || "❌ Failed to fetch facility");
+          throw new Error(result?.message || "Failed to load facility");
+
         await applyPrefill(entry);
       } catch (err) {
-        console.error("❌ Failed to load facility:", err);
-        showToast(err.message || "❌ Failed to load facility for editing");
+        console.error(err);
+        showToast(err.message || "❌ Failed to load facility");
       } finally {
         hideLoading();
       }
     }
   }
 
-  /* ============================================================
-     🚪 Cancel / Clear Buttons (if any present)
-  ============================================================ */
+  /* ==========================================================
+     🚪 Cancel / Clear
+  ========================================================== */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("facilityEditId");
     sessionStorage.removeItem("facilityEditPayload");
@@ -161,11 +182,3 @@ document.addEventListener("DOMContentLoaded", async () => {
     resetForm();
   });
 });
-
-// ============================================================================
-// ✅ Enterprise Master Pattern Summary:
-//    • Uses autoPagePermissionKey() for permission-aware auth guard
-//    • Safe unified Add/Edit lifecycle (sharedState tracking)
-//    • Same structure as organization-main.js
-//    • All field IDs, inputs, and behaviors preserved exactly
-// ============================================================================

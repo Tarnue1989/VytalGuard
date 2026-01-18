@@ -15,6 +15,7 @@ import {
   renderPaginationControls,
   initLogoutWatcher,
 } from "../../utils/index.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 import { authFetch } from "../../authSession.js";
 import {
@@ -89,86 +90,6 @@ renderFieldSelector(
   FIELD_ORDER_PAYMENT
 );
 
-/* ============================================================
-   💳 Payment Summary Renderer (v2.3 – Smart $ + Gender Fix)
-============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
-
-  const colorMap = {
-    pending: "text-warning",
-    completed: "text-success",
-    failed: "text-danger",
-    cancelled: "text-secondary",
-    reversed: "text-dark",
-    verified: "text-success",
-    voided: "text-muted",
-    total: "text-dark fw-bold",
-  };
-
-  const formatVal = (key, val) => {
-    if (val == null) return 0;
-    const lower = key.toLowerCase();
-
-    // 🧩 Handle gender breakdown objects gracefully
-    if (typeof val === "object" && key.toLowerCase() === "gender_breakdown") {
-      const parts = Object.entries(val).map(([g, c]) => `${g}: ${c}`);
-      return parts.length ? parts.join(" / ") : "—";
-    }
-
-    // 🔒 Force numeric count for these keys
-    const countKeys = [
-      "count",
-      "total_payments",
-      "total_records",
-      "total_patients",
-      "total_visits",
-      "total_deposits",
-    ];
-    const isCountField = countKeys.some((k) => lower.includes(k));
-
-    // 💰 Format currency only for proper money fields
-    const shouldFormatAsCurrency =
-      !isCountField &&
-      /amount|balance|sum|value|total/.test(lower) &&
-      !isNaN(val);
-
-    if (shouldFormatAsCurrency) {
-      const num = parseFloat(val);
-      return `$${num.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-
-    // 🔢 Format plain number with grouping if numeric
-    if (!isNaN(val)) return parseFloat(val).toLocaleString();
-
-    return val;
-  };
-
-  const keys = Object.keys(summary).filter(
-    (k) => k !== "payment_summary"
-  );
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
 
 /* ============================================================
    🔎 Filter DOM

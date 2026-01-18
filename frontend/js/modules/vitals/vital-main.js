@@ -1,16 +1,14 @@
-// 📦 vital-main.js – Form-only loader for Vital (Master-Aligned)
+// 📦 vital-main.js – Form-only loader for Vital (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: consultation-main.js
-// 🔹 Enterprise-aligned structure with identical resetForm(), show/hide behavior,
-//   permission guards, role normalization, and field selector setup.
-// 🔹 All original HTML IDs are preserved exactly as in your existing vital form.
+// 🧭 Mirrors department-main.js structure exactly
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
-import {
-  initPageGuard,
-  autoPagePermissionKey,
-  initLogoutWatcher,
-} from "../../utils/index.js";
+import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
 import { setupVitalFormSubmission } from "./vital-form.js";
 import {
   FIELD_LABELS_VITAL,
@@ -20,15 +18,11 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-// Automatically resolves correct permission ("vitals:create" / "vitals:edit")
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard("vitals");
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -49,11 +43,11 @@ function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("vitalEditId");
   sessionStorage.removeItem("vitalEditPayload");
 
-  // Text / numeric input fields
+  // Clear inputs
   [
     "bp",
     "pulse",
@@ -67,7 +61,6 @@ function resetForm() {
     "position",
     "recordedAt",
     "patientInput",
-    "nurseInput",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -80,18 +73,11 @@ function resetForm() {
   });
 
   // Hidden IDs
-  ["patientId", "nurseId"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  // Default status (Active, if applicable)
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  document.getElementById("patientId")?.value = "";
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -106,17 +92,17 @@ function hideForm() {
   localStorage.setItem("vitalFormVisible", "false");
 }
 
-// Expose globally for reuse by action handlers
+// 🔗 Expose globally
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/vitals-list.html"; // ✅ plural redirect
+    window.location.href = "/vitals-list.html";
   };
 }
 
@@ -124,33 +110,26 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // Purge stale edit data
     sessionStorage.removeItem("vitalEditId");
     sessionStorage.removeItem("vitalEditPayload");
-
-    // Reset form for Add mode
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🧠 Loader (no-op)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles this
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initVitalModule() {
-  // Restore last form visibility state
-  const visible = localStorage.getItem("vitalFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  showForm(); // form-only mode (matches Department)
 
-  // Initialize form submission
   if (form) {
     setupVitalFormSubmission({
       form,
@@ -161,10 +140,9 @@ export async function initVitalModule() {
     });
   }
 
-  // Hide list panel on standalone form
   localStorage.setItem("vitalPanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  // Normalize role
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -172,7 +150,6 @@ export async function initVitalModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
   setupFieldSelector({
     module: "vitals",
     fieldLabels: FIELD_LABELS_VITAL,
@@ -182,8 +159,8 @@ export async function initVitalModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for advanced reactive behavior
+  // reserved for future reactive syncing
 }

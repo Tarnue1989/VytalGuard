@@ -1,8 +1,9 @@
-// 📁 vital-form.js – Secure & Role-Aware Vital Form (Enterprise-Aligned)
+// 📁 vital-form.js – Secure & Role-Aware Vital Form (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: consultation-form.js
-// 🔹 Same structure, permission logic, and submission flow
-// 🔹 Keeps all original HTML IDs intact (safe for your current HTML)
+// 🔹 Rule-driven validation (VITAL_FORM_RULES)
+// 🔹 Role-aware org/fac handling (super / org / facility)
+// 🔹 Clean payload normalization
+// 🔹 Controller-faithful (no inline required checks)
 // ============================================================================
 
 import {
@@ -10,10 +11,18 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -21,71 +30,58 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-/* ============================================================
-   🔧 Helpers
-============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-function normalizeDateTime(val) {
-  if (!val) return null;
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
-function formatForDateTimeLocal(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  return d.toISOString().slice(0, 16);
-}
+import {
+  resolveUserRole,
+  getOrganizationId,
+} from "../../utils/roleResolver.js";
+
+import { VITAL_FORM_RULES } from "./vital.form.rules.js";
 
 /* ============================================================
-   🚀 Setup Vital Form
+   Helpers
+============================================================ */
+const qp = (k) => new URLSearchParams(window.location.search).get(k);
+const normUUID = (v) => (typeof v === "string" && v.trim() ? v : null);
+const normDT = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+const fmtDTLocal = (v) => (v ? new Date(v).toISOString().slice(0, 16) : "");
+const normMsg = (r, f) => {
+  const m = r?.message ?? r?.error ?? r?.msg;
+  if (typeof m === "string") return m;
+  if (m?.detail) return m.detail;
+  try { return JSON.stringify(m); } catch { return f; }
+};
+
+/* ============================================================
+   Main Setup
 ============================================================ */
 export async function setupVitalFormSubmission({ form }) {
-  // 🔐 Auth Guard
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const sessionId = sessionStorage.getItem("vitalEditId");
-  const queryId = getQueryParam("id");
-  const vitalId = sessionId || queryId;
-  const isEdit = !!vitalId;
+  const vitalId = sessionStorage.getItem("vitalEditId") || qp("id");
+  const isEdit = Boolean(vitalId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
 
-  const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Vital");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Vital`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Vital");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Vital`);
-    }
+  const setUI = (m = "add") => {
+    if (titleEl) titleEl.textContent = m === "edit" ? "Edit Vital" : "Add Vital";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        m === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Vital`
+          : `<i class="ri-add-line me-1"></i> Add Vital`;
   };
   setUI(isEdit ? "edit" : "add");
 
-  /* ============================================================
-     🌐 DOM References
-  ============================================================ */
+  /* ---------------- DOM Refs ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const patientInput = document.getElementById("patientInput");
@@ -96,137 +92,152 @@ export async function setupVitalFormSubmission({ form }) {
   const nurseHidden = document.getElementById("nurseId");
   const nurseSuggestions = document.getElementById("nurseSuggestions");
 
+  /* ---------------- Role ---------------- */
+  const role = resolveUserRole();
+  const isSuper = role === "superadmin";
+  const isOrgAdmin = role === "organization_admin";
+
   /* ============================================================
-     🧭 Prefill Dropdowns & Suggestions
+     Dropdowns & Suggestions
   ============================================================ */
-  let userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
   try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      const reloadFac = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            { organization_id: orgId ?? getOrganizationId() },
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+      };
 
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
+      await reloadFac();
+      orgSelect?.addEventListener("change", () =>
+        reloadFac(orgSelect.value || null)
+      );
+    } else if (isOrgAdmin) {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite(
+          { organization_id: getOrganizationId() },
+          true
+        ),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // ✅ Patient suggestions
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
       "/api/lite/patients",
-      (selected) => {
-        patientHidden.value = selected?.id || "";
-        if (selected) {
-          patientInput.value =
-            selected.label ||
-            (selected.pat_no && selected.full_name
-              ? `${selected.pat_no} - ${selected.full_name}`
-              : selected.full_name || selected.pat_no || "");
-        }
+      (s) => {
+        patientHidden.value = s?.id || "";
+        patientInput.value = s?.label || s?.full_name || "";
       },
       "label"
     );
 
-    // ✅ Nurse (employee) suggestions
     setupSuggestionInputDynamic(
       nurseInput,
       nurseSuggestions,
       "/api/lite/employees",
-      (selected) => {
-        nurseHidden.value = selected?.id || "";
-        if (selected) {
-          nurseInput.value =
-            selected.full_name ||
-            `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
-        }
+      (s) => {
+        nurseHidden.value = s?.id || "";
+        nurseInput.value = s?.full_name || "";
       },
       "full_name"
     );
-  } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+  } catch {
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     ✏️ Prefill if Editing
+     PREFILL (EDIT)
   ============================================================ */
   if (isEdit && vitalId) {
     try {
       showLoading();
-      const res = await authFetch(`/api/vitals/${vitalId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/vitals/${vitalId}`);
       const result = await res.json().catch(() => ({}));
-      hideLoading();
+      if (!res.ok) throw new Error(normMsg(result, "Failed to load vital"));
 
-      if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load vital"));
-      const entry = result?.data;
-      if (!entry) return;
+      const e = result?.data;
+      if (!e) return;
 
-      patientHidden.value = entry.patient_id || "";
-      if (entry.patient)
-        patientInput.value =
-          entry.patient.label ||
-          (entry.patient.pat_no && entry.patient.full_name
-            ? `${entry.patient.pat_no} - ${entry.patient.full_name}`
-            : entry.patient.full_name || entry.patient.pat_no || "");
+      patientHidden.value = e.patient_id || "";
+      if (e.patient) patientInput.value = e.patient.label || e.patient.full_name || "";
 
-      nurseHidden.value = entry.nurse_id || "";
-      if (entry.nurse)
-        nurseInput.value =
-          entry.nurse.full_name ||
-          `${entry.nurse.first_name || ""} ${entry.nurse.last_name || ""}`.trim();
+      nurseHidden.value = e.nurse_id || "";
+      if (e.nurse) nurseInput.value = e.nurse.full_name || "";
 
-      orgSelect.value = entry.organization_id || "";
-      facSelect.value = entry.facility_id || "";
+      if (isSuper && e.organization_id) orgSelect.value = e.organization_id;
+      if ((isSuper || isOrgAdmin) && e.facility_id) facSelect.value = e.facility_id;
 
-      // Prefill vital metrics
-      const ids = [
-        "bp", "pulse", "rr", "temp", "oxygen", "weight",
-        "height", "rbg", "painScore", "position",
-      ];
-      ids.forEach((id) => {
-        if (entry[id] || entry[id.replace("painScore", "pain_score")])
-          document.getElementById(id).value =
-            entry[id] || entry[id.replace("painScore", "pain_score")];
+      [
+        "bp","pulse","rr","temp","oxygen","weight","height","rbg","painScore","position"
+      ].forEach((id) => {
+        const k = id === "painScore" ? "pain_score" : id;
+        if (e[k] != null) document.getElementById(id).value = e[k];
       });
 
-      if (entry.recorded_at)
-        document.getElementById("recordedAt").value = formatForDateTimeLocal(entry.recorded_at);
+      if (e.recorded_at)
+        document.getElementById("recordedAt").value = fmtDTLocal(e.recorded_at);
+
+      setUI("edit");
     } catch (err) {
-      hideLoading();
-      console.error("❌ Prefill error:", err);
       showToast(err.message || "❌ Could not load vital");
+    } finally {
+      hideLoading();
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+     SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    if (!e.isTrusted) return;
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    clearFormErrors(form);
+
+    const errors = [];
+    for (const rule of VITAL_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
     const payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      nurse_id: normalizeUUID(nurseHidden.value),
-      organization_id: normalizeUUID(orgSelect?.value),
-      facility_id: normalizeUUID(facSelect?.value),
+      patient_id: normUUID(patientHidden.value),
+      nurse_id: normUUID(nurseHidden.value),
+      organization_id: isSuper ? normUUID(orgSelect?.value) : null,
+      facility_id: normUUID(facSelect?.value),
       bp: document.getElementById("bp")?.value || null,
       pulse: document.getElementById("pulse")?.value || null,
       rr: document.getElementById("rr")?.value || null,
@@ -237,15 +248,8 @@ export async function setupVitalFormSubmission({ form }) {
       rbg: document.getElementById("rbg")?.value || null,
       pain_score: document.getElementById("painScore")?.value || null,
       position: document.getElementById("position")?.value || null,
-      recorded_at: normalizeDateTime(document.getElementById("recordedAt")?.value),
+      recorded_at: normDT(document.getElementById("recordedAt")?.value),
     };
-
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.bp) return showToast("❌ Blood Pressure is required");
-    if (!payload.pulse) return showToast("❌ Pulse is required");
-    if (!payload.rr) return showToast("❌ Respiration Rate is required");
-    if (!payload.temp) return showToast("❌ Temperature is required");
-    if (!payload.recorded_at) return showToast("❌ Recorded At is required");
 
     try {
       showLoading();
@@ -258,24 +262,13 @@ export async function setupVitalFormSubmission({ form }) {
         body: JSON.stringify(payload),
       });
       const result = await res.json().catch(() => ({}));
-
       if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+        throw new Error(normMsg(result, `❌ Server error (${res.status})`));
 
-      showToast(
-        isEdit ? "✅ Vital updated successfully" : "✅ Vital created successfully"
-      );
-
-      sessionStorage.removeItem("vitalEditId");
-      sessionStorage.removeItem("vitalEditPayload");
-
-      if (isEdit) window.location.href = "/vitals-list.html";
-      else {
-        form.reset();
-        setUI("add");
-      }
+      showToast(isEdit ? "✅ Vital updated" : "✅ Vital created");
+      sessionStorage.clear();
+      window.location.href = "/vitals-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -283,16 +276,15 @@ export async function setupVitalFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Cancel / Clear
+     CANCEL / CLEAR
   ============================================================ */
   cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("vitalEditId");
-    sessionStorage.removeItem("vitalEditPayload");
+    sessionStorage.clear();
     window.location.href = "/vitals-list.html";
   });
+
   clearBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("vitalEditId");
-    sessionStorage.removeItem("vitalEditPayload");
+    clearFormErrors(form);
     form.reset();
     setUI("add");
   });

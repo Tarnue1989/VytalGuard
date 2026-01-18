@@ -1,44 +1,115 @@
 // 📁 controllers/featureController.js
 import Joi from "joi";
-import { Op } from "sequelize";
-import { sequelize, Organization, FeatureModule, FeatureAccess, Role, User, Facility } from "../models/index.js";
+import { Op, QueryTypes } from "sequelize";
+import {
+  sequelize,
+  Organization,
+  FeatureModule,
+  FeatureAccess,
+  Role,
+  User,
+  Facility,
+} from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { FEATURE_MODULE_STATUS } from "../constants/enums.js";
+import {
+  FEATURE_MODULE_STATUS,
+  FEATURE_ACCESS_STATUS,
+} from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
-import { QueryTypes } from "sequelize";
-import {
-  syncOrgAdminsForModule,
-} from "../services/roleProvisioningService.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { syncOrgAdminsForModule } from "../services/roleProvisioningService.js";
+import { isSuperAdmin } from "../utils/role-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 
 /* ============================================================
-   🔧 HELPERS
-   ============================================================ */
+   🧩 MODULE KEYS (SINGLE SOURCE OF TRUTH)
+============================================================ */
+const MODULE_KEY_FEATURE = "featureModule";
+const MODULE_KEY_FEATURE_ACCESS = "featureAccess";
+
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE (FEATURE CONTROLLER)
+============================================================ */
+const DEBUG_OVERRIDE = true; // 👈 turn OFF in prod
+const debug = makeModuleLogger("featureController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔹 ENUM SHORTCUTS
+============================================================ */
+/* ============================================================
+   🔐 ENUM MAPS (ORDER-SAFE)
+============================================================ */
+const MODULE_STATUS = Object.fromEntries(
+  FEATURE_MODULE_STATUS.map(v => [v.toUpperCase(), v])
+);
+const ACCESS_STATUS = Object.fromEntries(
+  FEATURE_ACCESS_STATUS.map(v => [v.toUpperCase(), v])
+);
+/* ============================================================
+   🔐 ENUM ALIASES (SAFE, EXPLICIT)
+============================================================ */
+const ACTIVE = MODULE_STATUS.ACTIVE;
+const INACTIVE = MODULE_STATUS.INACTIVE;
+
+const ACCESS_ACTIVE = ACCESS_STATUS.ACTIVE;
+const ACCESS_INACTIVE = ACCESS_STATUS.INACTIVE;
+
+/* ============================================================
+   🔗 SHARED INCLUDES
+============================================================ */
 const FEATURE_INCLUDES = [
-  { model: Role, as: "roles", through: { attributes: [] }, attributes: ["id", "name"], required: false },
-  { model: FeatureModule, as: "parent", attributes: ["id", "name"], required: false },
-  { model: FeatureModule, as: "children", attributes: ["id", "name"], required: false },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"], required: false },
+  {
+    model: Role,
+    as: "roles",
+    through: { attributes: [] },
+    attributes: ["id", "name"],
+    required: false,
+  },
+  {
+    model: FeatureModule,
+    as: "parent",
+    attributes: ["id", "name"],
+    required: false,
+  },
+  {
+    model: FeatureModule,
+    as: "children",
+    attributes: ["id", "name", "status", "enabled"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "createdBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "updatedBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "deletedBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMA FACTORY
-   ============================================================ */
+   📋 FEATURE MODULE SCHEMA
+============================================================ */
 function buildFeatureSchema(mode = "create") {
   const base = {
     name: Joi.string().max(255).required(),
-
     key: Joi.string().max(120).required(),
-
-    icon: Joi.string().allow(null, ""),
-
-    category: Joi.string().max(120).allow(null, ""),
-
-    description: Joi.string().allow(null, ""),
-
+    icon: Joi.string().allow("", null),
+    category: Joi.string().max(120).allow("", null),
+    description: Joi.string().allow("", null),
     tags: Joi.array().items(Joi.string()).default([]),
 
     visibility: Joi.string()
@@ -53,21 +124,15 @@ function buildFeatureSchema(mode = "create") {
 
     status: Joi.string()
       .valid(...FEATURE_MODULE_STATUS)
-      .default(FEATURE_MODULE_STATUS[0]),
+      .default(ACTIVE),
 
-    order_index: Joi.number()
-      .integer()
-      .min(0)
-      .default(0),
+    order_index: Joi.number().integer().min(0).default(0),
 
     route: Joi.string()
       .regex(/^[a-zA-Z0-9_\-/\.]*$/)
-      .allow(null, ""),
+      .allow("", null),
 
-    parent_id: Joi.string()
-      .uuid()
-      .allow(null)
-      .default(null),
+    parent_id: Joi.string().uuid().allow(null).default(null),
 
     show_on_dashboard: Joi.boolean().default(false),
 
@@ -82,10 +147,7 @@ function buildFeatureSchema(mode = "create") {
       )
       .default("none"),
 
-    dashboard_order: Joi.number()
-      .integer()
-      .min(0)
-      .default(0),
+    dashboard_order: Joi.number().integer().min(0).default(0),
   };
 
   if (mode === "update") {
@@ -99,25 +161,59 @@ function buildFeatureSchema(mode = "create") {
 
 /* ============================================================
    📌 GET ALL FEATURE MODULES
-   ============================================================ */
+   (WITH SUMMARY + SORTING + FIXED FILTERS)
+============================================================ */
 export const getAllFeatureModules = async (req, res) => {
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const options = buildQueryOptions(req, "order_index", "ASC");
+    debug.log("list → query", req.query);
 
     /* ========================================================
-       🔍 SEARCH
-       ======================================================== */
+       ⚙️ BASE QUERY OPTIONS (SAFE FIELDS ONLY)
+    ======================================================== */
+    const options = buildQueryOptions(req, {
+      defaultSort: ["order_index", "ASC"],
+      fields: [
+        "order_index",
+        "name",
+        "key",
+        "category",
+        "status",
+        "enabled",
+        "tenant_scope",
+        "visibility",
+        "created_at",
+        "updated_at",
+        "dashboard_order",
+      ],
+    });
+
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+       ❌ Sequelize must NEVER see these as columns
+    ======================================================== */
+    const { dateRange, visibility } = req.query;
+
+    if (options.where?.dateRange) {
+      delete options.where.dateRange;
+    }
+
+    /* ========================================================
+       🔎 GLOBAL SEARCH (TEXT ONLY)
+    ======================================================== */
     if (options.search) {
       options.where = {
-        ...options.where,
+        ...(options.where || {}),
         [Op.or]: [
           { name: { [Op.iLike]: `%${options.search}%` } },
           { key: { [Op.iLike]: `%${options.search}%` } },
@@ -127,41 +223,154 @@ export const getAllFeatureModules = async (req, res) => {
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE ENFORCEMENT
-       ======================================================== */
+      📅 DATE RANGE FILTER (LOCAL – FIXED)
+    ======================================================== */
+    if (dateRange) {
+      const range = normalizeDateRangeLocal(dateRange);
+
+      if (range) {
+        options.where.created_at = {
+          [Op.between]: [range.start, range.end],
+        };
+      }
+    }
+
+    /* ========================================================
+       🏢 TENANT SCOPE (NON-SYSTEM USERS)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where = {
-        ...options.where,
+        ...(options.where || {}),
         tenant_scope: { [Op.in]: ["org", "facility"] },
       };
     }
 
     /* ========================================================
-       👁️ VISIBILITY FILTER
-       ======================================================== */
-    options.where = {
-      ...options.where,
-      visibility: { [Op.ne]: "hidden" },
-    };
+       👁️ VISIBILITY FILTER (USER-FIRST)
+    ======================================================== */
+    if (visibility) {
+      options.where = {
+        ...(options.where || {}),
+        visibility,
+      };
+    } else {
+      options.where = {
+        ...(options.where || {}),
+        visibility: { [Op.ne]: "hidden" },
+      };
+    }
 
     /* ========================================================
-       📊 QUERY
-       ======================================================== */
+       📦 MAIN QUERY (LIST + PAGINATION)
+    ======================================================== */
     const { count, rows } = await FeatureModule.findAndCountAll({
       where: options.where,
       include: FEATURE_INCLUDES,
-      order: [["order_index", "ASC"], ["name", "ASC"]],
+      order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
     });
 
+    /* ============================================================
+      📊 SUMMARY (FILTER-AWARE, BASE-TABLE SAFE)
+    ============================================================ */
+
+    /**
+     * IMPORTANT:
+     * - Mirrors LIST filters
+     * - NO search aliases
+     * - NO pagination
+     */
+    const summaryWhere = {};
+
+    /* ---------- TENANT SCOPE ---------- */
+    if (!isSuperAdmin(req.user)) {
+      summaryWhere.tenant_scope = { [Op.in]: ["org", "facility"] };
+    }
+
+    /* ---------- VISIBILITY ---------- */
+    if (visibility) {
+      summaryWhere.visibility = visibility;
+    } else {
+      summaryWhere.visibility = { [Op.ne]: "hidden" };
+    }
+
+    /* ---------- DATE RANGE ---------- */
+    if (dateRange) {
+      const range = normalizeDateRangeLocal(dateRange);
+      if (range) {
+        summaryWhere.created_at = {
+          [Op.between]: [range.start, range.end],
+        };
+      }
+    }
+
+    /* ---------- TOTAL ---------- */
+    const total = await FeatureModule.count({
+      where: summaryWhere,
+    });
+
+    /* ---------- STATUS SUMMARY ---------- */
+    const statusRows = await FeatureModule.findAll({
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      where: summaryWhere,
+      group: ["status"],
+      raw: true,
+    });
+
+    const statusMap = Object.fromEntries(
+      statusRows.map(r => [r.status, Number(r.count)])
+    );
+
+    /* ---------- TENANT SCOPE SUMMARY ---------- */
+    const scopeRows = await FeatureModule.findAll({
+      attributes: [
+        "tenant_scope",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      where: summaryWhere,
+      group: ["tenant_scope"],
+      raw: true,
+    });
+
+    const scopeMap = Object.fromEntries(
+      scopeRows.map(r => [r.tenant_scope, Number(r.count)])
+    );
+
+    /* ---------- FINAL SUMMARY ---------- */
+    const summary = {
+      total,
+      status: {
+        active: statusMap[MODULE_STATUS.ACTIVE] || 0,
+        inactive: statusMap[MODULE_STATUS.INACTIVE] || 0,
+      },
+      tenant_scope: {
+        global: scopeMap.global || 0,
+        org: scopeMap.org || 0,
+        facility: scopeMap.facility || 0,
+      },
+    };
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Feature modules loaded", {
       records: rows,
       pagination: {
@@ -169,24 +378,31 @@ export const getAllFeatureModules = async (req, res) => {
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
+      summary,
     });
   } catch (err) {
+    debug.error("list → FAILED", err);
     return error(res, "❌ Failed to load feature modules", err);
   }
 };
 
+
 /* ============================================================
    📌 GET FEATURE MODULE BY ID
-   ============================================================ */
+============================================================ */
 export const getFeatureModuleById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
+    const { id } = req.params;
     const where = { id };
 
-    /* ========================================================
-       🔐 TENANT SCOPE ENFORCEMENT
-       ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where.tenant_scope = { [Op.in]: ["org", "facility"] };
       where.visibility = { [Op.ne]: "hidden" };
@@ -197,208 +413,183 @@ export const getFeatureModuleById = async (req, res) => {
       include: FEATURE_INCLUDES,
     });
 
-    if (!module) return error(res, "❌ Feature module not found", null, 404);
+    if (!module) {
+      return error(res, "❌ Feature module not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "view",
       entityId: id,
       entity: module,
     });
 
-    return success(res, "✅ Feature module loaded", { record: module });
+    return success(res, "✅ Feature module loaded", {
+      record: module,
+    });
   } catch (err) {
+    debug.error("getById → FAILED", err);
     return error(res, "❌ Failed to load feature module", err);
   }
 };
 
 /* ============================================================
-   📌 GET AVAILABLE MODULES (role/facility scoped tree)
-   ============================================================ */
+   📌 GET AVAILABLE MODULES (role / facility scoped tree)
+============================================================ */
 export const getAvailableModules = async (req, res) => {
   try {
-    if (!req.user) return error(res, "Unauthorized", null, 401);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
-    const roleNames   = (req.user.roles || []).map(r => (r.name || "").toLowerCase());
-    const roleIds     = (req.user.roles || []).map(r => r.id);
-    let orgId         = req.user.organization_id;
-    const facilityIds = Array.isArray(req.user.facility_ids) ? req.user.facility_ids : [];
+    debug.log("available-modules → user", {
+      userId: req.user.id,
+      roles: (req.user.roles || []).map(r => r.name),
+      org: req.user.organization_id,
+      facilities: req.user.facility_ids,
+    });
+
+    const roleIds = (req.user.roles || []).map(r => r.id);
+    let orgId = req.user.organization_id;
+    const facilityIds = Array.isArray(req.user.facility_ids)
+      ? req.user.facility_ids
+      : [];
 
     let modules = [];
 
-    /* ========================================================
-       🔑 SUPER ADMIN — SEE EVERYTHING (EXCEPT HIDDEN)
-       ======================================================== */
-    if (roleNames.includes("super admin") || roleNames.includes("superadmin")) {
-      modules = await FeatureModule.findAll({
+    /* ================= SUPER ADMIN ================= */
+    if (isSuperAdmin(req.user)) {
+      const rawModules = await FeatureModule.findAll({
         where: {
           enabled: true,
-          status: "active",
+          status: ACTIVE,
           visibility: { [Op.ne]: "hidden" },
         },
-        order: [["order_index", "ASC"], ["name", "ASC"]],
+        order: [
+          ["order_index", "ASC"],
+          ["name", "ASC"],
+        ],
         include: [
           { model: Role, as: "roles", through: { attributes: [] } },
-          {
-            model: FeatureAccess,
-            as: "access",
-            where: { status: "active" },
-            required: false,
-            include: [{ model: Facility, as: "facility", attributes: ["id", "name"] }],
-          },
         ],
       });
-    } else {
-      /* ======================================================
-         🔹 NON-SUPERADMIN (ORG + FACILITY AWARE)
-         ====================================================== */
 
-      // 🔹 Infer orgId from facilities if missing
-      if (!orgId && facilityIds.length > 0) {
-        const facilities = await Facility.findAll({
+      modules = rawModules.map(m => m.get({ plain: true }));
+    } 
+    /* ================= NON-SUPER ADMIN ================= */
+    else {
+      /* -------- Resolve org from facility if needed -------- */
+      if (!orgId && facilityIds.length) {
+        const f = await Facility.findOne({
           where: { id: { [Op.in]: facilityIds } },
           attributes: ["organization_id"],
         });
-        if (facilities.length > 0) orgId = facilities[0].organization_id;
+        if (f) orgId = f.organization_id;
       }
-
-      /* ======================================================
-         🔑 ACCESS FILTER (ORG + FACILITY + ORG-WIDE)
-         ====================================================== */
-      const whereAccess = {
-        role_id: { [Op.in]: roleIds },
-        status: "active",
-      };
-
-      if (orgId) {
-        whereAccess.organization_id = orgId;
-      }
-
-      whereAccess[Op.or] = [
-        ...(facilityIds.length > 0
-          ? [{ facility_id: { [Op.in]: facilityIds } }]
-          : []),
-        { facility_id: null }, // org-wide access
-      ];
 
       const accesses = await FeatureAccess.findAll({
-        where: whereAccess,
+        where: {
+          role_id: { [Op.in]: roleIds },
+          organization_id: orgId,
+          status: ACCESS_ACTIVE,
+          [Op.or]: [
+            ...(facilityIds.length
+              ? [{ facility_id: { [Op.in]: facilityIds } }]
+              : []),
+            { facility_id: null },
+          ],
+        },
         include: [
           {
             model: FeatureModule,
             as: "module",
             required: true,
-            paranoid: false,
             where: {
               enabled: true,
-              status: "active",
+              status: ACTIVE,
               visibility: { [Op.ne]: "hidden" },
               tenant_scope: { [Op.in]: ["org", "facility"] },
             },
-            include: [{ model: Role, as: "roles" }],
-          },
-          {
-            model: Facility,
-            as: "facility",
-            attributes: ["id", "name"],
-            required: false,
           },
         ],
       });
 
-      /* ======================================================
-         🔄 DEDUPE MODULES
-         ====================================================== */
-      const byId = new Map();
-
+      const map = new Map();
       for (const a of accesses) {
-        const m = a.module;
-        if (!m) continue;
-
-        if (!byId.has(m.id)) {
-          byId.set(m.id, {
-            ...m.toJSON(),
+        if (!map.has(a.module.id)) {
+          map.set(a.module.id, {
+            ...a.module.toJSON(),
             children: [],
-            facilities: [],
-            roles: [],
           });
         }
-
-        if (a.facility) {
-          byId.get(m.id).facilities.push(a.facility);
-        }
       }
-
-      modules = Array.from(byId.values());
+      modules = Array.from(map.values());
     }
 
-    /* ========================================================
-       🌳 BUILD TREE
-       ======================================================== */
-    const map = {};
+    /* ================= TREE BUILD ================= */
+    const byId = {};
     const roots = [];
 
     modules.forEach(m => {
-      map[m.id] = m;
-      m.children = m.children || [];
+      byId[m.id] = { ...m, children: [] };
     });
 
     modules.forEach(m => {
-      if (m.parent_id && map[m.parent_id]) {
-        map[m.parent_id].children.push(m);
+      if (m.parent_id && byId[m.parent_id]) {
+        byId[m.parent_id].children.push(byId[m.id]);
       } else {
-        roots.push(m);
+        roots.push(byId[m.id]);
       }
     });
 
-    /* ========================================================
-       🔑 SORT TREE BY order_index
-       ======================================================== */
-    const sortTree = list => {
-      list.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-      list.forEach(m => m.children && sortTree(m.children));
-    };
-    sortTree(roots);
+    roots.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
-    /* ========================================================
-       🔑 COLLECT KEYS + ROUTES
-       ======================================================== */
-    const collect = (list, accKeys = [], accRoutes = []) => {
+    /* ================= ROUTE NORMALIZER ================= */
+    const normalizeRoute = key =>
+      "/" + key.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
+
+    /* ================= COLLECT ================= */
+    const collect = (list, keys = [], routes = []) => {
       for (const m of list) {
-        accKeys.push(m.key);
-        accRoutes.push(m.route || `/${m.key}`);
+        keys.push(m.key);
+        routes.push(m.route || normalizeRoute(m.key));
         if (m.children?.length) {
-          collect(m.children, accKeys, accRoutes);
+          collect(m.children, keys, routes);
         }
       }
-      return { accKeys, accRoutes };
+      return { keys, routes };
     };
 
-    const { accKeys: moduleKeys, accRoutes: routes } = collect(roots);
+    const { keys: moduleKeys, routes } = collect(roots);
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "available-modules",
       details: { returned: moduleKeys.length },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Available modules loaded", {
       moduleKeys,
       routes,
       records: roots,
     });
   } catch (err) {
-    console.error("❌ getAvailableModules error:", err);
+    debug.error("available-modules → FAILED", err);
     return error(res, "❌ Failed to load available modules", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET LITE FEATURE MODULES (with ?q= support + category)
-   ============================================================ */
+   📌 GET LITE FEATURE MODULES
+============================================================ */
 export const getLiteFeatureModules = async (req, res) => {
   try {
     const { q } = req.query;
@@ -422,19 +613,26 @@ export const getLiteFeatureModules = async (req, res) => {
     const modules = await FeatureModule.findAll({
       where,
       attributes: ["id", "name", "key", "category"],
-      order: [["order_index", "ASC"], ["name", "ASC"]],
+      order: [
+        ["order_index", "ASC"],
+        ["name", "ASC"],
+      ],
       limit: 100,
     });
 
-    return success(res, "✅ Lite module list loaded", { records: modules });
+    return success(res, "✅ Lite module list loaded", {
+      records: modules,
+    });
   } catch (err) {
+    debug.error("lite-modules → FAILED", err);
     return error(res, "❌ Failed to load lite modules", err);
   }
 };
 
+
 /* ============================================================
-   📌 GET LITE FEATURE MODULE CATEGORIES (distinct list)
-   ============================================================ */
+   📌 GET LITE FEATURE MODULE CATEGORIES
+============================================================ */
 export const getLiteFeatureModuleCategories = async (req, res) => {
   try {
     const { q } = req.query;
@@ -466,18 +664,19 @@ export const getLiteFeatureModuleCategories = async (req, res) => {
       type: QueryTypes.SELECT,
     });
 
-    const records = rows.map(r => ({ category: r.category }));
-
-    return success(res, "✅ Lite categories loaded", { records });
+    return success(res, "✅ Lite categories loaded", {
+      records: rows.map(r => ({ category: r.category })),
+    });
   } catch (err) {
+    debug.error("lite-categories → FAILED", err);
     return error(res, "❌ Failed to load lite categories", err);
   }
 };
 
 
 /* ============================================================
-   📌 GET LITE PARENT MODULES (top-levels only)
-   ============================================================ */
+   📌 GET LITE PARENT MODULES
+============================================================ */
 export const getLiteParentModules = async (req, res) => {
   try {
     const { q } = req.query;
@@ -501,12 +700,18 @@ export const getLiteParentModules = async (req, res) => {
     const parents = await FeatureModule.findAll({
       where,
       attributes: ["id", "name", "key"],
-      order: [["order_index", "ASC"], ["name", "ASC"]],
+      order: [
+        ["order_index", "ASC"],
+        ["name", "ASC"],
+      ],
       limit: 20,
     });
 
-    return success(res, "✅ Lite parent modules loaded", { records: parents });
+    return success(res, "✅ Lite parent modules loaded", {
+      records: parents,
+    });
   } catch (err) {
+    debug.error("lite-parents → FAILED", err);
     return error(res, "❌ Failed to load lite parent modules", err);
   }
 };
@@ -514,31 +719,43 @@ export const getLiteParentModules = async (req, res) => {
 
 /* ============================================================
    📌 CREATE FEATURE MODULE
-   ============================================================ */
+============================================================ */
 export const createFeatureModule = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
+
+    debug.log("create → incoming", req.body);
+
     const schema = buildFeatureSchema("create");
     const { error: validationError, value } = schema.validate(req.body, {
       stripUnknown: true,
     });
 
     if (validationError) {
+      debug.warn("create → validation failed", validationError);
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ========================================================
-       🔐 TENANT SCOPE GUARD
-       ======================================================== */
+    /* ================= TENANT SCOPE GUARD ================= */
     if (!isSuperAdmin(req.user) && value.tenant_scope === "global") {
       await t.rollback();
-      return error(res, "❌ Only super admins can create global modules", null, 403);
+      return error(
+        res,
+        "❌ Only super admins can create global modules",
+        null,
+        403
+      );
     }
 
-    /* ========================================================
-       🔁 UNIQUE KEY CHECK
-       ======================================================== */
+    /* ================= UNIQUE KEY CHECK ================= */
     const exists = await FeatureModule.findOne({
       where: { key: value.key },
       paranoid: false,
@@ -550,9 +767,7 @@ export const createFeatureModule = async (req, res) => {
       return error(res, "❌ Feature module key already exists", null, 400);
     }
 
-    /* ========================================================
-       🌳 PARENT VALIDATION
-       ======================================================== */
+    /* ================= PARENT VALIDATION ================= */
     if (value.parent_id) {
       const parent = await FeatureModule.findOne({
         where: {
@@ -569,13 +784,16 @@ export const createFeatureModule = async (req, res) => {
 
       if (!isSuperAdmin(req.user) && parent.tenant_scope === "global") {
         await t.rollback();
-        return error(res, "❌ Cannot attach to a global parent module", null, 403);
+        return error(
+          res,
+          "❌ Cannot attach to a global parent module",
+          null,
+          403
+        );
       }
     }
 
-    /* ========================================================
-       🧩 CREATE
-       ======================================================== */
+    /* ================= CREATE ================= */
     const created = await FeatureModule.create(
       {
         ...value,
@@ -586,14 +804,12 @@ export const createFeatureModule = async (req, res) => {
 
     await t.commit();
 
-    /* ========================================================
-       🔐 AUTO-PROVISION (NON-BLOCKING)
-       ======================================================== */
+    /* ================= AUTO-PROVISION (NON-BLOCKING) ================= */
     try {
       await syncOrgAdminsForModule(created.key);
-      console.log("🔐 [RBAC] Admin roles auto-granted module:", created.key);
+      debug.log("auto-provision → success", created.key);
     } catch (provErr) {
-      console.error("⚠️ [RBAC] Auto-provision warning:", provErr);
+      debug.warn("auto-provision → warning", provErr);
     }
 
     const full = await FeatureModule.findOne({
@@ -603,28 +819,40 @@ export const createFeatureModule = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "create",
       entityId: created.id,
       entity: full,
       details: value,
     });
 
-    return success(res, "✅ Feature module created", { record: full });
+    return success(res, "✅ Feature module created", {
+      record: full,
+    });
   } catch (err) {
+    debug.error("create → FAILED", err);
     await t.rollback();
     return error(res, "❌ Failed to create feature module", err);
   }
 };
 
-
 /* ============================================================
    📌 UPDATE FEATURE MODULE
-   ============================================================ */
+============================================================ */
 export const updateFeatureModule = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
+    debug.log("update → incoming", { id, body: req.body });
 
     const schema = buildFeatureSchema("update");
     const { error: validationError, value } = schema.validate(req.body, {
@@ -646,21 +874,18 @@ export const updateFeatureModule = async (req, res) => {
       return error(res, "❌ Feature module not found", null, 404);
     }
 
-    /* ========================================================
-       🔐 TENANT SCOPE CHANGE GUARD
-       ======================================================== */
-    if (
-      value.tenant_scope &&
-      value.tenant_scope === "global" &&
-      !isSuperAdmin(req.user)
-    ) {
+    /* ================= TENANT SCOPE CHANGE GUARD ================= */
+    if (value.tenant_scope === "global" && !isSuperAdmin(req.user)) {
       await t.rollback();
-      return error(res, "❌ Only super admins can assign global tenant scope", null, 403);
+      return error(
+        res,
+        "❌ Only super admins can assign global tenant scope",
+        null,
+        403
+      );
     }
 
-    /* ========================================================
-       🔁 UNIQUE KEY CHECK
-       ======================================================== */
+    /* ================= UNIQUE KEY CHECK ================= */
     if (value.key) {
       const exists = await FeatureModule.findOne({
         where: { key: value.key, id: { [Op.ne]: id } },
@@ -674,9 +899,7 @@ export const updateFeatureModule = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       🌳 PARENT VALIDATION
-       ======================================================== */
+    /* ================= PARENT VALIDATION ================= */
     if (value.parent_id) {
       if (value.parent_id === id) {
         await t.rollback();
@@ -698,13 +921,16 @@ export const updateFeatureModule = async (req, res) => {
 
       if (!isSuperAdmin(req.user) && parent.tenant_scope === "global") {
         await t.rollback();
-        return error(res, "❌ Cannot attach to a global parent module", null, 403);
+        return error(
+          res,
+          "❌ Cannot attach to a global parent module",
+          null,
+          403
+        );
       }
     }
 
-    /* ========================================================
-       🧩 UPDATE
-       ======================================================== */
+    /* ================= UPDATE ================= */
     await module.update(
       {
         ...value,
@@ -722,7 +948,7 @@ export const updateFeatureModule = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "update",
       entityId: id,
       entity: full,
@@ -732,39 +958,50 @@ export const updateFeatureModule = async (req, res) => {
     return success(res, "✅ Feature module updated", { record: full });
   } catch (err) {
     await t.rollback();
+    debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update feature module", err);
   }
 };
 
+
 /* ============================================================
-   📌 TOGGLE STATUS
-   ============================================================ */
+   📌 TOGGLE FEATURE MODULE STATUS
+============================================================ */
 export const toggleFeatureModuleStatus = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const module = await FeatureModule.findOne({
       where: { id },
-      include: [{ model: FeatureModule, as: "children", attributes: ["id", "status"] }],
+      include: [
+        { model: FeatureModule, as: "children", attributes: ["id", "status"] },
+      ],
     });
 
-    if (!module) return error(res, "❌ Feature module not found", null, 404);
+    if (!module) {
+      return error(res, "❌ Feature module not found", null, 404);
+    }
 
-    /* ========================================================
-       🔐 TENANT GUARD
-       ======================================================== */
+    /* ================= TENANT GUARD ================= */
     if (!isSuperAdmin(req.user) && module.tenant_scope === "global") {
       return error(res, "❌ Cannot modify global module", null, 403);
     }
 
-    /* ========================================================
-       🌳 CHILD SAFETY
-       ======================================================== */
+    /* ================= CHILD SAFETY ================= */
     const hasActiveChildren = (module.children || []).some(
-      c => c.status === "active"
+      c => c.status === MODULE_STATUS.ACTIVE
     );
 
-    if (hasActiveChildren && module.status === "active") {
+
+    if (hasActiveChildren && module.status === ACTIVE) {
       return error(
         res,
         "❌ Disable child modules first before disabling this module",
@@ -773,9 +1010,10 @@ export const toggleFeatureModuleStatus = async (req, res) => {
       );
     }
 
-    const [ACTIVE, INACTIVE] = FEATURE_MODULE_STATUS;
-    const newStatus = module.status === ACTIVE ? INACTIVE : ACTIVE;
-
+    const newStatus =
+      module.status === MODULE_STATUS.ACTIVE
+        ? MODULE_STATUS.INACTIVE
+        : MODULE_STATUS.ACTIVE;
     await module.update({
       status: newStatus,
       updated_by_id: req.user?.id || null,
@@ -788,7 +1026,7 @@ export const toggleFeatureModuleStatus = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "toggle-status",
       entityId: id,
       entity: full,
@@ -801,35 +1039,47 @@ export const toggleFeatureModuleStatus = async (req, res) => {
       { record: full }
     );
   } catch (err) {
+    debug.error("toggle-status → FAILED", err);
     return error(res, "❌ Failed to toggle feature module status", err);
   }
 };
 
+
 /* ============================================================
-   📌 TOGGLE ENABLED
-   ============================================================ */
+   📌 TOGGLE FEATURE MODULE ENABLED
+============================================================ */
 export const toggleFeatureModuleEnabled = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const module = await FeatureModule.findOne({
       where: { id },
-      include: [{ model: FeatureModule, as: "children", attributes: ["id", "enabled"] }],
+      include: [
+        { model: FeatureModule, as: "children", attributes: ["id", "enabled"] },
+      ],
     });
 
-    if (!module) return error(res, "❌ Feature module not found", null, 404);
+    if (!module) {
+      return error(res, "❌ Feature module not found", null, 404);
+    }
 
-    /* ========================================================
-       🔐 TENANT GUARD
-       ======================================================== */
+    /* ================= TENANT GUARD ================= */
     if (!isSuperAdmin(req.user) && module.tenant_scope === "global") {
       return error(res, "❌ Cannot modify global module", null, 403);
     }
 
-    /* ========================================================
-       🌳 CHILD SAFETY
-       ======================================================== */
-    const hasEnabledChildren = (module.children || []).some(c => c.enabled);
+    /* ================= CHILD SAFETY ================= */
+    const hasEnabledChildren = (module.children || []).some(
+      c => c.enabled
+    );
 
     if (hasEnabledChildren && module.enabled) {
       return error(
@@ -854,7 +1104,7 @@ export const toggleFeatureModuleEnabled = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "toggle-enabled",
       entityId: id,
       entity: full,
@@ -867,21 +1117,33 @@ export const toggleFeatureModuleEnabled = async (req, res) => {
       { record: full }
     );
   } catch (err) {
+    debug.error("toggle-enabled → FAILED", err);
     return error(res, "❌ Failed to toggle feature module enabled", err);
   }
 };
-
 /* ============================================================
-   📌 DELETE FEATURE MODULE (Soft Delete with Audit)
-   ============================================================ */
+   📌 DELETE FEATURE MODULE (Soft Delete + Audit)
+============================================================ */
 export const deleteFeatureModule = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
+    debug.log("delete → attempt", { id });
 
     const module = await FeatureModule.findOne({
       where: { id },
-      include: [{ model: FeatureModule, as: "children", attributes: ["id"] }],
+      include: [
+        { model: FeatureModule, as: "children", attributes: ["id"] },
+      ],
       transaction: t,
     });
 
@@ -890,17 +1152,13 @@ export const deleteFeatureModule = async (req, res) => {
       return error(res, "❌ Feature module not found", null, 404);
     }
 
-    /* ========================================================
-       🔐 TENANT GUARD
-       ======================================================== */
+    /* ================= TENANT GUARD ================= */
     if (!isSuperAdmin(req.user) && module.tenant_scope === "global") {
       await t.rollback();
       return error(res, "❌ Cannot delete global module", null, 403);
     }
 
-    /* ========================================================
-       🌳 CHILD SAFETY
-       ======================================================== */
+    /* ================= CHILD SAFETY ================= */
     if ((module.children || []).length > 0) {
       await t.rollback();
       return error(
@@ -911,12 +1169,13 @@ export const deleteFeatureModule = async (req, res) => {
       );
     }
 
+    /* ================= SOFT DELETE ================= */
     await module.update(
       { deleted_by_id: req.user?.id || null },
       { transaction: t }
     );
-
     await module.destroy({ transaction: t });
+
     await t.commit();
 
     const full = await FeatureModule.findOne({
@@ -927,7 +1186,7 @@ export const deleteFeatureModule = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureModule",
+      module: MODULE_KEY_FEATURE,
       action: "delete",
       entityId: id,
       entity: full,
@@ -936,112 +1195,129 @@ export const deleteFeatureModule = async (req, res) => {
     return success(res, "✅ Feature module deleted", { record: full });
   } catch (err) {
     await t.rollback();
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete feature module", err);
   }
 };
 
 
-
-
 /* ============================================================
-   📌 FEATURE ACCESS LOGIC (Org/Facility Scoped, with Super Admin bypass)
-   ============================================================ */
-
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = (user.roles || []).map(r => (r.name || "").toLowerCase());
-  return (
-    roles.includes("super admin") ||
-    roles.includes("superadmin") ||
-    (user.email || "").toLowerCase() === "superadmin@vytalguard.com"
-  );
-}
-
-function isOrgOwner(user) {
-  if (!user) return false;
-  const roles = (user.roles || []).map(r => (r.name || "").toLowerCase());
-  return roles.includes("org owner") || roles.includes("organization owner");
-}
-
-function resolveOrganizationId(req, bodyOrgId) {
-  if (isSuperAdmin(req.user)) return bodyOrgId;
-  return req.user?.organization_id || null;
-}
-
-
-function resolveFacilityId(req, bodyFacilityId) {
-  // Super admin: trust frontend (may be null)
-  if (isSuperAdmin(req.user)) {
-    return bodyFacilityId ?? null;
-  }
-
-  // Org Owner: facility is OPTIONAL
-  if (isOrgOwner(req.user)) {
-    return bodyFacilityId ?? null;
-  }
-
-  // Facility-level roles: enforce session facility
-  return req.facility_id ?? null;
-}
-
-
+   📌 FEATURE ACCESS – SHARED INCLUDES
+============================================================ */
 const FEATURE_ACCESS_INCLUDES = [
   {
     model: Organization,
     as: "organization",
     attributes: ["id", "name", "code"],
-    required: false, // ✅ org-wide rows still load
+    required: false,
   },
-  { model: Role, as: "role", attributes: ["id", "name"], required: false },
-  { model: FeatureModule, as: "module", attributes: ["id", "name", "key", "category", "visibility", "enabled", "icon"], required: false },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code"], required: false },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"], required: false },
+  {
+    model: Role,
+    as: "role",
+    attributes: ["id", "name"],
+    required: false,
+  },
+  {
+    model: FeatureModule,
+    as: "module",
+    attributes: ["id", "name", "key", "category", "visibility", "enabled"],
+    required: false,
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "createdBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "updatedBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "deletedBy",
+    attributes: ["id", "first_name", "last_name"],
+    required: false,
+  },
 ];
 
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMA FACTORY
-   ============================================================ */
+   📋 FEATURE ACCESS SCHEMA
+============================================================ */
 function buildFeatureAccessSchema(mode = "create") {
   const base = {
     organization_id: Joi.string().uuid().required().label("Organization"),
     role_id: Joi.string().uuid().required().label("Role"),
     module_id: Joi.string().uuid().required().label("Module"),
-    facility_id: Joi.string().uuid().allow(null).optional().label("Facility"),
-    status: Joi.string().valid("active", "inactive").default("active"),
+    facility_id: Joi.string().uuid().allow(null).label("Facility"),
+    status: Joi.string()
+      .valid(...FEATURE_ACCESS_STATUS)
+      .default(ACCESS_ACTIVE),
   };
+
   if (mode === "update") {
-    Object.keys(base).forEach(k => { base[k] = base[k].optional(); });
+    Object.keys(base).forEach(k => {
+      base[k] = base[k].optional();
+    });
   }
+
   return Joi.object(base);
 }
 
+
 /* ============================================================
    📌 CREATE FEATURE ACCESS
-   ============================================================ */
+============================================================ */
 export const createFeatureAccess = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
+
+    debug.log("access-create → incoming", req.body);
+
     const schema = buildFeatureAccessSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
+    const { error: validationError, value } = schema.validate(req.body, {
+      stripUnknown: true,
+    });
+
     if (validationError) {
       await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    // 🔹 Resolve enforced org & facility IDs
-    const finalOrgId = resolveOrganizationId(req, value.organization_id);
+    /* ================= ORG RESOLUTION ================= */
+    const finalOrgId = isSuperAdmin(req.user)
+      ? value.organization_id
+      : req.user.organization_id;
+
     if (!finalOrgId) {
       await t.rollback();
-      return error(res, "❌ Organization ID is invalid or not allowed for your role", null, 400);
+      return error(
+        res,
+        "❌ Organization ID is invalid or not allowed for your role",
+        null,
+        400
+      );
     }
 
-    const finalFacilityId = resolveFacilityId(req, value.facility_id);
-    // ✅ facility_id MAY be null (org-wide access)
+    /* ================= FACILITY RESOLUTION ================= */
+    const finalFacilityId = value.facility_id ?? null;
 
-    // 🔹 Validate facility ONLY if facility-scoped
     if (finalFacilityId) {
       const facilityCheck = await Facility.findOne({
         where: { id: finalFacilityId, organization_id: finalOrgId },
@@ -1049,17 +1325,53 @@ export const createFeatureAccess = async (req, res) => {
 
       if (!facilityCheck) {
         await t.rollback();
-        return error(res, "❌ Facility does not belong to your organization", null, 400);
+        return error(
+          res,
+          "❌ Facility does not belong to your organization",
+          null,
+          400
+        );
       }
     }
 
-    // 🔹 Prevent duplicates (org-wide or facility-scoped)
+    /* ================= MODULE GUARDS ================= */
+    const module = await FeatureModule.findOne({
+      where: { id: value.module_id },
+      transaction: t,
+    });
+
+    if (!module) {
+      await t.rollback();
+      return error(res, "❌ Module not found", null, 404);
+    }
+
+    if (module.visibility === "hidden") {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Cannot assign access to hidden modules",
+        null,
+        400
+      );
+    }
+
+    if (module.tenant_scope === "global" && !isSuperAdmin(req.user)) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Cannot assign access to global modules",
+        null,
+        403
+      );
+    }
+
+    /* ================= DUPLICATE CHECK ================= */
     const exists = await FeatureAccess.findOne({
       where: {
         organization_id: finalOrgId,
         role_id: value.role_id,
         module_id: value.module_id,
-        facility_id: finalFacilityId ?? null,
+        facility_id: finalFacilityId,
       },
       paranoid: false,
       transaction: t,
@@ -1069,18 +1381,18 @@ export const createFeatureAccess = async (req, res) => {
       await t.rollback();
       return error(
         res,
-        "❌ Access already exists for this organization/role/module/facility",
+        "❌ Access already exists for this organization / role / module / facility",
         null,
         409
       );
     }
 
-    // 🔹 Create access
+    /* ================= CREATE ================= */
     const created = await FeatureAccess.create(
       {
         ...value,
         organization_id: finalOrgId,
-        facility_id: finalFacilityId ?? null,
+        facility_id: finalFacilityId,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -1095,7 +1407,7 @@ export const createFeatureAccess = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "create",
       entityId: created.id,
       entity: full,
@@ -1105,133 +1417,32 @@ export const createFeatureAccess = async (req, res) => {
     return success(res, "✅ Feature access granted", { record: full });
   } catch (err) {
     await t.rollback();
+    debug.error("access-create → FAILED", err);
     return error(res, "❌ Failed to create feature access", err);
   }
 };
 
-
 /* ============================================================
    📌 UPDATE FEATURE ACCESS
-   ============================================================ */
+============================================================ */
 export const updateFeatureAccess = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
+    debug.log("access-update → incoming", { id, body: req.body });
+
     const schema = buildFeatureAccessSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
-      await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
-    }
-
-    // 🔹 Resolve enforced org & facility IDs
-    const finalOrgId = resolveOrganizationId(req, value.organization_id);
-    if (!finalOrgId) {
-      await t.rollback();
-      return error(res, "❌ Organization ID is invalid or not allowed for your role", null, 400);
-    }
-
-    const finalFacilityId = resolveFacilityId(req, value.facility_id);
-    // ✅ facility_id MAY be null (org-wide)
-
-    // 🔹 Validate facility ONLY if facility-scoped
-    if (finalFacilityId) {
-      const facilityCheck = await Facility.findOne({
-        where: { id: finalFacilityId, organization_id: finalOrgId },
-      });
-
-      if (!facilityCheck) {
-        await t.rollback();
-        return error(res, "❌ Facility does not belong to your organization", null, 400);
-      }
-    }
-
-    // 🔹 Find existing access
-    const access = await FeatureAccess.findOne({
-      where: {
-        id,
-        organization_id: finalOrgId,
-        facility_id: finalFacilityId ?? null,
-      },
-      transaction: t,
-    });
-
-    if (!access) {
-      await t.rollback();
-      return error(res, "❌ Feature access not found", null, 404);
-    }
-
-    // 🔹 Prevent duplicates
-    const duplicate = await FeatureAccess.findOne({
-      where: {
-        organization_id: finalOrgId,
-        role_id: value.role_id,
-        module_id: value.module_id,
-        facility_id: finalFacilityId ?? null,
-        id: { [Op.ne]: id },
-      },
-      paranoid: false,
-      transaction: t,
-    });
-
-    if (duplicate) {
-      await t.rollback();
-      return error(res, "❌ Duplicate access exists", null, 409);
-    }
-
-    // 🔹 Update access
-    await access.update(
-      {
-        ...value,
-        organization_id: finalOrgId,
-        facility_id: finalFacilityId ?? null,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
-
-    await t.commit();
-
-    const full = await FeatureAccess.findOne({
-      where: { id },
-      include: FEATURE_ACCESS_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: "featureAccess",
-      action: "update",
-      entityId: id,
-      entity: full,
-      details: value,
-    });
-
-    return success(res, "✅ Feature access updated", { record: full });
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to update feature access", err);
-  }
-};
-
-
-/* ============================================================
-   📌 REPLACE FEATURE ACCESS BY ROLE
-   ============================================================ */
-export const replaceFeatureAccessByRole = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const schema = Joi.object({
-      role_id: Joi.string().uuid().required(),
-      module_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
-      organization_id: Joi.string().uuid().required(),
-      facility_id: Joi.string().uuid().allow(null).optional(),
-      status: Joi.string().valid("active", "inactive").default("active"),
-    });
-
-    const { error: validationError, value } = schema.validate({
-      ...req.body,
-      role_id: req.params.role_id,
+    const { error: validationError, value } = schema.validate(req.body, {
+      stripUnknown: true,
     });
 
     if (validationError) {
@@ -1239,8 +1450,11 @@ export const replaceFeatureAccessByRole = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    // 🔹 Resolve enforced org ID
-    const finalOrgId = resolveOrganizationId(req, value.organization_id);
+    /* ================= ORG RESOLUTION ================= */
+    const finalOrgId = isSuperAdmin(req.user)
+      ? value.organization_id
+      : req.user.organization_id;
+
     if (!finalOrgId) {
       await t.rollback();
       return error(
@@ -1251,16 +1465,12 @@ export const replaceFeatureAccessByRole = async (req, res) => {
       );
     }
 
-    // 🔹 Resolve facility (OPTIONAL)
-    const finalFacilityId = resolveFacilityId(req, value.facility_id) ?? null;
+    /* ================= FACILITY RESOLUTION ================= */
+    const finalFacilityId = value.facility_id ?? null;
 
-    // ✅ Validate facility ONLY if facility-scoped
     if (finalFacilityId) {
       const facilityCheck = await Facility.findOne({
-        where: {
-          id: finalFacilityId,
-          organization_id: finalOrgId,
-        },
+        where: { id: finalFacilityId, organization_id: finalOrgId },
       });
 
       if (!facilityCheck) {
@@ -1274,7 +1484,235 @@ export const replaceFeatureAccessByRole = async (req, res) => {
       }
     }
 
-    // 🔹 Remove old accesses for this scope
+    /* ================= LOAD ACCESS ================= */
+    const access = await FeatureAccess.findOne({
+      where: {
+        id,
+        organization_id: finalOrgId,
+        facility_id: finalFacilityId,
+      },
+      transaction: t,
+    });
+
+    if (!access) {
+      await t.rollback();
+      return error(res, "❌ Feature access not found", null, 404);
+    }
+
+    /* ================= MODULE GUARD (ON CHANGE) ================= */
+    if (value.module_id) {
+      const module = await FeatureModule.findOne({
+        where: { id: value.module_id },
+        transaction: t,
+      });
+
+      if (!module) {
+        await t.rollback();
+        return error(res, "❌ Module not found", null, 404);
+      }
+
+      if (module.visibility === "hidden") {
+        await t.rollback();
+        return error(
+          res,
+          "❌ Cannot assign access to hidden modules",
+          null,
+          400
+        );
+      }
+
+      if (module.tenant_scope === "global" && !isSuperAdmin(req.user)) {
+        await t.rollback();
+        return error(
+          res,
+          "❌ Cannot assign access to global modules",
+          null,
+          403
+        );
+      }
+    }
+
+    /* ================= DUPLICATE GUARD ================= */
+    if (value.role_id || value.module_id) {
+      const duplicate = await FeatureAccess.findOne({
+        where: {
+          organization_id: finalOrgId,
+          role_id: value.role_id ?? access.role_id,
+          module_id: value.module_id ?? access.module_id,
+          facility_id: finalFacilityId,
+          id: { [Op.ne]: id },
+        },
+        paranoid: false,
+        transaction: t,
+      });
+
+      if (duplicate) {
+        await t.rollback();
+        return error(res, "❌ Duplicate access exists", null, 409);
+      }
+    }
+
+    /* ================= UPDATE ================= */
+    await access.update(
+      {
+        ...value,
+        organization_id: finalOrgId,
+        facility_id: finalFacilityId,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    const full = await FeatureAccess.findOne({
+      where: { id },
+      include: FEATURE_ACCESS_INCLUDES,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "update",
+      entityId: id,
+      entity: full,
+      details: value,
+    });
+
+    return success(res, "✅ Feature access updated", { record: full });
+  } catch (err) {
+    await t.rollback();
+    debug.error("access-update → FAILED", err);
+    return error(res, "❌ Failed to update feature access", err);
+  }
+};
+
+
+/* ============================================================
+   📌 REPLACE FEATURE ACCESS BY ROLE
+============================================================ */
+export const replaceFeatureAccessByRole = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "replace",
+      res,
+    });
+    if (!allowed) return;
+
+    debug.log("access-replace → incoming", req.body);
+
+    /* ========================================================
+       📋 VALIDATION
+    ======================================================== */
+    const schema = Joi.object({
+      role_id: Joi.string().uuid().required(),
+      module_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
+      organization_id: Joi.string().uuid().required(),
+      facility_id: Joi.string().uuid().allow(null),
+      status: Joi.string()
+        .valid(...FEATURE_ACCESS_STATUS)
+        .default(ACCESS_ACTIVE),
+    });
+
+    const { error: validationError, value } = schema.validate({
+      ...req.body,
+      role_id: req.params.role_id,
+    });
+
+    if (validationError) {
+      await t.rollback();
+      return error(res, "Validation failed", validationError, 400);
+    }
+
+    /* ========================================================
+       🏢 ORG RESOLUTION
+    ======================================================== */
+    const finalOrgId = isSuperAdmin(req.user)
+      ? value.organization_id
+      : req.user.organization_id;
+
+    if (!finalOrgId) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Organization ID is invalid or not allowed for your role",
+        null,
+        400
+      );
+    }
+
+    /* ========================================================
+       🏥 FACILITY RESOLUTION
+    ======================================================== */
+    const finalFacilityId = value.facility_id ?? null;
+
+    if (finalFacilityId) {
+      const facilityCheck = await Facility.findOne({
+        where: { id: finalFacilityId, organization_id: finalOrgId },
+        transaction: t,
+      });
+
+      if (!facilityCheck) {
+        await t.rollback();
+        return error(
+          res,
+          "❌ Facility does not belong to your organization",
+          null,
+          400
+        );
+      }
+    }
+
+    /* ========================================================
+       🔒 MODULE SAFETY CHECKS (CRITICAL)
+    ======================================================== */
+    const modules = await FeatureModule.findAll({
+      where: { id: { [Op.in]: value.module_ids } },
+      attributes: ["id", "tenant_scope", "visibility"],
+      transaction: t,
+    });
+
+    if (modules.length !== value.module_ids.length) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ One or more modules do not exist",
+        null,
+        400
+      );
+    }
+
+    for (const m of modules) {
+      if (m.visibility === "hidden") {
+        await t.rollback();
+        return error(
+          res,
+          "❌ Cannot assign access to hidden modules",
+          null,
+          400
+        );
+      }
+
+      if (m.tenant_scope === "global" && !isSuperAdmin(req.user)) {
+        await t.rollback();
+        return error(
+          res,
+          "❌ Cannot assign access to global modules",
+          null,
+          403
+        );
+      }
+    }
+
+    /* ========================================================
+       🧹 DELETE EXISTING ACCESS (ROLE SCOPE)
+    ======================================================== */
     await FeatureAccess.destroy({
       where: {
         role_id: value.role_id,
@@ -1284,35 +1722,44 @@ export const replaceFeatureAccessByRole = async (req, res) => {
       transaction: t,
     });
 
-    // 🔹 Insert new accesses
-    const newAccesses = value.module_ids.map(moduleId => ({
+    /* ========================================================
+       ➕ INSERT NEW ACCESS RECORDS
+    ======================================================== */
+    const payload = value.module_ids.map(module_id => ({
       organization_id: finalOrgId,
       role_id: value.role_id,
-      module_id: moduleId,
+      module_id,
       facility_id: finalFacilityId,
       status: value.status,
       created_by_id: req.user?.id || null,
     }));
 
-    const created = await FeatureAccess.bulkCreate(newAccesses, {
+    const created = await FeatureAccess.bulkCreate(payload, {
       returning: true,
       transaction: t,
     });
 
     await t.commit();
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "replace",
       details: {
         role_id: value.role_id,
         organization_id: finalOrgId,
         facility_id: finalFacilityId,
         modules: value.module_ids,
+        created: created.length,
       },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(
       res,
       `✅ Replaced with ${created.length} module(s)`,
@@ -1320,19 +1767,30 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     );
   } catch (err) {
     await t.rollback();
+    debug.error("access-replace → FAILED", err);
     return error(res, "❌ Failed to replace feature accesses", err);
   }
 };
 
+
 /* ============================================================
-   📌 DELETE FEATURE ACCESS (Org-wide or Facility-scoped)
-   ============================================================ */
+   📌 DELETE FEATURE ACCESS
+============================================================ */
 export const deleteFeatureAccess = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
-    // 🔹 Load entry first
+    debug.log("access-delete → attempt", { id });
+
     const entry = await FeatureAccess.findOne({
       where: { id },
       transaction: t,
@@ -1343,38 +1801,21 @@ export const deleteFeatureAccess = async (req, res) => {
       return error(res, "❌ Feature access not found", null, 404);
     }
 
-    // 🔹 Enforce org scope for non-superadmins
+    /* ================= ORG GUARD ================= */
     if (!isSuperAdmin(req.user)) {
-      const finalOrgId = resolveOrganizationId(req, entry.organization_id);
-      const finalFacilityId = resolveFacilityId(req, entry.facility_id);
-
-      if (!finalOrgId) {
+      if (entry.organization_id !== req.user.organization_id) {
         await t.rollback();
         return error(res, "❌ Not authorized for this organization", null, 403);
       }
-
-      // ✅ Validate facility ONLY if access is facility-scoped
-      if (finalFacilityId) {
-        const facilityCheck = await Facility.findOne({
-          where: {
-            id: finalFacilityId,
-            organization_id: finalOrgId,
-          },
-        });
-
-        if (!facilityCheck) {
-          await t.rollback();
-          return error(res, "❌ Facility does not belong to your organization", null, 403);
-        }
-      }
     }
 
-    // 🔹 Soft delete
+    /* ================= SOFT DELETE ================= */
     await entry.update(
       { deleted_by_id: req.user?.id || null },
       { transaction: t }
     );
     await entry.destroy({ transaction: t });
+
     await t.commit();
 
     const full = await FeatureAccess.findOne({
@@ -1385,7 +1826,7 @@ export const deleteFeatureAccess = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "delete",
       entityId: id,
       entity: full,
@@ -1394,17 +1835,27 @@ export const deleteFeatureAccess = async (req, res) => {
     return success(res, "✅ Feature access deleted", { record: full });
   } catch (err) {
     await t.rollback();
+    debug.error("access-delete → FAILED", err);
     return error(res, "❌ Failed to delete feature access", err);
   }
 };
-
 /* ============================================================
-   📌 TOGGLE FEATURE ACCESS STATUS (Org-wide or Facility-scoped)
-   ============================================================ */
+   📌 TOGGLE FEATURE ACCESS STATUS
+============================================================ */
 export const toggleFeatureAccessStatus = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
+    debug.log("access-toggle → attempt", { id });
 
     const access = await FeatureAccess.findOne({
       where: { id },
@@ -1416,34 +1867,18 @@ export const toggleFeatureAccessStatus = async (req, res) => {
       return error(res, "❌ Feature access not found", null, 404);
     }
 
-    // 🔹 Enforce org scope for non-superadmins
+    /* ================= ORG GUARD ================= */
     if (!isSuperAdmin(req.user)) {
-      const finalOrgId = resolveOrganizationId(req, access.organization_id);
-      const finalFacilityId = resolveFacilityId(req, access.facility_id);
-
-      if (!finalOrgId) {
+      if (access.organization_id !== req.user.organization_id) {
         await t.rollback();
         return error(res, "❌ Not authorized for this organization", null, 403);
       }
-
-      // ✅ Validate facility ONLY if facility-scoped
-      if (finalFacilityId) {
-        const facilityCheck = await Facility.findOne({
-          where: {
-            id: finalFacilityId,
-            organization_id: finalOrgId,
-          },
-        });
-
-        if (!facilityCheck) {
-          await t.rollback();
-          return error(res, "❌ Facility does not belong to your organization", null, 403);
-        }
-      }
     }
 
-    // 🔹 Toggle status
-    const newStatus = access.status === "active" ? "inactive" : "active";
+    const newStatus =
+      access.status === ACCESS_ACTIVE
+        ? ACCESS_INACTIVE
+        : ACCESS_ACTIVE;
 
     await access.update(
       {
@@ -1452,6 +1887,7 @@ export const toggleFeatureAccessStatus = async (req, res) => {
       },
       { transaction: t }
     );
+
     await t.commit();
 
     const full = await FeatureAccess.findOne({
@@ -1461,29 +1897,37 @@ export const toggleFeatureAccessStatus = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "toggle-status",
       entityId: id,
       entity: full,
       details: { from: access.status, to: newStatus },
     });
 
-    return success(res, `✅ Feature access status toggled to ${newStatus}`, {
-      record: full,
-    });
+    return success(
+      res,
+      `✅ Feature access status toggled to ${newStatus}`,
+      { record: full }
+    );
   } catch (err) {
     await t.rollback();
+    debug.error("access-toggle → FAILED", err);
     return error(res, "❌ Failed to toggle feature access status", err);
   }
 };
 
+
 /* ============================================================
-   📌 GET LITE FEATURE ACCESSES (with ?q= support)
-   ============================================================ */
+   📌 GET LITE FEATURE ACCESSES
+============================================================ */
 export const getLiteFeatureAccesses = async (req, res) => {
   try {
     const { q } = req.query;
     const where = {};
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+    }
 
     if (q) {
       where[Op.or] = [
@@ -1491,19 +1935,6 @@ export const getLiteFeatureAccesses = async (req, res) => {
         { "$module.name$": { [Op.iLike]: `%${q}%` } },
         { "$facility.name$": { [Op.iLike]: `%${q}%` } },
       ];
-    }
-
-    if (!isSuperAdmin(req.user)) {
-      const orgId = req.user.organization_id;
-      const facilityIds = Array.isArray(req.user.facility_ids) ? req.user.facility_ids : [];
-
-      where.organization_id = orgId;
-      if (facilityIds.length > 0) {
-        where[Op.or] = [
-          { facility_id: { [Op.in]: facilityIds } },
-          { facility_id: null }, // org-wide access
-        ];
-      }
     }
 
     const accesses = await FeatureAccess.findAll({
@@ -1517,55 +1948,219 @@ export const getLiteFeatureAccesses = async (req, res) => {
       limit: 20,
     });
 
-    return success(res, "✅ Lite feature accesses loaded", { records: accesses });
+    return success(res, "✅ Lite feature accesses loaded", {
+      records: accesses,
+    });
   } catch (err) {
+    debug.error("lite-accesses → FAILED", err);
     return error(res, "❌ Failed to load lite feature accesses", err);
   }
 };
 
+
 /* ============================================================
    📌 GET ALL FEATURE ACCESSES
-   ============================================================ */
+   (WITH DYNAMIC FILTERS + SEARCH + SUMMARY) – FINAL / PARITY
+============================================================ */
 export const getAllFeatureAccesses = async (req, res) => {
   try {
-    const options = buildQueryOptions(req, "created_at", "DESC");
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
+    const options = buildQueryOptions(req, {
+      defaultSort: ["created_at", "DESC"],
+      fields: [
+        "status",
+        "organization_id",
+        "role_id",
+        "module_id",
+        "facility_id",
+        "created_at",
+        "updated_at",
+      ],
+    });
+
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    const {
+      dateRange,
+      organization_id,
+      role_id,
+      module_id,
+      facility_id,
+    } = req.query;
+
+    if (options.where?.dateRange) {
+      delete options.where.dateRange;
+    }
+
+    /* ========================================================
+       🏢 ORG GUARD (NON-SUPER ADMINS)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      const orgId = req.user.organization_id;
-      const facilityIds = Array.isArray(req.user.facility_ids) ? req.user.facility_ids : [];
+      options.where = {
+        ...(options.where || {}),
+        organization_id: req.user.organization_id,
+      };
+    }
 
-      options.where.organization_id = orgId;
-      if (facilityIds.length > 0) {
-        options.where[Op.or] = [
-          { facility_id: { [Op.in]: facilityIds } },
-          { facility_id: null },
-        ];
+    /* ========================================================
+       🎯 EXPLICIT FK FILTERS
+    ======================================================== */
+    if (organization_id) options.where.organization_id = organization_id;
+    if (role_id) options.where.role_id = role_id;
+    if (module_id) options.where.module_id = module_id;
+    if (facility_id) options.where.facility_id = facility_id;
+
+    /* ========================================================
+       📅 DATE RANGE FILTER (LOCAL – SINGLE SOURCE)
+    ======================================================== */
+    if (dateRange) {
+      const range = normalizeDateRangeLocal(dateRange);
+      if (range) {
+        options.where.created_at = {
+          [Op.between]: [range.start, range.end],
+        };
       }
     }
 
+    /* ========================================================
+       🔎 SEARCH (JOIN FIELDS)
+    ======================================================== */
     if (options.search) {
-      options.where[Op.or] = [
-        { "$role.name$": { [Op.iLike]: `%${options.search}%` } },
-        { "$module.name$": { [Op.iLike]: `%${options.search}%` } },
-        { "$facility.name$": { [Op.iLike]: `%${options.search}%` } },
-      ];
+      options.where = {
+        ...(options.where || {}),
+        [Op.or]: [
+          { "$role.name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$module.name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$facility.name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      };
     }
 
+    /* ========================================================
+       📦 MAIN QUERY
+    ======================================================== */
     const { count, rows } = await FeatureAccess.findAndCountAll({
       where: options.where,
       include: FEATURE_ACCESS_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
+      subQuery: false,
     });
 
+    /* ============================================================
+      📊 SUMMARY (BASE-TABLE SAFE — NO JOIN ALIASES)
+    ============================================================ */
+
+    /**
+     * IMPORTANT:
+     * - Summary MUST NOT use $role.name$, $module.name$, etc.
+     * - Only base FeatureAccess columns allowed
+     */
+    const summaryWhere = {};
+
+    /* ---------- ORG GUARD ---------- */
+    if (!isSuperAdmin(req.user)) {
+      summaryWhere.organization_id = req.user.organization_id;
+    }
+
+    /* ---------- EXPLICIT FK FILTERS ---------- */
+    if (organization_id) summaryWhere.organization_id = organization_id;
+    if (role_id) summaryWhere.role_id = role_id;
+    if (module_id) summaryWhere.module_id = module_id;
+    if (facility_id) summaryWhere.facility_id = facility_id;
+
+    /* ---------- DATE RANGE ---------- */
+    if (dateRange) {
+      const range = normalizeDateRangeLocal(dateRange);
+      if (range) {
+        summaryWhere.created_at = {
+          [Op.between]: [range.start, range.end],
+        };
+      }
+    }
+
+    /* ---------- TOTAL ---------- */
+    const total = await FeatureAccess.count({
+      where: summaryWhere,
+    });
+
+    /* ---------- STATUS SUMMARY ---------- */
+    const statusRows = await FeatureAccess.findAll({
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      where: summaryWhere,
+      group: ["status"],
+      raw: true,
+    });
+
+    const statusMap = Object.fromEntries(
+      statusRows.map(r => [r.status, Number(r.count)])
+    );
+
+    /* ---------- SCOPE SUMMARY ---------- */
+    const scopeRows = await FeatureAccess.findAll({
+      attributes: [
+        [
+          sequelize.literal(
+            `CASE WHEN facility_id IS NULL THEN 'org_wide' ELSE 'facility' END`
+          ),
+          "scope",
+        ],
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      where: summaryWhere,
+      group: ["scope"],
+      raw: true,
+    });
+
+    const scopeMap = Object.fromEntries(
+      scopeRows.map(r => [r.scope, Number(r.count)])
+    );
+
+    /* ---------- FINAL SUMMARY ---------- */
+    const summary = {
+      total,
+      status: {
+        active: statusMap[ACCESS_STATUS.ACTIVE] || 0,
+        inactive: statusMap[ACCESS_STATUS.INACTIVE] || 0,
+      },
+      scope: {
+        org_wide: scopeMap.org_wide || 0,
+        facility: scopeMap.facility || 0,
+      },
+    };
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "list",
       details: { query: req.query, returned: count },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Feature accesses loaded", {
       records: rows,
       pagination: {
@@ -1573,46 +2168,58 @@ export const getAllFeatureAccesses = async (req, res) => {
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
+      summary,
     });
   } catch (err) {
+    debug.error("access-list → FAILED", err);
     return error(res, "❌ Failed to load feature accesses", err);
   }
 };
 
 /* ============================================================
    📌 GET FEATURE ACCESS BY ID
-   ============================================================ */
+============================================================ */
 export const getFeatureAccessById = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY_FEATURE_ACCESS,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
     const where = { id };
 
+    /* ================= ORG GUARD ================= */
     if (!isSuperAdmin(req.user)) {
-      const orgId = req.user.organization_id;
-      const facilityIds = Array.isArray(req.user.facility_ids) ? req.user.facility_ids : [];
-
-      where.organization_id = orgId;
-      if (facilityIds.length > 0) {
-        where[Op.or] = [
-          { facility_id: { [Op.in]: facilityIds } },
-          { facility_id: null },
-        ];
-      }
+      where.organization_id = req.user.organization_id;
     }
 
-    const entry = await FeatureAccess.findOne({ where, include: FEATURE_ACCESS_INCLUDES });
-    if (!entry) return error(res, "❌ Feature access not found", null, 404);
+    const entry = await FeatureAccess.findOne({
+      where,
+      include: FEATURE_ACCESS_INCLUDES,
+    });
+
+    if (!entry) {
+      return error(res, "❌ Feature access not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
-      module: "featureAccess",
+      module: MODULE_KEY_FEATURE_ACCESS,
       action: "view",
       entityId: id,
       entity: entry,
     });
 
-    return success(res, "✅ Feature access loaded", { record: entry });
+    return success(res, "✅ Feature access loaded", {
+      record: entry,
+    });
   } catch (err) {
+    debug.error("access-view → FAILED", err);
     return error(res, "❌ Failed to load feature access", err);
   }
 };

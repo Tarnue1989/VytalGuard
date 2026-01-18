@@ -1,11 +1,13 @@
-// 📁 vital-constants.js – Enterprise-Aligned Master Pattern (Upgraded)
+// 📁 vital-constants.js – Enterprise-Aligned Master Pattern
 // ============================================================================
-// 🔹 Pattern Source: consultation-constants.js (Appointment Master Pattern)
-// 🔹 Maintains identical structural logic: labels, order, role-based defaults
-// 🔹 Includes full role alignment, admin/manager/staff consistency
-// 🔹 All field IDs remain unchanged (safe for your existing HTML)
+// 🔹 Pattern Source: department-constants.js / consultation-constants.js
+// 🔹 Structural Consistency: labels, order, role-based visibility
+// 🔹 100% field ID retention (safe for HTML + renderers)
 // ============================================================================
 
+/* ============================================================
+   🏷️ Field Labels
+============================================================ */
 export const FIELD_LABELS_VITAL = {
   organization: "Organization",
   facility: "Facility",
@@ -27,17 +29,17 @@ export const FIELD_LABELS_VITAL = {
   status: "Status",
   recorded_at: "Recorded At",
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
   actions: "Actions",
 };
 
-// ============================================================================
-// 📋 Field Order (kept consistent across all roles and master modules)
-// ============================================================================
+/* ============================================================
+   📋 Field Order (Enterprise-Consistent)
+============================================================ */
 export const FIELD_ORDER_VITAL = [
   "organization",
   "facility",
@@ -67,15 +69,40 @@ export const FIELD_ORDER_VITAL = [
   "actions",
 ];
 
-// ============================================================================
-// 👥 Role-Based Field Visibility Defaults (Fully Appointment-Aligned)
-// ============================================================================
-// Each tier mirrors the consultation master pattern hierarchy.
-// Staff see only operational essentials,
-// Manager adds organizational + audit scope,
-// Admin sees full metadata & org-level fields.
-// ============================================================================
+/* ============================================================
+   👥 Role-Based Field Visibility Defaults (MASTER-ALIGNED)
+============================================================ */
+// Mirrors department hierarchy exactly
 export const FIELD_DEFAULTS_VITAL = {
+  superadmin: [
+    "organization",
+    "facility",
+    "patient",
+    "admission",
+    "consultation",
+    "triageRecord",
+    "nurse",
+    "bp",
+    "pulse",
+    "rr",
+    "temp",
+    "oxygen",
+    "weight",
+    "height",
+    "rbg",
+    "pain_score",
+    "position",
+    "status",
+    "recorded_at",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -102,6 +129,32 @@ export const FIELD_DEFAULTS_VITAL = {
     "updated_at",
     "deletedBy",
     "deleted_at",
+    "actions",
+  ],
+
+  facility_head: [
+    "facility",
+    "patient",
+    "admission",
+    "consultation",
+    "triageRecord",
+    "nurse",
+    "bp",
+    "pulse",
+    "rr",
+    "temp",
+    "oxygen",
+    "weight",
+    "height",
+    "rbg",
+    "pain_score",
+    "position",
+    "status",
+    "recorded_at",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
     "actions",
   ],
 
@@ -151,3 +204,9 @@ export const FIELD_DEFAULTS_VITAL = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (Enterprise Standard)
+============================================================ */
+export const MODULE_KEY_VITAL = "vital";
+export const MODULE_LABEL_VITAL = "Vital";

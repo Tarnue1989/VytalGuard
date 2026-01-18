@@ -1,30 +1,27 @@
 // ============================================================================
 // 🏥 VytalGuard – Facility Constants (Enterprise Master Pattern Aligned)
-// 🔹 Mirrors organization-constants.js for unified structure + field handling
+// 🔹 Mirrors role-fields.js for unified structure + field handling
 // 🔹 Safe for UI mapping, permissions, and role-based visibility
 // 🔹 All field keys, IDs, and linkages preserved exactly
 // ============================================================================
 
 /* ============================================================
    🏷️ FIELD LABELS
-   - Display labels for table headers, forms, and exports
 ============================================================ */
 export const FIELD_LABELS_FACILITY = {
+  organization: "Organization",
   name: "Facility Name",
-  code: "Code",
-  status: "Status",
-
+  code: "Facility Code",
   address: "Address",
   phone: "Phone",
   email: "Email",
-  organization: "Organization",
+  status: "Status",
 
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
-
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
   actions: "Actions",
@@ -32,16 +29,15 @@ export const FIELD_LABELS_FACILITY = {
 
 /* ============================================================
    📋 FIELD ORDER
-   - Canonical order for column rendering + export consistency
 ============================================================ */
 export const FIELD_ORDER_FACILITY = [
+  "organization",
   "name",
   "code",
-  "status",
   "address",
   "phone",
   "email",
-  "organization",
+  "status",
   "createdBy",
   "created_at",
   "updatedBy",
@@ -52,82 +48,73 @@ export const FIELD_ORDER_FACILITY = [
 ];
 
 /* ============================================================
-   ⚙️ FIELD DEFAULTS BY ROLE
-   - Controls visibility tiers in grids/forms (auto-applied)
-   - Matches master pattern: superadmin > admin > manager > staff
+   👥 FIELD DEFAULTS BY ROLE
 ============================================================ */
 export const FIELD_DEFAULTS_FACILITY = {
   superadmin: [
+    "organization",
     "name",
     "code",
-    "status",
     "address",
     "phone",
     "email",
-    "organization",
+    "status",
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
-    "actions", // ✅ Superadmin sees all (delete + audit)
+    "actions",
   ],
 
   admin: [
+    "organization",
     "name",
     "code",
-    "status",
     "address",
     "phone",
     "email",
-    "organization",
+    "status",
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
-    "deleted_at", // 🟡 Admin sees audits but may not delete
+    "deleted_at",
+    "actions",
   ],
 
   manager: [
     "name",
     "code",
-    "status",
     "address",
     "phone",
     "email",
-    "organization",
+    "status",
     "createdBy",
     "created_at",
     "updatedBy",
-    "updated_at", // 🟢 Operational tier
+    "updated_at",
+    "actions",
   ],
 
   staff: [
     "name",
     "code",
-    "status",
     "address",
     "phone",
     "email",
-    "organization", // 🧩 Minimal safe visibility
+    "status",
+    "actions",
   ],
 };
 
 /* ============================================================
-   🧩 EXPORT GROUP (Optional)
-   - Used by DataTables, field-selectors, and unified loaders
+   🧩 EXPORT GROUP
 ============================================================ */
 export const FIELD_GROUP_FACILITY = {
   LABELS: FIELD_LABELS_FACILITY,
   ORDER: FIELD_ORDER_FACILITY,
   DEFAULTS: FIELD_DEFAULTS_FACILITY,
 };
-
-// ============================================================================
-// ✅ This module follows Enterprise Master Pattern:
-//    • Safe structure
-//    • Consistent comments + field hierarchy
-//    • Unified visibility tiers across all modules
-// ============================================================================

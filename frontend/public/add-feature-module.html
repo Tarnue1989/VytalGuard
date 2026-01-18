@@ -48,35 +48,49 @@
 
               <!-- 📦 Form Container -->
               <div id="formContainer">
-                <form id="featureModuleForm">
+                <form id="featureModuleForm" novalidate>
                   <div class="row gx-4">
 
+                    <!-- ================= Identity ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Identity</h6>
+                      <hr/>
+                    </div>
+
                     <!-- Module Name -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
-                        <label class="form-label" for="name">Module Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="name" name="name" required>
+                        <label class="form-label" for="name">
+                          Module Name <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          id="name"
+                          name="name"
+                          data-required="true"
+                        >
                       </div>
                     </div>
 
                     <!-- Key -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
-                        <label class="form-label" for="key">Key <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="key" name="key" required>
-                      </div>
-                    </div>
-
-                    <!-- Route -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="route">Route</label>
-                        <input type="text" class="form-control" id="route" name="route">
+                        <label class="form-label" for="key">
+                          Key <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          id="key"
+                          name="key"
+                          data-required="true"
+                        >
                       </div>
                     </div>
 
                     <!-- Icon -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label" for="icon">Icon</label>
                         <input type="text" class="form-control" id="icon" name="icon">
@@ -84,35 +98,29 @@
                     </div>
 
                     <!-- Category -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label" for="category">Category</label>
                         <input type="text" class="form-control" id="category" name="category">
                       </div>
                     </div>
 
-                    <!-- Tenant Scope -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="tenant_scope">Tenant Scope <span class="text-danger">*</span></label>
-                        <select class="form-select" id="tenant_scope" name="tenant_scope">
-                          <option value="org">Organization</option>
-                          <option value="facility">Facility</option>
-                          <option value="global">Global (Super Admin)</option>
-                        </select>
-                      </div>
+                    <!-- ================= Routing ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Routing</h6>
+                      <hr/>
                     </div>
 
-                    <!-- Order Index -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Route -->
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
-                        <label class="form-label" for="order_index">Order Index</label>
-                        <input type="number" class="form-control" id="order_index" name="order_index" min="0" value="0">
+                        <label class="form-label" for="route">Route</label>
+                        <input type="text" class="form-control" id="route" name="route">
                       </div>
                     </div>
 
                     <!-- Parent Module -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label" for="parent_id">Parent Module</label>
                         <select class="form-select" id="parent_id" name="parent_id">
@@ -121,8 +129,29 @@
                       </div>
                     </div>
 
+                    <!-- Order Index -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="order_index">Order Index</label>
+                        <input
+                          type="number"
+                          class="form-control"
+                          id="order_index"
+                          name="order_index"
+                          min="0"
+                          value="0"
+                        >
+                      </div>
+                    </div>
+
+                    <!-- ================= Description ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Description</h6>
+                      <hr/>
+                    </div>
+
                     <!-- Description -->
-                    <div class="col-xxl-6 col-lg-6 col-sm-12">
+                    <div class="col-lg-6 col-sm-12">
                       <div class="mb-3">
                         <label class="form-label" for="description">Description</label>
                         <input type="text" class="form-control" id="description" name="description">
@@ -130,15 +159,41 @@
                     </div>
 
                     <!-- Tags -->
-                    <div class="col-xxl-6 col-lg-6 col-sm-12">
+                    <div class="col-lg-6 col-sm-12">
                       <div class="mb-3">
                         <label class="form-label" for="tags">Tags</label>
-                        <input type="text" class="form-control" id="tags" name="tags" placeholder="comma,separated">
+                        <input
+                          type="text"
+                          class="form-control"
+                          id="tags"
+                          name="tags"
+                          placeholder="comma,separated"
+                        >
+                      </div>
+                    </div>
+
+                    <!-- ================= Access & Scope ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Access & Scope</h6>
+                      <hr/>
+                    </div>
+
+                    <!-- Tenant Scope -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="tenant_scope">
+                          Tenant Scope <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="tenant_scope" name="tenant_scope">
+                          <option value="org">Organization</option>
+                          <option value="facility">Facility</option>
+                          <option value="global">Global (Super Admin)</option>
+                        </select>
                       </div>
                     </div>
 
                     <!-- Visibility -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label">Visibility</label>
                         <div>
@@ -159,7 +214,7 @@
                     </div>
 
                     <!-- Enabled -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3 form-check mt-4">
                         <input class="form-check-input" type="checkbox" id="enabled" name="enabled" checked>
                         <label class="form-check-label" for="enabled">Enabled</label>
@@ -167,7 +222,7 @@
                     </div>
 
                     <!-- Status -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label">Status</label>
                         <div>
@@ -183,15 +238,22 @@
                       </div>
                     </div>
 
-                    <!-- Dashboard Controls -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- ================= Dashboard ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Dashboard</h6>
+                      <hr/>
+                    </div>
+
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3 form-check mt-4">
                         <input class="form-check-input" type="checkbox" id="show_on_dashboard" name="show_on_dashboard">
-                        <label class="form-check-label" for="show_on_dashboard">Show on Dashboard</label>
+                        <label class="form-check-label" for="show_on_dashboard">
+                          Show on Dashboard
+                        </label>
                       </div>
                     </div>
 
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label" for="dashboard_type">Dashboard Type</label>
                         <select class="form-select" id="dashboard_type" name="dashboard_type">
@@ -205,19 +267,32 @@
                       </div>
                     </div>
 
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-lg-3 col-sm-6">
                       <div class="mb-3">
                         <label class="form-label" for="dashboard_order">Dashboard Order</label>
-                        <input type="number" class="form-control" id="dashboard_order" name="dashboard_order" min="0" value="0">
+                        <input
+                          type="number"
+                          class="form-control"
+                          id="dashboard_order"
+                          name="dashboard_order"
+                          min="0"
+                          value="0"
+                        >
                       </div>
                     </div>
 
-                    <!-- Buttons -->
+                    <!-- ================= Actions ================= -->
                     <div class="col-sm-12">
                       <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">Cancel</button>
-                        <button type="reset" id="clearBtn" class="btn btn-warning">Clear</button>
-                        <button type="submit" class="btn btn-primary">Save Module</button>
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          Back
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          Reset From
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          Save
+                        </button>
                       </div>
                     </div>
 
@@ -225,6 +300,7 @@
                 </form>
               </div>
               <!-- /formContainer -->
+
 
               </div>
             </div>

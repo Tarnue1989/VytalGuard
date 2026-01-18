@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
 </head>
 
 <body>
@@ -40,14 +41,6 @@
           <li class="breadcrumb-item">Feature Access</li>
           <li class="breadcrumb-item text-primary" aria-current="page">Access List</li>
         </ol>
-        <div class="ms-auto d-lg-flex d-none flex-row">
-          <div class="input-group">
-            <span class="input-group-text bg-primary-lighten">
-              <i class="ri-calendar-2-line text-primary"></i>
-            </span>
-            <input type="text" id="dateRange" class="form-control custom-daterange">
-          </div>
-        </div>
       </div>
 
       <!-- Body -->
@@ -58,7 +51,7 @@
             <div class="card">
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title">Feature Access</h5>
-                <a href="add-feature-access.html" class="btn btn-primary ms-auto">
+                <a href="add-feature-access.html" class="btn btn-primary btn-sm ms-auto">
                   <i class="ri-add-line me-1"></i> Add
                 </a>
               </div>
@@ -68,14 +61,11 @@
                 <!-- Filters -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
-                    <div class="d-flex align-items-center gap-2">
-                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-filter me-1"></i> Filters
-                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
-                      </button>
-                    </div>
+                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-filter me-1"></i> Filters
+                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                    </button>
 
-                    <!-- Export Buttons -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
@@ -89,43 +79,94 @@
                     </div>
                   </div>
 
+                  <!-- FILTER BODY -->
                   <div id="filterCollapse" class="card-body filter-body">
-                    <div class="section-label mb-2"><strong>Filter Access</strong></div>
+                    <div class="section-label mb-2">
+                      <strong>Filter Access</strong>
+                    </div>
 
                     <div class="row g-3 filter-grid compact">
 
+                      <!-- 🔍 GLOBAL SEARCH -->
+                      <div class="col-md-4">
+                        <div class="field-wrapper">
+                          <label for="globalSearch" class="form-label">Search</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-search-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="globalSearch"
+                              class="form-control"
+                              placeholder="Role, module, facility…"
+                              autocomplete="off"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- ORGANIZATION -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
                           <label for="filterOrganization" class="form-label">Organization</label>
-                          <input type="text" id="filterOrganization" class="form-control suggestion-input" autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterOrganization"
+                            class="form-control suggestion-input"
+                            placeholder="Search organization…"
+                            autocomplete="off"
+                          />
                           <div id="filterOrganizationSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- FACILITY -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
                           <label for="filterFacility" class="form-label">Facility</label>
-                          <input type="text" id="filterFacility" class="form-control suggestion-input" autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterFacility"
+                            class="form-control suggestion-input"
+                            placeholder="Search facility…"
+                            autocomplete="off"
+                          />
                           <div id="filterFacilitySuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- ROLE -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
                           <label for="filterRole" class="form-label">Role</label>
-                          <input type="text" id="filterRole" class="form-control suggestion-input" autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterRole"
+                            class="form-control suggestion-input"
+                            placeholder="Search role…"
+                            autocomplete="off"
+                          />
                           <div id="filterRoleSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- MODULE -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
                           <label for="filterModule" class="form-label">Module</label>
-                          <input type="text" id="filterModule" class="form-control suggestion-input" autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterModule"
+                            class="form-control suggestion-input"
+                            placeholder="Search module…"
+                            autocomplete="off"
+                          />
                           <div id="filterModuleSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- STATUS -->
                       <div class="col-md-2">
                         <div class="field-wrapper">
                           <label for="filterStatus" class="form-label">Status</label>
@@ -137,24 +178,26 @@
                         </div>
                       </div>
 
-                      <div class="col-md-2">
+                      <!-- DATE RANGE -->
+                      <div class="col-md-3">
                         <div class="field-wrapper">
-                          <label for="filterCreatedFrom" class="form-label">From Date</label>
-                          <input type="date" id="filterCreatedFrom" class="form-control" />
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="dateRange"
+                              class="form-control custom-daterange"
+                              placeholder="Select date range"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <div class="col-md-2">
-                        <div class="field-wrapper">
-                          <label for="filterCreatedTo" class="form-label">To Date</label>
-                          <input type="date" id="filterCreatedTo" class="form-control" />
-                        </div>
-                      </div>
-
+                      <!-- ACTIONS -->
                       <div class="col-12 d-flex gap-2 filter-actions">
-                        <button id="filterBtn" class="btn btn-primary btn-sm">
-                          <i class="fas fa-search me-1"></i> Search
-                        </button>
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
@@ -164,21 +207,24 @@
                   </div>
                 </div>
 
-                <!-- View Toggle + Field Selector -->
+                <!-- View Toggle -->
                 <div class="d-flex mb-2 view-toggle compact align-items-center">
                   <div class="dropdown relative-wrapper export-ignore">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                            id="fieldSelectorBtn"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                    >
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2 field-selector-dropdown"
-                        id="fieldSelectorDropdown"
-                        style="min-width:240px;"></div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
 
-                  <div class="btn-group ms-2" role="group">
+                  <div class="btn-group ms-2">
                     <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                       <i class="fas fa-th me-1"></i> Card View
                     </button>
@@ -188,26 +234,24 @@
                   </div>
                 </div>
 
-                <!-- Records per page (ABOVE SUMMARY) -->
-                <div class="btn-group align-items-center ms-2" role="group">
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
-                  <select id="recordsPerPage"
-                          class="btn btn-outline-secondary btn-sm text-center"
-                          style="width:64px; appearance:auto;">
+                <!-- Records -->
+                <div class="btn-group align-items-center ms-2">
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Show</span>
+                  <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm">
                     <option value="10">10</option>
                     <option value="25" selected>25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                   </select>
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Rows</span>
                 </div>
 
-                <!-- 📊 Breakdown Summary -->
+                <!-- Summary -->
                 <hr class="my-2">
-                <div class="text-muted fw-semibold small mb-1">
-                  Breakdown Summary
+                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
+                <div class="module-summary">
+                  <div id="moduleSummary"></div>
                 </div>
-                <div id="moduleSummary" class="d-flex flex-wrap gap-2 my-2"></div>
                 <hr class="my-2">
 
                 <!-- Table -->
@@ -218,7 +262,7 @@
                   </table>
                 </div>
 
-                <!-- Card List -->
+                <!-- Cards -->
                 <div id="featureAccessList" class="card-list"></div>
 
                 <!-- Pagination -->
@@ -226,7 +270,6 @@
 
               </div>
             </div>
-            <!-- /card -->
 
           </div>
         </div>
@@ -239,7 +282,7 @@
     </div>
   </div>
 
-  <!-- overlays / modals / toasts -->
+  <!-- overlays -->
   <div id="loadingOverlay" class="hidden">
     <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
   </div>

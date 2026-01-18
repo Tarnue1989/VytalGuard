@@ -1,21 +1,22 @@
 // 📦 master-item.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: master-item-category.js / role.js / vitals.js
+// 🧭 FULL PARITY with department.js
 // 🔹 Unified initialization entry for the Master Item module
 // 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 Supports list + table + form pages transparently
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filter, table, card, etc.)
+// 🧭 Main module init (filters, table, card, pagination, summary)
 import { initMasterItemModule } from "./master-item-filter-main.js";
 
 // ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
 import "./master-item-actions.js";
 
-// 🧩 Constants (exportable for dynamic field selector or columns)
+// 🧩 Constants (exportable for dynamic field selector / columns)
 import {
   FIELD_LABELS_MASTER_ITEM,
   FIELD_ORDER_MASTER_ITEM,
@@ -28,10 +29,9 @@ import { showToast, hideLoading } from "../../utils/index.js";
 /* ============================================================
    🚀 DOM-Ready Bootstrap
 ============================================================ */
-
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize only if the Master Item form or list container exists
+    // 🧩 Initialize only if master item form or list/table container exists
     if (
       document.getElementById("masterItemForm") ||
       document.getElementById("masterItemList") ||
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await initMasterItemModule();
     }
 
-    // (Optional) Future enhancement:
+    // (Optional future expansion)
     // if (document.getElementById("masterItemTableBody")) {
     //   await initMasterItemListModule();
     // }

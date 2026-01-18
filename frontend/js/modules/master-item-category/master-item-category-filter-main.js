@@ -1,9 +1,10 @@
-// 📦 master-item-category-filter-main.js – Filters + Table/Card (Enterprise-Aligned)
+// 📦 master-item-category-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: role-filter-main.js
-// 🔹 Full enterprise structure — permissions, pagination, toggle sections,
-//   exports, field selector, and role-aware visibility
-// 🔹 All HTML IDs preserved exactly for linked HTML and UI logic
+// 🔹 EXACT PARITY with department-filter-main.js
+// 🔹 Global search, auto filters, single dateRange, sorting bridge
+// 🔹 Column reorder + sort-safe
+// 🔹 Export mapper + summary rendering
+// 🔹 ZERO deviations, ZERO custom filter logic
 // ============================================================================
 
 import {
@@ -11,60 +12,74 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
-import { setupSuggestionInputDynamic } from "../../utils/data-loaders.js";
+
+import {
+  loadOrganizationsLite,
+  loadFacilitiesLite,
+  setupSelectOptions,
+} from "../../utils/data-loaders.js";
+
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./master-item-category-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./master-item-category-render.js";
+
 import { setupActionHandlers } from "./master-item-category-actions.js";
+
 import {
   FIELD_ORDER_MASTER_ITEM_CATEGORY,
   FIELD_DEFAULTS_MASTER_ITEM_CATEGORY,
+  FIELD_LABELS_MASTER_ITEM_CATEGORY,
 } from "./master-item-category-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH + USER
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard("master-item-categories");
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("masterItemCategoryView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "master_item_category",
   userRole,
@@ -72,11 +87,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_MASTER_ITEM_CATEGORY,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -84,94 +102,107 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrg");
-const filterOrgSuggestions = document.getElementById("filterOrgSuggestions");
-const filterFacility = document.getElementById("filterFacility");
-const filterFacilitySuggestions = document.getElementById("filterFacilitySuggestions");
-const filterName = document.getElementById("filterName");
-const filterNameSuggestions = document.getElementById("filterNameSuggestions");
-const filterCode = document.getElementById("filterCode");
-const filterCodeSuggestions = document.getElementById("filterCodeSuggestions");
-const filterDescription = document.getElementById("filterDescription");
-const filterDescriptionSuggestions = document.getElementById("filterDescriptionSuggestions");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-const filterSearch = document.getElementById("filterSearch");
+const qs = id => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatusSelect");
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("masterItemCategoryView") || "table";
+window.setMasterItemCategorySort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadMasterItemCategoryPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "master_item_category",
+  loadEntries,
+  Number(localStorage.getItem("masterItemCategoryPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.dataset.value || "",
-    facility_id: filterFacility?.dataset.value || "",
-    name: filterName?.dataset.value || "",
-    code: filterCode?.dataset.value || "",
-    description: filterDescription?.dataset.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
-    q: filterSearch?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🔁 Pagination Control
-============================================================ */
-const getPagination = initPaginationControl("master_item_category", loadEntries, 25);
-
-/* ============================================================
-   📦 Load Master Item Categories
+   📦 LOAD CATEGORIES (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_MASTER_ITEM_CATEGORY.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
 
     const res = await authFetch(`/api/master-item-categories?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "MASTER ITEM CATEGORIES",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -184,15 +215,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length) showToast("ℹ️ No categories found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load categories");
   } finally {
     hideLoading();
@@ -200,80 +229,62 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("masterItemCategoryView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("masterItemCategoryView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn").onclick = () => {
   [
+    globalSearch,
     filterOrg,
     filterFacility,
-    filterName,
-    filterCode,
-    filterDescription,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-    filterSearch,
-  ].forEach((el) => {
-    if (el) {
-      el.value = "";
-      if (el.dataset) el.dataset.value = "";
-    }
+    dateRange,
+  ].forEach(el => {
+    if (el) el.value = "";
   });
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `master_item_categories_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_MASTER_ITEM_CATEGORY),
+    `master_item_categories_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#masterItemCategoryList";
-    exportToPDF("Master Item Category List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Master Item Categories List",
+    viewMode === "table" ? ".table-container" : "#masterItemCategoryList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initMasterItemCategoryModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible =
-    localStorage.getItem("masterItemCategoryFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -282,76 +293,33 @@ export async function initMasterItemCategoryModule() {
     "masterItemCategoryFilterVisible"
   );
 
-  /* ----------------- Suggestion Inputs ----------------- */
-  setupSuggestionInputDynamic(
-    filterOrg,
-    filterOrgSuggestions,
-    "/api/lite/organizations",
-    (selected) => {
-      filterOrg.dataset.value = selected.id;
-      filterFacility.value = "";
-      filterFacility.dataset.value = "";
-    },
-    "name"
-  );
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-  setupSuggestionInputDynamic(
-    filterFacility,
-    filterFacilitySuggestions,
-    "/api/lite/facilities",
-    (selected) => {
-      filterFacility.dataset.value = selected.id;
-    },
-    "name",
-    {
-      extraParams: () => ({
-        organization_id: filterOrg?.dataset.value || "",
-      }),
-    }
-  );
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-  setupSuggestionInputDynamic(
-    filterName,
-    filterNameSuggestions,
-    "/api/lite/master-item-categories",
-    (selected) => (filterName.dataset.value = selected.id),
-    "name"
-  );
-
-  setupSuggestionInputDynamic(
-    filterCode,
-    filterCodeSuggestions,
-    "/api/lite/master-item-categories",
-    (selected) => (filterCode.dataset.value = selected.id),
-    "code"
-  );
-
-  setupSuggestionInputDynamic(
-    filterDescription,
-    filterDescriptionSuggestions,
-    "/api/lite/master-item-categories",
-    (selected) => (filterDescription.dataset.value = selected.id),
-    "description"
-  );
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".col-md-3")?.classList.add("hidden");
+    filterFacility?.closest(".col-md-3")?.classList.add("hidden");
+  }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {
-  // Reserved for advanced reactive behavior
-}
-
-/* ============================================================
-   🏁 Boot
-============================================================ */
-function boot() {
-  initMasterItemCategoryModule().catch((err) =>
-    console.error("initMasterItemCategoryModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initMasterItemCategoryModule)
+  : initMasterItemCategoryModule();

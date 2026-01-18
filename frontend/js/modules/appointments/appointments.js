@@ -1,58 +1,52 @@
-// 📦 appointments.js – Entry point
+// 📦 appointments.js – Enterprise Entry Point (MASTER PATTERN ALIGNED)
+// ============================================================================
+// 🔹 Mirrors feature-access.js EXACTLY (appointment variant)
+// 🔹 Safe boot with page-type detection (form vs list)
+// 🔹 No double init, no UI breakage
+// ============================================================================
 
-// ✅ Main module init
-import { initAppointmentModule } from "./appointments-filter-main.js";
+/* ============================================================
+   ✅ Imports
+============================================================ */
 
-// ✅ Load action handlers (view, edit, delete, toggle, lifecycle)
-import { setupActionHandlers } from "./appointments-actions.js";  // ⬅️ import properly
+// 🧭 FORM initializer (add / edit page)
+import { initAppointmentModule } from "./appointments-main.js";
 
-// ✅ Constants
-import {
-  FIELD_LABELS_APPOINTMENT,
-  FIELD_ORDER_APPOINTMENT,
-  FIELD_DEFAULTS_APPOINTMENT,
-} from "./appointments-constants.js";
+// ⚙️ Action handlers (view, edit, lifecycle, delete)
+import "./appointments-actions.js";
 
 // 🛠️ Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
+/* ============================================================
+   🚀 DOM-Ready Bootstrap
+============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    /**
+     * 🔹 FORM MODE ONLY
+     * appointments-main.js is FORM-ONLY
+     */
     if (document.getElementById("appointmentForm")) {
-      // For form page
       await initAppointmentModule();
     }
 
-    // For list page
-    const tableBody = document.getElementById("appointmentTableBody");
-    if (tableBody) {
-      // ✅ Build user from localStorage
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
+    /**
+     * 🔹 LIST MODE
+     * appointment-filter-main.js bootstraps itself
+     * so we intentionally DO NOTHING here
+     */
 
-      console.log("👤 [appointments.js] Loaded user:", user);
-
-      // Dummy placeholders (you can replace with real ones from your list module)
-      const sharedState = {};
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields = FIELD_DEFAULTS_APPOINTMENT[userRole] || FIELD_DEFAULTS_APPOINTMENT.staff;
-      const token = localStorage.getItem("accessToken") || "";
-
-      setupActionHandlers({
-        entries: window.latestAppointmentEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
-    }
   } catch (err) {
-    console.error("❌ Failed to initialize appointment module", err);
+    console.error("❌ Failed to initialize Appointments:", err);
+
+    // 🧯 Prevent stuck spinner
     hideLoading();
-    showToast("❌ Failed to load appointment module");
+
+    // 🔔 User feedback
+    showToast("❌ Failed to load Appointments");
+
+    // 🧱 Prevent broken form UI
+    document.getElementById("formContainer")?.classList.add("hidden");
   }
 });

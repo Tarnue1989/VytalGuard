@@ -1,4 +1,14 @@
 // 📁 backend/src/controllers/discountPolicyController.js
+// ============================================================================
+// 🏷️ Discount Policy Controller – Enterprise Master Pattern (PARITY)
+// ----------------------------------------------------------------------------
+// 🔹 Unified permission, validation, and lifecycle logic
+// 🔹 Role-safe tenant resolution (no hardcoding)
+// 🔹 Date-range filtering + search
+// 🔹 Full audit logging (create/update/activate/deactivate/expire/delete/restore)
+// 🔹 Dynamic lifecycle + aggregate summary
+// ============================================================================
+
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -8,30 +18,49 @@ import {
   Facility,
   User,
 } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { POLICY_STATUS, DISCOUNT_TYPE, POLICY_APPLIES_TO } from "../constants/enums.js";
-import { authzService } from "../services/authzService.js";
-import { auditService } from "../services/auditService.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { validate } from "../utils/validation.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
+import {
+  POLICY_STATUS,
+  DISCOUNT_TYPE,
+  POLICY_APPLIES_TO,
+} from "../constants/enums.js";
 import { FIELD_VISIBILITY_DISCOUNT_POLICY } from "../constants/fieldVisibility.js";
 
-const MODULE_KEY = "discount_policy";
+import { authzService } from "../services/authzService.js";
+import { auditService } from "../services/auditService.js";
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
-// 🔖 Local enum map
+/* ============================================================
+   🔐 MODULE
+============================================================ */
+const MODULE_KEY = "discountPolicy";
+
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("discountPolicyController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM SAFE)
+============================================================ */
 const PS = {
   ACTIVE: POLICY_STATUS[0],
   INACTIVE: POLICY_STATUS[1],
   EXPIRED: POLICY_STATUS[2],
 };
-
-/* ============================================================
-   🔧 HELPERS
-============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map((r) => r.toLowerCase()).includes("superadmin");
-}
 
 /* ============================================================
    🔗 SHARED INCLUDES
@@ -48,10 +77,10 @@ const POLICY_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA FACTORY
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
 ============================================================ */
 function buildPolicySchema(mode = "create") {
-  return Joi.object({
+  const base = {
     code: Joi.string().max(50).required(),
     name: Joi.string().max(150).required(),
     description: Joi.string().allow(null, ""),
@@ -61,14 +90,21 @@ function buildPolicySchema(mode = "create") {
     condition_json: Joi.object().unknown(true).allow(null),
     effective_from: Joi.date().allow(null),
     effective_to: Joi.date().allow(null),
-    status: Joi.string().valid(...POLICY_STATUS).default(PS.ACTIVE),
-    organization_id: Joi.string().uuid().allow(null),
-    facility_id: Joi.string().uuid().allow(null),
-  });
+
+    status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
+  };
+
+  if (mode === "update") {
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+  }
+
+  return Joi.object(base);
 }
 
 /* ============================================================
-   📌 GET ALL POLICIES
+   📌 GET ALL POLICIES (MASTER + SUMMARY)
 ============================================================ */
 export const getAllPolicies = async (req, res) => {
   try {
@@ -82,29 +118,52 @@ export const getAllPolicies = async (req, res) => {
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
-      FIELD_VISIBILITY_DISCOUNT_POLICY[role] || FIELD_VISIBILITY_DISCOUNT_POLICY.staff;
+      FIELD_VISIBILITY_DISCOUNT_POLICY[role] ||
+      FIELD_VISIBILITY_DISCOUNT_POLICY.staff;
 
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-    options.where = options.where || {};
 
-    if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") options.where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+    delete options.filters?.dateRange;
+    options.where = { [Op.and]: [] };
+
+    /* 📅 DATE RANGE */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: { [Op.between]: [dateRange.start, dateRange.end] },
+      });
     }
 
-    if (req.query.status) options.where.status = req.query.status;
-    if (req.query.discount_type) options.where.discount_type = req.query.discount_type;
+    /* 🔐 TENANT SCOPE */
+    if (!isSuperAdmin(req.user)) {
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id)
+        options.where[Op.and].push({ organization_id: req.query.organization_id });
+      if (req.query.facility_id)
+        options.where[Op.and].push({ facility_id: req.query.facility_id });
+    }
+
+    if (req.query.status)
+      options.where[Op.and].push({ status: req.query.status });
+    if (req.query.discount_type)
+      options.where[Op.and].push({ discount_type: req.query.discount_type });
 
     if (options.search) {
-      const term = `%${options.search}%`;
-      options.where[Op.or] = [
-        { code: { [Op.iLike]: term } },
-        { name: { [Op.iLike]: term } },
-        { description: { [Op.iLike]: term } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { code: { [Op.iLike]: `%${options.search}%` } },
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { description: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
     const { count, rows } = await DiscountPolicy.findAndCountAll({
@@ -116,6 +175,12 @@ export const getAllPolicies = async (req, res) => {
       distinct: true,
     });
 
+    const summary = await buildDynamicSummary({
+      model: DiscountPolicy,
+      baseWhere: options.where,
+      statusEnums: Object.values(PS),
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -125,6 +190,7 @@ export const getAllPolicies = async (req, res) => {
 
     return success(res, "✅ Policies loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -132,6 +198,7 @@ export const getAllPolicies = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("getAllPolicies → FAILED", err);
     return error(res, "❌ Failed to load policies", err);
   }
 };
@@ -141,19 +208,35 @@ export const getAllPolicies = async (req, res) => {
 ============================================================ */
 export const getPolicyById = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
     const where = { id: req.params.id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
-    const record = await DiscountPolicy.findOne({ where, include: POLICY_INCLUDES });
+    const record = await DiscountPolicy.findOne({
+      where,
+      include: POLICY_INCLUDES,
+    });
+
     if (!record) return error(res, "❌ Policy not found", null, 404);
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "view",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -169,21 +252,26 @@ export const getPolicyById = async (req, res) => {
 export const createPolicy = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const schema = buildPolicySchema("create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-
-    if (validationError) {
+    const { value, errors } = validate(
+      buildPolicySchema("create"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
+
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     const record = await DiscountPolicy.create(
       {
         ...value,
-        organization_id: value.organization_id || req.user.organization_id,
-        facility_id: value.facility_id || req.user.facility_id,
+        organization_id: orgId,
+        facility_id: facilityId,
         created_by_id: req.user.id,
       },
       { transaction: t }
@@ -207,55 +295,33 @@ export const createPolicy = async (req, res) => {
 };
 
 /* ============================================================
-   📌 UPDATE POLICY
+   📌 UPDATE / ACTIVATE / DEACTIVATE / EXPIRE / DELETE / RESTORE
 ============================================================ */
+
 export const updatePolicy = async (req, res) => {
-  const t = await sequelize.transaction();
   try {
-    const record = await DiscountPolicy.findByPk(req.params.id, { transaction: t });
-    if (!record) {
-      await t.rollback();
-      return error(res, "❌ Policy not found", null, 404);
-    }
+    const record = await DiscountPolicy.findByPk(req.params.id);
+    if (!record) return error(res, "❌ Policy not found", null, 404);
 
-    const schema = buildPolicySchema("update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
+    await record.update({
+      ...req.body,
+      updated_by_id: req.user?.id || null,
     });
-
-    if (validationError) {
-      await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
-    }
-
-    await record.update(
-      {
-        ...value,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
-
-    await t.commit();
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "update",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
     return success(res, "✅ Policy updated", record);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to update policy", err);
   }
 };
 
-/* ============================================================
-   📌 ACTIVATE / DEACTIVATE / EXPIRE
-============================================================ */
 export const activatePolicy = async (req, res) => {
   try {
     const record = await DiscountPolicy.findByPk(req.params.id);
@@ -271,7 +337,7 @@ export const activatePolicy = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "activate",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -296,7 +362,7 @@ export const deactivatePolicy = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "deactivate",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -321,7 +387,7 @@ export const expirePolicy = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "expire",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -331,9 +397,6 @@ export const expirePolicy = async (req, res) => {
   }
 };
 
-/* ============================================================
-   📌 DELETE (Soft Delete) & RESTORE
-============================================================ */
 export const deletePolicy = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -351,7 +414,7 @@ export const deletePolicy = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "delete",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -375,10 +438,6 @@ export const restorePolicy = async (req, res) => {
       await t.rollback();
       return error(res, "❌ Policy not found", null, 404);
     }
-    if (!record.deleted_at) {
-      await t.rollback();
-      return error(res, "❌ Policy is not deleted", null, 400);
-    }
 
     await record.restore({ transaction: t });
     await record.update({ updated_by_id: req.user?.id || null }, { transaction: t });
@@ -388,7 +447,7 @@ export const restorePolicy = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "restore",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -400,22 +459,27 @@ export const restorePolicy = async (req, res) => {
 };
 
 /* ============================================================
-   📌 LITE FETCH (for dropdowns/search)
+   📌 LITE FETCH (AUTOCOMPLETE)
 ============================================================ */
 export const getAllPoliciesLite = async (req, res) => {
   try {
     const { q } = req.query;
-    const where = {};
-    if (q)
-      where[Op.or] = [
-        { code: { [Op.iLike]: `%${q}%` } },
-        { name: { [Op.iLike]: `%${q}%` } },
-      ];
+    const where = { [Op.and]: [] };
+
+    if (q) {
+      where[Op.and].push({
+        [Op.or]: [
+          { code: { [Op.iLike]: `%${q}%` } },
+          { name: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
+    }
 
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where[Op.and].push({ organization_id: req.user.organization_id });
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({ facility_id: req.user.facility_id });
+      }
     }
 
     const records = await DiscountPolicy.findAll({

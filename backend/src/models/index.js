@@ -24,6 +24,7 @@ import DepositModel from "./Deposit.js";
 import BillableItemModel from "./BillableItem.js";
 import BillableItemPriceHistoryModel from "./BillableItemPriceHistory.js";
 import AutoBillingRuleModel from "./AutoBillingRule.js";
+import BillingTriggerModel from "./BillingTrigger.js";
 import DiscountWaiverModel from "./DiscountWaiver.js";
 import DiscountPolicyModel from "./DiscountPolicy.js";
 import TaxPolicyModel from "./TaxPolicy.js";
@@ -157,6 +158,7 @@ const models = {
   BillableItem: BillableItemModel(sequelize),
   BillableItemPriceHistory: BillableItemPriceHistoryModel(sequelize),
   AutoBillingRule: AutoBillingRuleModel(sequelize),
+  BillingTrigger: BillingTriggerModel(sequelize),
   Discount: DiscountModel(sequelize),
   DiscountWaiver: DiscountWaiverModel(sequelize),
   DiscountPolicy: DiscountPolicyModel(sequelize),
@@ -242,7 +244,7 @@ export const {
   RefundDeposit,
   RefundDepositTransaction,  // ✅ Moved here
   Deposit, DepositApplication,
-  BillableItem, BillableItemPriceHistory, AutoBillingRule, Discount,
+  BillableItem, BillableItemPriceHistory, AutoBillingRule, BillingTrigger, Discount,
   DiscountWaiver, DiscountPolicy, Tax, TaxPolicy, CurrencyRate,
   InsuranceProvider, InsuranceClaim, InsurancePreAuthorization,
   FinancialLedger,

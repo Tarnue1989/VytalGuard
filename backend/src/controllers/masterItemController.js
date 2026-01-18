@@ -9,7 +9,7 @@ import {
   Organization,
   Department,
   MasterItemCategory,
-  FeatureModule, // ✅ added
+  FeatureModule,
 } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
@@ -18,35 +18,37 @@ import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 
 /* ============================================================
-   🧭 CONSTANTS & HELPERS
+   🔒 ENTERPRISE SHARED UTILITIES (MASTER PARITY)
 ============================================================ */
-const MODULE_KEY = "master-item";
+import { validate } from "../utils/validation.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import {
+  isSuperAdmin,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
 
-function normalizeRoles(user) {
-  const roles = Array.isArray(user?.roleNames)
-    ? user.roleNames
-    : [user?.role || ""];
-  return roles.map((r) => r.toLowerCase().replace(/\s+/g, ""));
-}
-function isSuperAdmin(user) {
-  return normalizeRoles(user).includes("superadmin");
-}
-function isOrgOwner(user) {
-  return normalizeRoles(user).includes("orgowner");
-}
-function isFacilityHead(user) {
-  return normalizeRoles(user).includes("facilityhead");
-}
+/* ============================================================
+   🧭 CONSTANTS
+============================================================ */
+const MODULE_KEY = "masterItem";
+const debug = makeModuleLogger("masterItem");
 
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
 const MASTER_ITEM_INCLUDES = [
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+  },
   { model: Department, as: "department", attributes: ["id", "name", "code"] },
   { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] },
-  { model: FeatureModule, as: "featureModule", attributes: ["id", "name", "key"] }, // ✅ NEW include
+  { model: FeatureModule, as: "featureModule", attributes: ["id", "name", "key"] },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
@@ -63,7 +65,7 @@ function buildItemSchema(mode = "create") {
     item_type: Joi.string().valid(...Object.values(MASTER_ITEM_TYPES)).required(),
     category_id: Joi.string().uuid().allow("", null),
     department_id: Joi.string().uuid().allow("", null),
-    feature_module_id: Joi.string().uuid().allow("", null), // ✅ added
+    feature_module_id: Joi.string().uuid().allow("", null),
     generic_group: Joi.string().allow("", null),
     strength: Joi.string().allow("", null),
     dosage_form: Joi.string().allow("", null),
@@ -80,14 +82,16 @@ function buildItemSchema(mode = "create") {
     organization_id: Joi.string().uuid().allow("", null),
     facility_id: Joi.string().uuid().allow("", null),
   };
+
   if (mode === "update") {
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
   }
+
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 CREATE ITEM
+   📌 CREATE ITEM (TRUE MASTER PARITY)
 ============================================================ */
 export const createItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -100,52 +104,67 @@ export const createItem = async (req, res) => {
     });
     if (!allowed) return;
 
-    const schema = buildItemSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    debug.log("create → incoming body", req.body);
+
+    const { value, errors } = validate(buildItemSchema("create"), req.body);
+    if (errors) {
+      debug.warn("create → validation error", errors);
       await t.rollback();
-      return error(res, "Validation failed", validationError.details || "Invalid data", 400);
+      return res.status(400).json({ success: false, errors });
     }
 
     ["organization_id", "facility_id", "feature_module_id"].forEach((f) => {
       if (value[f] === "") value[f] = null;
     });
 
-    // 🔒 Role-based org/facility assignment
-    let orgId, facilityId;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id;
-      facilityId = value.facility_id;
-      if (!orgId) {
-        await t.rollback();
-        return error(res, "Organization is required for superadmin", null, 400);
-      }
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id || null;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id || null;
+    /* ========================================================
+       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
+    if (isSuperAdmin(req.user) && !orgId) {
+      await t.rollback();
+      return error(res, "Organization is required", null, 400);
     }
 
-    // 🔍 Duplication check
+    /* ========================================================
+       🔍 DUPLICATION CHECK (SCOPE-SAFE)
+    ======================================================== */
     const exists = await MasterItem.findOne({
-      where: { organization_id: orgId, facility_id: facilityId, name: value.name },
+      where: {
+        organization_id: orgId,
+        facility_id: facilityId,
+        name: value.name,
+      },
       paranoid: false,
       transaction: t,
     });
+
     if (exists) {
       await t.rollback();
-      return error(res, "Item with this name already exists in this scope", null, 400);
+      return error(
+        res,
+        "Item with this name already exists in this scope",
+        null,
+        400
+      );
     }
 
-    // 🧾 Auto-generate code
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const rand = Math.floor(Math.random() * 9000) + 1000;
-    if (!value.code) value.code = `MIT-${datePart}-${rand}`;
+    /* ========================================================
+       🧾 CODE GENERATION
+    ======================================================== */
+    if (!value.code) {
+      const datePart = new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "");
+      const rand = Math.floor(Math.random() * 9000) + 1000;
+      value.code = `MIT-${datePart}-${rand}`;
+    }
 
     const created = await MasterItem.create(
       {
@@ -181,7 +200,7 @@ export const createItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 UPDATE ITEM
+   📌 UPDATE ITEM (TRUE MASTER PARITY)
 ============================================================ */
 export const updateItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -195,37 +214,34 @@ export const updateItem = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const schema = buildItemSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+
+    const { value, errors } = validate(buildItemSchema("update"), req.body);
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError.details || "Invalid data", 400);
+      return res.status(400).json({ success: false, errors });
     }
 
     ["organization_id", "facility_id", "feature_module_id"].forEach((f) => {
       if (value[f] === "") value[f] = null;
     });
 
-    const record = await MasterItem.findOne({ where: { id }, transaction: t });
+    const record = await MasterItem.findOne({
+      where: { id },
+      transaction: t,
+    });
     if (!record) {
       await t.rollback();
       return error(res, "Item not found", null, 404);
     }
 
-    let orgId, facilityId;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || record.organization_id;
-      facilityId = value.facility_id || record.facility_id;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id || record.facility_id;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id || record.facility_id;
-    }
+    /* ========================================================
+       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     if (value.name) {
       const exists = await MasterItem.findOne({
@@ -236,10 +252,17 @@ export const updateItem = async (req, res) => {
           id: { [Op.ne]: id },
         },
         paranoid: false,
+        transaction: t,
       });
+
       if (exists) {
         await t.rollback();
-        return error(res, "Item with this name already exists in this scope", null, 400);
+        return error(
+          res,
+          "Item with this name already exists in this scope",
+          null,
+          400
+        );
       }
     }
 
@@ -255,7 +278,10 @@ export const updateItem = async (req, res) => {
 
     await t.commit();
 
-    const full = await MasterItem.findOne({ where: { id }, include: MASTER_ITEM_INCLUDES });
+    const full = await MasterItem.findOne({
+      where: { id },
+      include: MASTER_ITEM_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -274,10 +300,13 @@ export const updateItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL ITEMS
+   📌 GET ALL ITEMS (TRUE MASTER PARITY + STATUS FIXED)
 ============================================================ */
 export const getAllItems = async (req, res) => {
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -286,26 +315,88 @@ export const getAllItems = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS (MASTER PARITY)
+    ======================================================== */
     const options = buildQueryOptions(req, "name", "ASC");
-    options.where = options.where || {};
 
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS (NEVER DB COLUMNS)
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    /* ========================================================
+       🧱 WHERE ROOT (ALWAYS NORMALIZED)
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER – SINGLE FIELD)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
+    /* ========================================================
+       🔍 GLOBAL SEARCH (SAFE, ADDITIVE)
+    ======================================================== */
     if (options.search) {
-      options.where[Op.or] = [
-        { name: { [Op.iLike]: `%${options.search}%` } },
-        { code: { [Op.iLike]: `%${options.search}%` } },
-        { description: { [Op.iLike]: `%${options.search}%` } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { code: { [Op.iLike]: `%${options.search}%` } },
+          { description: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
+    /* ========================================================
+       📌 STATUS FILTER (DB FILTER → ENUM SAFE) ✅ FIX
+    ======================================================== */
+    if (
+      req.query.status &&
+      Object.values(MASTER_ITEM_STATUS).includes(req.query.status)
+    ) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       🗂️ QUERY EXECUTION
+    ======================================================== */
     const { count, rows } = await MasterItem.findAndCountAll({
       where: options.where,
       include: MASTER_ITEM_INCLUDES,
@@ -314,19 +405,38 @@ export const getAllItems = async (req, res) => {
       limit: options.limit,
     });
 
+    /* ========================================================
+       🔢 SUMMARY (FILTER-AWARE)
+    ======================================================== */
+    const summary = await buildDynamicSummary({
+      model: MasterItem,
+      options,
+    });
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        returned: count,
+        query: req.query,
+        dateRange: dateRange || null,
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Master Items loaded", {
       records: rows,
+      summary: summary || null,
       pagination: {
         total: count,
         page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        pageCount: options.pagination.pageCount,
       },
     });
   } catch (err) {
@@ -335,212 +445,288 @@ export const getAllItems = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ITEM BY ID
-   ============================================================ */
+   📌 GET ITEM BY ID (TRUE MASTER PARITY)
+============================================================ */
 export const getItemById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") {
+      if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
     }
 
-    const found = await MasterItem.findOne({ where, include: MASTER_ITEM_INCLUDES });
-    if (!found) return error(res, "❌ Master Item not found", null, 404);
+    const found = await MasterItem.findOne({
+      where,
+      include: MASTER_ITEM_INCLUDES,
+    });
+
+    if (!found) {
+      return error(res, "❌ Master Item not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "view",
       entityId: id,
       entity: found,
     });
 
-    return success(res, "✅ Master Item loaded", found);
+    return success(res, "✅ Master Item loaded", {
+      records: [found],
+      summary: null,
+      pagination: {
+        total: 1,
+        page: 1,
+        pageCount: 1,
+      },
+    });
   } catch (err) {
     return error(res, "❌ Failed to load item", err);
   }
 };
 
+
 /* ============================================================
-   📌 GET ITEMS LITE
-   ============================================================ */
+   📌 GET ITEMS LITE (TRUE MASTER PARITY)
+============================================================ */
 export const getAllItemsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-    const { q } = req.query;
+    /* ========================================================
+       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value: {},
+      body: req.query,
+    });
 
-    const where = { status: MASTER_ITEM_STATUS.ACTIVE };
+    const where = {
+      status: MASTER_ITEM_STATUS.ACTIVE,
+    };
 
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    if (orgId) where.organization_id = orgId;
+    if (facilityId) where.facility_id = facilityId;
 
-    if (q) {
+    /* ========================================================
+       🔍 GLOBAL SEARCH ONLY (LOCKED CONTRACT)
+    ======================================================== */
+    const search = req.query.search;
+    if (search) {
       where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { code: { [Op.iLike]: `%${q}%` } },
-        { description: { [Op.iLike]: `%${q}%` } },
+        { name: { [Op.iLike]: `%${search}%` } },
+        { code: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
     const items = await MasterItem.findAll({
       where,
-      include: [{ model: MasterItemCategory, as: "category", attributes: ["id", "name"] }],
+      include: [
+        {
+          model: MasterItemCategory,
+          as: "category",
+          attributes: ["id", "name"],
+        },
+      ],
       attributes: ["id", "name", "code", "description", "category_id"],
       order: [["name", "ASC"]],
       limit: 20,
     });
 
-    const result = items.map((i) => ({
+    const records = items.map((i) => ({
       id: i.id,
       name: i.name,
       code: i.code || "",
       description: i.description || "",
       category_id: i.category_id || null,
-      category: i.category ? { id: i.category.id, name: i.category.name } : null,
+      category: i.category
+        ? { id: i.category.id, name: i.category.name }
+        : null,
     }));
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, q },
+      details: { count: records.length, search: search || null },
     });
 
-    return success(res, "✅ Master Items loaded (lite)", { records: result });
+    return success(res, "✅ Master Items loaded (lite)", {
+      records,
+      summary: null,
+      pagination: {
+        total: records.length,
+        page: 1,
+        pageCount: 1,
+      },
+    });
   } catch (err) {
     return error(res, "❌ Failed to load items (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE ITEM STATUS
-   ============================================================ */
+   📌 TOGGLE ITEM STATUS (TRUE MASTER PARITY)
+============================================================ */
 export const toggleItemStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
+
+    /* ========================================================
+       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value: {},
+      body: req.query,
+    });
 
     const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    if (orgId) where.organization_id = orgId;
+    if (facilityId) where.facility_id = facilityId;
 
     const item = await MasterItem.findOne({ where });
-    if (!item) return error(res, "❌ Master Item not found", null, 404);
+    if (!item) {
+      return error(res, "❌ Master Item not found", null, 404);
+    }
 
+    const previousStatus = item.status;
     const newStatus =
       item.status === MASTER_ITEM_STATUS.ACTIVE
         ? MASTER_ITEM_STATUS.INACTIVE
         : MASTER_ITEM_STATUS.ACTIVE;
 
-    await item.update({ status: newStatus, updated_by_id: req.user?.id || null });
-    const full = await MasterItem.findOne({ where: { id }, include: MASTER_ITEM_INCLUDES });
+    await item.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
+
+    const full = await MasterItem.findOne({
+      where: { id },
+      include: MASTER_ITEM_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       entity: full,
-      details: { from: item.status, to: newStatus },
+      details: { from: previousStatus, to: newStatus },
     });
 
-    return success(res, `✅ Master Item status set to ${newStatus}`, full);
+    return success(res, `✅ Master Item status set to ${newStatus}`, {
+      records: [full],
+      summary: null,
+      pagination: {
+        total: 1,
+        page: 1,
+        pageCount: 1,
+      },
+    });
   } catch (err) {
     return error(res, "❌ Failed to toggle item status", err);
   }
 };
 
-
 /* ============================================================
-   📌 DELETE ITEM (Soft Delete with Audit)
-   ============================================================ */
+   📌 DELETE ITEM (TRUE MASTER PARITY)
+============================================================ */
 export const deleteItem = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
+
+    /* ========================================================
+       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value: {},
+      body: req.query,
+    });
 
     const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    if (orgId) where.organization_id = orgId;
+    if (facilityId) where.facility_id = facilityId;
 
-    const item = await MasterItem.findOne({ where, transaction: t });
+    const item = await MasterItem.findOne({
+      where,
+      transaction: t,
+    });
     if (!item) {
       await t.rollback();
       return error(res, "❌ Master Item not found", null, 404);
     }
 
-    await item.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await item.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
+
     await item.destroy({ transaction: t });
     await t.commit();
 
-    const full = await MasterItem.findOne({ where: { id }, include: MASTER_ITEM_INCLUDES, paranoid: false });
+    const full = await MasterItem.findOne({
+      where: { id },
+      include: MASTER_ITEM_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item",
+      module: MODULE_KEY,
       action: "delete",
       entityId: id,
       entity: full,
     });
 
-    return success(res, "✅ Master Item deleted", full);
+    return success(res, "✅ Master Item deleted", {
+      records: [full],
+      summary: null,
+      pagination: {
+        total: 1,
+        page: 1,
+        pageCount: 1,
+      },
+    });
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed to delete item", err);

@@ -142,7 +142,9 @@ export async function initOrganizationModule() {
     document.getElementById("code").value = entry.code || "";
 
     if (entry.status) {
-      const radio = document.getElementById(`status_${entry.status.toLowerCase()}`);
+      const radio = document.getElementById(
+        `status_${entry.status.toLowerCase()}`
+      );
       if (radio) radio.checked = true;
     }
 
@@ -203,11 +205,3 @@ export async function initOrganizationModule() {
 export function syncRefsToState() {
   // reserved
 }
-
-// ============================================================================
-// ✅ Enterprise Pattern Summary:
-//    • Auth Guard via autoPagePermissionKey()
-//    • Full resetForm & show/hideForm parity with consultation-main.js
-//    • Safe fieldSelector + role-based visibility
-//    • Consistent Add/Edit lifecycle + cached prefill support
-// ============================================================================

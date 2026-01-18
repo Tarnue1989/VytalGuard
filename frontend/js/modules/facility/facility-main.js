@@ -1,8 +1,10 @@
+// 📦 facility-main.js – Form-only loader for Facility (Enterprise Master Pattern)
 // ============================================================================
-// 🏥 VytalGuard – Facility Main (Enterprise Master Pattern Aligned)
-// 🔹 Mirrors organization-main.js for unified form lifecycle & permissions
-// 🔹 Keeps all IDs, dynamic org logic, and bindings intact
-// 🔹 Integrates permission-aware guard, field selector, and reset/show/hide flow
+// 🧭 Mirrors role-main.js structure EXACTLY
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration
 // ============================================================================
 
 import {
@@ -21,15 +23,11 @@ import { setupFieldSelector } from "../../utils/ui-utils.js";
 import { authFetch } from "../../authSession.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-// Automatically resolve correct permission ("facilities:create" / "facilities:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -44,35 +42,30 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
-  if (form) form.reset();
+  form?.reset();
 
-  // Clear cached edit session
   sessionStorage.removeItem("facilityEditId");
   sessionStorage.removeItem("facilityEditPayload");
 
-  // Reset text inputs
   ["name", "code", "address", "phone", "email"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset status
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  document.getElementById("status_active")?.setAttribute("checked", true);
 
-  // Reset dynamic org input
   const orgInput = document.getElementById("organizationInput");
   const orgHidden = document.getElementById("organization_id");
   if (orgInput) orgInput.value = "";
   if (orgHidden) orgHidden.value = "";
 
-  // Reset UI
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Facility";
+
   const submitBtn = form?.querySelector("button[type=submit]");
   if (submitBtn)
     submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Create Facility`;
@@ -94,54 +87,56 @@ function hideForm() {
   localStorage.setItem("facilityFormVisible", "false");
 }
 
+// 🔗 Expose for action handlers
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
    🔘 Button Wiring
 ============================================================ */
-if (cancelBtn) {
-  cancelBtn.onclick = () => {
+cancelBtn &&
+  (cancelBtn.onclick = () => {
     resetForm();
     window.location.href = "/facilities-list.html";
-  };
-}
+  });
 
-if (clearBtn) clearBtn.onclick = resetForm;
+clearBtn && (clearBtn.onclick = resetForm);
 
-if (desktopAddBtn) {
-  desktopAddBtn.onclick = () => {
+desktopAddBtn &&
+  (desktopAddBtn.onclick = () => {
     sessionStorage.removeItem("facilityEditId");
     sessionStorage.removeItem("facilityEditPayload");
     resetForm();
     showForm();
-  };
-}
+  });
 
 /* ============================================================
-   🧠 Loader (no-op placeholder)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initFacilityModule() {
-  showForm(); // auto-open form on dedicated add page
+  localStorage.getItem("facilityFormVisible") === "true"
+    ? showForm()
+    : hideForm();
 
-  setupFacilityFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  form &&
+    setupFacilityFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
 
   localStorage.setItem("facilityPanelVisible", "false");
 
-  // Prefill when editing (cached or query)
+  /* -------- Prefill Edit Mode -------- */
   const editId = sessionStorage.getItem("facilityEditId");
   const rawPayload = sessionStorage.getItem("facilityEditPayload");
 
@@ -153,21 +148,23 @@ export async function initFacilityModule() {
     document.getElementById("email").value = entry.email || "";
 
     if (entry.status) {
-      const radio = document.getElementById(`status_${entry.status.toLowerCase()}`);
+      const radio = document.getElementById(
+        `status_${entry.status.toLowerCase()}`
+      );
       if (radio) radio.checked = true;
     }
 
-    // Prefill org dynamic input
     const orgInput = document.getElementById("organizationInput");
     const orgHidden = document.getElementById("organization_id");
     if (orgInput && orgHidden) {
       orgInput.value = entry.organization?.name || "";
-      orgHidden.value = entry.organization_id || entry.organization?.id || "";
+      orgHidden.value =
+        entry.organization_id || entry.organization?.id || "";
     }
 
-    // Switch UI to Edit mode
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Facility";
+
     const submitBtn = form?.querySelector("button[type=submit]");
     if (submitBtn)
       submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Facility`;
@@ -197,17 +194,16 @@ export async function initFacilityModule() {
   } finally {
     sessionStorage.removeItem("facilityEditId");
     sessionStorage.removeItem("facilityEditPayload");
-    sessionStorage.removeItem("facilityEditFrom");
   }
 
-  // Normalize role for field defaults
+  /* -------- Normalize user role -------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
+
   if (role.includes("super") && role.includes("admin")) role = "superadmin";
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🧩 Initialize Field Selector
   setupFieldSelector({
     module: "facility",
     fieldLabels: FIELD_LABELS_FACILITY,
@@ -217,16 +213,6 @@ export async function initFacilityModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (Reserved for reactive integrations)
+   (Optional) Sync Stub
 ============================================================ */
-export function syncRefsToState() {
-  // reserved
-}
-
-// ============================================================================
-// ✅ Enterprise Pattern Summary:
-//    • Auth Guard via autoPagePermissionKey()
-//    • Full resetForm & show/hideForm parity with organization-main.js
-//    • Safe fieldSelector + role-based visibility
-//    • Consistent Add/Edit lifecycle + cached prefill support
-// ============================================================================
+export function syncRefsToState() {}

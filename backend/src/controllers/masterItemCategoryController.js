@@ -13,67 +13,99 @@ import { buildQueryOptions } from "../utils/queryHelper.js";
 import { MASTER_ITEM_CATEGORY_STATUS } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { validate } from "../utils/validation.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
 
 /* ============================================================
-   🧭 CONSTANTS & HELPERS
+   🧭 CONSTANTS & DEBUG
 ============================================================ */
-const MODULE_KEY = "master-item-categories";
+const MODULE_KEY = "masterItemCategory";
 
-
-function normalizeRoles(user) {
-  const roles = Array.isArray(user?.roleNames)
-    ? user.roleNames
-    : [user?.role || ""];
-  return roles.map((r) => r.toLowerCase().replace(/\s+/g, ""));
-}
-function isSuperAdmin(user) {
-  return normalizeRoles(user).includes("superadmin");
-}
-function isOrgOwner(user) {
-  return normalizeRoles(user).includes("orgowner");
-}
-function isFacilityHead(user) {
-  return normalizeRoles(user).includes("facilityhead");
-}
+/* ============================================================
+   🔧 LOCAL DEBUG OVERRIDE
+============================================================ */
+const DEBUG_OVERRIDE = true; // 👈 turn OFF in production
+const debug = makeModuleLogger("masterItemCategoryController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
 const CATEGORY_INCLUDES = [
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+    required: true,
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+    required: false,
+  },
+  {
+    model: User,
+    as: "createdBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "updatedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "deletedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA
+   📋 ROLE-BASED JOI SCHEMA (MASTER PARITY)
 ============================================================ */
-function buildCategorySchema(mode = "create") {
+function buildCategorySchema(userRole, mode = "create") {
   const base = {
     name: Joi.string().max(100).required(),
     code: Joi.string().max(50).allow("", null),
     description: Joi.string().allow("", null),
-    organization_id: Joi.string().uuid().allow("", null),
-    facility_id: Joi.string().uuid().allow("", null),
-    status: Joi.string()
-      .valid(...Object.values(MASTER_ITEM_CATEGORY_STATUS))
-      .default(MASTER_ITEM_CATEGORY_STATUS.ACTIVE),
   };
+
   if (mode === "update") {
+    base.status = Joi.string()
+      .valid(...Object.values(MASTER_ITEM_CATEGORY_STATUS))
+      .optional();
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
   }
+
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().optional();
+    base.facility_id = Joi.string().uuid().allow(null).optional();
+  }
+
+  if (["organization_admin", "org_admin", "org_owner"].includes(userRole)) {
+    base.facility_id = Joi.string().uuid().allow(null).optional();
+  }
+
   return Joi.object(base);
 }
 
-
 /* ============================================================
-   📌 CREATE CATEGORY
+   📌 CREATE CATEGORY (MASTER PARITY)
 ============================================================ */
 export const createCategory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -82,56 +114,83 @@ export const createCategory = async (req, res) => {
     });
     if (!allowed) return;
 
-    const schema = buildCategorySchema("create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError || typeof value !== "object") {
+    debug.log("create → incoming body", req.body);
+
+    /* ========================================================
+       ✅ VALIDATION (ROLE-AWARE)
+    ======================================================== */
+    const { value, errors } = validate(
+      buildCategorySchema(
+        (req.user?.roleNames?.[0] || "").toLowerCase(),
+        "create"
+      ),
+      req.body
+    );
+
+    if (errors) {
+      debug.warn("create → validation error", errors);
       await t.rollback();
-      return error(res, "Validation failed", validationError || "Invalid data", 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    // Normalize
-    ["organization_id", "facility_id"].forEach((f) => {
-      if (value[f] === "") value[f] = null;
+    /* ========================================================
+       🧭 SCOPE RESOLUTION (MASTER)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
     });
 
-    // Org/facility logic
-    let orgId, facilityId;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id;
-      facilityId = value.facility_id;
-      if (!orgId) {
-        await t.rollback();
-        return error(res, "Organization is required for superadmin", null, 400);
-      }
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id || null;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id || null;
+    debug.log("create → resolved scope", { orgId, facilityId });
+
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
     }
 
-    // Duplicate check
+    if (!facilityId && !isOrgLevelUser(req.user) && !isSuperAdmin(req.user)) {
+      await t.rollback();
+      return error(
+        res,
+        "Facility is required when creating a category",
+        null,
+        400
+      );
+    }
+
+    /* ========================================================
+       🚫 UNIQUENESS CHECK (PARANOID-SAFE)
+    ======================================================== */
     const exists = await MasterItemCategory.findOne({
-      where: { organization_id: orgId, facility_id: facilityId, name: value.name },
+      where: {
+        organization_id: orgId,
+        facility_id: facilityId,
+        name: value.name,
+      },
       paranoid: false,
       transaction: t,
     });
+
     if (exists) {
       await t.rollback();
-      return error(res, "Category with this name already exists in this scope", null, 400);
+      return error(
+        res,
+        "Category with this name already exists in this scope",
+        null,
+        400
+      );
     }
 
+    /* ========================================================
+       💾 CREATE
+    ======================================================== */
     const created = await MasterItemCategory.create(
       {
-        ...(value || {}),
+        ...value,
         organization_id: orgId,
         facility_id: facilityId,
+        status: value.status || MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -139,11 +198,17 @@ export const createCategory = async (req, res) => {
 
     await t.commit();
 
+    /* ========================================================
+       🔄 RELOAD (FULL ENTITY)
+    ======================================================== */
     const full = await MasterItemCategory.findOne({
       where: { id: created.id },
       include: CATEGORY_INCLUDES,
     });
 
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -153,19 +218,26 @@ export const createCategory = async (req, res) => {
       details: value,
     });
 
-    return success(res, "✅ Category created successfully", full);
+    return success(res, "✅ Category created", full);
   } catch (err) {
-    if (t.finished !== "commit") await t.rollback();
+    await t.rollback();
+    debug.error("createCategory → FAILED", err);
     return error(res, "❌ Failed to create category", err);
   }
 };
 
+
 /* ============================================================
-   📌 UPDATE CATEGORY
+   📌 UPDATE CATEGORY (MASTER PARITY)
 ============================================================ */
 export const updateCategory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    debug.log("update → incoming", {
+      id: req.params.id,
+      body: req.body,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -174,62 +246,75 @@ export const updateCategory = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const schema = buildCategorySchema("update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError || typeof value !== "object") {
+    const { value, errors } = validate(
+      buildCategorySchema(
+        (req.user?.roleNames?.[0] || "").toLowerCase(),
+        "update"
+      ),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError || "Invalid data", 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    ["organization_id", "facility_id"].forEach((f) => {
-      if (value[f] === "") value[f] = null;
+    /* ========================================================
+       🧭 SCOPE RESOLUTION (MASTER PARITY)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
     });
 
-    const record = await MasterItemCategory.findOne({ where: { id }, transaction: t });
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
+
+    const record = await MasterItemCategory.findOne({
+      where: { id: req.params.id, organization_id: orgId },
+      transaction: t,
+    });
+
     if (!record) {
       await t.rollback();
       return error(res, "Category not found", null, 404);
     }
 
-    // Org/facility logic
-    let orgId, facilityId;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || record.organization_id;
-      facilityId = value.facility_id || record.facility_id;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id || record.facility_id;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id || record.facility_id;
-    }
-
-    // Duplicate check
+    /* ========================================================
+       🚫 UNIQUENESS CHECK
+    ======================================================== */
     if (value.name) {
       const exists = await MasterItemCategory.findOne({
         where: {
           organization_id: orgId,
           facility_id: facilityId,
           name: value.name,
-          id: { [Op.ne]: id },
+          id: { [Op.ne]: record.id },
         },
         paranoid: false,
+        transaction: t,
       });
+
       if (exists) {
         await t.rollback();
-        return error(res, "Category with this name already exists in this scope", null, 400);
+        return error(
+          res,
+          "Category with this name already exists in this scope",
+          null,
+          400
+        );
       }
     }
 
+    /* ========================================================
+       💾 UPDATE
+    ======================================================== */
     await record.update(
       {
-        ...(value || {}),
+        ...value,
         organization_id: orgId,
         facility_id: facilityId,
         updated_by_id: req.user?.id || null,
@@ -240,7 +325,7 @@ export const updateCategory = async (req, res) => {
     await t.commit();
 
     const full = await MasterItemCategory.findOne({
-      where: { id },
+      where: { id: record.id },
       include: CATEGORY_INCLUDES,
     });
 
@@ -248,70 +333,146 @@ export const updateCategory = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: record.id,
       entity: full,
       details: value,
     });
 
-    return success(res, "✅ Category updated successfully", full);
+    return success(res, "✅ Category updated", full);
   } catch (err) {
-    if (t.finished !== "commit") await t.rollback();
+    await t.rollback();
+    debug.error("updateCategory → FAILED", err);
     return error(res, "❌ Failed to update category", err);
   }
 };
 
+
 /* ============================================================
-   📌 GET ALL CATEGORIES
-   ============================================================ */
+   📌 GET ALL CATEGORIES (MASTER PARITY)
+============================================================ */
 export const getAllCategories = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
     const options = buildQueryOptions(req, "name", "ASC");
-    options.where = options.where || {};
 
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    /* ========================================================
+       🧱 WHERE ROOT
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🔐 TENANT SCOPE
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") {
-        options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          [Op.or]: [
+            { facility_id: null },
+            { facility_id: req.user.facility_id },
+          ],
+        });
       }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
+    /* ========================================================
+       🔍 GLOBAL SEARCH
+    ======================================================== */
     if (options.search) {
-      options.where[Op.or] = [
-        { name: { [Op.iLike]: `%${options.search}%` } },
-        { code: { [Op.iLike]: `%${options.search}%` } },
-        { description: { [Op.iLike]: `%${options.search}%` } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { code: { [Op.iLike]: `%${options.search}%` } },
+          { description: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
-    const { count, rows } = await MasterItemCategory.findAndCountAll({
-      where: options.where,
-      include: CATEGORY_INCLUDES,
-      order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+    /* ========================================================
+       📌 STATUS FILTER
+    ======================================================== */
+    if (
+      req.query.status &&
+      Object.values(MASTER_ITEM_CATEGORY_STATUS).includes(
+        req.query.status
+      )
+    ) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    const { count, rows } =
+      await MasterItemCategory.findAndCountAll({
+        where: options.where,
+        include: CATEGORY_INCLUDES,
+        order: options.order,
+        offset: options.offset,
+        limit: options.limit,
+      });
+
+    const summary = await buildDynamicSummary({
+      model: MasterItemCategory,
+      options: {
+        where: options.where,
+      },
+      statusEnums: MASTER_ITEM_CATEGORY_STATUS,
     });
+
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        returned: count,
+        query: req.query,
+        dateRange: dateRange || null,
+      },
     });
 
-    return success(res, "✅ Master Item Categories loaded", {
+    return success(res, "✅ Categories loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -319,215 +480,269 @@ export const getAllCategories = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("list → FAILED", err);
     return error(res, "❌ Failed to load categories", err);
   }
 };
-
 /* ============================================================
-   📌 GET CATEGORY BY ID
-   ============================================================ */
+   📌 GET CATEGORY BY ID (MASTER PARITY)
+============================================================ */
 export const getCategoryById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") {
+
+      if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    const found = await MasterItemCategory.findOne({ where, include: CATEGORY_INCLUDES });
-    if (!found) return error(res, "❌ Category not found", null, 404);
+    const category = await MasterItemCategory.findOne({
+      where,
+      include: CATEGORY_INCLUDES,
+    });
+
+    if (!category) {
+      return error(res, "❌ Category not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "view",
       entityId: id,
-      entity: found,
+      entity: category,
     });
 
-    return success(res, "✅ Category loaded", found);
+    return success(res, "✅ Category loaded", category);
   } catch (err) {
+    debug.error("view → FAILED", err);
     return error(res, "❌ Failed to load category", err);
   }
 };
 
+
 /* ============================================================
-/* ============================================================
-   📌 GET CATEGORIES LITE (autocomplete / dropdowns)
-   – Fully aligned with enums + data-loader params
+   📌 GET CATEGORIES LITE (MASTER PARITY)
 ============================================================ */
 export const getAllCategoriesLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff")
-      .toLowerCase()
-      .replace(/\s+/g, "");
-    const { q, organization_id, facility_id, status } = req.query;
+    const { q } = req.query;
 
-    // ✅ Use your enum object (not array)
     const where = {
-      status: status || MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
+      status: MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
+      [Op.and]: [],
     };
 
-    // 🔒 Apply org/facility scoping
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
+
+      if (!isOrgLevelUser(req.user)) {
+        where[Op.and].push({
+          [Op.or]: [
+            { facility_id: null },
+            { facility_id: req.user.facility_id },
+          ],
+        });
+      }
     } else {
-      if (organization_id) where.organization_id = organization_id;
-      if (facility_id) where.facility_id = facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    // 🔍 Apply search
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { code: { [Op.iLike]: `%${q}%` } },
-        { description: { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${q}%` } },
+          { code: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
-    // 🚀 Query
     const categories = await MasterItemCategory.findAll({
       where,
-      attributes: ["id", "name", "code", "description"],
+      attributes: ["id", "name", "code"],
       order: [["name", "ASC"]],
-      limit: 20,
+      limit: 50,
     });
 
-    // 🧠 Format response
-    const result = categories.map((c) => ({
+    const records = categories.map((c) => ({
       id: c.id,
       name: c.name,
       code: c.code || "",
-      description: c.description || "",
     }));
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, q },
+      details: { count: records.length, q: q || null },
     });
 
-    return success(res, "✅ Categories loaded (lite)", { records: result });
+    return success(res, "✅ Categories loaded (lite)", { records });
   } catch (err) {
+    debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load categories (lite)", err);
   }
 };
+
 /* ============================================================
-   📌 TOGGLE CATEGORY STATUS
-   ============================================================ */
+   📌 TOGGLE CATEGORY STATUS (MASTER PARITY)
+============================================================ */
 export const toggleCategoryStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     const category = await MasterItemCategory.findOne({ where });
     if (!category) return error(res, "❌ Category not found", null, 404);
 
-    const [ACTIVE, INACTIVE] = MASTER_ITEM_CATEGORY_STATUS;
+    const ACTIVE = MASTER_ITEM_CATEGORY_STATUS.ACTIVE;
+    const INACTIVE = MASTER_ITEM_CATEGORY_STATUS.INACTIVE;
     const newStatus = category.status === ACTIVE ? INACTIVE : ACTIVE;
 
-    await category.update({ status: newStatus, updated_by_id: req.user?.id || null });
-    const full = await MasterItemCategory.findOne({ where: { id }, include: CATEGORY_INCLUDES });
+    await category.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
+
+    const full = await MasterItemCategory.findOne({
+      where: { id },
+      include: CATEGORY_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       entity: full,
       details: { from: category.status, to: newStatus },
     });
 
-    return success(res, `✅ Category status set to ${newStatus}`, full);
+    return success(
+      res,
+      `✅ Category status set to ${newStatus}`,
+      full
+    );
   } catch (err) {
+    debug.error("toggle_status → FAILED", err);
     return error(res, "❌ Failed to toggle category status", err);
   }
 };
 
+
 /* ============================================================
-   📌 DELETE CATEGORY (Soft Delete with Audit)
-   ============================================================ */
+   📌 DELETE CATEGORY (MASTER PARITY)
+============================================================ */
 export const deleteCategory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    const category = await MasterItemCategory.findOne({ where, transaction: t });
+    const category = await MasterItemCategory.findOne({
+      where,
+      transaction: t,
+    });
+
     if (!category) {
       await t.rollback();
       return error(res, "❌ Category not found", null, 404);
     }
 
-    await category.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await category.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
+
     await category.destroy({ transaction: t });
     await t.commit();
 
-    const full = await MasterItemCategory.findOne({ where: { id }, include: CATEGORY_INCLUDES, paranoid: false });
+    const full = await MasterItemCategory.findOne({
+      where: { id },
+      include: CATEGORY_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "master_item_categories",
+      module: MODULE_KEY,
       action: "delete",
       entityId: id,
       entity: full,
@@ -536,6 +751,7 @@ export const deleteCategory = async (req, res) => {
     return success(res, "✅ Category deleted", full);
   } catch (err) {
     await t.rollback();
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete category", err);
   }
 };

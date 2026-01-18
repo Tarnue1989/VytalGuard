@@ -1,4 +1,3 @@
-// 📁 controllers/billableItemController.js
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -11,52 +10,63 @@ import {
   Department,
   MasterItem,
   MasterItemCategory,
+  AutoBillingRule,
+  BillingTrigger,
 } from "../models/index.js";
-
-import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
+import { success, error } from "../utils/response.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { validate } from "../utils/validation.js";
+import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { isSuperAdmin, isFacilityHead } from "../utils/role-utils.js";
 
 /* ============================================================
-   🔧 HELPERS
+   🔧 LOCAL DEBUG OVERRIDE (Billable Item)
 ============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map(r => r.toLowerCase().replace(/\s+/g, "")).includes("superadmin");
-}
+const MODULE_KEY = "billableItem";
 
-function isOrgOwner(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map(r => r.toLowerCase().replace(/\s+/g, "")).includes("orgowner");
-}
+const DEBUG_OVERRIDE = true; // 👈 turn OFF in prod
+const debug = makeModuleLogger("billableItemController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
 const BILLABLE_ITEM_INCLUDES = [
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+  },
   { model: Department, as: "department", attributes: ["id", "name", "code"] },
-  { model: MasterItem, as: "masterItem", attributes: ["id", "name", "code", "description"] },
-  { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] }, 
+  {
+    model: MasterItem,
+    as: "masterItem",
+    attributes: ["id", "name", "code", "description"],
+  },
+  {
+    model: MasterItemCategory,
+    as: "category",
+    attributes: ["id", "name", "code"],
+  },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA FACTORY (Unified + Role-safe)
-   Fully aligned with CentralStock / Vital / LabRequest patterns
+   📋 ROLE-AWARE JOI SCHEMA (Patient-Parity)
 ============================================================ */
-function buildBillableItemSchema(userRole, mode = "create") {
+function buildBillableItemSchema(user, mode = "create") {
   const base = {
     master_item_id: Joi.string().uuid().required(),
     department_id: Joi.string().uuid().allow("", null),
     category_id: Joi.string().uuid().allow("", null),
+
     name: Joi.string().max(150).required(),
     code: Joi.string().max(100).allow("", null),
     description: Joi.string().allow("", null),
@@ -68,24 +78,19 @@ function buildBillableItemSchema(userRole, mode = "create") {
     discountable: Joi.boolean().default(true),
     override_allowed: Joi.boolean().default(true),
 
-    // 🔒 Prevent manual status override — backend handles defaults
-    status:
-      mode === "create"
-        ? Joi.forbidden().default(BILLABLE_ITEM_STATUS[0]) // ✅ 'active'
-        : Joi.forbidden(),
+    // 🔒 backend-controlled
+    status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.string().uuid().allow("", null),
   };
 
-  // ✅ Allow org/fac selection for superadmin only
-  if (userRole === "superadmin") {
-    base.organization_id = Joi.string().uuid().optional();
-    base.facility_id = Joi.string().uuid().optional();
+  if (isSuperAdmin(user)) {
+    base.organization_id = Joi.string().uuid().required();
+    base.facility_id = Joi.string().uuid().allow("", null);
   }
 
-  // ✅ In update mode, make all optional except forbidden fields
   if (mode === "update") {
-    Object.keys(base).forEach((k) => {
-      if (k !== "status") base[k] = base[k].optional();
-    });
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
   }
 
   return Joi.object(base);
@@ -97,11 +102,16 @@ function buildBillableItemSchema(userRole, mode = "create") {
 export const createBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const schema = buildBillableItemSchema(roleName, "create");
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
 
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
-    if (payloads.length === 0) {
+    if (!payloads.length) {
       await t.rollback();
       return error(res, "Payload must be an object or non-empty array", null, 400);
     }
@@ -109,30 +119,28 @@ export const createBillableItems = async (req, res) => {
     const created = [];
     const skipped = [];
 
-    for (const [idx, payload] of payloads.entries()) {
-      delete payload.status; // 🧹 Clean user input
+    for (const [index, raw] of payloads.entries()) {
+      debug.log("create → incoming payload", raw);
 
-      const { error: validationError, value } = schema.validate(payload, { stripUnknown: true });
-      if (validationError) {
-        skipped.push({ index: idx, reason: "Validation failed", details: validationError.details });
+      const { value, errors } = validate(
+        buildBillableItemSchema(req.user, "create"),
+        raw
+      );
+      if (errors) {
+        skipped.push({ index, reason: "Validation failed", errors });
         continue;
       }
 
-      // 🏢 Resolve tenant scope
-      let orgId = req.user.organization_id || null;
-      let facilityId = req.user.facility_id || null;
-
-      if (isSuperAdmin(req.user)) {
-        orgId = value.organization_id || payload.organization_id || orgId;
-        facilityId = value.facility_id || payload.facility_id || facilityId;
-      }
-
+      const { orgId, facilityId } = resolveOrgFacility({
+        user: req.user,
+        value,
+        body: raw,
+      });
       if (!orgId) {
-        skipped.push({ index: idx, reason: "Missing organization assignment" });
+        skipped.push({ index, reason: "Missing organization assignment" });
         continue;
       }
 
-      // 🔍 Prevent duplicate record for same master_item_id
       const exists = await BillableItem.findOne({
         where: {
           organization_id: orgId,
@@ -143,37 +151,57 @@ export const createBillableItems = async (req, res) => {
         transaction: t,
       });
       if (exists) {
-        skipped.push({ index: idx, reason: `Duplicate master_item_id=${value.master_item_id}` });
+        skipped.push({
+          index,
+          reason: `Duplicate master_item_id=${value.master_item_id}`,
+        });
         continue;
       }
 
-      // ✅ Create item
-      const newItem = await BillableItem.create(
+      const item = await BillableItem.create(
         {
           ...value,
           organization_id: orgId,
           facility_id: facilityId,
+          status: BILLABLE_ITEM_STATUS[0],
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
       );
-      created.push(newItem);
+      created.push(item);
 
-      // 🔹 Add initial price history
       await BillableItemPriceHistory.create(
         {
-          billable_item_id: newItem.id,
+          billable_item_id: item.id,
           organization_id: orgId,
           facility_id: facilityId,
           old_price: null,
-          new_price: newItem.price,
+          new_price: item.price,
           old_currency: null,
-          new_currency: newItem.currency,
+          new_currency: item.currency,
           effective_date: new Date(),
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
       );
+
+      await AutoBillingRule.findOrCreate({
+        where: {
+          organization_id: orgId,
+          facility_id: facilityId,
+          billable_item_id: item.id,
+          trigger_module: "manual",
+        },
+        defaults: {
+          trigger_feature_module_id: null,
+          auto_generate: false,
+          charge_mode: "manual",
+          default_price: null,
+          status: "inactive",
+          created_by_id: req.user?.id || null,
+        },
+        transaction: t,
+      });
     }
 
     await t.commit();
@@ -187,9 +215,9 @@ export const createBillableItems = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: payloads.length > 1 ? "bulk_create" : "create",
-      details: { ids: created.map((c) => c.id), saved: created.length, skipped: skipped.length },
+      details: { created: created.length, skipped: skipped.length },
     });
 
     return success(res, {
@@ -199,127 +227,284 @@ export const createBillableItems = async (req, res) => {
     });
   } catch (err) {
     await t.rollback();
+    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create billable item(s)", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE BILLABLE ITEM
+   ✏️ UPDATE BILLABLE ITEM
 ============================================================ */
 export const updateBillableItem = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const schema = buildBillableItemSchema(roleName, "update");
-
-    delete req.body.status;
-
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
-      return error(res, "Validation failed", validationError, 400);
-    }
-
-    // 🏢 Tenant enforcement (mirrors CentralStock)
-    let orgId = req.user.organization_id || null;
-    let facilityId = req.user.facility_id || null;
-
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || req.query.organization_id || orgId;
-      facilityId = value.facility_id || req.query.facility_id || facilityId;
-    }
-
-    if (!orgId) {
-      return error(res, "Missing organization assignment", null, 400);
-    }
-
-    const item = await BillableItem.findOne({
-      where: { id, organization_id: orgId, facility_id: facilityId },
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
     });
+    if (!allowed) return;
+
+    const { id } = req.params;
+
+    const { value, errors } = validate(
+      buildBillableItemSchema(req.user, "update"),
+      req.body
+    );
+    if (errors) {
+      await t.rollback();
+      return res.status(400).json({ success: false, errors });
+    }
+
+    const where = { id };
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) where.facility_id = req.user.facility_id;
+    }
+
+    const item = await BillableItem.findOne({ where, transaction: t });
     if (!item) {
+      await t.rollback();
       return error(res, "❌ Billable Item not found", null, 404);
     }
 
-    // 🔹 Update (price history handled by model hooks)
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
     await item.update(
-      { ...value, organization_id: orgId, facility_id: facilityId, updated_by_id: req.user?.id || null }
+      {
+        ...value,
+        organization_id: orgId,
+        facility_id: facilityId,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
     );
+
+    await t.commit();
+
+    const full = await BillableItem.findOne({
+      where: { id },
+      include: BILLABLE_ITEM_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "update",
       entityId: id,
-      entity: item,
-      details: value,
+      entity: full,
     });
 
-    return success(res, "✅ Billable Item updated", item);
+    return success(res, "✅ Billable Item updated", full);
   } catch (err) {
-    if (err.message?.includes("not found")) {
-      return error(res, "❌ Billable Item not found", err, 404);
-    }
-    if (err.name === "SequelizeValidationError") {
-      return error(res, "❌ Invalid data provided", err, 400);
-    }
-    return error(res, "❌ Failed to update billable item", err, 500);
+    await t.rollback();
+    debug.error("update → FAILED", err);
+    return error(res, "❌ Failed to update billable item", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL BILLABLE ITEMS
+   📌 GET ALL BILLABLE ITEMS (MASTER PARITY + GLOBAL SUMMARY)
 ============================================================ */
 export const getAllBillableItems = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
     const options = buildQueryOptions(req, "created_at", "DESC");
-    options.where = options.where || {};
 
-    // 🔹 Tenant scope
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER-ENFORCED)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🧭 TENANT SCOPE
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") {
-        options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+      if (isFacilityHead(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
       }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    // 🔍 Search
+    /* ========================================================
+       🔎 TEXT SEARCH
+    ======================================================== */
     if (options.search) {
-      options.where[Op.or] = [
-        { name: { [Op.iLike]: `%${options.search}%` } },
-        { code: { [Op.iLike]: `%${options.search}%` } },
-        { description: { [Op.iLike]: `%${options.search}%` } },
-        { "$category.name$": { [Op.iLike]: `%${options.search}%` } }, // ✅ search by category name
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { code: { [Op.iLike]: `%${options.search}%` } },
+          { description: { [Op.iLike]: `%${options.search}%` } },
+          { "$category.name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
+    /* ========================================================
+       📄 MAIN PAGINATED QUERY
+    ======================================================== */
     const { count, rows } = await BillableItem.findAndCountAll({
       where: options.where,
       include: BILLABLE_ITEM_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
+      subQuery: false,
     });
 
+    /* ========================================================
+       📊 GLOBAL SUMMARY (NOT PAGE-LIMITED)
+    ======================================================== */
+    const summaryWhere = options.where;
+
+    const statusCountsRaw = await BillableItem.findAll({
+      where: summaryWhere,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
+      raw: true,
+    });
+
+    const priceAgg = await BillableItem.findOne({
+      where: summaryWhere,
+      attributes: [
+        [sequelize.fn("MIN", sequelize.col("price")), "min"],
+        [sequelize.fn("MAX", sequelize.col("price")), "max"],
+        [sequelize.fn("AVG", sequelize.col("price")), "avg"],
+      ],
+      raw: true,
+    });
+
+    const currencyRaw = await BillableItem.findAll({
+      where: summaryWhere,
+      attributes: [
+        "currency",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["currency"],
+      raw: true,
+    });
+
+    const flagAgg = await BillableItem.findOne({
+      where: summaryWhere,
+      attributes: [
+        [sequelize.fn("SUM", sequelize.literal("CASE WHEN taxable THEN 1 ELSE 0 END")), "taxable_yes"],
+        [sequelize.fn("SUM", sequelize.literal("CASE WHEN discountable THEN 1 ELSE 0 END")), "discountable_yes"],
+        [sequelize.fn("SUM", sequelize.literal("CASE WHEN override_allowed THEN 1 ELSE 0 END")), "override_yes"],
+      ],
+      raw: true,
+    });
+
+    /* ========================================================
+       🧠 SUMMARY SHAPING (STABLE CONTRACT)
+    ======================================================== */
+    const summary = {
+      total: count,
+    };
+
+    BILLABLE_ITEM_STATUS.forEach((s) => {
+      const row = statusCountsRaw.find((r) => r.status === s);
+      summary[s] = row ? Number(row.count) : 0;
+    });
+
+    summary.price = {
+      min: priceAgg?.min ? Number(priceAgg.min) : 0,
+      max: priceAgg?.max ? Number(priceAgg.max) : 0,
+      average: priceAgg?.avg ? Number(Number(priceAgg.avg).toFixed(2)) : 0,
+    };
+
+    summary.currency = currencyRaw.reduce((acc, r) => {
+      acc[r.currency] = Number(r.count);
+      return acc;
+    }, {});
+
+    summary.taxable = {
+      yes: Number(flagAgg?.taxable_yes || 0),
+      no: count - Number(flagAgg?.taxable_yes || 0),
+    };
+
+    summary.discountable = {
+      yes: Number(flagAgg?.discountable_yes || 0),
+      no: count - Number(flagAgg?.discountable_yes || 0),
+    };
+
+    summary.override_allowed = {
+      yes: Number(flagAgg?.override_yes || 0),
+      no: count - Number(flagAgg?.override_yes || 0),
+    };
+
+    if (dateRange) {
+      summary.dateRange = {
+        start: dateRange.start,
+        end: dateRange.end,
+      };
+    }
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        returned: count,
+        query: req.query,
+        dateRange: dateRange || null,
+      },
     });
 
     return success(res, "✅ Billable Items loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -327,190 +512,227 @@ export const getAllBillableItems = async (req, res) => {
       },
     });
   } catch (err) {
+    debug.error("list → FAILED", err);
     return error(res, "❌ Failed to load billable items", err);
   }
 };
 
+
 /* ============================================================
-   📌 GET BILLABLE ITEM BY ID
+   📌 GET BILLABLE ITEM BY ID (MASTER PARITY)
 ============================================================ */
 export const getBillableItemById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
       if (req.query.organization_id) where.organization_id = req.query.organization_id;
       if (req.query.facility_id) where.facility_id = req.query.facility_id;
     }
 
-    const found = await BillableItem.findOne({ where, include: BILLABLE_ITEM_INCLUDES });
-    if (!found) return error(res, "❌ Billable Item not found", null, 404);
+    const item = await BillableItem.findOne({
+      where,
+      include: BILLABLE_ITEM_INCLUDES,
+    });
+
+    if (!item) {
+      return error(res, "❌ Billable Item not found", null, 404);
+    }
 
     const history = await BillableItemPriceHistory.findAll({
       where: { billable_item_id: id },
-      include: [{ model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] }],
+      include: [
+        {
+          model: User,
+          as: "createdBy",
+          attributes: ["id", "first_name", "last_name"],
+        },
+      ],
       order: [["effective_date", "DESC"]],
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "view",
       entityId: id,
-      entity: found,
+      entity: item,
     });
 
-    return success(res, "✅ Billable Item loaded", { ...found.toJSON(), priceHistory: history });
+    return success(res, "✅ Billable Item loaded", {
+      ...item.toJSON(),
+      priceHistory: history,
+    });
   } catch (err) {
+    debug.error("getById → FAILED", err);
     return error(res, "❌ Failed to load billable item", err);
   }
 };
 
 /* ============================================================
-   📌 BULK UPDATE BILLABLE ITEMS
+   📌 BULK UPDATE BILLABLE ITEMS (MASTER PARITY)
 ============================================================ */
 export const bulkUpdateBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const schema = buildBillableItemSchema(roleName, "update");
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
 
     if (!Array.isArray(req.body) || req.body.length === 0) {
       await t.rollback();
       return error(res, "Payload must be a non-empty array", null, 400);
     }
 
-    const updatedRecords = [];
+    const updated = [];
     const skipped = [];
 
     for (const payload of req.body) {
       if (!payload.id) {
-        skipped.push({ reason: "Missing id in payload", payload });
+        skipped.push({ reason: "Missing id", payload });
         continue;
       }
 
-      const { error: validationError, value } = schema.validate(payload, { stripUnknown: true });
-      if (validationError) {
-        skipped.push({ id: payload.id, reason: "Validation failed", details: validationError.details });
+      const { value, errors } = validate(
+        buildBillableItemSchema(req.user, "update"),
+        payload
+      );
+
+      if (errors) {
+        skipped.push({
+          id: payload.id,
+          reason: "Validation failed",
+          errors,
+        });
         continue;
       }
 
-      // 🔹 Resolve tenant scope
-      let orgId = req.user.organization_id || null;
-      let facilityId = null;
-      if (isSuperAdmin(req.user)) {
-        orgId = value.organization_id || payload.organization_id || null;
-        facilityId = value.facility_id || payload.facility_id || null;
-      } else if (isOrgOwner(req.user)) {
-        orgId = req.user.organization_id;
-        facilityId = value.facility_id || null;
-      } else if (roleName === "admin") {
-        orgId = req.user.organization_id;
-        facilityId = value.facility_id;
-      } else if (roleName === "facilityhead") {
-        orgId = req.user.organization_id;
-        facilityId = req.user.facility_id;
+      const where = { id: payload.id };
+      if (!isSuperAdmin(req.user)) {
+        where.organization_id = req.user.organization_id;
+        if (isFacilityHead(req.user)) {
+          where.facility_id = req.user.facility_id;
+        }
       }
 
-      if (!orgId || !facilityId) {
-        skipped.push({ id: payload.id, reason: "Missing organization/facility assignment" });
-        continue;
-      }
-
-      const item = await BillableItem.findOne({
-        where: { id: payload.id, organization_id: orgId, facility_id: facilityId },
-        transaction: t,
-      });
+      const item = await BillableItem.findOne({ where, transaction: t });
       if (!item) {
-        skipped.push({ id: payload.id, reason: "Not found" });
+        skipped.push({ id: payload.id, reason: "Not found or out of scope" });
         continue;
       }
 
-      // 🔹 Update (price/currency history is logged by model hook)
+      const { orgId, facilityId } = resolveOrgFacility({
+        user: req.user,
+        value,
+        body: payload,
+      });
+
       await item.update(
-        { ...value, organization_id: orgId, facility_id: facilityId, updated_by_id: req.user?.id || null },
+        {
+          ...value,
+          organization_id: orgId,
+          facility_id: facilityId,
+          updated_by_id: req.user?.id || null,
+        },
         { transaction: t }
       );
 
-      updatedRecords.push(item.id);
+      updated.push(item.id);
     }
 
     await t.commit();
-    const full = await BillableItem.findAll({
-      where: { id: { [Op.in]: updatedRecords } },
-      include: BILLABLE_ITEM_INCLUDES,
-    });
+
+    const full = updated.length
+      ? await BillableItem.findAll({
+          where: { id: { [Op.in]: updated } },
+          include: BILLABLE_ITEM_INCLUDES,
+        })
+      : [];
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "bulk_update",
-      details: { updated: updatedRecords.length, skipped: skipped.length },
+      details: { updated: updated.length, skipped: skipped.length },
     });
 
     return success(res, {
-      message: `✅ ${updatedRecords.length} updated, ⚠️ ${skipped.length} skipped`,
+      message: `✅ ${updated.length} updated, ⚠️ ${skipped.length} skipped`,
       records: full,
       skipped,
     });
   } catch (err) {
     await t.rollback();
+    debug.error("bulk_update → FAILED", err);
     return error(res, "❌ Failed to bulk update billable items", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE BILLABLE ITEM STATUS
+   📌 TOGGLE BILLABLE ITEM STATUS (ENUM SAFE)
 ============================================================ */
 export const toggleBillableItemStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
       if (req.query.organization_id) where.organization_id = req.query.organization_id;
       if (req.query.facility_id) where.facility_id = req.query.facility_id;
     }
 
     const item = await BillableItem.findOne({ where });
-    if (!item) return error(res, "❌ Billable Item not found", null, 404);
+    if (!item) {
+      return error(res, "❌ Billable Item not found", null, 404);
+    }
 
-    // ✅ safer explicit status toggle
-    const ACTIVE = "active";
-    const INACTIVE = "inactive";
+    const [ACTIVE, INACTIVE] = BILLABLE_ITEM_STATUS;
     const newStatus = item.status === ACTIVE ? INACTIVE : ACTIVE;
 
-    await item.update({ status: newStatus, updated_by_id: req.user?.id || null });
-    const full = await BillableItem.findOne({ where: { id }, include: BILLABLE_ITEM_INCLUDES });
+    await item.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
+
+    const full = await BillableItem.findOne({
+      where: { id },
+      include: BILLABLE_ITEM_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       entity: full,
@@ -519,34 +741,41 @@ export const toggleBillableItemStatus = async (req, res) => {
 
     return success(res, `✅ Billable Item status set to ${newStatus}`, full);
   } catch (err) {
+    debug.error("toggle_status → FAILED", err);
     return error(res, "❌ Failed to toggle billable item status", err);
   }
 };
 
 /* ============================================================
-   📌 RESTORE BILLABLE ITEM
+   📌 RESTORE BILLABLE ITEM (MASTER PARITY)
 ============================================================ */
 export const restoreBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
-    const item = await BillableItem.findOne({ where, transaction: t, paranoid: false });
+    const item = await BillableItem.findOne({
+      where,
+      paranoid: false,
+      transaction: t,
+    });
+
     if (!item) {
       await t.rollback();
       return error(res, "❌ Billable Item not found", null, 404);
@@ -558,14 +787,24 @@ export const restoreBillableItem = async (req, res) => {
     }
 
     await item.restore({ transaction: t });
-    await item.update({ updated_by_id: req.user?.id || null, deleted_by_id: null }, { transaction: t });
+    await item.update(
+      {
+        updated_by_id: req.user?.id || null,
+        deleted_by_id: null,
+      },
+      { transaction: t }
+    );
+
     await t.commit();
 
-    const full = await BillableItem.findOne({ where: { id }, include: BILLABLE_ITEM_INCLUDES });
+    const full = await BillableItem.findOne({
+      where: { id },
+      include: BILLABLE_ITEM_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "restore",
       entityId: id,
       entity: full,
@@ -574,18 +813,20 @@ export const restoreBillableItem = async (req, res) => {
     return success(res, "✅ Billable Item restored", full);
   } catch (err) {
     await t.rollback();
+    debug.error("restore → FAILED", err);
     return error(res, "❌ Failed to restore billable item", err);
   }
 };
+
 /* ============================================================
-   📌 BULK DELETE BILLABLE ITEMS
+   📌 BULK DELETE BILLABLE ITEMS (MASTER PARITY)
 ============================================================ */
 export const bulkDeleteBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
@@ -596,23 +837,21 @@ export const bulkDeleteBillableItems = async (req, res) => {
       return error(res, "Payload must be a non-empty array of IDs", null, 400);
     }
 
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const ids = req.body;
-
-    const whereBase = {};
-    if (!isSuperAdmin(req.user)) {
-      whereBase.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") {
-        whereBase.facility_id = req.user.facility_id;
-      }
-    }
-
     const deleted = [];
     const skipped = [];
 
-    for (const id of ids) {
+    for (const id of req.body) {
+      const where = { id };
+
+      if (!isSuperAdmin(req.user)) {
+        where.organization_id = req.user.organization_id;
+        if (isFacilityHead(req.user)) {
+          where.facility_id = req.user.facility_id;
+        }
+      }
+
       const item = await BillableItem.findOne({
-        where: { id, ...whereBase },
+        where,
         transaction: t,
       });
 
@@ -621,8 +860,12 @@ export const bulkDeleteBillableItems = async (req, res) => {
         continue;
       }
 
-      await item.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+      await item.update(
+        { deleted_by_id: req.user?.id || null },
+        { transaction: t }
+      );
       await item.destroy({ transaction: t });
+
       deleted.push(id);
     }
 
@@ -638,9 +881,13 @@ export const bulkDeleteBillableItems = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "bulk_delete",
-      details: { deleted: deleted.length, skipped: skipped.length, ids },
+      details: {
+        deleted: deleted.length,
+        skipped: skipped.length,
+        ids: req.body,
+      },
     });
 
     return success(res, {
@@ -650,31 +897,33 @@ export const bulkDeleteBillableItems = async (req, res) => {
     });
   } catch (err) {
     await t.rollback();
+    debug.error("bulk_delete → FAILED", err);
     return error(res, "❌ Failed to bulk delete billable items", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE BILLABLE ITEM
+   📌 DELETE BILLABLE ITEM (MASTER PARITY)
 ============================================================ */
 export const deleteBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (roleName === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
       if (req.query.organization_id) where.organization_id = req.query.organization_id;
       if (req.query.facility_id) where.facility_id = req.query.facility_id;
@@ -686,8 +935,12 @@ export const deleteBillableItem = async (req, res) => {
       return error(res, "❌ Billable Item not found", null, 404);
     }
 
-    await item.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await item.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await item.destroy({ transaction: t });
+
     await t.commit();
 
     const full = await BillableItem.findOne({
@@ -698,7 +951,7 @@ export const deleteBillableItem = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "delete",
       entityId: id,
       entity: full,
@@ -707,107 +960,124 @@ export const deleteBillableItem = async (req, res) => {
     return success(res, "✅ Billable Item deleted", full);
   } catch (err) {
     await t.rollback();
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete billable item", err);
   }
 };
 
 /* ============================================================
-   📌 GET BILLABLE ITEMS LITE (autocomplete)
+   📌 GET BILLABLE ITEMS LITE (MASTER PARITY)
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-    const { q } = req.query;
+    const { q, category_id, category } = req.query;
 
-    const where = { status: BILLABLE_ITEM_STATUS[0] }; // active only
+    const where = {
+      status: BILLABLE_ITEM_STATUS[0],
+      [Op.and]: [],
+    };
 
-    // 🔹 Category filter
-    if (req.query.category_id) {
-      where.category_id = req.query.category_id;
-    }
-    if (req.query.category) {
-      where["$category.code$"] = req.query.category; // or .name if you use names
-    }
-
-    // 🔒 Tenant scope
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          [Op.or]: [
+            { facility_id: null },
+            { facility_id: req.user.facility_id },
+          ],
+        });
+      }
     } else {
       if (req.query.organization_id) where.organization_id = req.query.organization_id;
       if (req.query.facility_id) where.facility_id = req.query.facility_id;
     }
 
-    // 🔍 Search
+    if (category_id) where.category_id = category_id;
+    if (category) where["$category.code$"] = category;
+
     if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { code: { [Op.iLike]: `%${q}%` } },
-        { description: { [Op.iLike]: `%${q}%` } },
-        { "$category.name$": { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${q}%` } },
+          { code: { [Op.iLike]: `%${q}%` } },
+          { description: { [Op.iLike]: `%${q}%` } },
+          { "$category.name$": { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
     const items = await BillableItem.findAll({
       where,
       include: [
-        { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] },
+        {
+          model: MasterItemCategory,
+          as: "category",
+          attributes: ["id", "name", "code"],
+        },
       ],
       attributes: ["id", "name", "code", "price", "currency"],
       order: [["name", "ASC"]],
       limit: 20,
     });
 
-    const result = items.map(i => ({
+    const records = items.map((i) => ({
       id: i.id,
       name: i.name,
       code: i.code,
       price: i.price,
       currency: i.currency,
-      category: i.category ? { id: i.category.id, name: i.category.name, code: i.category.code } : null,
+      category: i.category
+        ? {
+            id: i.category.id,
+            name: i.category.name,
+            code: i.category.code,
+          }
+        : null,
     }));
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, q, category: req.query.category, category_id: req.query.category_id },
+      details: { count: records.length, q, category, category_id },
     });
 
-    return success(res, "✅ Billable Items loaded (lite)", { records: result });
+    return success(res, "✅ Billable Items loaded (lite)", { records });
   } catch (err) {
+    debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load billable items (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 GET PRICE HISTORY BY BILLABLE ITEM ID
+   📌 GET PRICE HISTORY BY BILLABLE ITEM ID (MASTER PARITY)
 ============================================================ */
 export const getHistoryByBillableItemId = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase().replace(/\s+/g, "");
-
     const where = { billable_item_id: id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     } else {
       if (req.query.organization_id) where.organization_id = req.query.organization_id;
       if (req.query.facility_id) where.facility_id = req.query.facility_id;
@@ -815,20 +1085,29 @@ export const getHistoryByBillableItemId = async (req, res) => {
 
     const histories = await BillableItemPriceHistory.findAll({
       where,
-      include: [{ model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] }],
+      include: [
+        {
+          model: User,
+          as: "createdBy",
+          attributes: ["id", "first_name", "last_name"],
+        },
+      ],
       order: [["effective_date", "DESC"]],
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "billable_item",
+      module: MODULE_KEY,
       action: "list_history",
       entityId: id,
       details: { count: histories.length },
     });
 
-    return success(res, "✅ Billable Item price history loaded", { records: histories });
+    return success(res, "✅ Billable Item price history loaded", {
+      records: histories,
+    });
   } catch (err) {
+    debug.error("list_history → FAILED", err);
     return error(res, "❌ Failed to load billable item history", err);
   }
 };

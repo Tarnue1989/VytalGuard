@@ -1,22 +1,69 @@
-// 📁 appointment-render.js – Enterprise-Aligned Master Pattern (Permission-Driven + Role-Aware)
+// 📁 appointment-render.js – Entity Card System (APPOINTMENT | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Master Pattern: triage-record-render.js
-// 🔹 Full enterprise consistency (permissions, UI logic, tooltips, exports)
-// 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 Field-selector safe for BOTH table and card views
+// 🧭 FULL MASTER PARITY WITH feature-access-render.js
+// 🔹 Table = flat | Card = structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize enabled
+// 🔹 Column drag reorder enabled
+// 🔹 Status + permission driven actions
+// 🔹 Export-safe
 // ============================================================================
 
 import {
   FIELD_LABELS_APPOINTMENT,
-  FIELD_GROUPS_APPOINTMENT,
 } from "./appointments-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import {
+  formatDate,
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons (centralized)
+   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "doctor_id",
+  "department_id",
+  "status",
+  "date_time",
+  "created_at",
+  "updated_at",
+]);
+
+/* ============================================================
+   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+============================================================ */
+let sortBy = localStorage.getItem("appointmentSortBy") || "";
+let sortDir = localStorage.getItem("appointmentSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("appointmentSortBy", sortBy);
+  localStorage.setItem("appointmentSortDir", sortDir);
+
+  // 🔗 Bridge to MAIN
+  window.setAppointmentSort?.(sortBy, sortDir);
+  window.loadAppointmentPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
 ============================================================ */
 function getAppointmentActionButtons(entry, user) {
   return buildActionButtons({
@@ -29,77 +76,152 @@ function getAppointmentActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    const label =
       FIELD_LABELS_APPOINTMENT[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    th.dataset.key = field;
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  /* ================= Column resize ================= */
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadAppointmentPage?.(1);
+    },
+  });
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
   const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || "—";
+  return parts.length ? parts.join(" ") : user.email || "—";
 }
 
 function renderPatient(entry) {
   const p = entry.patient;
   if (!p) return "—";
-  const patNo = p.pat_no || "—";
-  const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
-  return `${patNo} - ${name || "Unnamed"}`;
+  const name = [p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ");
+  return `${p.pat_no || "—"} - ${name || "Unnamed Patient"}`;
 }
 
+/* ============================================================
+   🧩 FIELD VALUE RENDERER
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.replace(/_/g, " ").toUpperCase();
-      return raw ? label : "—";
+      let cls = "bg-secondary";
+      if (raw === "scheduled") cls = "bg-primary";
+      if (raw === "in_progress") cls = "bg-warning text-dark";
+      if (raw === "completed") cls = "bg-success";
+      if (raw === "verified") cls = "bg-info";
+      if (raw === "cancelled") cls = "bg-danger";
+      if (raw === "no_show") cls = "bg-secondary";
+      if (raw === "voided") cls = "bg-dark";
+
+      return `<span class="badge ${cls}">
+        ${raw.replace(/_/g, " ").toUpperCase()}
+      </span>`;
     }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "patient":
+    case "patient_id":
       return renderPatient(entry);
+
     case "doctor":
+    case "doctor_id":
       return renderUserName(entry.doctor);
+
     case "department":
+    case "department_id":
       return entry.department?.name || "—";
+
     case "invoice":
-      return entry.invoice
-        ? entry.invoice.invoice_number || "—"
-        : "—";
+      return entry.invoice?.invoice_number || "—";
+
     case "createdBy":
-      return renderUserName(entry.createdBy);
     case "updatedBy":
-      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry.deletedBy);
+      return renderUserName(entry[field]);
 
     case "date_time":
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
       return entry[field] ?? "—";
@@ -107,122 +229,113 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ Card Renderer – Entity Card System (Field-Selector SAFE)
+   🗂️ CARD RENDERER — APPOINTMENT
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
+  const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
-      <span class="entity-label">${label}:</span>
-      <span class="entity-value">${value}</span>
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
     </div>
   `;
 
-  const patient = entry.patient || {};
-  const patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ");
-  const patientCode = patient.pat_no || "—";
   const status = (entry.status || "").toLowerCase();
 
-  /* ---------- HEADER ---------- */
   const header = `
     <div class="entity-card-header">
       <div>
-        ${has("patient") ? `<div class="entity-secondary">${patientCode}</div>` : ""}
-        ${has("patient") ? `<div class="entity-primary">${patientName || "Unnamed Patient"}</div>` : ""}
+        ${has("appointment_code")
+          ? `<div class="entity-secondary">${safe(entry.appointment_code)}</div>`
+          : ""}
+        ${has("patient")
+          ? `<div class="entity-primary">${renderPatient(entry)}</div>`
+          : ""}
       </div>
-      ${has("status")
-        ? `<span class="entity-status ${status}">
-            ${status.replace(/_/g, " ").toUpperCase()}
-          </span>`
-        : ""}
+      ${
+        has("status")
+          ? `<span class="entity-status ${status}">
+               ${status.replace(/_/g, " ").toUpperCase()}
+             </span>`
+          : ""
+      }
     </div>
   `;
 
-  /* ---------- CONTEXT ---------- */
   const contextItems = [];
-  if (has("facility")) contextItems.push(`📍 ${entry.facility?.name || "—"}`);
-  if (has("organization")) contextItems.push(`🏥 ${entry.organization?.name || "—"}`);
-  if (has("date_time")) contextItems.push(`📅 ${formatDate(entry.date_time)}`);
+  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("date_time")) contextItems.push(`📅 ${formatDateTime(entry.date_time)}`);
 
   const context = contextItems.length
-    ? `<div class="entity-card-context">${contextItems.map((c) => `<div>${c}</div>`).join("")}</div>`
+    ? `<div class="entity-card-context">
+         ${contextItems.map(v => `<div>${v}</div>`).join("")}
+       </div>`
     : "";
 
-  /* ---------- MAIN BODY ---------- */
-  const left = [];
-  const right = [];
-
-  if (has("doctor")) left.push(fieldRow("Doctor", renderUserName(entry.doctor)));
-  if (has("department")) left.push(fieldRow("Department", entry.department?.name || "—"));
-  if (has("appointment_code")) left.push(fieldRow("Appointment", entry.appointment_code || "—"));
-
-  if (has("invoice")) right.push(fieldRow("Invoice", renderValue(entry, "invoice")));
-  if (has("createdBy")) right.push(fieldRow("Created By", renderUserName(entry.createdBy)));
-  if (has("created_at")) right.push(fieldRow("Created", formatDate(entry.created_at)));
-
-  const body =
-    left.length || right.length
-      ? `
+  const body = `
     <div class="entity-card-body">
-      <div>${left.join("")}</div>
-      <div>${right.join("")}</div>
-    </div>`
+      <div>
+        ${has("doctor")
+          ? fieldRow("Doctor", renderUserName(entry.doctor))
+          : ""}
+        ${has("department")
+          ? fieldRow("Department", entry.department?.name)
+          : ""}
+      </div>
+      <div>
+        ${has("invoice")
+          ? fieldRow("Invoice", renderValue(entry, "invoice"))
+          : ""}
+      </div>
+    </div>
+  `;
+
+  const audit =
+    has("created_at") || has("updated_at")
+      ? `
+        <details class="entity-notes">
+          <summary>Audit</summary>
+          <div class="entity-card-body">
+            <div>
+              ${has("createdBy")
+                ? fieldRow("Created By", renderUserName(entry.createdBy))
+                : ""}
+              ${has("created_at")
+                ? fieldRow("Created At", formatDateTime(entry.created_at))
+                : ""}
+            </div>
+            <div>
+              ${has("updatedBy")
+                ? fieldRow("Updated By", renderUserName(entry.updatedBy))
+                : ""}
+              ${has("updated_at")
+                ? fieldRow("Updated At", formatDateTime(entry.updated_at))
+                : ""}
+            </div>
+          </div>
+        </details>
+      `
       : "";
 
-  /* ---------- EXTRA META / SYSTEM FIELDS (AUTO) ---------- */
-  const usedFields = new Set([
-    "patient",
-    "status",
-    "facility",
-    "organization",
-    "date_time",
-    "doctor",
-    "department",
-    "appointment_code",
-    "invoice",
-    "createdBy",
-    "created_at",
-    "notes",
-    "actions",
-  ]);
-
-  const extraFields = visibleFields
-    .filter((f) => !usedFields.has(f))
-    .map((f) =>
-      fieldRow(
-        FIELD_LABELS_APPOINTMENT[f] || f,
-        renderValue(entry, f)
-      )
-    )
-    .join("");
-
-  const extrasSection = extraFields
-    ? `
-      <details class="entity-notes">
-        <summary>More Details</summary>
-        <div class="entity-card-body">
-          <div>${extraFields}</div>
-        </div>
-      </details>
-    `
-    : "";
-
-  /* ---------- NOTES ---------- */
   const notes =
     has("notes") && entry.notes
       ? `
-    <details class="entity-notes">
-      <summary>Notes</summary>
-      <p>${entry.notes}</p>
-    </details>`
+        <details class="entity-notes">
+          <summary>Notes</summary>
+          <p>${entry.notes}</p>
+        </details>
+      `
       : "";
 
-  /* ---------- ACTIONS ---------- */
   const actions = has("actions")
-    ? `<div class="entity-card-footer">
-         ${getAppointmentActionButtons(entry, user)}
-       </div>`
+    ? `
+      <div class="entity-card-footer export-ignore">
+        ${getAppointmentActionButtons(entry, user)}
+      </div>
+    `
     : "";
 
   return `
@@ -230,7 +343,7 @@ export function renderCard(entry, visibleFields, user) {
       ${header}
       ${context}
       ${body}
-      ${extrasSection}
+      ${audit}
       ${notes}
       ${actions}
     </div>
@@ -238,7 +351,7 @@ export function renderCard(entry, visibleFields, user) {
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("appointmentTableBody");
@@ -249,8 +362,6 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No appointments found.</td></tr>`;
-
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
@@ -258,17 +369,25 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
+            No appointments found.
+          </td>
+        </tr>`;
+      initTooltips(tableBody);
       return;
     }
 
     entries.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) =>
-          f === "actions"
-            ? `<td class="actions-cell text-center">${getAppointmentActionButtons(entry, user)}</td>`
-            : `<td>${renderValue(entry, f)}</td>`
+        .map((field) =>
+          field === "actions"
+            ? `<td class="actions-cell text-center export-ignore">
+                 ${getAppointmentActionButtons(entry, user)}
+               </td>`
+            : `<td>${renderValue(entry, field)}</td>`
         )
         .join("");
       tableBody.appendChild(tr);
@@ -281,7 +400,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No appointments found.</p>`;
+      : `<p class="text-muted text-center">No appointments found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -290,7 +409,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -312,7 +431,7 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #appointmentList.active",
       orientation: "landscape",
     });
   });

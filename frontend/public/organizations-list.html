@@ -4,10 +4,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VytalGuard - Organizations</title>
+  <title>VytalGuard - Organizations List</title>
 
   <!-- Meta -->
-  <meta name="description" content="VytalGuard HMS - Manage Organizations">
+  <meta name="description" content="VytalGuard HMS - Organizations List">
   <link rel="shortcut icon" href="assets/images/favicon.svg">
 
   <!-- CSS -->
@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
 </head>
 
 <body>
@@ -39,18 +40,9 @@
           </li>
           <li class="breadcrumb-item">Organizations</li>
           <li class="breadcrumb-item text-primary" aria-current="page">
-            Organization List
+            Organizations List
           </li>
         </ol>
-
-        <div class="ms-auto d-lg-flex d-none flex-row">
-          <div class="input-group">
-            <span class="input-group-text bg-primary-lighten">
-              <i class="ri-calendar-2-line text-primary"></i>
-            </span>
-            <input type="text" id="dateRange" class="form-control custom-daterange">
-          </div>
-        </div>
       </div>
 
       <!-- Body -->
@@ -61,26 +53,21 @@
             <div class="card">
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title">Organizations</h5>
-                <a href="add-organization.html" class="btn btn-primary ms-auto">
+                <a href="add-organization.html" class="btn btn-primary btn-sm ms-auto">
                   <i class="ri-add-line me-1"></i> Add
                 </a>
               </div>
 
               <div class="card-body">
 
-                <!-- ============================================================ -->
-                <!-- 🔍 FILTERS -->
-                <!-- ============================================================ -->
+                <!-- Filters -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
-                    <div class="d-flex align-items-center gap-2">
-                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-filter me-1"></i> Filters
-                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
-                      </button>
-                    </div>
+                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-filter me-1"></i> Filters
+                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                    </button>
 
-                    <!-- Export Buttons -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
@@ -94,34 +81,38 @@
                     </div>
                   </div>
 
+                  <!-- FILTER BODY -->
                   <div id="filterCollapse" class="card-body filter-body">
-                    <div class="section-label mb-2"><strong>Filter Organizations</strong></div>
+                    <div class="section-label mb-2">
+                      <strong>Filter Organizations</strong>
+                    </div>
 
                     <div class="row g-3 filter-grid compact">
 
-                      <!-- Organization Name -->
-                      <div class="col-md-3">
+                      <!-- 🔍 GLOBAL SEARCH -->
+                      <div class="col-md-4">
                         <div class="field-wrapper">
-                          <label for="filterName" class="form-label">Organization Name</label>
-                          <input type="text" id="filterName" class="form-control suggestion-input" autocomplete="off" />
-                          <div id="filterNameSuggestions" class="suggestions"></div>
+                          <label for="globalSearch" class="form-label">Search</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-search-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="globalSearch"
+                              class="form-control"
+                              placeholder="Organization name, code…"
+                              autocomplete="off"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <!-- Code -->
-                      <div class="col-md-3">
-                        <div class="field-wrapper">
-                          <label for="filterCode" class="form-label">Code</label>
-                          <input type="text" id="filterCode" class="form-control suggestion-input" autocomplete="off" />
-                          <div id="filterCodeSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
-
-                      <!-- Status -->
+                      <!-- STATUS -->
                       <div class="col-md-2">
                         <div class="field-wrapper">
-                          <label for="filterStatus" class="form-label">Status</label>
-                          <select id="filterStatus" class="form-select">
+                          <label for="filterStatusSelect" class="form-label">Status</label>
+                          <select id="filterStatusSelect" class="form-select">
                             <option value="">All</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
@@ -129,26 +120,26 @@
                         </div>
                       </div>
 
-                      <!-- Dates -->
-                      <div class="col-md-2">
+                      <!-- DATE RANGE -->
+                      <div class="col-md-3">
                         <div class="field-wrapper">
-                          <label for="filterCreatedFrom" class="form-label">From Date</label>
-                          <input type="date" id="filterCreatedFrom" class="form-control" />
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="dateRange"
+                              class="form-control custom-daterange"
+                              placeholder="Select date range"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <div class="col-md-2">
-                        <div class="field-wrapper">
-                          <label for="filterCreatedTo" class="form-label">To Date</label>
-                          <input type="date" id="filterCreatedTo" class="form-control" />
-                        </div>
-                      </div>
-
-                      <!-- Actions -->
+                      <!-- ACTIONS -->
                       <div class="col-12 d-flex gap-2 filter-actions">
-                        <button id="filterBtn" class="btn btn-primary btn-sm">
-                          <i class="fas fa-search me-1"></i> Search
-                        </button>
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
@@ -158,23 +149,24 @@
                   </div>
                 </div>
 
-                <!-- ============================================================ -->
-                <!-- 🧭 VIEW CONTROLS -->
-                <!-- ============================================================ -->
+                <!-- View Toggle -->
                 <div class="d-flex mb-2 view-toggle compact align-items-center">
                   <div class="dropdown relative-wrapper export-ignore">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                            id="fieldSelectorBtn"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                    >
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2 field-selector-dropdown"
-                        id="fieldSelectorDropdown"
-                        style="min-width:240px;"></div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
 
-                  <div class="btn-group ms-2" role="group">
+                  <div class="btn-group ms-2">
                     <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                       <i class="fas fa-th me-1"></i> Card View
                     </button>
@@ -184,33 +176,29 @@
                   </div>
                 </div>
 
-                <!-- Records per page (ABOVE SUMMARY) -->
-                <div class="btn-group align-items-center ms-2" role="group">
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
-                  <select id="recordsPerPage"
-                          class="btn btn-outline-secondary btn-sm text-center"
-                          style="width:64px; appearance:auto;">
+                <!-- Records -->
+                <div class="btn-group align-items-center ms-2">
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Show</span>
+                  <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm">
                     <option value="10">10</option>
                     <option value="25" selected>25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                   </select>
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Rows</span>
                 </div>
 
-                <!-- ============================================================ -->
-                <!-- 📊 BREAKDOWN SUMMARY -->
-                <!-- ============================================================ -->
+                <!-- Summary -->
                 <hr class="my-2">
                 <div class="text-muted fw-semibold small mb-1">
                   Breakdown Summary
                 </div>
-                <div id="moduleSummary" class="d-flex flex-wrap gap-2 my-2"></div>
+                <div class="module-summary">
+                  <div id="moduleSummary"></div>
+                </div>
                 <hr class="my-2">
 
-                <!-- ============================================================ -->
-                <!-- 📋 TABLE -->
-                <!-- ============================================================ -->
+                <!-- Table -->
                 <div class="table-responsive table-container active">
                   <table class="table m-0 align-middle data-table print-table">
                     <thead id="dynamicTableHead"></thead>
@@ -218,19 +206,14 @@
                   </table>
                 </div>
 
-                <!-- ============================================================ -->
-                <!-- 🗂️ CARD LIST -->
-                <!-- ============================================================ -->
+                <!-- Cards -->
                 <div id="organizationList" class="card-list"></div>
 
-                <!-- ============================================================ -->
-                <!-- 🔢 PAGINATION -->
-                <!-- ============================================================ -->
+                <!-- Pagination -->
                 <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
 
               </div>
             </div>
-            <!-- /card -->
 
           </div>
         </div>
@@ -243,12 +226,12 @@
     </div>
   </div>
 
-  <!-- overlays / modals / toasts -->
+  <!-- overlays -->
   <div id="loadingOverlay" class="hidden">
     <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
   </div>
-  <!-- ⚠️ removed static <div id="toast">, handled dynamically by toast-utils.js -->
 
+  <!-- View Modal -->
   <div id="viewModal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
@@ -272,17 +255,12 @@
   <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
   <script src="assets/js/custom.js"></script>
 
-  <!-- Module Scripts -->
-
-  <!-- html2pdf: use CDN (safer) OR place a local copy in /public/js/libs/ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <script type="module" src="/js/logout.js"></script>
-
-  <!-- authSession.js replaces session.js -->
   <script type="module" src="/js/authSession.js"></script>
 
-  <!-- Organization modules -->
+  <!-- Organization module -->
   <script type="module" src="/js/modules/organization/organization-filter-main.js"></script>
 
 </body>

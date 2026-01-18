@@ -1,0 +1,101 @@
+/* ============================================================
+   📊 MODULE SUMMARY – BADGE / PILL SYSTEM (GLOBAL)
+   - Safe for ALL modules
+   - No cascade conflicts
+   - PDF / Export friendly
+============================================================ */
+
+/* ===== BASE BADGE ===== */
+.summary-item{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  padding:2px 8px;
+  border-radius:999px;
+  font-weight:600;
+  white-space:nowrap;
+  background:rgba(0,0,0,.04);
+}
+
+/* ===== STATUS PILL STYLES (UNIFIED) ===== */
+.summary--success{
+  background:#e9f7ef;
+  color:#198754;
+}
+
+.summary--warning{
+  background:#fff4e5;
+  color:#f59e0b;
+}
+
+.summary--danger{
+  background:#fdecea;
+  color:#dc3545;
+}
+
+.summary--info{
+  background:#e7f3ff;
+  color:#0dcaf0;
+}
+
+.summary--muted{
+  background:#f3f4f6;
+  color:#6b7280;
+}
+
+.summary--total{
+  background:#eef2ff;
+  border:1px solid #c7d2fe;
+  color:#111827;
+  font-weight:800;
+}
+
+/* ===== MODULE SUMMARY WRAPPER ===== */
+.module-summary{
+  margin-bottom:.75rem;
+}
+
+/* ===== GRID LAYOUT ===== */
+.summary-grid{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem .75rem;
+  align-items:center;
+  font-size:.8rem;
+  line-height:1.2;
+}
+
+.summary-divider{
+  color:#9ca3af;
+  font-weight:400;
+}
+
+/* ===== LABEL + VALUE ===== */
+.summary-label{
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  font-size:.7rem;
+  opacity:.85;
+}
+
+.summary-value{
+  font-size:.8rem;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+
+/* ===== NUMERIC TUNING ===== */
+.summary-value.currency,
+.summary-value.count{
+  letter-spacing:.02em;
+}
+
+/* ===== MOBILE ===== */
+@media(max-width:576px){
+  .summary-grid{
+    gap:.35rem .5rem;
+    font-size:.75rem;
+  }
+  .summary-label{font-size:.68rem}
+  .summary-value{font-size:.78rem}
+}

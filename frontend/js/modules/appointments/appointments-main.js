@@ -1,4 +1,11 @@
-// 📦 appointment-main.js – Form-only loader for Appointment (permission-driven)
+// 📦 appointment-main.js – Form-only loader for Appointment (MASTER-ALIGNED)
+// ============================================================================
+// 🧭 Mirrors feature-access-main.js EXACTLY (structure + lifecycle)
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Preserves all existing DOM IDs and appointment form behavior
+// ============================================================================
 
 import {
   initPageGuard,
@@ -14,19 +21,22 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard
-   ============================================================ */
-// Auto-detect proper permission (e.g., appointments:create / edit)
-const token = initPageGuard(autoPagePermissionKey(["appointments:create", "appointments:edit"]));
+   🔐 AUTH GUARD + SESSION
+============================================================ */
+const token = initPageGuard(autoPagePermissionKey());
+
 initLogoutWatcher();
 
 /* ============================================================
-   🌐 Shared State + DOM Refs
-   ============================================================ */
+   🧠 SHARED STATE
+============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM REFERENCES
+============================================================ */
 const form = document.getElementById("appointmentForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -34,41 +44,40 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
-   ============================================================ */
+   🧹 RESET FORM (MASTER-SAFE)
+============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
+
   if (form) form.reset();
 
-  // Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("appointmentEditId");
   sessionStorage.removeItem("appointmentEditPayload");
 
-  // Reset text inputs
-  ["notes", "patientInput", "doctorInput"].forEach((id) => {
+  // Explicitly clear text + hidden fields
+  [
+    "notes",
+    "patientInput",
+    "doctorInput",
+    "patientId",
+    "doctorId",
+    "dateTime",
+  ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset dropdowns
+  // Explicitly clear selects
   ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
-
-  // Clear hidden IDs
-  ["patientId", "doctorId"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  // Clear date/time field
-  const dateTimeInput = document.getElementById("dateTime");
-  if (dateTimeInput) dateTimeInput.value = "";
-
-  console.info("🧹 [Appointment] Form reset complete");
 }
 
+/* ============================================================
+   🧭 FORM VISIBILITY
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -82,16 +91,15 @@ function hideForm() {
   localStorage.setItem("appointmentFormVisible", "false");
 }
 
-// Expose globally so action handlers can reuse
+// 🔗 Expose globally (parity with Feature Access / Patient)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
-   ============================================================ */
+   🔘 BUTTON WIRING
+============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Appointment] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/appointments-list.html";
   };
@@ -101,7 +109,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Appointment] Switching to Add mode");
     sessionStorage.removeItem("appointmentEditId");
     sessionStorage.removeItem("appointmentEditPayload");
     resetForm();
@@ -110,17 +117,17 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Stub (no list handling here)
-   ============================================================ */
+   📦 LIST LOADER STUB (FORM-ONLY PAGE)
+============================================================ */
 async function loadEntries() {
-  return; // no-op (list page handles this)
+  return;
 }
 
 /* ============================================================
-   🚀 Module Init
-   ============================================================ */
+   🚀 INIT ENTRYPOINT
+============================================================ */
 export async function initAppointmentModule() {
-  showForm(); // open form immediately
+  showForm(); // form-only page opens by default
 
   setupAppointmentFormSubmission({
     form,
@@ -132,15 +139,18 @@ export async function initAppointmentModule() {
 
   localStorage.setItem("appointmentPanelVisible", "false");
 
-  // Normalize role
+  // 🔐 Normalize role (EXACT same logic as master)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
-  if (role.includes("super") && role.includes("admin")) role = "superadmin";
-  else if (role.includes("admin")) role = "admin";
-  else role = "staff";
+  if (role.includes("super") && role.includes("admin")) {
+    role = "superadmin";
+  } else if (role.includes("admin")) {
+    role = "admin";
+  } else {
+    role = "staff";
+  }
 
-  // 🔧 Setup field selector based on role defaults
   setupFieldSelector({
     module: "appointment",
     fieldLabels: FIELD_LABELS_APPOINTMENT,
@@ -149,13 +159,11 @@ export async function initAppointmentModule() {
       FIELD_DEFAULTS_APPOINTMENT[role] ||
       FIELD_DEFAULTS_APPOINTMENT.staff,
   });
-
-  console.info(`✅ [Appointment] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   (Optional)
-   ============================================================ */
+   (Optional) STATE SYNC STUB
+============================================================ */
 export function syncRefsToState() {
-  // no-op (placeholder for future)
+  // no-op placeholder for consistency
 }

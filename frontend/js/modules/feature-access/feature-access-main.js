@@ -1,4 +1,11 @@
 // 📦 feature-access-main.js – Form-only loader for Feature Access
+// ============================================================================
+// 🧭 Mirrors feature-module-main.js EXACTLY (structure + lifecycle)
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Preserves all existing DOM IDs and form logic
+// ============================================================================
 
 import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
 import { setupFeatureAccessFormSubmission } from "./feature-access-form.js";
@@ -7,44 +14,53 @@ import {
   FIELD_ORDER_FEATURE_ACCESS,
   FIELD_DEFAULTS_FEATURE_ACCESS,
 } from "./feature-access-constants.js";
-import { setupFieldSelector } from "../../utils/ui-utils.js"; 
+import { setupFieldSelector } from "../../utils/ui-utils.js";
 
-// 🔐 Auth – driven by backend permission key
-initPageGuard("feature_accesses");
-
-// 🔁 Global logout watcher
+/* ============================================================
+   🔐 Auth Guard + Shared State
+============================================================ */
+const token = initPageGuard("feature_accesses");
 initLogoutWatcher();
 
-// 🌐 Shared State (kept consistent with other modules)
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
-// 📎 DOM Refs
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("featureAccessForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
+const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
-/* ------------------------- Helpers ------------------------- */
-
-// 🧹 Reset form
+/* ============================================================
+   🧹 Reset Form Helper
+============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // Explicitly clear dropdowns
-  ["organization_id", "module_id", "role_id", "facility_id", "status"].forEach((id) => {
+  // Clear cached edit state
+  sessionStorage.removeItem("featureAccessEditId");
+  sessionStorage.removeItem("featureAccessEditPayload");
+
+  // Explicitly clear selects
+  ["organization_id", "role_id", "module_id", "facility_id"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset radios (default: active)
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Reset status radios (default: active)
+  document
+    .querySelector('input[name="status"][value="active"]')
+    ?.setAttribute("checked", true);
 }
 
-// 🧭 Form show/hide
+/* ============================================================
+   🧭 Form Show / Hide
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -58,37 +74,77 @@ function hideForm() {
   localStorage.setItem("featureAccessFormVisible", "false");
 }
 
-/* ------------------------- Wire Buttons ------------------------- */
+// 🔗 Expose globally (parity with Feature Module)
+window.showForm = showForm;
+window.resetForm = resetForm;
 
-if (clearBtn) clearBtn.onclick = resetForm;
-if (desktopAddBtn) desktopAddBtn.onclick = showForm;
-
-/* ------------------------- Loader ------------------------- */
-
-// 🧰 Minimal no-op loader (compatibility with form.js)
-async function loadEntries() {
-  return;
+/* ============================================================
+   ⚙️ Wire Button Actions
+============================================================ */
+if (cancelBtn) {
+  cancelBtn.onclick = () => {
+    resetForm();
+    window.location.href = "/feature-access.html";
+  };
 }
 
-/* ------------------------- Init ------------------------- */
+if (clearBtn) clearBtn.onclick = resetForm;
 
+if (desktopAddBtn) {
+  desktopAddBtn.onclick = () => {
+    sessionStorage.removeItem("featureAccessEditId");
+    sessionStorage.removeItem("featureAccessEditPayload");
+    resetForm();
+    showForm();
+  };
+}
+
+/* ============================================================
+   📦 Loader Placeholder
+============================================================ */
+async function loadEntries() {
+  return; // handled by list page
+}
+
+/* ============================================================
+   🚀 Init Entrypoint
+============================================================ */
 export async function initFeatureAccess() {
-  showForm(); // open the form by default
-  setupFeatureAccessFormSubmission({ form, sharedState, resetForm, loadEntries });
+  showForm(); // form-only page opens by default
 
-  // 📌 Setup "Select Fields" dropdown for Feature Access
-  const role = (localStorage.getItem("userRole") || "staff").toLowerCase();
+  setupFeatureAccessFormSubmission({
+    form,
+    token,
+    sharedState,
+    resetForm,
+    loadEntries,
+  });
+
+  localStorage.setItem("featureAccessPanelVisible", "false");
+
+  // 🧩 Normalize role (EXACT same logic as module & patient)
+  let roleRaw = localStorage.getItem("userRole") || "staff";
+  let role = roleRaw.trim().toLowerCase();
+
+  if (role.includes("super") && role.includes("admin")) {
+    role = "superadmin";
+  } else if (role.includes("admin")) {
+    role = "admin";
+  } else {
+    role = "staff";
+  }
+
   setupFieldSelector({
     module: "feature_access",
     fieldLabels: FIELD_LABELS_FEATURE_ACCESS,
     fieldOrder: FIELD_ORDER_FEATURE_ACCESS,
     defaultFields: FIELD_DEFAULTS_FEATURE_ACCESS[role],
   });
-
-  localStorage.setItem("featureAccessPanelVisible", "false");
 }
 
-// (Optional) If other modules expect this
+/* ============================================================
+   (Optional) State Sync Stub
+============================================================ */
 export function syncRefsToState() {
-  // no-op
+  // no-op placeholder for consistency
 }

@@ -1,540 +1,540 @@
 /* ========================================================================
-   📊 VytalGuard Dashboard Theme (High Contrast Compact Edition – Full Palette)
-   ======================================================================== */
+📊 VytalGuard Dashboard Theme (High Contrast Compact Edition – Full Palette)
+======================================================================== */
 
 /* --- Card Base --- */
-.kpi-card {
-  background: #fff;
-  border-width: 1.8px;
-  border-radius: 0.85rem;
-  transition: all 0.25s ease;
+.kpi-card{
+  background:#fff;border-width:1.8px;border-radius:.85rem;
+  transition:all .25s ease
 }
-.kpi-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.08);
+.kpi-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 3px 14px rgba(0,0,0,.08)
 }
 
 /* --- Typography --- */
-.kpi-card .card-body .fw-bold {
-  font-weight: 700;
-  letter-spacing: 0.4px;
+.kpi-card .card-body .fw-bold{
+  font-weight:700;letter-spacing:.4px
 }
 
 /* ========================================================================
-   🎨 Module Color System
-   Each color matches the KPI_COLOR_MAP in dashboard-constants.js
-   ======================================================================== */
+🎨 Module Color System (Aligned with KPI_COLOR_MAP)
+======================================================================== */
+.text-primary,.border-primary,.btn-outline-primary{color:#007bff!important;border-color:#007bff!important}
+.text-warning,.border-warning,.btn-outline-warning{color:#f59e0b!important;border-color:#f59e0b!important}
+.text-success,.border-success,.btn-outline-success{color:#22c55e!important;border-color:#22c55e!important}
+.text-info,.border-info,.btn-outline-info{color:#0ea5e9!important;border-color:#0ea5e9!important}
+.text-danger,.border-danger,.btn-outline-danger{color:#ef4444!important;border-color:#ef4444!important}
+.text-indigo,.border-indigo,.btn-outline-indigo{color:#4b0082!important;border-color:#4b0082!important}
+.text-teal,.border-teal,.btn-outline-teal{color:#00897b!important;border-color:#00897b!important}
 
-/* Core Clinical */
-.text-primary, .border-primary, .btn-outline-primary {
-  color: #007bff !important;
-  border-color: #007bff !important;
-}
-.text-warning, .border-warning, .btn-outline-warning {
-  color: #f59e0b !important;
-  border-color: #f59e0b !important;
-}
-.text-success, .border-success, .btn-outline-success {
-  color: #22c55e !important;
-  border-color: #22c55e !important;
-}
-.text-info, .border-info, .btn-outline-info {
-  color: #0ea5e9 !important;
-  border-color: #0ea5e9 !important;
-}
-.text-danger, .border-danger, .btn-outline-danger {
-  color: #ef4444 !important;
-  border-color: #ef4444 !important;
-}
-.text-indigo, .border-indigo, .btn-outline-indigo {
-  color: #4b0082 !important;
-  border-color: #4b0082 !important;
-}
-.text-teal, .border-teal, .btn-outline-teal {
-  color: #00897b !important;
-  border-color: #00897b !important;
-}
+/* Financial */
+.text-purple,.border-purple,.btn-outline-purple{color:#7c3aed!important;border-color:#7c3aed!important}
+.text-orange,.border-orange,.btn-outline-orange{color:#f97316!important;border-color:#f97316!important}
+.text-pink,.border-pink,.btn-outline-pink{color:#ec4899!important;border-color:#ec4899!important}
 
-/* Financial Modules */
-.text-purple, .border-purple, .btn-outline-purple {
-  color: #7c3aed !important;
-  border-color: #7c3aed !important;
-}
-.text-orange, .border-orange, .btn-outline-orange {
-  color: #f97316 !important;
-  border-color: #f97316 !important;
-}
-.text-pink, .border-pink, .btn-outline-pink {
-  color: #ec4899 !important;
-  border-color: #ec4899 !important;
-}
+/* Diagnostic */
+.text-cyan,.border-cyan,.btn-outline-cyan{color:#06b6d4!important;border-color:#06b6d4!important}
+.text-rose,.border-rose,.btn-outline-rose{color:#e11d48!important;border-color:#e11d48!important}
+.text-fuchsia,.border-fuchsia,.btn-outline-fuchsia{color:#c026d3!important;border-color:#c026d3!important}
 
-/* Diagnostic Modules */
-.text-cyan, .border-cyan, .btn-outline-cyan {
-  color: #06b6d4 !important;
-  border-color: #06b6d4 !important;
-}
-.text-rose, .border-rose, .btn-outline-rose {
-  color: #e11d48 !important;
-  border-color: #e11d48 !important;
-}
-.text-fuchsia, .border-fuchsia, .btn-outline-fuchsia {
-  color: #c026d3 !important;
-  border-color: #c026d3 !important;
-}
+/* Operational */
+.text-red,.border-red,.btn-outline-red{color:#dc2626!important;border-color:#dc2626!important}
+.text-slate,.border-slate,.btn-outline-slate{color:#475569!important;border-color:#475569!important}
+.text-gray,.border-gray,.btn-outline-gray{color:#6b7280!important;border-color:#6b7280!important}
+.text-amber,.border-amber,.btn-outline-amber{color:#fbbf24!important;border-color:#fbbf24!important}
 
-/* Operational / Stock Modules */
-.text-red, .border-red, .btn-outline-red {
-  color: #dc2626 !important;
-  border-color: #dc2626 !important;
-}
-.text-slate, .border-slate, .btn-outline-slate {
-  color: #475569 !important;
-  border-color: #475569 !important;
-}
-.text-gray, .border-gray, .btn-outline-gray {
-  color: #6b7280 !important;
-  border-color: #6b7280 !important;
-}
-.text-amber, .border-amber, .btn-outline-amber {
-  color: #fbbf24 !important;
-  border-color: #fbbf24 !important;
-}
+/* Org & Admin */
+.text-blue,.border-blue,.btn-outline-blue{color:#2563eb!important;border-color:#2563eb!important}
+.text-green,.border-green,.btn-outline-green{color:#16a34a!important;border-color:#16a34a!important}
+.text-violet,.border-violet,.btn-outline-violet{color:#8b5cf6!important;border-color:#8b5cf6!important}
+.text-lime,.border-lime,.btn-outline-lime{color:#84cc16!important;border-color:#84cc16!important}
+.text-emerald,.border-emerald,.btn-outline-emerald{color:#10b981!important;border-color:#10b981!important}
 
-/* Organization & Administration */
-.text-blue, .border-blue, .btn-outline-blue {
-  color: #2563eb !important;
-  border-color: #2563eb !important;
-}
-.text-green, .border-green, .btn-outline-green {
-  color: #16a34a !important;
-  border-color: #16a34a !important;
-}
-.text-violet, .border-violet, .btn-outline-violet {
-  color: #8b5cf6 !important;
-  border-color: #8b5cf6 !important;
-}
-.text-lime, .border-lime, .btn-outline-lime {
-  color: #84cc16 !important;
-  border-color: #84cc16 !important;
-}
-.text-emerald, .border-emerald, .btn-outline-emerald {
-  color: #10b981 !important;
-  border-color: #10b981 !important;
-}
+/* Fallback */
+.text-secondary,.border-secondary,.btn-outline-secondary{color:#6c757d!important;border-color:#6c757d!important}
 
-/* Fallback / Default */
-.text-secondary, .border-secondary, .btn-outline-secondary {
-  color: #6c757d !important;
-  border-color: #6c757d !important;
+/* ========================================================================
+🏷️ Badges & Status
+======================================================================== */
+.status-breakdown{line-height:1.5;text-align:center}
+.status-breakdown .badge{
+  font-size:.78rem!important;
+  background:transparent!important;
+  border-width:1.3px!important;
+  letter-spacing:.2px;
+  transition:all .2s ease-in-out
+}
+.status-breakdown .badge:hover{transform:scale(1.05)}
+
+/* ========================================================================
+⚙️ Sparkline, Buttons, Progress
+======================================================================== */
+.sparkline{margin-top:6px}
+.btn-xs{
+  font-size:.75rem;
+  padding:.3rem .7rem;
+  border-radius:.4rem
+}
+.progress{border-radius:1rem;overflow:hidden}
+.progress-bar{transition:width .6s ease}
+
+/* ========================================================================
+💰 Financial Gradient Accents
+======================================================================== */
+.border-danger,.border-purple,.border-orange{
+  background:linear-gradient(180deg,#fff,rgba(0,0,0,.02))
 }
 
 /* ========================================================================
-   🏷️ Badges and Status Breakdown
-   ======================================================================== */
-.status-breakdown {
-  line-height: 1.5;
-  text-align: center;
+🗓️ Date Range Line
+======================================================================== */
+.kpi-card .date-range-line{
+  display:flex;justify-content:space-between;align-items:center;
+  border-top:1px dashed rgba(0,0,0,.08);
+  margin-top:6px;padding-top:4px;
+  font-size:.75rem;color:#666;opacity:.85;
+  letter-spacing:.2px
 }
-.status-breakdown .badge {
-  font-size: 0.78rem !important;
-  background: transparent !important;
-  border-width: 1.3px !important;
-  letter-spacing: 0.2px;
-  transition: all 0.2s ease-in-out;
-}
-.status-breakdown .badge:hover {
-  transform: scale(1.05);
-}
+.kpi-card .date-range-line .start-date{flex:1;text-align:left}
+.kpi-card .date-range-line .end-date{flex:1;text-align:right}
 
 /* ========================================================================
-   ⚙️ Sparkline, Buttons, and Progress
-   ======================================================================== */
-.sparkline { margin-top: 6px; }
-.btn-xs {
-  font-size: 0.75rem;
-  padding: 0.3rem 0.7rem;
-  border-radius: 0.4rem;
+✨ Animations
+======================================================================== */
+.fade-in{animation:fadeIn .4s ease-in}
+@keyframes fadeIn{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:none}
 }
-.progress {
-  border-radius: 1rem;
-  overflow: hidden;
-}
-.progress-bar {
-  transition: width 0.6s ease;
-}
-
-/* ========================================================================
-   💰 Financial Gradient Accents
-   ======================================================================== */
-.border-danger, .border-purple, .border-orange {
-  background: linear-gradient(180deg, #fff, rgba(0,0,0,0.02));
-}
-
-/* ========================================================================
-   🗓️ Date Range Line (Start ↔ End Aligned)
-   ======================================================================== */
-.kpi-card .date-range-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px dashed rgba(0, 0, 0, 0.08);
-  margin-top: 6px;
-  padding-top: 4px;
-  font-size: 0.75rem;
-  color: #666;
-  opacity: 0.85;
-  letter-spacing: 0.2px;
-}
-
-.kpi-card .date-range-line .start-date {
-  text-align: left;
-  flex: 1;
-}
-
-.kpi-card .date-range-line .end-date {
-  text-align: right;
-  flex: 1;
-}
-
-/* ========================================================================
-   ✨ Animations
-   ======================================================================== */
-.fade-in { animation: fadeIn 0.4s ease-in; }
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-
+/* ===============================
+📊 Dashboard Tabs
+================================ */
+.dashboard-tab:hover{background:#eef2ff;border-color:#6366f1;color:#4338ca}
+.dashboard-tab.active{background:#6366f1;border-color:#6366f1;color:#fff}
 
 /* ===============================
-   Dashboard Tabs Styling
+📦 Compact Modules Grid
 ================================ */
-
-.dashboard-tabs-wrapper {
-  background: #ffffff;
-  padding-bottom: 6px;          /* ✅ space ABOVE the divider */
-  margin-bottom: 8px;           /* ✅ space BELOW the divider */
-  border-bottom: 1px solid #e5e7eb;
+.module-tile:hover{border-color:#6366f1;background:#eef2ff}
+.module-icon{font-size:20px;color:#6366f1;margin-bottom:6px;line-height:1}
+.module-name{
+  font-size:12px;font-weight:600;color:#111827;line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 }
-
-.dashboard-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 12px 0 4px 0;        /* ✅ bottom padding reduced */
-}
-
-.dashboard-tab {
-  border: 1px solid #d0d5dd;
-  background: #f9fafb;
-  color: #344054;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease-in-out;
-}
-
-.dashboard-tab:hover {
-  background: #eef2ff;
-  border-color: #6366f1;
-  color: #4338ca;
-}
-
-.dashboard-tab.active {
-  background: #6366f1;
-  border-color: #6366f1;
-  color: #ffffff;
-}
-
+.module-tile.has-children .module-icon{color:#9333ea}
 
 /* ===============================
-   Compact Modules Grid (TIGHT)
+🚫 Sidebar – FULL KILL
 ================================ */
-
-.modules-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px; /* tighter gap */
+.sidebar-wrapper,#sidebar,#overlay{display:none!important}
+html,body,.page-wrapper,.main-container,.app-container{
+  margin-left:0!important;padding-left:0!important;
+  width:100%!important;max-width:100%!important
 }
-
-.module-tile {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px 8px;     /* 🔽 reduced padding */
-  text-align: center;
-  cursor: pointer;
-  background: #ffffff;
-  transition: all 0.12s ease-in-out;
-  min-height: 86px;      /* 🔽 shorter height */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.module-tile:hover {
-  border-color: #6366f1;
-  background: #eef2ff;
-}
-
-.module-icon {
-  font-size: 20px;       /* 🔽 smaller icon */
-  color: #6366f1;
-  margin-bottom: 6px;   /* 🔽 less space */
-  line-height: 1;
-}
-
-.module-name {
-  font-size: 12px;      /* 🔽 smaller text */
-  font-weight: 600;
-  color: #111827;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.module-tile.has-children .module-icon {
-  color: #9333ea;
-}
-
-
-/* ===============================
-   Hide Sidebar Only
-================================ */
-
-.sidebar-wrapper {
-  display: none !important;
-}
-
-/* Remove reserved sidebar space */
-.main-container {
-  margin-left: 0 !important;
-}
-
-/* =========================================
-   FORCE FULL WIDTH – KILL SIDEBAR SPACE
-========================================= */
-
-/* 1. Remove ALL sidebar offsets */
-html,
-body,
-.page-wrapper,
-.main-container,
-.app-container {
-  margin-left: 0 !important;
-  padding-left: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-/* 2. Kill sidebar + overlay completely */
-#sidebar,
-.sidebar-wrapper,
-#overlay {
-  display: none !important;
-}
-
-/* 3. Prevent template state classes */
 .page-wrapper.sidebar-open,
-.page-wrapper.sidebar-collapsed {
-  padding-left: 0 !important;
+.page-wrapper.sidebar-collapsed{padding-left:0!important}
+.app-body{width:100%!important}
+
+
+/* 🔷 DASHBOARD KPI ICONS */
+.kpi-card .kpi-icon i{font-size:2.4rem;line-height:1;display:inline-block;margin-bottom:6px;opacity:.95}
+.kpi-card:hover .kpi-icon i{transform:scale(1.1);transition:transform .15s ease}
+.kpi-card .fw-bold.text-uppercase{letter-spacing:.5px;font-size:.75rem}
+.kpi-card h3,.kpi-card h4{font-size:1.8rem;line-height:1.2}
+.kpi-card .small.text-muted{font-size:.75rem;margin-top:2px}
+
+/* 📦 MODULE TILES */
+.modules-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.module-tile{border:1px solid #e5e7eb;border-radius:10px;padding:14px 10px;text-align:center;background:#fff;cursor:pointer;transition:all .15s ease;min-height:120px;display:flex;flex-direction:column;justify-content:center}
+.module-tile:hover{background:#eef2ff;border-color:#6366f1;transform:translateY(-3px)}
+.module-icon i{font-size:2.8rem;color:#6366f1;margin-bottom:8px;line-height:1}
+.module-name{font-size:.85rem;font-weight:600;color:#111827;line-height:1.2}
+.module-helper{font-size:.7rem;color:#6b7280;margin-top:4px}
+.module-tile.has-children .module-icon i{color:#9333ea}
+
+/* 🧭 GRID BALANCE */
+.kpi-card{height:100%}
+
+/* 📱 MOBILE */
+@media (max-width:768px){
+.module-icon i{font-size:2.4rem}
+.kpi-card h3,.kpi-card h4{font-size:1.6rem}
 }
 
-/* 4. Ensure app body stretches */
-.app-body {
-  width: 100% !important;
-}
+.kpi-title{font-size:.8rem;font-weight:700;color:#111827}
+.kpi-value{font-size:1.8rem;font-weight:800;line-height:1}
+.kpi-badges{display:flex;gap:6px;flex-wrap:wrap}
+.kpi-dates{font-size:.7rem;color:#6b7280}
+.kpi-spark{width:80px;height:28px;opacity:.85}
+.kpi-link{font-size:.75rem;font-weight:600;text-decoration:none}
+
+.kpi-card .card-body{padding:12px 14px}
+.kpi-badges{margin-bottom:2px}
+.kpi-link{margin-top:2px}
 
 
-
-
-
-/* =========================================================
-   🔷 DASHBOARD KPI ICONS (BIG & INTUITIVE)
-========================================================= */
-
-/* KPI icon wrapper (already added in HTML via JS output) */
-.kpi-card .kpi-icon i {
-  font-size: 2.4rem;              /* BIGGER icon */
-  line-height: 1;
-  display: inline-block;
-  margin-bottom: 6px;
-  opacity: 0.95;
-}
-
-/* Hover emphasis */
-.kpi-card:hover .kpi-icon i {
-  transform: scale(1.1);
-  transition: transform 0.15s ease;
-}
-
-/* KPI title spacing */
-.kpi-card .fw-bold.text-uppercase {
-  letter-spacing: 0.5px;
-  font-size: 0.75rem;
-}
-
-/* KPI main number */
-.kpi-card h3,
-.kpi-card h4 {
-  font-size: 1.8rem;
-  line-height: 1.2;
-}
-
-/* Helper / action hint text */
-.kpi-card .small.text-muted {
-  font-size: 0.75rem;
-  margin-top: 2px;
-}
-
-/* =========================================================
-   📦 MODULE TILES – uCertify STYLE
-========================================================= */
-
-.modules-grid {
+/* LAYOUT */
+.dashboard-modern{background:#f6f8fb}
+/* ===============================
+🧭 DASHBOARD GRID — SINGLE SOURCE
+================================ */
+.dashboard-grid{
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px;
+  grid-template-columns: minmax(0,1fr) 320px;
+  gap: 1.5rem;
+  align-items: start;
 }
 
-/* Module tile base */
-.module-tile {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 14px 10px;
-  text-align: center;
-  background: #ffffff;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  min-height: 120px;
+.dashboard-main{display:flex;flex-direction:column;gap:1.5rem}
+.dashboard-section{background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 4px 18px rgba(0,0,0,.04)}
+.section-header h6{font-weight:700;display:flex;gap:.5rem;align-items:center;margin-bottom:1rem}
+.dashboard-side{display:flex;flex-direction:column;gap:1rem}
+.side-card{background:#fff;border-radius:14px;padding:1rem;box-shadow:0 4px 18px rgba(0,0,0,.04)}
+.side-card-header h6{font-weight:700;margin-bottom:.75rem}
+@media (max-width:992px){.dashboard-grid{grid-template-columns:1fr}}
+.dashboard-section:not(:last-child){border-bottom:1px solid #eef2f7}
+.dashboard-side{position:sticky;top:90px}
 
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+/* ===============================
+📊 KPI GRID — SINGLE SOURCE
+================================ */
+.dashboard-kpi-grid,
+.dashboard-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  width: 100%;
 }
 
-/* Hover */
-.module-tile:hover {
-  background: #eef2ff;
-  border-color: #6366f1;
-  transform: translateY(-3px);
+/* ===============================
+📊 Activity Analytics FIX
+=============================== */
+#dashboard-charts{max-height:360px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
+#dashboard-charts>div{max-width:100%}
+#dashboard-charts::-webkit-scrollbar{width:6px}
+#dashboard-charts::-webkit-scrollbar-thumb{background:#d0d5dd;border-radius:6px}
+.dashboard-section{min-height:unset}
+.dashboard-section .section-header{margin-bottom:.75rem}
+
+
+
+/* 📱 FORCE CARDS TO REACH SCREEN EDGES */
+@media(max-width:768px){
+.app-body.dashboard-modern,
+.app-body.dashboard-modern .container-fluid{
+  padding-left:.5rem!important;
+  padding-right:.5rem!important
+}
+.dashboard-kpi-strip,
+.dashboard-kpi-grid,
+.dashboard-grid{
+  gap:.5rem!important
+}
+.dashboard-section,
+.kpi-card,
+.side-card{
+  width:100%!important;
+  max-width:100%!important
+}
+}
+/* 🔥 KPI ICON VISIBILITY BOOST */
+.kpi-card .kpi-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:38px;
+  height:38px;
+  border-radius:10px;
+  background:rgba(99,102,241,.12)
+}
+.kpi-card .kpi-icon i{
+  font-size:1.4rem;
+  opacity:1
 }
 
-/* BIG module icon */
-.module-icon i {
-  font-size: 2.8rem;              /* ⬅️ very clear */
-  color: #6366f1;
-  margin-bottom: 8px;
-  line-height: 1;
-}
-
-/* Module name */
-.module-name {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #111827;
-  line-height: 1.2;
-}
-
-/* Module helper text */
-.module-helper {
-  font-size: 0.7rem;
-  color: #6b7280;
-  margin-top: 4px;
-}
-
-/* Parent modules (folders) */
-.module-tile.has-children .module-icon i {
-  color: #9333ea;
-}
 
 /* =========================================================
-   🧭 DASHBOARD GRID BALANCE
+📦 MODULES TAB – FORCE GRID LAYOUT (FINAL FIX)
 ========================================================= */
 
-.dashboard-kpi-grid {
+/* Target ONLY the Modules tab container */
+[data-dashboard-section="modules"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
   align-items: stretch;
 }
 
-.kpi-card {
-  height: 100%;
+/* Ensure tiles stretch correctly */
+[data-dashboard-section="modules"] .module-tile {
+  width: 100%;
+  max-width: 100%;
 }
 
-/* =========================================================
-   📱 MOBILE TUNING
-========================================================= */
 
-@media (max-width: 768px) {
-  .module-icon i {
-    font-size: 2.4rem;
-  }
 
-  .kpi-card h3,
-  .kpi-card h4 {
-    font-size: 1.6rem;
-  }
+/* ===============================
+📅 LIVE DASHBOARD CALENDAR (COMPACT)
+================================ */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
-.kpi-title {
-  font-size: 0.8rem;
+.calendar-header button {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: #6366f1;
+  padding: 2px 6px;
+}
+
+.calendar-header span {
+  font-size: 0.75rem;
   font-weight: 700;
   color: #111827;
 }
 
-.kpi-value {
-  font-size: 1.8rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.kpi-badges {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.kpi-dates {
+#dashboard-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
   font-size: 0.7rem;
+}
+
+.calendar-day {
+  padding: 6px 0;
+  border-radius: 6px;
+}
+
+.calendar-day.header {
+  font-weight: 700;
   color: #6b7280;
 }
 
-.kpi-spark {
-  width: 80px;
-  height: 28px;
-  opacity: 0.85;
+.calendar-day.today {
+  background: #6366f1;
+  color: #fff;
+  font-weight: 700;
 }
 
-.kpi-link {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-decoration: none;
+.calendar-day.muted {
+  color: #9ca3af;
 }
+
+
+/* =========================================================
+🧭 DASHBOARD TABS – FINAL ALIGNMENT FIX
+========================================================= */
+
+/* Tabs wrapper */
+.dashboard-tabs-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Tabs container */
+.dashboard-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+/* Individual tab */
+.dashboard-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;               /* 🔥 force consistent height */
+  padding: 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Active tab */
+.dashboard-tab.active {
+  background: #6366f1;
+  color: #fff;
+  border-color: #6366f1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+📱 VYTALGUARD — FINAL MOBILE LAYOUT FIX (COPY / PASTE)
+Purpose:
+- Tabs stay correct
+- Modules unchanged
+- KPIs correct
+- RIGHT COLUMN (Alerts / Queues / Calendar) moves UNDER main
+========================================================= */
+
 /* ===============================
-   KPI GRID – COMPACT DENSITY
-================================ */
+📱 DASHBOARD TABS (MOBILE)
+=============================== */
+@media (max-width: 768px) {
+  .dashboard-tabs-wrapper {
+    padding: 0.5rem 0.75rem;
+  }
 
-.dashboard-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px; /* 🔥 tight spacing */
-}
+  .dashboard-tabs {
+    display: flex;
+    width: 100%;
+    gap: 0.5rem;
+  }
 
-/* Ultra-wide screens */
-@media (min-width: 1600px) {
-  .dashboard-kpi-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  .dashboard-tab {
+    flex: 1;
+    height: 34px;
+    font-size: 0.8rem;
+    padding: 0;
+    text-align: center;
   }
 }
-.kpi-card .card-body {
-  padding: 12px 14px; /* was larger */
+
+/* ===============================
+📦 MODULES TAB (MOBILE)
+(KEEP AS-IS, SINGLE COLUMN)
+=============================== */
+@media (max-width: 768px) {
+  [data-dashboard-section="modules"] {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
 }
 
-.kpi-badges {
-  margin-bottom: 2px;
+/* ===============================
+📱 HARD WIDTH SAFETY
+=============================== */
+@media (max-width: 768px) {
+  .container,
+  .container-fluid,
+  .app-body.dashboard-modern {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100% !important;
+  }
+
+  html,
+  body {
+    overflow-x: hidden !important;
+  }
 }
 
-.kpi-link {
-  margin-top: 2px;
+/* ===============================
+📊 KPI + SECTION COLUMNS (MOBILE)
+=============================== */
+@media (max-width: 768px) {
+
+  /* Top KPIs → 2 columns */
+  #top-kpis {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+
+  /* Clinical Overview → 1 column */
+  #clinical-kpis {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 0.5rem !important;
+  }
+
+  /* System & Admin → 2 columns */
+  #admin-kpis {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+}
+
+/* ===============================
+📈 ACTIVITY ANALYTICS (MOBILE)
+=============================== */
+@media (max-width: 768px) {
+  #dashboard-charts {
+    max-height: none !important;
+    overflow: hidden !important;
+    padding-right: 0 !important;
+  }
+
+  #dashboard-charts > div {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .dashboard-section:has(#dashboard-charts) {
+    padding: 0.75rem !important;
+  }
+}
+
+/* ===============================
+🧩 KPI CARD COMPACT (MOBILE)
+=============================== */
+@media (max-width: 768px) {
+  .kpi-card .card-body {
+    padding: 10px !important;
+  }
+
+  .kpi-value {
+    font-size: 1.35rem !important;
+  }
+}
+
+/* ===============================
+⬇️ MOVE RIGHT COLUMN TO BOTTOM
+(ALERTS / QUEUES / CALENDAR)
+=============================== */
+@media (max-width: 768px) {
+
+  .dashboard-side {
+    position: static !important;
+    top: auto !important;
+  }
+
+  .dashboard-grid {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .dashboard-main {
+    order: 1;
+  }
+
+  .dashboard-side {
+    order: 2;
+    margin-top: 0.75rem;
+  }
+
 }

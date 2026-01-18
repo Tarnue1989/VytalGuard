@@ -1,4 +1,3 @@
-// 📁 controllers/autoBillingRuleController.js
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -8,26 +7,26 @@ import {
   Organization,
   User,
   BillableItem,
-  FeatureModule, // ✅ Added
+  FeatureModule,
 } from "../models/index.js";
-import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { success, error } from "../utils/response.js";
+import { authzService } from "../services/authzService.js";
+import { auditService } from "../services/auditService.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { validate } from "../utils/validation.js";
 import {
   AUTO_BILLING_RULE_STATUS,
   AUTO_BILLING_CHARGE_MODE,
 } from "../constants/enums.js";
-import { authzService } from "../services/authzService.js";
-import { auditService } from "../services/auditService.js";
-import { FIELD_VISIBILITY_AUTO_BILLING_RULE } from "../constants/fieldVisibility.js";
+import { isSuperAdmin } from "../utils/role-utils.js";
 
 /* ============================================================
-   🔧 HELPERS
+   🔧 LOCAL DEBUG OVERRIDE (Auto Billing Rule)
 ============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map((r) => r.toLowerCase().replace(/\s+/g, "")).includes("superadmin");
-}
+const DEBUG_OVERRIDE = true; // 👈 turn OFF in prod
+const debug = makeModuleLogger("autoBillingRuleController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔗 SHARED INCLUDES
@@ -35,7 +34,7 @@ function isSuperAdmin(user) {
 const AUTOBILLINGRULE_INCLUDES = [
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: FeatureModule, as: "featureModule", attributes: ["id", "name", "key"] }, // ✅ Added
+  { model: FeatureModule, as: "featureModule", attributes: ["id", "name", "key"] },
   { model: BillableItem, as: "billableItem", attributes: ["id", "name", "price", "status"] },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
@@ -43,30 +42,37 @@ const AUTOBILLINGRULE_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA FACTORY
+   📋 ROLE-AWARE JOI SCHEMA (Patient-Parity)
 ============================================================ */
-function buildAutoBillingRuleSchema(userRole, mode = "create") {
+function buildAutoBillingRuleSchema(user, mode = "create") {
   const base = {
-    trigger_feature_module_id: Joi.string().uuid().allow(null), // ✅ Added
+    trigger_feature_module_id: Joi.string().uuid().allow("", null),
     trigger_module: Joi.string().max(100).required(),
     billable_item_id: Joi.string().uuid().required(),
+
     auto_generate: Joi.boolean().default(true),
-    charge_mode: Joi.string().valid(...AUTO_BILLING_CHARGE_MODE).required(),
+    charge_mode: Joi.string()
+      .valid(...AUTO_BILLING_CHARGE_MODE)
+      .required(),
     default_price: Joi.number().precision(2).allow(null),
-    status:
-      mode === "create"
-        ? Joi.forbidden().default(AUTO_BILLING_RULE_STATUS[0])
-        : Joi.forbidden(),
+
+    // 🔒 backend controlled
+    status: Joi.forbidden(),
+
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.string().uuid().allow("", null),
   };
 
-  if (userRole === "superadmin") {
-    base.organization_id = Joi.string().uuid().optional();
-    base.facility_id = Joi.string().uuid().optional();
+  /* 🔓 SUPER ADMIN OVERRIDE */
+  if (isSuperAdmin(user)) {
+    base.organization_id = Joi.string().uuid().required();
+    base.facility_id = Joi.string().uuid().allow("", null);
   }
 
+  /* ✏️ UPDATE MODE */
   if (mode === "update") {
     Object.keys(base).forEach((k) => {
-      if (k !== "status") base[k] = base[k].optional();
+      base[k] = base[k].optional();
     });
   }
 
@@ -74,7 +80,7 @@ function buildAutoBillingRuleSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE AUTO BILLING RULE
+   📌 CREATE AUTO BILLING RULE (DEBUG-ALIGNED)
 ============================================================ */
 export const createAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
@@ -85,25 +91,44 @@ export const createAutoBillingRule = async (req, res) => {
       action: "create",
       res,
     });
+
+    debug.log("PERMISSION CHECK", {
+      module: "auto_billing_rule",
+      action: "create",
+      allowed,
+      userId: req.user?.id,
+      roles: req.user?.roleNames,
+    });
+
     if (!allowed) return;
 
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const schema = buildAutoBillingRuleSchema(roleName, "create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    debug.log("create → incoming body", req.body);
+
+    const { value, errors } = validate(
+      buildAutoBillingRuleSchema(req.user, "create"),
+      req.body
+    );
+
+    if (errors) {
+      debug.warn("create → validation failed", errors);
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    let orgId = req.user.organization_id || null;
-    let facilityId = req.user.facility_id || null;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || req.body.organization_id || orgId;
-      facilityId = value.facility_id || req.body.facility_id || facilityId;
-    }
+    debug.log("create → validated payload", value);
+
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
+    debug.log("create → resolved scope", { orgId, facilityId });
+
     if (!orgId) {
+      debug.warn("create → missing organization");
       await t.rollback();
-      return error(res, "Missing organization assignment", null, 400);
+      return error(res, "Organization is required", null, 400);
     }
 
     const exists = await AutoBillingRule.findOne({
@@ -116,42 +141,59 @@ export const createAutoBillingRule = async (req, res) => {
       paranoid: false,
       transaction: t,
     });
+
     if (exists) {
+      debug.warn("create → duplicate detected", {
+        existingId: exists.id,
+      });
       await t.rollback();
-      return error(res, "Auto Billing Rule for this module/item already exists in this scope", null, 400);
+      return error(
+        res,
+        "Auto Billing Rule already exists for this module and item",
+        null,
+        400
+      );
     }
 
-    const newRule = await AutoBillingRule.create(
+    const created = await AutoBillingRule.create(
       {
-        ...value, // ✅ includes trigger_feature_module_id if provided
+        ...value,
         organization_id: orgId,
         facility_id: facilityId,
+        status: AUTO_BILLING_RULE_STATUS[0],
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
+    debug.log("create → created record", created.toJSON());
+
     await t.commit();
-    const full = await AutoBillingRule.findOne({ where: { id: newRule.id }, include: AUTOBILLINGRULE_INCLUDES });
+
+    const full = await AutoBillingRule.findOne({
+      where: { id: created.id },
+      include: AUTOBILLINGRULE_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
       module: "auto_billing_rule",
       action: "create",
-      entityId: newRule.id,
+      entityId: created.id,
       entity: full,
-      details: value,
     });
 
     return success(res, "✅ Auto Billing Rule created", full);
   } catch (err) {
+    debug.error("create → FAILED", err);
     await t.rollback();
     return error(res, "❌ Failed to create auto billing rule", err);
   }
 };
 
+
 /* ============================================================
-   📌 UPDATE AUTO BILLING RULE
+   📌 UPDATE AUTO BILLING RULE (DEBUG-ALIGNED)
 ============================================================ */
 export const updateAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
@@ -162,54 +204,82 @@ export const updateAutoBillingRule = async (req, res) => {
       action: "update",
       res,
     });
+
+    debug.log("PERMISSION CHECK", {
+      module: "auto_billing_rule",
+      action: "update",
+      allowed,
+      userId: req.user?.id,
+      roles: req.user?.roleNames,
+    });
+
     if (!allowed) return;
 
     const { id } = req.params;
-    const roleName = (req.user?.roleNames?.[0] || "").toLowerCase().replace(/\s+/g, "");
-    const schema = buildAutoBillingRuleSchema(roleName, "update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+
+    debug.log("update → incoming body", req.body);
+
+    const { value, errors } = validate(
+      buildAutoBillingRuleSchema(req.user, "update"),
+      req.body
+    );
+
+    if (errors) {
+      debug.warn("update → validation failed", errors);
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    let orgId = req.user.organization_id || null;
-    let facilityId = req.user.facility_id || null;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || req.query.organization_id || orgId;
-      facilityId = value.facility_id || req.query.facility_id || facilityId;
-    }
-    if (!orgId) {
-      await t.rollback();
-      return error(res, "Missing organization assignment", null, 400);
+    const where = { id };
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      where.facility_id = req.user.facility_id || null;
     }
 
-    const rule = await AutoBillingRule.findOne({ where: { id, organization_id: orgId, facility_id: facilityId }, transaction: t });
+    const rule = await AutoBillingRule.findOne({ where, transaction: t });
     if (!rule) {
+      debug.warn("update → rule not found", { id });
       await t.rollback();
       return error(res, "Auto Billing Rule not found", null, 404);
     }
 
+    debug.log("update → before", rule.toJSON());
+
     if (value.trigger_module || value.billable_item_id) {
       const exists = await AutoBillingRule.findOne({
         where: {
-          organization_id: orgId,
-          facility_id: facilityId,
+          organization_id: rule.organization_id,
+          facility_id: rule.facility_id,
           trigger_module: value.trigger_module || rule.trigger_module,
           billable_item_id: value.billable_item_id || rule.billable_item_id,
           id: { [Op.ne]: id },
         },
         paranoid: false,
       });
+
       if (exists) {
+        debug.warn("update → duplicate detected", {
+          existingId: exists.id,
+        });
         await t.rollback();
-        return error(res, "Auto Billing Rule for this module/item already exists in this scope", null, 400);
+        return error(
+          res,
+          "Another Auto Billing Rule already exists for this module and item",
+          null,
+          400
+        );
       }
     }
 
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
     await rule.update(
       {
-        ...value, // ✅ includes trigger_feature_module_id if changed
+        ...value,
         organization_id: orgId,
         facility_id: facilityId,
         updated_by_id: req.user?.id || null,
@@ -217,8 +287,14 @@ export const updateAutoBillingRule = async (req, res) => {
       { transaction: t }
     );
 
+    debug.log("update → after", rule.toJSON());
+
     await t.commit();
-    const full = await AutoBillingRule.findOne({ where: { id }, include: AUTOBILLINGRULE_INCLUDES });
+
+    const full = await AutoBillingRule.findOne({
+      where: { id },
+      include: AUTOBILLINGRULE_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -226,11 +302,11 @@ export const updateAutoBillingRule = async (req, res) => {
       action: "update",
       entityId: id,
       entity: full,
-      details: value,
     });
 
     return success(res, "✅ Auto Billing Rule updated", full);
   } catch (err) {
+    debug.error("update → FAILED", err);
     await t.rollback();
     return error(res, "❌ Failed to update auto billing rule", err);
   }
@@ -249,53 +325,39 @@ export const getAllAutoBillingRules = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const visibleFields = FIELD_VISIBILITY_AUTO_BILLING_RULE[role] || FIELD_VISIBILITY_AUTO_BILLING_RULE.staff;
-
-    const options = buildQueryOptions(req, {
-      model: AutoBillingRule,
-      defaultSort: ["trigger_module", "ASC"],
-      allowedFilters: [
-        "organization_id",
-        "facility_id",
-        "trigger_feature_module_id", // ✅ Added
-        "trigger_module",
-        "billable_item_id",
-        "charge_mode",
-        "status",
-        "created_at",
-      ],
-      allowedSearchFields: ["trigger_module"],
-      include: AUTOBILLINGRULE_INCLUDES,
-      fields: visibleFields,
-    });
+    const options = buildQueryOptions(
+      req,
+      "trigger_module",
+      "ASC"
+    );
 
     options.where = options.where || {};
+
+    // 🔒 Tenant scope
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") options.where.facility_id = req.user.facility_id;
+      options.where.facility_id = req.user.facility_id || null;
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        options.where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        options.where.facility_id = req.query.facility_id;
     }
 
+    // 🔍 Search
     if (options.search) {
-      options.where[Op.or] = [{ trigger_module: { [Op.iLike]: `%${options.search}%` } }];
+      options.where[Op.or] = [
+        { trigger_module: { [Op.iLike]: `%${options.search}%` } },
+      ];
     }
 
     const { count, rows } = await AutoBillingRule.findAndCountAll({
       where: options.where,
-      include: options.include,
+      include: AUTOBILLINGRULE_INCLUDES, // associations handled here
       order: options.order,
       offset: options.offset,
       limit: options.limit,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: "auto_billing_rule",
-      action: "list",
-      details: { query: req.query, returned: count },
+      distinct: true,
     });
 
     return success(res, "✅ Auto Billing Rules loaded", {
@@ -307,13 +369,15 @@ export const getAllAutoBillingRules = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("AUTO BILLING RULE LIST FAILED:", err);
     return error(res, "❌ Failed to load auto billing rules", err);
   }
 };
 
+
 /* ============================================================
    📌 GET AUTO BILLING RULE BY ID
-   ============================================================ */
+============================================================ */
 export const getAutoBillingRuleById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -325,21 +389,27 @@ export const getAutoBillingRuleById = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") {
-        where.facility_id = req.user.facility_id;
-      }
+      where.facility_id = req.user.facility_id || null;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    const rule = await AutoBillingRule.findOne({ where, include: AUTOBILLINGRULE_INCLUDES });
-    if (!rule) return error(res, "❌ Auto Billing Rule not found", null, 404);
+    const rule = await AutoBillingRule.findOne({
+      where,
+      include: AUTOBILLINGRULE_INCLUDES,
+    });
+
+    if (!rule) {
+      return error(res, "❌ Auto Billing Rule not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
@@ -355,10 +425,9 @@ export const getAutoBillingRuleById = async (req, res) => {
   }
 };
 
-
 /* ============================================================
    📌 TOGGLE AUTO BILLING RULE STATUS
-   ============================================================ */
+============================================================ */
 export const toggleAutoBillingRuleStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -370,26 +439,36 @@ export const toggleAutoBillingRuleStatus = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where.facility_id = req.user.facility_id || null;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     const rule = await AutoBillingRule.findOne({ where });
-    if (!rule) return error(res, "❌ Auto Billing Rule not found", null, 404);
+    if (!rule) {
+      return error(res, "❌ Auto Billing Rule not found", null, 404);
+    }
 
     const [ACTIVE, INACTIVE] = AUTO_BILLING_RULE_STATUS;
     const newStatus = rule.status === ACTIVE ? INACTIVE : ACTIVE;
 
-    await rule.update({ status: newStatus, updated_by_id: req.user?.id || null });
+    await rule.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
 
-    const full = await AutoBillingRule.findOne({ where: { id }, include: AUTOBILLINGRULE_INCLUDES });
+    const full = await AutoBillingRule.findOne({
+      where: { id },
+      include: AUTOBILLINGRULE_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -400,15 +479,19 @@ export const toggleAutoBillingRuleStatus = async (req, res) => {
       details: { from: rule.status, to: newStatus },
     });
 
-    return success(res, `✅ Auto Billing Rule status set to ${newStatus}`, full);
+    return success(
+      res,
+      `✅ Auto Billing Rule status set to ${newStatus}`,
+      full
+    );
   } catch (err) {
     return error(res, "❌ Failed to toggle auto billing rule status", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL AUTO BILLING RULES LITE (with ?q= support)
-   ============================================================ */
+   📌 GET ALL AUTO BILLING RULES LITE
+============================================================ */
 export const getAllAutoBillingRulesLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -420,18 +503,19 @@ export const getAllAutoBillingRulesLite = async (req, res) => {
     if (!allowed) return;
 
     const { q } = req.query;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    const where = { status: AUTO_BILLING_RULE_STATUS[0] }; // active only
+    const where = {
+      status: AUTO_BILLING_RULE_STATUS[0], // active
+    };
 
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") {
-        where.facility_id = req.user.facility_id;
-      }
+      where.facility_id = req.user.facility_id || null;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     if (q) {
@@ -442,16 +526,22 @@ export const getAllAutoBillingRulesLite = async (req, res) => {
 
     const rules = await AutoBillingRule.findAll({
       where,
-      attributes: ["id", "trigger_module", "billable_item_id", "charge_mode"],
-      include: [{ model: BillableItem, as: "billableItem", attributes: ["id", "name", "price"] }],
+      attributes: ["id", "trigger_module", "charge_mode"],
+      include: [
+        {
+          model: BillableItem,
+          as: "billableItem",
+          attributes: ["id", "name", "price"],
+        },
+      ],
       order: [["trigger_module", "ASC"]],
       limit: 20,
     });
 
-    const result = rules.map(r => ({
+    const records = rules.map((r) => ({
       id: r.id,
       trigger_module: r.trigger_module,
-      billable_item: r.billableItem ? r.billableItem.name : "",
+      billable_item: r.billableItem?.name || "",
       charge_mode: r.charge_mode,
     }));
 
@@ -459,18 +549,20 @@ export const getAllAutoBillingRulesLite = async (req, res) => {
       user: req.user,
       module: "auto_billing_rule",
       action: "list_lite",
-      details: { count: result.length, query: q || null },
+      details: { count: records.length, q: q || null },
     });
 
-    return success(res, "✅ Auto Billing Rules loaded (lite)", { records: result });
+    return success(res, "✅ Auto Billing Rules loaded (lite)", {
+      records,
+    });
   } catch (err) {
     return error(res, "❌ Failed to load auto billing rules (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE AUTO BILLING RULE (Soft Delete with Audit)
-   ============================================================ */
+   📌 DELETE AUTO BILLING RULE (Soft Delete)
+============================================================ */
 export const deleteAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -483,15 +575,17 @@ export const deleteAutoBillingRule = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where.facility_id = req.user.facility_id || null;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     const rule = await AutoBillingRule.findOne({ where, transaction: t });
@@ -500,11 +594,19 @@ export const deleteAutoBillingRule = async (req, res) => {
       return error(res, "❌ Auto Billing Rule not found", null, 404);
     }
 
-    await rule.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await rule.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await rule.destroy({ transaction: t });
+
     await t.commit();
 
-    const full = await AutoBillingRule.findOne({ where: { id }, include: AUTOBILLINGRULE_INCLUDES, paranoid: false });
+    const full = await AutoBillingRule.findOne({
+      where: { id },
+      include: AUTOBILLINGRULE_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,

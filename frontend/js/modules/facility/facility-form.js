@@ -1,8 +1,10 @@
+// 📁 facility-form.js – Secure & Role-Aware Facility Form (Enterprise-Aligned)
 // ============================================================================
-// 🏥 VytalGuard – Secure & Role-Aware Facility Form
-// 🔹 Fully aligned with Enterprise Master Pattern (organization-form.js)
-// 🔹 Preserves all existing IDs, suggestion input, and submission flow
-// 🔹 Adds auth guard, logout watcher, safe prefill, and unified UX behavior
+// 🧭 Master Pattern: role-form.js (Authoritative)
+// 🔹 Rule-driven validation (FACILITY_FORM_RULES)
+// 🔹 ONLY superadmin can see/select organization
+// 🔹 Org admin has implicit org (never selectable)
+// 🔹 Backend remains authority
 // ============================================================================
 
 import {
@@ -13,198 +15,158 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
+import {
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
-import { setupSuggestionInputDynamic } from "../../utils/data-loaders.js";
+
+import {
+  loadOrganizationsLite,
+  setupSelectOptions,
+} from "../../utils/data-loaders.js";
+
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { FACILITY_FORM_RULES } from "./facility.form.rules.js";
 
 /* ============================================================
-   🔧 Helpers
+   Helpers
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const getQueryParam = (k) =>
+  new URLSearchParams(window.location.search).get(k);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
+const normalizeMessage = (r, fb) =>
+  r?.message || r?.error || r?.msg || fb;
+
+const normalizeUUID = (v) =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
 
 /* ============================================================
-   🚀 Setup Facility Form
+   Setup Facility Form
 ============================================================ */
 export async function setupFacilityFormSubmission({ form }) {
-  // 🔐 Auth Guard & Logout Watcher
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
 
-  const sessionId = sessionStorage.getItem("facilityEditId");
-  const queryId = getQueryParam("id");
-  const facId = sessionId || queryId;
-  const isEdit = !!facId;
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+  const isOrgAdmin = userRole === "organization_admin";
 
-  // 🎨 UI Title & Button Mode
+  const facilityId =
+    sessionStorage.getItem("facilityEditId") || getQueryParam("id");
+  const isEdit = Boolean(facilityId);
+
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  const cancelBtn = document.getElementById("cancelBtn");
+  const submitBtn = form.querySelector("button[type=submit]");
 
-  const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Facility");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Facility`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Facility");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Facility`);
-    }
+  const setUI = (edit) => {
+    titleEl.textContent = edit ? "Edit Facility" : "Add Facility";
+    submitBtn.innerHTML = edit
+      ? `<i class="ri-save-3-line me-1"></i> Update Facility`
+      : `<i class="ri-add-line me-1"></i> Add Facility`;
   };
-  setUI(isEdit ? "edit" : "add");
+  setUI(isEdit);
+
+  /* ---------------- DOM ---------------- */
+  const orgSelect = document.getElementById("organizationSelect");
+
+  const hideOrg = () =>
+    orgSelect?.closest(".mb-3")?.classList.add("hidden");
+  const showOrg = () =>
+    orgSelect?.closest(".mb-3")?.classList.remove("hidden");
 
   /* ============================================================
-     🧩 Organization Suggestion Input (Dynamic Binding)
+     Scope Visibility
   ============================================================ */
-  const orgInput = document.getElementById("organizationInput");
-  const orgSuggestions = document.getElementById("organizationSuggestions");
-  const orgHidden = document.getElementById("organization_id");
-
-  if (orgInput && orgSuggestions && orgHidden) {
-    setupSuggestionInputDynamic(
-      orgInput,
-      orgSuggestions,
-      "/api/lite/organizations",
-      (selected) => {
-        orgHidden.value = selected?.id || "";
-      },
-      "name"
-    );
-  }
+  if (isSuper) showOrg();
+  else hideOrg();
 
   /* ============================================================
-     🧭 Prefill (Edit Mode)
+     Load dropdowns
   ============================================================ */
-  if (isEdit && facId) {
-    try {
-      let entry = null;
-      const cached = sessionStorage.getItem("facilityEditPayload");
-      if (cached) entry = JSON.parse(cached);
-
-      if (!entry) {
-        showLoading();
-        const res = await authFetch(`/api/facilities/${facId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load facility"));
-        entry = result?.data;
-      }
-
-      if (!entry) throw new Error("❌ Facility not found");
-
-      // 🏷 Prefill core fields
-      ["name", "code", "address", "phone", "email"].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = entry[id] || "";
-      });
-
-      // 🧩 Prefill organization
-      if (entry.organization) {
-        orgInput.value = entry.organization.name || "";
-        orgHidden.value = entry.organization_id || entry.organization.id;
-      } else if (entry.organization_id) {
-        orgHidden.value = entry.organization_id;
-      }
-
-      // ⚙️ Status radio
-      if (entry.status) {
-        const radio = document.getElementById(
-          `status_${entry.status.toLowerCase()}`
-        );
-        if (radio) radio.checked = true;
-      }
-    } catch (err) {
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load facility");
-    } finally {
-      hideLoading();
+  try {
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
     }
+  } catch {
+    showToast("❌ Failed to load organization list");
   }
 
   /* ============================================================
-     💾 Submit Handler
+     Submit — RULE-DRIVEN (ROLE PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const orgVal = orgHidden?.value?.trim();
-    if (!orgVal) {
-      showToast("❌ Organization is required");
-      orgInput?.focus();
+    const errors = [];
+
+    for (const rule of FACILITY_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({
+          field: rule.id,
+          message: rule.message,
+        });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
       return;
     }
 
+    const getVal = (name) =>
+      form.querySelector(`[name="${name}"]`)?.value?.trim();
+
     const payload = {
-      organization_id: orgVal,
-      name: (document.getElementById("name")?.value || "").trim(),
-      code: (document.getElementById("code")?.value || "").trim(),
-      address: (document.getElementById("address")?.value || "").trim() || null,
-      phone: (document.getElementById("phone")?.value || "").trim() || null,
-      email: (document.getElementById("email")?.value || "").trim() || null,
+      name: getVal("name"),
+      code: getVal("code"),
+      address: getVal("address") || null,
+      phone: getVal("phone") || null,
+      email: getVal("email") || null,
       status:
-        document.querySelector("input[name='status']:checked")?.value || "active",
+        form.querySelector("input[name='status']:checked")?.value || "active",
     };
 
-    // 🔎 Validation
-    if (!payload.name) return showToast("❌ Facility Name is required");
-    if (payload.name.length < 3)
-      return showToast("❌ Facility Name must be at least 3 characters");
-    if (!payload.code) return showToast("❌ Facility Code is required");
-    if (!/^[A-Z0-9_-]+$/i.test(payload.code))
-      return showToast("❌ Code may only contain letters, numbers, underscores, or dashes");
-    if (payload.code.length > 50)
-      return showToast("❌ Code must be ≤ 50 characters");
+
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect.value);
+    }
 
     try {
       showLoading();
-      const url = isEdit ? `/api/facilities/${facId}` : `/api/facilities`;
-      const method = isEdit ? "PUT" : "POST";
-
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      showToast(
-        isEdit
-          ? `✅ Facility "${payload.name}" updated successfully`
-          : `✅ Facility "${payload.name}" added successfully`
+      const res = await authFetch(
+        isEdit ? `/api/facilities/${facilityId}` : `/api/facilities`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
       );
 
-      sessionStorage.removeItem("facilityEditId");
-      sessionStorage.removeItem("facilityEditPayload");
+      const json = await res.json();
+      if (!res.ok)
+        throw new Error(normalizeMessage(json, "Submission failed"));
 
-      if (isEdit) {
-        window.location.href = "/facilities-list.html";
-      } else {
-        form.reset();
-        orgInput.value = "";
-        orgHidden.value = "";
-        document.getElementById("status_active")?.setAttribute("checked", true);
-        setUI("add");
-      }
+      showToast(isEdit ? "✅ Facility updated" : "✅ Facility created");
+      sessionStorage.clear();
+      window.location.href = "/facilities-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -212,24 +174,16 @@ export async function setupFacilityFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Cancel & Reset
+     Cancel / Clear
   ============================================================ */
-  cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("facilityEditId");
-    sessionStorage.removeItem("facilityEditPayload");
-    form.reset();
-    orgInput.value = "";
-    orgHidden.value = "";
-    document.getElementById("status_active")?.setAttribute("checked", true);
+  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+    sessionStorage.clear();
     window.location.href = "/facilities-list.html";
   });
-}
 
-// ============================================================================
-// ✅ Enterprise Master Pattern Summary:
-//    • Auth guard + logout watcher
-//    • Safe prefill via sessionStorage + fallback fetch
-//    • Unified validation & UX messages
-//    • Dynamic organization suggestion input
-//    • Cancel/reset + safe redirect
-// ============================================================================
+  document.getElementById("clearBtn")?.addEventListener("click", () => {
+    clearFormErrors(form);
+    form.reset();
+    setUI(false);
+  });
+}

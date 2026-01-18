@@ -1,20 +1,22 @@
+// 📦 facility.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🏥 VytalGuard – Facility Entry Point (Master Pattern Aligned)
-// 🔹 Mirrors organization.js / consultation.js for unified structure & safety
-// 🔹 Handles both form and filter/list pages seamlessly
+// 🧭 Master Pattern: role.js / vitals.js
+// 🔹 Unified initialization entry for the Facility module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 NO business logic here (delegated to filter-main / form / actions)
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles form, filters, etc.)
-import { initFacilityModule } from "./facility-main.js";
+// 🧭 Main module init (handles filter, table, card, etc.)
+import { initFacilityModule } from "./facility-filter-main.js";
 
 // ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
 import "./facility-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_FACILITY,
   FIELD_ORDER_FACILITY,
@@ -30,19 +32,22 @@ import { showToast, hideLoading } from "../../utils/index.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Only initialize if the facility form or list exists
-    if (document.getElementById("facilityForm")) {
+    // 🧩 Initialize only if the facility form or list container exists
+    if (
+      document.getElementById("facilityForm") ||
+      document.getElementById("facilityList")
+    ) {
       await initFacilityModule();
     }
 
-    // (Optional) Future pattern for table/list-only pages:
+    // (Optional future extension)
     // if (document.getElementById("facilityTableBody")) {
     //   await initFacilityListModule();
     // }
 
   } catch (err) {
-    console.error("❌ Failed to initialize facility module", err);
-    hideLoading(); // ensure spinner doesn’t hang
-    showToast("❌ Failed to load facility module");
+    console.error("❌ Failed to initialize Facility module", err);
+    hideLoading();
+    showToast("❌ Failed to load Facility module");
   }
 });

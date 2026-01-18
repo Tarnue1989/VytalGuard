@@ -11,6 +11,15 @@ import {
   formatKeyLabel,
   getBadgeStyle,
 } from "./dashboard-constants.js";
+
+/* ====================== ⭐ TOP KPI KEYS ====================== */
+const TOP_KPI_KEYS = [
+  "patients",
+  "appointments",
+  "payments",
+  "invoices",
+];
+
 /* ====================== 📊 Chart Registry ====================== */
 const SPARKLINE_CHARTS = {};
 /* ====================== 🚨 NEEDS ATTENTION RULES ====================== */
@@ -33,6 +42,61 @@ function splitClinicalKpis(kpis = []) {
 
   return { needsAttention, normal };
 }
+let calDate = new Date();
+
+function renderDashboardCalendar() {
+  const grid = document.getElementById("dashboard-calendar");
+  const title = document.getElementById("cal-title");
+  if (!grid || !title) return;
+
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const today = new Date();
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const monthNames = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
+
+  title.textContent = `${monthNames[month]} ${year}`;
+  grid.innerHTML = "";
+
+  const headers = ["S","M","T","W","T","F","S"];
+  headers.forEach(h => {
+    grid.innerHTML += `<div class="calendar-day header">${h}</div>`;
+  });
+
+  for (let i = 0; i < firstDay; i++) {
+    grid.innerHTML += `<div class="calendar-day muted"></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday =
+      d === today.getDate() &&
+      month === today.getMonth() &&
+      year === today.getFullYear();
+
+    grid.innerHTML += `
+      <div class="calendar-day ${isToday ? "today" : ""}">
+        ${d}
+      </div>`;
+  }
+}
+
+document.getElementById("cal-prev")?.addEventListener("click", () => {
+  calDate.setMonth(calDate.getMonth() - 1);
+  renderDashboardCalendar();
+});
+
+document.getElementById("cal-next")?.addEventListener("click", () => {
+  calDate.setMonth(calDate.getMonth() + 1);
+  renderDashboardCalendar();
+});
+
+document.addEventListener("DOMContentLoaded", renderDashboardCalendar);
 
 /* ====================== ✅ NEW: ADMIN KPI KEYS ====================== */
 const ADMIN_KEYS = [
@@ -135,6 +199,7 @@ export function initLiveDashboard() {
   /* ===== ✅ NEW: SEPARATE KPI CONTAINERS ===== */
   const clinicalContainer = document.getElementById("clinical-kpis");
   const adminContainer = document.getElementById("admin-kpis");
+  const topKpiContainer = document.getElementById("top-kpis");
 
   const chartContainer = document.getElementById("dashboard-charts");
   const queueContainer = document.getElementById("dashboard-queues");
@@ -155,16 +220,18 @@ export function initLiveDashboard() {
     try {
       const { start_date, end_date } = getDateRange();
       const params = new URLSearchParams();
+
       if (start_date && end_date) {
         params.append("start_date", start_date);
         params.append("end_date", end_date);
       }
       if (light) params.append("light", "1");
 
-      const res = await authFetch(`/api/dashboard?${params}`);
+      const res = await authFetch(`/api/dashboard?${params.toString()}`);
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
 
       const data = await res.json();
+
       const {
         kpis = [],
         charts = [],
@@ -182,34 +249,71 @@ export function initLiveDashboard() {
         ? moment(payloadEnd).format("MMM D, YYYY")
         : "";
 
-      /* ===== ✅ SPLIT CLINICAL vs ADMIN ===== */
-      const clinicalKpis = kpis.filter(k => !ADMIN_KEYS.includes(k.key));
+      /* ================= CLEAR CONTAINERS ================= */
+      if (!light) {
+        topKpiContainer && (topKpiContainer.innerHTML = "");
+        clinicalContainer && (clinicalContainer.innerHTML = "");
+        adminContainer && (adminContainer.innerHTML = "");
+      }
+
+      /* ================= SPLIT KPI GROUPS ================= */
+      const topKpis = kpis.filter(k => TOP_KPI_KEYS.includes(k.key));
+
+      const clinicalKpis = kpis.filter(
+        k =>
+          !TOP_KPI_KEYS.includes(k.key) &&
+          !ADMIN_KEYS.includes(k.key)
+      );
+
       const adminKpis = kpis.filter(k => ADMIN_KEYS.includes(k.key));
 
-      /* 🚨 Needs Attention split (clinical only) */
+      /* ================= TOP KPI STRIP ================= */
+      if (topKpis.length) {
+        renderTopKpis(topKpiContainer, topKpis, currency_symbol);
+      }
+
+      /* ================= CLINICAL: NEEDS ATTENTION ================= */
       const { needsAttention, normal } = splitClinicalKpis(clinicalKpis);
 
-      /* 🔴 Needs Attention (only if exists) */
       if (needsAttention.length) {
         const header = document.createElement("div");
-        header.className = "col-12 mb-2";
+        header.className = "mb-2";
         header.innerHTML = `
           <h6 class="text-danger fw-bold">
             <i class="ri-alarm-warning-line me-1"></i>
             Needs Attention
-          </h6>`;
+          </h6>
+        `;
         clinicalContainer.appendChild(header);
 
-        renderKpis(needsAttention, currency_symbol, startDateFmt, endDateFmt, "clinical");
+        renderKpis(
+          needsAttention,
+          currency_symbol,
+          startDateFmt,
+          endDateFmt,
+          "clinical"
+        );
       }
 
-      /* 🩺 Normal Clinical KPIs */
-      renderKpis(normal, currency_symbol, startDateFmt, endDateFmt, "clinical");
+      /* ================= CLINICAL: NORMAL ================= */
+      renderKpis(
+        normal,
+        currency_symbol,
+        startDateFmt,
+        endDateFmt,
+        "clinical"
+      );
 
-      /* 🏛️ Admin KPIs (unchanged) */
-      renderKpis(adminKpis, currency_symbol, "", "", "admin");
+      /* ================= ADMIN KPIs ================= */
+      renderKpis(
+        adminKpis,
+        currency_symbol,
+        "",
+        "",
+        "admin"
+      );
 
-
+      /* ================= SECONDARY PANELS ================= */
       if (!light) {
         renderCharts(charts);
         renderQueues(queues);
@@ -221,44 +325,39 @@ export function initLiveDashboard() {
   }
 
   /* ---------- Sparkline ---------- */
-  function renderSparkline(id, data = [], color = "#0d6efd") {
-    const el = document.getElementById(id);
+  function renderTopKpis(container, kpis = [], currencySymbol = "") {
+    if (!container) return;
+    container.innerHTML = "";
 
-    if (
-      typeof ApexCharts === "undefined" ||
-      !el ||
-      !Array.isArray(data) ||
-      data.length < 2 ||
-      data.every(v => v === 0)
-    ) {
-      return;
-    }
+    kpis.forEach(k => {
+      const color = KPI_COLOR_MAP[k.key] || "primary";
+      const icon = KPI_ICON_MAP[k.key] || "ri-bar-chart-line";
+      const total =
+        k.key === "payments"
+          ? (k.summary?.total_amount ?? 0)
+          : (k.total ?? 0);
 
-    // ✅ Destroy existing chart before re-render
-    if (SPARKLINE_CHARTS[id]) {
-      SPARKLINE_CHARTS[id].destroy();
-      delete SPARKLINE_CHARTS[id];
-    }
+      const card = document.createElement("div");
+      card.className = "card shadow-sm border-0";
 
-    const options = {
-      chart: {
-        type: "line",
-        height: 40,
-        sparkline: { enabled: true },
-        animations: { enabled: false } // 🚀 prevents flicker
-      },
-      stroke: { curve: "smooth", width: 2 },
-      colors: [color],
-      series: [{ data }],
-      tooltip: { enabled: false }
-    };
+      card.innerHTML = `
+        <div class="card-body d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted small">${k.label}</div>
+            <div class="fs-3 fw-bold text-${color}">
+              ${["payments"].includes(k.key)
+                ? `${currencySymbol || "$"}${total.toLocaleString()}`
+                : total}
+            </div>
+          </div>
+          <i class="${icon} fs-1 text-${color} opacity-75"></i>
+        </div>
+      `;
 
-    const chart = new ApexCharts(el, options);
-    chart.render();
-
-    // ✅ store reference
-    SPARKLINE_CHARTS[id] = chart;
+      container.appendChild(card);
+    });
   }
+
 
   /* ---------- KPI Renderer ---------- */
   function renderKpis(
@@ -271,7 +370,6 @@ export function initLiveDashboard() {
     const container = type === "admin" ? adminContainer : clinicalContainer;
     const showTrend = type !== "admin";
 
-    container.innerHTML = "";
     if (!kpis.length) return;
 
     kpis.forEach((k, i) => {

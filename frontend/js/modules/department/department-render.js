@@ -1,23 +1,65 @@
-// 📁 department-render.js – Department Table & Card Renderers (Enterprise-Aligned)
+// 📁 department-render.js – Entity Card System (DEPARTMENT | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Master Pattern: patient-render.js / role-render.js
-// 🔹 Entity-card architecture (header, context, body, audit, actions)
-// 🔹 Permission-driven buttons via STATUS_ACTION_MATRIX
+// 🧭 FULL MASTER PARITY WITH role-render.js
+// 🔹 Table = flat | Card = structured
 // 🔹 Field-selector safe
-// 🔹 100% ID-safe (departmentTableBody / departmentList)
+// 🔹 Backend sorting bridge
+// 🔹 Column resize enabled
+// 🔹 Column drag reorder enabled
+// 🔹 Full audit section (created / updated / deleted)
+// 🔹 Permission-driven actions
+// 🔹 Export-safe
 // ============================================================================
 
 import { FIELD_LABELS_DEPARTMENT } from "./department-constants.js";
+
 import {
-  formatDate,
   formatDateTime,
   initTooltips,
 } from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons
+   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "name",
+  "code",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+/* ============================================================
+   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+============================================================ */
+let sortBy = localStorage.getItem("departmentSortBy") || "";
+let sortDir = localStorage.getItem("departmentSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("departmentSortBy", sortBy);
+  localStorage.setItem("departmentSortDir", sortDir);
+
+  // 🔗 Bridge to MAIN
+  window.setDepartmentSort?.(sortBy, sortDir);
+  window.loadDepartmentPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
 ============================================================ */
 function getDepartmentActionButtons(entry, user) {
   return buildActionButtons({
@@ -30,70 +72,125 @@ function getDepartmentActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head
+   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    const label =
       FIELD_LABELS_DEPARTMENT[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    th.dataset.key = field;
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  /* ================= Column resize ================= */
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadDepartmentPage?.(1);
+    },
+  });
 }
 
 /* ============================================================
-   🔠 Helpers
+   🔠 HELPERS
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
+  const parts = [
+    user.first_name,
+    user.middle_name,
+    user.last_name,
+  ].filter(Boolean);
   return parts.length ? parts.join(" ") : "—";
 }
 
-function renderStatusBadge(status) {
-  const raw = (status || "").toLowerCase();
-  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-  let cls = "bg-secondary";
-  if (raw === "active") cls = "bg-success";
-  if (raw === "inactive") cls = "bg-warning text-dark";
-  if (raw === "deleted") cls = "bg-danger";
-  return `<span class="badge ${cls}">${label}</span>`;
-}
-
 /* ============================================================
-   🧩 Field Renderer (TABLE + CARD)
+   🧩 FIELD VALUE RENDERER
 ============================================================ */
-function renderValue(entry, field, viewMode = "card") {
+function renderValue(entry, field) {
   switch (field) {
-    case "status":
-      return renderStatusBadge(entry.status);
+    case "status": {
+      const raw = (entry.status || "").toLowerCase();
+      let cls = "bg-secondary";
+      if (raw === "active") cls = "bg-success";
+      if (raw === "inactive") cls = "bg-warning text-dark";
+      if (raw === "deleted") cls = "bg-danger";
+
+      return `<span class="badge ${cls}">
+        ${raw.toUpperCase()}
+      </span>`;
+    }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
 
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
 
     case "head_of_department":
-      return entry.head_of_department
-        ? renderUserName(entry.head_of_department)
-        : "—";
+      return renderUserName(entry.head_of_department);
 
     case "createdBy":
-      return renderUserName(entry.createdBy);
     case "updatedBy":
-      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry.deletedBy);
+      return renderUserName(entry[field]);
 
     case "created_at":
     case "updated_at":
@@ -101,24 +198,17 @@ function renderValue(entry, field, viewMode = "card") {
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
-      return entry[field] != null && entry[field] !== ""
-        ? String(entry[field])
-        : "—";
+      return entry[field] ?? "—";
   }
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — ENTITY SYSTEM (DEPARTMENT | FINAL)
-   ------------------------------------------------------------
-   ✔ Header = Identity + Status
-   ✔ Context = Organization / Facility / Head
-   ✔ Body = Department meaning only
-   ✔ Audit = Collapsible (enterprise standard)
-   ✔ Actions = Permission-driven
+   🗂️ CARD RENDERER — DEPARTMENT
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const has = f => visibleFields.includes(f);
-  const safe = v => (v !== null && v !== undefined && v !== "" ? v : "—");
+  const has = (f) => visibleFields.includes(f);
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
@@ -127,7 +217,8 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= HEADER ================= */
+  const status = (entry.status || "").toLowerCase();
+
   const header = `
     <div class="entity-card-header">
       <div>
@@ -136,90 +227,126 @@ export function renderCard(entry, visibleFields, user) {
       </div>
       ${
         has("status")
-          ? renderStatusBadge(entry.status)
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
           : ""
       }
     </div>
   `;
 
-  /* ================= CONTEXT (NO REDUNDANCY) ================= */
   const contextItems = [];
-  if (has("organization") && entry.organization)
-    contextItems.push(`🏥 ${safe(entry.organization.name)}`);
-  if (has("facility") && entry.facility)
-    contextItems.push(`📍 ${safe(entry.facility.name)}`);
-  if (has("head_of_department") && entry.head_of_department)
-    contextItems.push(`👤 ${renderUserName(entry.head_of_department)}`);
+  if (has("organization"))
+    contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility"))
+    contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("head_of_department"))
+    contextItems.push(
+      `👤 ${renderUserName(entry.head_of_department)}`
+    );
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
-         ${contextItems.map(v => `<div>${v}</div>`).join("")}
+         ${contextItems.map((v) => `<div>${v}</div>`).join("")}
        </div>`
     : "";
 
-  /* ================= BODY (DEPARTMENT ONLY) ================= */
-  const left = [];
-  const right = [];
+  const body =
+    has("description") || has("head_of_department")
+      ? `
+        <div class="entity-card-body">
+          <div>
+            ${has("description")
+              ? fieldRow("Description", entry.description)
+              : ""}
+          </div>
+          <div>
+            ${has("head_of_department")
+              ? fieldRow(
+                  "Head of Department",
+                  renderUserName(entry.head_of_department)
+                )
+              : ""}
+          </div>
+        </div>
+      `
+      : "";
 
-  if (has("description"))
-    left.push(fieldRow("Description", entry.description));
+  const audit =
+    has("created_at") || has("updated_at") || has("deleted_at")
+      ? `
+        <details class="entity-notes">
+          <summary>Audit</summary>
+          <div class="entity-card-body">
+            <div>
+              ${
+                has("createdBy")
+                  ? fieldRow(
+                      "Created By",
+                      renderUserName(entry.createdBy)
+                    )
+                  : ""
+              }
+              ${
+                has("created_at")
+                  ? fieldRow(
+                      "Created At",
+                      formatDateTime(entry.created_at)
+                    )
+                  : ""
+              }
+            </div>
+            <div>
+              ${
+                has("updatedBy")
+                  ? fieldRow(
+                      "Updated By",
+                      renderUserName(entry.updatedBy)
+                    )
+                  : ""
+              }
+              ${
+                has("updated_at")
+                  ? fieldRow(
+                      "Updated At",
+                      formatDateTime(entry.updated_at)
+                    )
+                  : ""
+              }
+              ${
+                has("deletedBy") && entry.deletedBy
+                  ? fieldRow(
+                      "Deleted By",
+                      renderUserName(entry.deletedBy)
+                    )
+                  : ""
+              }
+              ${
+                has("deleted_at") && entry.deleted_at
+                  ? fieldRow(
+                      "Deleted At",
+                      formatDateTime(entry.deleted_at)
+                    )
+                  : ""
+              }
+            </div>
+          </div>
+        </details>
+      `
+      : "";
 
-  if (has("head_of_department"))
-    left.push(
-      fieldRow(
-        "Head of Department",
-        renderValue(entry, "head_of_department")
-      )
-    );
-
-  const body = `
-    <div class="entity-card-body">
-      <div>${left.join("")}</div>
-      <div>${right.join("")}</div>
-    </div>
-  `;
-
-  /* ================= AUDIT (ENTERPRISE STANDARD) ================= */
-  const auditFields = [];
-
-  if (has("created_at"))
-    auditFields.push(fieldRow("Created At", renderValue(entry, "created_at")));
-  if (has("createdBy"))
-    auditFields.push(fieldRow("Created By", renderValue(entry, "createdBy")));
-
-  if (has("updated_at"))
-    auditFields.push(fieldRow("Updated At", renderValue(entry, "updated_at")));
-  if (has("updatedBy"))
-    auditFields.push(fieldRow("Updated By", renderValue(entry, "updatedBy")));
-
-  if (has("deleted_at") && entry.deleted_at)
-    auditFields.push(fieldRow("Deleted At", renderValue(entry, "deleted_at")));
-  if (has("deletedBy") && entry.deletedBy)
-    auditFields.push(fieldRow("Deleted By", renderValue(entry, "deletedBy")));
-
-  const auditSection = auditFields.length
-    ? `<details class="entity-notes">
-         <summary>Audit Information</summary>
-         <div class="entity-card-body">
-           <div>${auditFields.join("")}</div>
-         </div>
-       </details>`
-    : "";
-
-  /* ================= ACTIONS ================= */
   const actions = has("actions")
-    ? `<div class="entity-card-footer">
+    ? `<div class="entity-card-footer export-ignore">
          ${getDepartmentActionButtons(entry, user)}
        </div>`
     : "";
 
-  /* ================= FINAL ================= */
   return `
     <div class="entity-card department-card">
       ${header}
       ${context}
       ${body}
-      ${auditSection}
+      ${audit}
       ${actions}
     </div>
   `;
@@ -244,7 +371,12 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}">No departments found.</td></tr>`;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
+            No departments found.
+          </td>
+        </tr>`;
       initTooltips(tableBody);
       return;
     }
@@ -257,7 +389,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
             ? `<td class="actions-cell text-center export-ignore">
                  ${getDepartmentActionButtons(entry, user)}
                </td>`
-            : `<td>${renderValue(entry, field, "table")}</td>`
+            : `<td>${renderValue(entry, field)}</td>`
         )
         .join("");
       tableBody.appendChild(tr);
@@ -269,8 +401,10 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     cardContainer.classList.add("active");
 
     cardContainer.innerHTML = entries.length
-      ? entries.map(e => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted">No departments found.</p>`;
+      ? entries
+          .map((e) => renderCard(e, visibleFields, user))
+          .join("")
+      : `<p class="text-muted text-center">No departments found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -279,7 +413,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 

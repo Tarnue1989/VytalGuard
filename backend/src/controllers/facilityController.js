@@ -1,186 +1,166 @@
 // 📁 controllers/facilityController.js
 import Joi from "joi";
 import { Op } from "sequelize";
-import { sequelize, Facility, Organization, User, Department, Employee } from "../models/index.js";
+import {
+  sequelize,
+  Facility,
+  Organization,
+  User,
+  Department,
+  Employee,
+} from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { FACILITY_STATUS } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { validate } from "../utils/validation.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+
+const MODULE_KEY = "facility";
 
 /* ============================================================
-   🔧 HELPERS
-   ============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map(r => r.toLowerCase()).includes("superadmin");
-}
+   🔧 LOCAL DEBUG OVERRIDE
+============================================================ */
+const DEBUG_OVERRIDE = true;
+const debug = makeModuleLogger("facilityController", DEBUG_OVERRIDE);
 
+/* ============================================================
+   🔗 SHARED INCLUDES
+============================================================ */
 const FACILITY_INCLUDES = [
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"], required: false },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"], required: false },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"], required: false },
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+    required: true,
+  },
+  {
+    model: User,
+    as: "createdBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "updatedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
+  {
+    model: User,
+    as: "deletedBy",
+    attributes: ["id", "first_name", "last_name"],
+  },
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMA FACTORY
-   ============================================================ */
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
+============================================================ */
 function buildFacilitySchema(userRole, mode = "create") {
   const base = {
-    organization_id: Joi.string().uuid().required(),
     name: Joi.string().max(255).required(),
     code: Joi.string().max(50).required(),
-    address: Joi.string().max(255).allow(null, ""),
-    phone: Joi.string().max(50).allow(null, ""),
-    email: Joi.string().email().max(120).allow(null, ""),
-    status: Joi.string().valid(...FACILITY_STATUS).default(FACILITY_STATUS[0]),
+    address: Joi.string().allow("", null),
+    phone: Joi.string().allow("", null),
+    email: Joi.string().email().allow("", null),
+    status: Joi.string()
+      .valid(...FACILITY_STATUS)
+      .default(FACILITY_STATUS[0]),
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach(k => { base[k] = base[k].optional(); });
+    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+  }
+
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().required();
   }
 
   if (userRole !== "superadmin") {
-    base.organization_id = Joi.forbidden(); // only superadmin can assign org
-    base.code = Joi.forbidden();            // only superadmin can set code
+    base.code = Joi.forbidden();
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 GET ALL FACILITIES
-   ============================================================ */
-export const getAllFacilities = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: "facility",
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const options = buildQueryOptions(req, "name", "ASC");
-
-    options.where = options.where || {};
-    if (!isSuperAdmin(req.user)) {
-      if (req.user.facility_id) options.where.id = req.user.facility_id;
-      else if (req.user.organization_id) options.where.organization_id = req.user.organization_id;
-    }
-
-    if (options.search) {
-      options.where = {
-        ...options.where,
-        [Op.or]: [
-          { name: { [Op.iLike]: `%${options.search}%` } },
-          { code: { [Op.iLike]: `%${options.search}%` } },
-        ]
-      };
-    }
-
-    const { count, rows } = await Facility.findAndCountAll({
-      where: options.where,
-      include: FACILITY_INCLUDES,
-      order: options.order,
-      offset: options.offset,
-      limit: options.limit,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: "facility",
-      action: "list",
-      details: { query: req.query, returned: count },
-    });
-
-    return success(res, "✅ Facilities loaded", {
-      records: rows,
-      pagination: {
-        total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
-      },
-    });
-  } catch (err) {
-    return error(res, "❌ Failed to load facilities", err);
-  }
-};
-
-/* ============================================================
-   📌 GET FACILITY BY ID
-   ============================================================ */
-export const getFacilityById = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: "facility",
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { id } = req.params;
-    const where = !isSuperAdmin(req.user)
-      ? (req.user.facility_id ? { id: req.user.facility_id } : { organization_id: req.user.organization_id })
-      : { id };
-
-    const facility = await Facility.findOne({ where, include: FACILITY_INCLUDES });
-    if (!facility) return error(res, "❌ Facility not found", null, 404);
-
-    await auditService.logAction({
-      user: req.user,
-      module: "facility",
-      action: "view",
-      entityId: id,
-      entity: facility,
-    });
-
-    return success(res, "✅ Facility loaded", facility);
-  } catch (err) {
-    return error(res, "❌ Failed to load facility", err);
-  }
-};
-
-/* ============================================================
-   📌 CREATE FACILITY
-   ============================================================ */
+   📌 CREATE FACILITY (MASTER PARITY)
+============================================================ */
 export const createFacility = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildFacilitySchema(role, "create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
+
+    const { value, errors } = validate(
+      buildFacilitySchema(
+        isSuperAdmin(req.user) ? "superadmin" : "org_user",
+        "create"
+      ),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    if (!isSuperAdmin(req.user) && !req.user.organization_id) {
+    const { orgId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
+    if (!orgId) {
       await t.rollback();
-      return error(res, "❌ Missing organization assignment", null, 403);
+      return error(res, "Missing organization assignment", null, 400);
     }
 
-    const targetOrgId = isSuperAdmin(req.user) ? value.organization_id : req.user.organization_id;
-    const exists = await Facility.findOne({ where: { code: value.code }, paranoid: false, transaction: t });
+    const exists = await Facility.findOne({
+      where: {
+        code: value.code,
+        organization_id: orgId,
+      },
+      paranoid: false,
+      transaction: t,
+    });
+
+
     if (exists) {
       await t.rollback();
-      return error(res, "❌ Facility code already exists", null, 400);
+      return error(res, "Facility code already exists", null, 400);
     }
 
     const created = await Facility.create(
-      { ...value, organization_id: targetOrgId, created_by_id: req.user?.id || null },
+      {
+        ...value,
+        organization_id: orgId,
+        created_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
+
     await t.commit();
 
-    const full = await Facility.findOne({ where: { id: created.id }, include: FACILITY_INCLUDES });
+    const full = await Facility.findOne({
+      where: { id: created.id },
+      include: FACILITY_INCLUDES,
+    });
+
     await auditService.logAction({
       user: req.user,
-      module: "facility",
+      module: MODULE_KEY,
       action: "create",
       entityId: created.id,
       entity: full,
@@ -190,56 +170,96 @@ export const createFacility = async (req, res) => {
     return success(res, "✅ Facility created", full);
   } catch (err) {
     await t.rollback();
+    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create facility", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE FACILITY
-   ============================================================ */
+   📌 UPDATE FACILITY (MASTER PARITY)
+============================================================ */
 export const updateFacility = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildFacilitySchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    debug.log("update → incoming", {
+      id: req.params.id,
+      body: req.body,
+    });
+
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const { value, errors } = validate(
+      buildFacilitySchema(
+        isSuperAdmin(req.user) ? "superadmin" : "org_user",
+        "update"
+      ),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    const where = !isSuperAdmin(req.user)
-      ? (req.user.facility_id ? { id: req.user.facility_id } : { organization_id: req.user.organization_id })
-      : { id };
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.id = req.user.facility_id;
+      }
+    }
 
     const facility = await Facility.findOne({ where, transaction: t });
     if (!facility) {
       await t.rollback();
-      return error(res, "❌ Facility not found", null, 404);
+      return error(res, "Facility not found", null, 404);
     }
 
     if (value.code) {
       const exists = await Facility.findOne({
-        where: { code: value.code, id: { [Op.ne]: id } },
+        where: {
+          code: value.code,
+          organization_id: facility.organization_id,
+          id: { [Op.ne]: facility.id },
+        },
         paranoid: false,
         transaction: t,
       });
+
+
       if (exists) {
         await t.rollback();
-        return error(res, "❌ Facility code already in use", null, 400);
+        return error(res, "Facility code already in use", null, 400);
       }
     }
 
-    await facility.update({ ...value, updated_by_id: req.user?.id || null }, { transaction: t });
+    await facility.update(
+      {
+        ...value,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
     await t.commit();
 
-    const full = await Facility.findOne({ where: { id }, include: FACILITY_INCLUDES });
+    const full = await Facility.findOne({
+      where: { id: facility.id },
+      include: FACILITY_INCLUDES,
+    });
+
     await auditService.logAction({
       user: req.user,
-      module: "facility",
+      module: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: facility.id,
       entity: full,
       details: value,
     });
@@ -247,133 +267,388 @@ export const updateFacility = async (req, res) => {
     return success(res, "✅ Facility updated", full);
   } catch (err) {
     await t.rollback();
+    debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update facility", err);
+  }
+};
+/* ============================================================
+   📌 GET FACILITY BY ID (MASTER PARITY)
+============================================================ */
+export const getFacilityById = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+
+      if (!isOrgLevelUser(req.user)) {
+        where.id = req.user.facility_id;
+      }
+    }
+
+    const facility = await Facility.findOne({
+      where,
+      include: FACILITY_INCLUDES,
+    });
+
+    if (!facility) {
+      return error(res, "Facility not found", null, 404);
+    }
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "view",
+      entityId: facility.id,
+      entity: facility,
+    });
+
+    return success(res, "✅ Facility loaded", facility);
+  } catch (err) {
+    debug.error("view → FAILED", err);
+    return error(res, "❌ Failed to load facility", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE FACILITY STATUS
-   ============================================================ */
+   📌 TOGGLE FACILITY STATUS (MASTER PARITY)
+============================================================ */
 export const toggleFacilityStatus = async (req, res) => {
   try {
-    const { id } = req.params;
-    const where = !isSuperAdmin(req.user)
-      ? (req.user.facility_id ? { id: req.user.facility_id } : { organization_id: req.user.organization_id })
-      : { id };
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.id = req.user.facility_id;
+      }
+    }
 
     const facility = await Facility.findOne({ where });
-    if (!facility) return error(res, "❌ Facility not found", null, 404);
+    if (!facility) {
+      return error(res, "Facility not found", null, 404);
+    }
 
     const [ACTIVE, INACTIVE] = FACILITY_STATUS;
     const newStatus = facility.status === ACTIVE ? INACTIVE : ACTIVE;
 
-    await facility.update({ status: newStatus, updated_by_id: req.user?.id || null });
-    const full = await Facility.findOne({ where: { id }, include: FACILITY_INCLUDES });
+    await facility.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
+
+    const full = await Facility.findOne({
+      where: { id: facility.id },
+      include: FACILITY_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "facility",
-      action: "toggle-status",
-      entityId: id,
+      module: MODULE_KEY,
+      action: "toggle_status",
+      entityId: facility.id,
       entity: full,
       details: { from: facility.status, to: newStatus },
     });
 
-    return success(res, `✅ Facility status toggled to ${newStatus}`, full);
+    return success(
+      res,
+      `✅ Facility status toggled to ${newStatus}`,
+      full
+    );
   } catch (err) {
+    debug.error("toggle_status → FAILED", err);
     return error(res, "❌ Failed to toggle facility status", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL FACILITIES LITE (with ?q= support)
-   ============================================================ */
-export const getAllFacilitiesLite = async (req, res) => {
-  try {
-    const { q } = req.query;
-
-    // 🔎 Base scope
-    let where = { status: FACILITY_STATUS[0] }; // active only
-
-    if (!isSuperAdmin(req.user)) {
-      if (req.user.facility_id) {
-        where.id = req.user.facility_id;
-      } else if (req.user.organization_id) {
-        where.organization_id = req.user.organization_id;
-      }
-    }
-
-    // 🔎 Apply search filter
-    if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { code: { [Op.iLike]: `%${q}%` } },
-      ];
-    }
-
-    const facilities = await Facility.findAll({
-      where,
-      attributes: ["id", "name", "code"],
-      order: [["name", "ASC"]],
-      limit: 20, // 👈 cap results for autocomplete
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: "facility",
-      action: "list_lite",
-      details: { count: facilities.length, query: q || null },
-    });
-
-    return success(res, "✅ Facilities loaded (lite)", {
-      records: facilities,   // ✅ wrapped for consistency
-    });
-  } catch (err) {
-    return error(res, "❌ Failed to load facilities (lite)", err);
-  }
-};
-
-/* ============================================================
-   📌 DELETE FACILITY (Soft Delete with Audit + Dependency Check)
-   ============================================================ */
+   📌 DELETE FACILITY (MASTER PARITY)
+============================================================ */
 export const deleteFacility = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     if (!isSuperAdmin(req.user)) {
       await t.rollback();
-      return error(res, "❌ Only Super Admin can delete facilities", null, 403);
+      return error(
+        res,
+        "❌ Only Super Admin can delete facilities",
+        null,
+        403
+      );
     }
 
-    const facility = await Facility.findOne({ where: { id }, transaction: t });
+    const facility = await Facility.findOne({
+      where: { id: req.params.id },
+      transaction: t,
+    });
+
     if (!facility) {
       await t.rollback();
-      return error(res, "❌ Facility not found", null, 404);
+      return error(res, "Facility not found", null, 404);
     }
 
-    const linkedDepartments = await Department.count({ where: { facility_id: id }, transaction: t });
-    const linkedEmployees = await Employee.count({ where: { facility_id: id }, transaction: t });
+    const linkedDepartments = await Department.count({
+      where: { facility_id: facility.id },
+      transaction: t,
+    });
+    const linkedEmployees = await Employee.count({
+      where: { facility_id: facility.id },
+      transaction: t,
+    });
+
     if (linkedDepartments > 0 || linkedEmployees > 0) {
       await t.rollback();
-      return error(res, "❌ Cannot delete — facility has linked departments or employees", null, 400);
+      return error(
+        res,
+        "❌ Cannot delete — facility has linked departments or employees",
+        null,
+        400
+      );
     }
 
-    await facility.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    await facility.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await facility.destroy({ transaction: t });
     await t.commit();
 
-    const full = await Facility.findOne({ where: { id }, include: FACILITY_INCLUDES, paranoid: false });
+    const full = await Facility.findOne({
+      where: { id: facility.id },
+      include: FACILITY_INCLUDES,
+      paranoid: false,
+    });
+
     await auditService.logAction({
       user: req.user,
-      module: "facility",
+      module: MODULE_KEY,
       action: "delete",
-      entityId: id,
+      entityId: facility.id,
       entity: full,
     });
 
     return success(res, "✅ Facility deleted", full);
   } catch (err) {
     await t.rollback();
+    debug.error("delete → FAILED", err);
     return error(res, "❌ Failed to delete facility", err);
+  }
+};
+
+/* ============================================================
+   📌 GET ALL FACILITIES (ROLE-MASTER PARITY + SUMMARY)
+============================================================ */
+export const getAllFacilities = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
+    const options = buildQueryOptions(req, "name", "ASC");
+
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    /* ========================================================
+       🧱 WHERE ROOT
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (UI ONLY)
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          id: req.user.facility_id,
+        });
+      }
+    } else if (req.query.organization_id) {
+      options.where[Op.and].push({
+        organization_id: req.query.organization_id,
+      });
+    }
+
+    /* ========================================================
+       🔍 GLOBAL SEARCH
+    ======================================================== */
+    if (options.search) {
+      options.where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { code: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
+    }
+
+    /* ========================================================
+       📌 STATUS FILTER (AUTHORITATIVE)
+    ======================================================== */
+    if (req.query.status && FACILITY_STATUS.includes(req.query.status)) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
+    const { count, rows } = await Facility.findAndCountAll({
+      where: options.where,
+      include: FACILITY_INCLUDES,
+      order: options.order,
+      offset: options.offset,
+      limit: options.limit,
+      distinct: true,
+    });
+
+    /* ========================================================
+       📊 SUMMARY (PAGE-AWARE)
+    ======================================================== */
+    const summary = {
+      total: count,
+      active: rows.filter(r => r.status === FACILITY_STATUS[0]).length,
+      inactive: rows.filter(r => r.status === FACILITY_STATUS[1]).length,
+    };
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list",
+      details: {
+        query: req.query,
+        returned: count,
+        dateRange: dateRange || null,
+      },
+    });
+
+    return success(res, "✅ Facilities loaded", {
+      records: rows,
+      summary,
+      pagination: {
+        total: count,
+        page: options.pagination.page,
+        pageCount: Math.ceil(count / options.pagination.limit),
+      },
+    });
+  } catch (err) {
+    debug.error("list → FAILED", err);
+    return error(res, "❌ Failed to load facilities", err);
+  }
+};
+
+
+/* ============================================================
+   📌 GET ALL FACILITIES LITE (MASTER PARITY)
+============================================================ */
+export const getAllFacilitiesLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { q } = req.query;
+
+    const where = {
+      status: FACILITY_STATUS[0],
+      [Op.and]: [],
+    };
+
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        where[Op.and].push({
+          id: req.user.facility_id,
+        });
+      }
+    }
+
+    if (q) {
+      where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${q}%` } },
+          { code: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
+    }
+
+    const facilities = await Facility.findAll({
+      where,
+      attributes: ["id", "name", "code"],
+      order: [["name", "ASC"]],
+      limit: 20,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: { q: q || null, count: facilities.length },
+    });
+
+    return success(res, "✅ Facilities loaded (lite)", {
+      records: facilities,
+    });
+  } catch (err) {
+    debug.error("list_lite → FAILED", err);
+    return error(res, "❌ Failed to load facilities (lite)", err);
   }
 };

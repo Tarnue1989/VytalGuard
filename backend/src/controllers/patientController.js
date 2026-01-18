@@ -37,6 +37,36 @@ import { validate } from "../utils/validation.js";
 const DEBUG_OVERRIDE = true; // 👈 keep OFF normally
 const debug = makeModuleLogger("patientController", DEBUG_OVERRIDE);
 
+/* ============================================================
+   🔐 ENUM MAPS (ORDER-SAFE, CONTROLLER-LOCAL)
+============================================================ */
+const GENDER = Object.fromEntries(
+  GENDER_TYPES.map(v => [v.toLowerCase(), v])
+);
+
+const REG_STATUS = Object.fromEntries(
+  REGISTRATION_LOG_STATUS.map(v => [v.toUpperCase(), v])
+);
+
+/* ============================================================
+   🔃 PATIENT SORT MAP (MODEL-AWARE)
+   - Supports base columns + joined tables
+============================================================ */
+const PATIENT_SORT_MAP = {
+  // 🧱 Patient table columns
+  pat_no: ["pat_no"],
+  first_name: ["first_name"],
+  last_name: ["last_name"],
+  gender: ["gender"],
+  registration_status: ["registration_status"],
+  date_of_birth: ["date_of_birth"],
+  created_at: ["created_at"],
+  updated_at: ["updated_at"],
+
+  // 🔗 Joined columns
+  organization: [{ model: Organization, as: "organization" }, "name"],
+  facility: [{ model: Facility, as: "facility" }, "name"],
+};
 
 // Helper to generate unique patient number per org
 async function generateNextPatientNo(orgId) {
@@ -469,9 +499,10 @@ export const togglePatientStatus = async (req, res) => {
     if (!patient) return error(res, "Patient not found", null, 404);
 
     /* ================= STATUS TOGGLE ================= */
-    const [, , ACTIVE, , CANCELLED] = REGISTRATION_LOG_STATUS;
     const newStatus =
-      patient.registration_status === ACTIVE ? CANCELLED : ACTIVE;
+      patient.registration_status === REG_STATUS.ACTIVE
+        ? REG_STATUS.CANCELLED
+        : REG_STATUS.ACTIVE;
 
     await patient.update({
       registration_status: newStatus,
@@ -503,8 +534,8 @@ export const togglePatientStatus = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL PATIENTS (Enterprise-Aligned)
-   ============================================================ */
+   📌 GET ALL PATIENTS (Enterprise-Aligned + Summary)
+============================================================ */
 export const getAllPatients = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -513,6 +544,7 @@ export const getAllPatients = async (req, res) => {
       action: "read",
       res,
     });
+
     debug.log("PERMISSION CHECK", {
       module: "patient",
       action: "read",
@@ -520,15 +552,44 @@ export const getAllPatients = async (req, res) => {
       userId: req.user?.id,
       roles: req.user?.roleNames,
     });
+
     if (!allowed) return;
 
+    /* ============================================================
+       🔃 EXTRACT SORTING (CRITICAL FIX)
+       - Prevents sortBy / sortDir from becoming WHERE filters
+    ============================================================ */
+    const {
+      sortBy,
+      sortDir = "asc",
+      ...safeQuery
+    } = req.query;
+
+    const safeReq = {
+      ...req,
+      query: safeQuery,
+    };
+
+    /* ============================================================
+       👁️ FIELD VISIBILITY
+    ============================================================ */
     const roleKey = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_PATIENT[roleKey] || FIELD_VISIBILITY_PATIENT.staff;
 
-    const options = buildQueryOptions(req, "last_name", "ASC", visibleFields);
+    /* ============================================================
+       🧠 BASE QUERY OPTIONS (FILTERS, PAGINATION, SEARCH)
+    ============================================================ */
+    const options = buildQueryOptions(
+      safeReq,
+      "last_name",
+      "ASC",
+      visibleFields
+    );
 
-    /* ================= TENANT SCOPE ================= */
+    /* ============================================================
+       🔐 TENANT SCOPE
+    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       options.where = {
         ...(options.where || {}),
@@ -540,43 +601,133 @@ export const getAllPatients = async (req, res) => {
       }
     }
 
-    /* ================= GLOBAL FILTER ================= */
-    if (req.query.global) {
+    /* ============================================================
+       🌐 GLOBAL FILTER (ID OVERRIDE)
+    ============================================================ */
+    if (safeQuery.global) {
       options.where = {
         ...(options.where || {}),
-        id: req.query.global,
+        id: safeQuery.global,
       };
     }
 
-    /* ================= TEXT SEARCH ================= */
-    if (options.search && !req.query.global) {
-      options.where[Op.or] = [
-        { first_name: { [Op.iLike]: `%${options.search}%` } },
-        { last_name: { [Op.iLike]: `%${options.search}%` } },
-        { middle_name: { [Op.iLike]: `%${options.search}%` } },
-        { pat_no: { [Op.iLike]: `%${options.search}%` } },
-        { phone_number: { [Op.iLike]: `%${options.search}%` } },
-        { email_address: { [Op.iLike]: `%${options.search}%` } },
-      ];
+    /* ============================================================
+       🔍 TEXT SEARCH
+    ============================================================ */
+    if (options.search && !safeQuery.global) {
+      options.where = {
+        ...(options.where || {}),
+        [Op.or]: [
+          { first_name: { [Op.iLike]: `%${options.search}%` } },
+          { last_name: { [Op.iLike]: `%${options.search}%` } },
+          { middle_name: { [Op.iLike]: `%${options.search}%` } },
+          { pat_no: { [Op.iLike]: `%${options.search}%` } },
+          { phone_number: { [Op.iLike]: `%${options.search}%` } },
+          { email_address: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      };
     }
 
+    /* ============================================================
+       🔃 SORT (MODEL-AWARE, SAFE)
+       - Supports Patient + Organization + Facility
+    ============================================================ */
+    let order =
+      options.order?.length ? options.order : [["last_name", "ASC"]];
+
+    if (sortBy && PATIENT_SORT_MAP[sortBy]) {
+      const direction =
+        String(sortDir).toUpperCase() === "DESC" ? "DESC" : "ASC";
+
+      order = [[
+        ...PATIENT_SORT_MAP[sortBy],
+        direction,
+      ]];
+    }
+
+    /* ============================================================
+       📋 LIST QUERY
+    ============================================================ */
     const { count, rows } = await Patient.findAndCountAll({
       where: options.where,
       include: PATIENT_INCLUDES,
-      order: options.order?.length ? options.order : [["last_name", "ASC"]],
+      order,
       offset: options.offset,
       limit: options.limit,
       distinct: true,
       subQuery: false,
     });
 
+/* ============================================================
+   📊 SUMMARY (ENUM-SAFE + GROUPED)
+============================================================ */
+const baseWhere = { ...(options.where || {}) };
+
+/* ---------- TOTAL ---------- */
+const total = await Patient.count({ where: baseWhere });
+
+/* ---------- GENDER SUMMARY ---------- */
+const genderRows = await Patient.findAll({
+  attributes: [
+    "gender",
+    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+  ],
+  where: baseWhere,
+  group: ["gender"],
+  raw: true,
+});
+
+const genderMap = Object.fromEntries(
+  genderRows.map(r => [r.gender, Number(r.count)])
+);
+
+/* ---------- STATUS SUMMARY ---------- */
+const statusRows = await Patient.findAll({
+  attributes: [
+    "registration_status",
+    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+  ],
+  where: baseWhere,
+  group: ["registration_status"],
+  raw: true,
+});
+
+const statusMap = Object.fromEntries(
+  statusRows.map(r => [r.registration_status, Number(r.count)])
+);
+
+/* ---------- FINAL SUMMARY ---------- */
+const summary = {
+  total,
+
+  gender: {
+    male: genderMap[GENDER.male] || 0,
+    female: genderMap[GENDER.female] || 0,
+  },
+
+  status: {
+    active: statusMap[REG_STATUS.ACTIVE] || 0,
+    cancelled: statusMap[REG_STATUS.CANCELLED] || 0,
+  },
+};
+
+    /* ============================================================
+       🧾 AUDIT
+    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: "patient",
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        summary,
+      },
     });
 
+    /* ============================================================
+       ✅ RESPONSE
+    ============================================================ */
     return success(res, "✅ Patients loaded", {
       records: rows,
       pagination: {
@@ -584,6 +735,7 @@ export const getAllPatients = async (req, res) => {
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
+      summary,
     });
   } catch (err) {
     debug.error("list → FAILED", err);

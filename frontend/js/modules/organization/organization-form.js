@@ -1,8 +1,11 @@
+// 📁 organization-form.js – Secure & Rule-Driven Organization Form (ENTERPRISE MASTER)
 // ============================================================================
-// 🏢 VytalGuard – Secure & Role-Aware Organization Form
-// 🔹 Fully aligned with Enterprise Master Pattern (consultation-form.js)
-// 🔹 Preserves all original IDs, validation, and submission logic
-// 🔹 Adds role-awareness, safe edit prefill, and unified UX behavior
+// 🧭 MASTER PARITY WITH role-form.js / patient-form.js
+// 🔹 Rule-driven validation (ORG_FORM_RULES – same engine as ROLE_FORM_RULES)
+// 🔹 Permission-safe (backend remains authority)
+// 🔹 Session-safe edit prefill (cache + query fallback)
+// 🔹 Unified UX: title, submit mode, cancel, reset
+// 🔹 IDs, routes, and HTML bindings PRESERVED
 // ============================================================================
 
 import {
@@ -13,60 +16,60 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
+import {
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
 
 /* ============================================================
-   🔧 Helpers
+   🔧 Helpers (MASTER SAFE)
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const getQueryParam = (k) =>
+  new URLSearchParams(window.location.search).get(k);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
+const normalizeMessage = (r, fb) =>
+  r?.message || r?.error || r?.msg || fb;
+
+/* ============================================================
+   🧠 ORGANIZATION FORM RULES (ROLE PARITY)
+============================================================ */
+const ORG_FORM_RULES = [
+  { id: "name", message: "Organization Name is required" },
+  { id: "code", message: "Organization Code is required" },
+  { id: "status", message: "Status is required", when: () => true },
+];
 
 /* ============================================================
    🚀 Setup Organization Form
 ============================================================ */
 export async function setupOrganizationFormSubmission({ form }) {
-  // 🔐 Auth Guard & Logout Watcher
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
 
-  const sessionId = sessionStorage.getItem("organizationEditId");
-  const queryId = getQueryParam("id");
-  const orgId = sessionId || queryId;
-  const isEdit = !!orgId;
+  const orgId =
+    sessionStorage.getItem("organizationEditId") ||
+    getQueryParam("id");
 
-  // 🎨 UI Title & Button Mode
+  const isEdit = Boolean(orgId);
+
+  /* ---------------- UI ---------------- */
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
 
-  const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Organization");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Organization`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Organization");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Organization`);
-    }
+  const setUI = (edit) => {
+    titleEl.textContent = edit ? "Edit Organization" : "Add Organization";
+    submitBtn.innerHTML = edit
+      ? `<i class="ri-save-3-line me-1"></i> Update Organization`
+      : `<i class="ri-add-line me-1"></i> Add Organization`;
   };
-  setUI(isEdit ? "edit" : "add");
+  setUI(isEdit);
 
   /* ============================================================
-     🧭 Prefill (Edit Mode)
+     🧭 Prefill (Edit Mode – MASTER PARITY)
   ============================================================ */
   if (isEdit && orgId) {
     try {
@@ -76,15 +79,14 @@ export async function setupOrganizationFormSubmission({ form }) {
 
       if (!entry) {
         showLoading();
-        const res = await authFetch(`/api/organizations/${orgId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load organization"));
-        entry = result?.data;
+        const res = await authFetch(`/api/organizations/${orgId}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok)
+          throw new Error(normalizeMessage(json, "Failed to load organization"));
+        entry = json?.data;
       }
 
-      if (!entry) throw new Error("❌ Organization not found");
+      if (!entry) throw new Error("Organization not found");
 
       document.getElementById("name").value = entry.name || "";
       document.getElementById("code").value = entry.code || "";
@@ -96,70 +98,75 @@ export async function setupOrganizationFormSubmission({ form }) {
         if (radio) radio.checked = true;
       }
     } catch (err) {
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load organization");
+      console.error(err);
+      showToast(err.message || "❌ Failed to load organization");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+     💾 Submit — RULE-DRIVEN (ROLE / PATIENT PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of ORG_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({
+          field: rule.id,
+          message: rule.message,
+        });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
     const payload = {
-      name: (document.getElementById("name")?.value || "").trim(),
-      code: (document.getElementById("code")?.value || "").trim(),
+      name: document.getElementById("name").value.trim(),
+      code: document.getElementById("code").value.trim(),
       status:
-        document.querySelector("input[name='status']:checked")?.value || "active",
+        document.querySelector("input[name='status']:checked")?.value ||
+        "active",
     };
-
-    // 🔎 Validation
-    if (!payload.name) return showToast("❌ Organization Name is required");
-    if (payload.name.length < 3)
-      return showToast("❌ Organization Name must be at least 3 characters");
-    if (!payload.code) return showToast("❌ Organization Code is required");
-    if (!/^[A-Z0-9_-]+$/i.test(payload.code))
-      return showToast("❌ Code may only contain letters, numbers, underscores, or dashes");
-    if (payload.code.length > 50)
-      return showToast("❌ Code must be ≤ 50 characters");
 
     try {
       showLoading();
-      const url = isEdit ? `/api/organizations/${orgId}` : `/api/organizations`;
-      const method = isEdit ? "PUT" : "POST";
+      const res = await authFetch(
+        isEdit ? `/api/organizations/${orgId}` : `/api/organizations`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await res.json().catch(() => ({}));
-
+      const json = await res.json();
       if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+        throw new Error(normalizeMessage(json, "Submission failed"));
 
       showToast(
         isEdit
-          ? `✅ Organization "${payload.name}" updated successfully`
-          : `✅ Organization "${payload.name}" added successfully`
+          ? "✅ Organization updated"
+          : "✅ Organization created"
       );
 
-      sessionStorage.removeItem("organizationEditId");
-      sessionStorage.removeItem("organizationEditPayload");
-
-      if (isEdit) {
-        window.location.href = "/organizations-list.html";
-      } else {
-        form.reset();
-        document.getElementById("status_active")?.setAttribute("checked", true);
-        setUI("add");
-      }
+      sessionStorage.clear();
+      window.location.href = "/organizations-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -167,11 +174,10 @@ export async function setupOrganizationFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Cancel & Reset
+     🚪 Cancel / Clear (MASTER SAFE)
   ============================================================ */
   cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("organizationEditId");
-    sessionStorage.removeItem("organizationEditPayload");
+    sessionStorage.clear();
     window.location.href = "/organizations-list.html";
   });
 }

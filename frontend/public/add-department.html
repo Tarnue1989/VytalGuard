@@ -32,7 +32,9 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Departments</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Add Department</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Add Department
+          </li>
         </ol>
       </div>
 
@@ -48,13 +50,21 @@
 
                 <!-- 📦 Form Container -->
                 <div id="formContainer">
-                  <form id="departmentForm">
+                  <form id="departmentForm" novalidate>
                     <div class="row gx-4">
 
-                      <!-- Head of Department (suggestion input) -->
+                      <!-- ================= Identity ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Identity</h6>
+                        <hr />
+                      </div>
+
+                      <!-- Head of Department -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
-                          <label class="form-label" for="headInput">Head of Department</label>
+                          <label class="form-label" for="headInput">
+                            Head of Department
+                          </label>
                           <input
                             type="text"
                             class="form-control suggestion-input"
@@ -62,92 +72,174 @@
                             placeholder="Search employee..."
                             autocomplete="off"
                           />
-                          <input type="hidden" id="headId" name="head_of_department_id" />
+                          <input
+                            type="hidden"
+                            id="headId"
+                            name="head_of_department_id"
+                          />
                           <div id="headSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
-
                       <!-- Department Name -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label" for="name">Department Name <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control" id="name" name="name" placeholder="Enter department name" required minlength="3">
+                          <label class="form-label" for="name">
+                            Department Name <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="name"
+                            name="name"
+                            placeholder="Enter department name"
+                          />
                         </div>
                       </div>
 
                       <!-- Department Code -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label" for="code">Code <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control" id="code" name="code"
-                                placeholder="Enter code" required
-                                pattern="[A-Za-z0-9_\-]+" maxlength="50">
+                          <label class="form-label" for="code">
+                            Code <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="code"
+                            name="code"
+                            placeholder="Enter code"
+                          />
                         </div>
                       </div>
-
 
                       <!-- Description -->
                       <div class="col-xxl-6 col-lg-8 col-sm-12">
                         <div class="mb-3">
-                          <label class="form-label" for="description">Description</label>
-                          <textarea class="form-control" id="description" name="description" rows="2" placeholder="Enter department description"></textarea>
+                          <label class="form-label" for="description">
+                            Description
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="description"
+                            name="description"
+                            rows="2"
+                            placeholder="Enter department description"
+                          ></textarea>
                         </div>
                       </div>
 
-                      <!-- Status -->
+                      <!-- ================= Status ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Status</h6>
+                        <hr />
+                      </div>
+
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
-                          <label class="form-label">Status <span class="text-danger">*</span></label>
+                          <label class="form-label">
+                            Status <span class="text-danger">*</span>
+                          </label>
                           <div class="m-0">
                             <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
-                              <label class="form-check-label" for="status_active">Active</label>
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_active"
+                                value="active"
+                                checked
+                              />
+                              <label
+                                class="form-check-label"
+                                for="status_active"
+                              >
+                                Active
+                              </label>
                             </div>
                             <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
-                              <label class="form-check-label" for="status_inactive">Inactive</label>
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_inactive"
+                                value="inactive"
+                              />
+                              <label
+                                class="form-check-label"
+                                for="status_inactive"
+                              >
+                                Inactive
+                              </label>
                             </div>
                           </div>
                         </div>
                       </div>
-                      <!-- Organization (Super Admins only, dropdown preload) -->
+
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
+                      </div>
+
+                      <!-- Organization -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
                           <label class="form-label" for="organizationSelect">
                             Organization <span class="text-danger">*</span>
                           </label>
-                          <select class="form-control" id="organizationSelect" name="organization_id">
-                            <!-- dynamically populated by JS -->
+                          <select
+                            class="form-control"
+                            id="organizationSelect"
+                            name="organization_id"
+                          >
+                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
-                      <!-- Facility (Admins only, dropdown preload) -->
+                      <!-- Facility -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
                           <label class="form-label" for="facilitySelect">
-                            Facility <span class="text-muted">(optional)</span>
+                            Facility
+                            <span class="text-muted">(optional)</span>
                           </label>
-                          <select class="form-control" id="facilitySelect" name="facility_id">
-
-                            <!-- dynamically populated by JS -->
+                          <select
+                            class="form-control"
+                            id="facilitySelect"
+                            name="facility_id"
+                          >
+                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
-
-                      <!-- Buttons -->
+                      <!-- ================= Actions ================= -->
                       <div class="col-sm-12">
                         <div class="d-flex gap-2 justify-content-end">
-                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                          <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-outline-secondary"
+                          >
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
                           </button>
-                          <button type="reset" id="clearBtn" class="btn btn-warning">
-                            <i class="ri-refresh-line me-1"></i> Clear
+                          <button
+                            type="reset"
+                            id="clearBtn"
+                            class="btn btn-warning"
+                          >
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
                           </button>
-                          <button type="submit" class="btn btn-primary">
-                            <i class="ri-save-3-line me-1"></i> Save Department
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                          >
+                            <i class="ri-save-3-line me-1"></i>
+                            Save Department
                           </button>
                         </div>
                       </div>
@@ -172,7 +264,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <!-- JS -->

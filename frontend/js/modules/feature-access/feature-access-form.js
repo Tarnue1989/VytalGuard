@@ -1,10 +1,26 @@
-// 📁 feature-access-form.js – Feature Access Form (Single + Bulk + Preview)
+// 📁 feature-access-form.js – Secure & Rule-Driven Feature Access Form
+// ============================================================================
+// 🧭 Mirrors feature-module-form.js EXACTLY (structure + lifecycle)
+// 🔹 Live validation + red fields
+// 🔹 Single + Bulk replace (controller-faithful)
+// 🔹 No silent coercion
+// 🔹 Safe reset + preview lifecycle
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
+  initPageGuard,
+  initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
 
 import {
   loadFeatureModulesLite,
@@ -17,7 +33,7 @@ import {
 import { authFetch } from "../../authSession.js";
 
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers
 ============================================================ */
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
@@ -31,22 +47,39 @@ function normalizeMessage(result, fallback) {
 }
 
 /* ============================================================
+   📋 FORM RULES (mirrors module pattern)
+============================================================ */
+const FEATURE_ACCESS_FORM_RULES = [
+  { id: "organization_id", message: "Organization is required" },
+  { id: "role_id", message: "Role is required" },
+
+  {
+    id: "module_id",
+    message: "Module is required",
+    when: () => !window.__featureAccessBulkMode,
+  },
+
+  {
+    id: "status",
+    message: "Status is required",
+    when: () => true,
+  },
+];
+
+/* ============================================================
    🧠 Bulk State
 ============================================================ */
 let bulkMode = false;
 let selectedModuleIds = new Set();
 let allModulesCache = [];
 
+window.__featureAccessBulkMode = false;
+
 /* ============================================================
    🔽 Dropdowns
 ============================================================ */
 async function populateDropdowns() {
-  const [
-    modules,
-    roles,
-    facilities,
-    organizations,
-  ] = await Promise.all([
+  const [modules, roles, facilities, organizations] = await Promise.all([
     loadFeatureModulesLite(true),
     loadRolesLite({}, true),
     loadFacilitiesLite({}, true),
@@ -93,6 +126,7 @@ async function populateDropdowns() {
 ============================================================ */
 function resetBulkState() {
   bulkMode = false;
+  window.__featureAccessBulkMode = false;
   selectedModuleIds.clear();
 
   const list = document.getElementById("modulePreviewList");
@@ -109,7 +143,7 @@ function resetBulkState() {
 }
 
 /* ============================================================
-   📋 Preview Renderer (Multi-Column)
+   📋 Preview Renderer (mirrors module card logic)
 ============================================================ */
 function renderPreview() {
   const container = document.getElementById("modulePreviewContainer");
@@ -124,19 +158,14 @@ function renderPreview() {
   }
 
   for (const id of selectedModuleIds) {
-    const mod = allModulesCache.find(m => m.id === id);
+    const mod = allModulesCache.find((m) => m.id === id);
     if (!mod) continue;
 
     const item = document.createElement("div");
-    item.className = "form-check symptom-check"; // 👈 SAME class as triage
+    item.className = "form-check symptom-check";
 
     item.innerHTML = `
-      <input
-        class="form-check-input"
-        type="checkbox"
-        id="module_${id}"
-        checked
-      />
+      <input class="form-check-input" type="checkbox" id="module_${id}" checked />
       <label class="form-check-label" for="module_${id}">
         <div class="fw-semibold">${mod.name}</div>
         <small class="text-muted">${mod.key}</small>
@@ -156,22 +185,26 @@ function renderPreview() {
   container.classList.remove("d-none");
 }
 
-
 /* ============================================================
-   🚀 Main Setup
+   🚀 Main Setup (MASTER-ALIGNED)
 ============================================================ */
 export async function setupFeatureAccessFormSubmission({ form }) {
+  initPageGuard(autoPagePermissionKey());
+  initLogoutWatcher();
+  enableLiveValidation(form);
+
   await populateDropdowns();
 
   const addAllBtn = document.getElementById("addAllModulesBtn");
   const fullAccessBtn = document.getElementById("grantFullAccessBtn");
   const moduleSelect = document.getElementById("module_id");
 
-  /* ---------------- Bulk Buttons ---------------- */
+  /* ================= BULK ACTIONS ================= */
 
-  addAllBtn?.addEventListener("click", () => {
+  function enterBulkMode() {
     resetBulkState();
     bulkMode = true;
+    window.__featureAccessBulkMode = true;
 
     allModulesCache.forEach((m) => selectedModuleIds.add(m.id));
     moduleSelect.disabled = true;
@@ -179,43 +212,54 @@ export async function setupFeatureAccessFormSubmission({ form }) {
     fullAccessBtn.disabled = true;
 
     renderPreview();
-  });
+  }
 
-  fullAccessBtn?.addEventListener("click", () => {
-    resetBulkState();
-    bulkMode = true;
-
-    allModulesCache.forEach((m) => selectedModuleIds.add(m.id));
-    moduleSelect.disabled = true;
-    addAllBtn.disabled = true;
-    fullAccessBtn.disabled = true;
-
-    renderPreview();
-  });
+  addAllBtn?.addEventListener("click", enterBulkMode);
+  fullAccessBtn?.addEventListener("click", enterBulkMode);
 
   document.getElementById("selectAllPreview")?.addEventListener("click", () => {
     allModulesCache.forEach((m) => selectedModuleIds.add(m.id));
     renderPreview();
   });
 
-  document.getElementById("deselectAllPreview")?.addEventListener("click", () => {
-    selectedModuleIds.clear();
-    renderPreview();
-  });
+  document
+    .getElementById("deselectAllPreview")
+    ?.addEventListener("click", () => {
+      selectedModuleIds.clear();
+      renderPreview();
+    });
 
-  /* ---------------- Submit ---------------- */
+  /* ================= SUBMIT (RULE-DRIVEN) ================= */
 
   form.onsubmit = async (e) => {
     e.preventDefault();
+    clearFormErrors(form);
 
-    const orgId = document.getElementById("organization_id")?.value;
-    const roleId = document.getElementById("role_id")?.value;
-    const facilityId = document.getElementById("facility_id")?.value || null;
+    const errors = [];
+
+    for (const rule of FEATURE_ACCESS_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    const orgId = form.organization_id.value;
+    const roleId = form.role_id.value;
+    const facilityId = form.facility_id.value || null;
     const status =
-      document.querySelector("input[name='status']:checked")?.value || "active";
-
-    if (!orgId) return showToast("❌ Organization is required");
-    if (!roleId) return showToast("❌ Role is required");
+      form.querySelector("input[name='status']:checked")?.value || "active";
 
     try {
       showLoading();
@@ -238,23 +282,21 @@ export async function setupFeatureAccessFormSubmission({ form }) {
           }
         );
 
-
         const result = await res.json().catch(() => ({}));
         if (!res.ok)
-          throw new Error(normalizeMessage(result, "Bulk grant failed"));
+          throw new Error(
+            normalizeMessage(result, "Bulk replace failed")
+          );
 
         showToast("✅ Feature access replaced successfully");
       } else {
-        const moduleId = moduleSelect.value;
-        if (!moduleId) return showToast("❌ Module is required");
-
         const res = await authFetch(`/api/features/feature-access`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             organization_id: orgId,
             role_id: roleId,
-            module_id: moduleId,
+            module_id: form.module_id.value,
             facility_id: facilityId,
             status,
           }),
@@ -270,16 +312,17 @@ export async function setupFeatureAccessFormSubmission({ form }) {
       resetBulkState();
       window.location.href = "/feature-access-list.html";
     } catch (err) {
-      console.error("❌ Feature access submit error:", err);
+      console.error(err);
       showToast(err.message || "❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
 
-  /* ---------------- Clear / Reset ---------------- */
+  /* ================= CANCEL / RESET ================= */
 
   form.addEventListener("reset", () => {
+    clearFormErrors(form);
     resetBulkState();
   });
 }

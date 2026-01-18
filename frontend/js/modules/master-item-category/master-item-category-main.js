@@ -123,7 +123,8 @@ async function loadEntries() {
 ============================================================ */
 export async function initMasterItemCategoryModule() {
   // Restore last visibility state
-  const visible = localStorage.getItem("masterItemCategoryFormVisible") === "true";
+  const visible =
+    localStorage.getItem("masterItemCategoryFormVisible") === "true";
   if (visible) showForm();
   else hideForm();
 

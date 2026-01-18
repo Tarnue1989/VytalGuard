@@ -19,7 +19,7 @@ import {
   FIELD_ORDER_AUTO_BILLING_RULE, FIELD_ORDER_MESSAGE, FIELD_ORDER_MESSAGE_ATTACHMENT, FIELD_ORDER_CONVERSATION,
   FIELD_ORDER_TRIAGE_RECORD,  FIELD_ORDER_EKG_RECORD, FIELD_ORDER_DEPARTMENT_STOCK, 
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
-  FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG
+  FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER
 } from "./fieldOrder.js";
 
 
@@ -987,6 +987,21 @@ export const FIELD_VISIBILITY_AUTO_BILLING_RULE = {
     "charge_mode", "default_price", "status"
   ],
   staff: ["id", "trigger_module", "billable_item_id", "charge_mode", "status"]
+};
+
+/* -------------------- Billing Trigger -------------------- */
+export const FIELD_VISIBILITY_BILLING_TRIGGER = {
+  superadmin: FIELD_ORDER_BILLING_TRIGGER,
+  organization_admin: FIELD_ORDER_BILLING_TRIGGER,
+
+  manager: [
+    "id", "module_key", "trigger_status",
+    "is_active"
+  ],
+
+  staff: [
+    "id", "module_key", "trigger_status", "is_active"
+  ]
 };
 
 /* -------------------- Message -------------------- */

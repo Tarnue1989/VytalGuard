@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
 </head>
 
 <body>
@@ -61,7 +62,7 @@
             <div class="card">
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title">Vitals</h5>
-                <a href="add-vital.html" class="btn btn-primary ms-auto">
+                <a href="add-vital.html" class="btn btn-primary btn-sm ms-auto">
                   <i class="ri-add-line me-1"></i> Add
                 </a>
               </div>
@@ -78,7 +79,7 @@
                       </button>
                     </div>
 
-                    <!-- ✅ Export Buttons -->
+                    <!-- Export -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
@@ -90,79 +91,77 @@
                         <i class="fas fa-file-pdf me-1"></i> PDF
                       </button>
                     </div>
-
                   </div>
 
                   <div id="filterCollapse" class="card-body filter-body">
                     <div class="section-label mb-2"><strong>Filter Vitals</strong></div>
                     <div class="row g-3 filter-grid compact">
 
-                    <!-- Free Text Search (hidden for now) -->
-                    <div class="col-md-3 d-none">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="filterSearch">Search</label>
-                        <input 
-                          type="text" 
-                          id="filterSearch" 
-                          class="form-control" 
-                          placeholder="Search vitals (bp, pulse, temp...)" 
-                        />
-                      </div>
-                    </div>
-
-
-                    <!-- Patient (suggestion input filter) -->
-                    <div class="col-md-3">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="filterPatient">Patient</label>
-                        <input type="text" class="form-control suggestion-input" id="filterPatient" placeholder="Search patient..." autocomplete="off" />
-                        <input type="hidden" id="filterPatientId" name="filter_patient_id" />
-                        <div id="filterPatientSuggestions" class="suggestions"></div>
-                      </div>
-                    </div>
-
-                    <!-- Nurse (suggestion input filter) -->
-                    <div class="col-md-3">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="filterNurse">Nurse</label>
-                        <input type="text" class="form-control suggestion-input" id="filterNurse" placeholder="Search nurse..." autocomplete="off" />
-                        <input type="hidden" id="filterNurseId" name="filter_nurse_id" />
-                        <div id="filterNurseSuggestions" class="suggestions"></div>
-                      </div>
-                    </div>
-
-
+                      <!-- Patient -->
                       <div class="col-md-3">
-                        <label for="filterStatus" class="form-label">Status</label>
-                        <select id="filterStatus" class="form-select">
-                          <option value="">All</option>
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                          <option value="verified">Verified</option>
-                          <option value="cancelled">Cancelled</option>
-                          <option value="voided">Voided</option>
-                        </select>
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterPatient">Patient</label>
+                          <input type="text" id="filterPatient" class="form-control suggestion-input"
+                                 placeholder="Search patient..." autocomplete="off">
+                          <input type="hidden" id="filterPatientId">
+                          <div id="filterPatientSuggestions" class="suggestions-box"></div>
+                        </div>
                       </div>
 
-                      <!-- Org/Facility -->
+                      <!-- Nurse -->
                       <div class="col-md-3">
-                        <label for="filterOrganizationSelect" class="form-label">Organization</label>
-                        <select id="filterOrganizationSelect" class="form-select"></select>
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterNurse">Nurse</label>
+                          <input type="text" id="filterNurse" class="form-control suggestion-input"
+                                 placeholder="Search nurse..." autocomplete="off">
+                          <input type="hidden" id="filterNurseId">
+                          <div id="filterNurseSuggestions" class="suggestions-box"></div>
+                        </div>
                       </div>
+
+                      <!-- Status -->
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterStatus" class="form-label">Status</label>
+                          <select id="filterStatus" class="form-select">
+                            <option value="">All</option>
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="verified">Verified</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Organization -->
                       <div class="col-md-3">
-                        <label for="filterFacilitySelect" class="form-label">Facility</label>
-                        <select id="filterFacilitySelect" class="form-select"></select>
+                        <div class="field-wrapper">
+                          <label for="filterOrganizationSelect" class="form-label">Organization</label>
+                          <select id="filterOrganizationSelect" class="form-select"></select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterFacilitySelect" class="form-label">Facility</label>
+                          <select id="filterFacilitySelect" class="form-select"></select>
+                        </div>
                       </div>
 
                       <div class="col-md-2">
-                        <label for="filterCreatedFrom" class="form-label">From Date</label>
-                        <input type="date" id="filterCreatedFrom" class="form-control" />
+                        <div class="field-wrapper">
+                          <label for="filterCreatedFrom" class="form-label">From Date</label>
+                          <input type="date" id="filterCreatedFrom" class="form-control">
+                        </div>
                       </div>
 
                       <div class="col-md-2">
-                        <label for="filterCreatedTo" class="form-label">To Date</label>
-                        <input type="date" id="filterCreatedTo" class="form-control" />
+                        <div class="field-wrapper">
+                          <label for="filterCreatedTo" class="form-label">To Date</label>
+                          <input type="date" id="filterCreatedTo" class="form-control">
+                        </div>
                       </div>
 
                       <div class="col-12 d-flex gap-2 filter-actions">
@@ -173,6 +172,7 @@
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
                       </div>
+
                     </div>
                   </div>
                 </div>
@@ -180,13 +180,16 @@
                 <!-- View Toggle -->
                 <div class="d-flex mb-2 view-toggle compact">
                   <div class="dropdown relative-wrapper export-ignore">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle" id="fieldSelectorBtn"
-                            data-bs-toggle="dropdown" aria-expanded="false">
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
+                            id="fieldSelectorBtn"
+                            data-bs-toggle="dropdown">
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2 field-selector-dropdown" id="fieldSelectorDropdown"
+                    <div class="dropdown-menu p-2 field-selector-dropdown"
+                         id="fieldSelectorDropdown"
                          style="min-width:240px;"></div>
                   </div>
+
                   <div class="btn-group" role="group">
                     <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                       <i class="fas fa-th me-1"></i> Card View
@@ -195,26 +198,32 @@
                       <i class="fas fa-table me-1"></i> Table View
                     </button>
                   </div>
-                  
+
                   <!-- Records per page -->
-                  <div class="d-flex align-items-center gap-1 ms-2">
-                    <label for="recordsPerPage" class="fw-semibold text-muted small mb-0">Show</label>
-                    <select id="recordsPerPage"
-                            class="form-select form-select-sm py-0 px-1"
-                            style="width: 65px; height: calc(1.5em + 0.5rem);">
+                  <div class="btn-group align-items-center ms-2" role="group">
+                    <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
+                    <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm text-center"
+                            style="width:64px; appearance:auto;">
                       <option value="10">10</option>
                       <option value="25" selected>25</option>
                       <option value="50">50</option>
                       <option value="100">100</option>
                     </select>
-                    <span class="text-muted small">records</span>
+                    <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
                   </div>
                 </div>
+
+                <!-- 📊 Breakdown Summary -->
+                <hr class="my-2">
+                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
+                <div class="module-summary">
+                  <div id="moduleSummary"></div>
+                </div>
+                <hr class="my-2">
 
                 <!-- Table -->
                 <div class="table-responsive table-container active">
                   <table class="table m-0 align-middle data-table print-table">
-                    <caption class="visually-hidden">Vitals listing with dynamic fields</caption>
                     <thead id="dynamicTableHead"></thead>
                     <tbody id="vitalTableBody"></tbody>
                   </table>
@@ -228,6 +237,7 @@
 
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -239,16 +249,16 @@
     </div>
   </div>
 
-  <!-- overlays / modals / toasts -->
+  <!-- overlays -->
   <div id="loadingOverlay" class="hidden">
     <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
   </div>
 
-  <div id="viewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
+  <div id="viewModal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="viewModalTitle">Details</h2>
-        <button id="closeViewModal" class="close-btn" aria-label="Close">&times;</button>
+        <button id="closeViewModal" class="close-btn">&times;</button>
       </div>
       <div class="modal-body" id="viewModalBody"></div>
     </div>

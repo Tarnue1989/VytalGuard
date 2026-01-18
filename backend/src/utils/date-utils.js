@@ -22,7 +22,7 @@ export function normalizeDateOnly(value) {
   const d = new Date(value);
   if (isNaN(d.getTime())) return null;
 
-  return d.toISOString().split("T")[0]; // YYYY-MM-DD
+  return d.toISOString().split("T")[0]; // YYYY-MM-DD (UTC-safe)
 }
 
 /**
@@ -38,4 +38,24 @@ export function normalizeDateOnlyFields(obj, fields = []) {
       obj[f] = normalizeDateOnly(obj[f]);
     }
   });
+}
+
+/**
+ * Normalize a UI date range into LOCAL start/end timestamps
+ * ✅ Safe for Sequelize TIMESTAMP filtering
+ * ❌ DO NOT use for DATEONLY columns
+ */
+export function normalizeDateRangeLocal(range) {
+  if (!range || typeof range !== "string") return null;
+
+  const [startRaw, endRaw] = range.split(" - ");
+  if (!startRaw || !endRaw) return null;
+
+  const start = new Date(startRaw);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(endRaw);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
 }

@@ -805,6 +805,14 @@ export const FIELD_ORDER_AUTO_BILLING_RULE = [
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
 
+/* -------------------- Billing Trigger -------------------- */
+export const FIELD_ORDER_BILLING_TRIGGER = [
+  "id","organization_id","facility_id",
+  "module_key","trigger_status","is_active",
+  "created_at","updated_at",
+  "created_by_id","updated_by_id"
+];
+
 /* -------------------- Message -------------------- */
 export const FIELD_ORDER_MESSAGE = [
   "id", "conversation_id", "sender_id", "sender_role",

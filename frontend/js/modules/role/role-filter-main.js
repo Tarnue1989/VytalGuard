@@ -1,9 +1,10 @@
-// 📦 role-filter-main.js – Filters + Table/Card (Enterprise-Aligned)
+// 📦 role-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: vital-filter-main.js
-// 🔹 Full enterprise structure — permissions, pagination, toggle sections,
-//   exports, field selector, and role-aware visibility.
-// 🔹 All HTML IDs preserved exactly.
+// 🔹 Mirrors appointment-filter-main.js EXACTLY
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (never DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Role Type + Status fully wired
 // ============================================================================
 
 import {
@@ -11,63 +12,75 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
-  setupSuggestionInputDynamic,
+  loadOrganizationsLite,
+  loadFacilitiesLite,
+  setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./role-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./role-render.js";
+
 import { setupActionHandlers } from "./role-actions.js";
+
 import {
   FIELD_ORDER_ROLE,
   FIELD_DEFAULTS_ROLE,
+  FIELD_LABELS_ROLE,
 } from "./role-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("roleView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "role",
   userRole,
@@ -75,11 +88,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_ROLE,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -87,94 +103,111 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrg");
-const filterOrgSuggestions = document.getElementById("filterOrgSuggestions");
-const filterFacility = document.getElementById("filterFacility");
-const filterFacilitySuggestions = document.getElementById("filterFacilitySuggestions");
-const filterName = document.getElementById("filterName");
-const filterNameSuggestions = document.getElementById("filterNameSuggestions");
-const filterCode = document.getElementById("filterCode");
-const filterCodeSuggestions = document.getElementById("filterCodeSuggestions");
-const filterDescription = document.getElementById("filterDescription");
-const filterDescriptionSuggestions = document.getElementById("filterDescriptionSuggestions");
-const filterStatus = document.getElementById("filterStatus");
-const filterRoleType = document.getElementById("filterRoleType");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-const filterSearch = document.getElementById("filterSearch");
+const qs = id => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch     = qs("globalSearch");
+const filterOrg        = qs("filterOrganizationSelect");
+const filterFacility   = qs("filterFacilitySelect");
+const filterRoleType   = qs("filterRoleTypeSelect");
+const filterStatus     = qs("filterStatusSelect");
+const dateRange        = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE (TABLE HEAD)
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("roleView") || "table";
+window.setRoleSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadRolePage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "role",
+  loadEntries,
+  Number(localStorage.getItem("rolePageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterRoleType,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.dataset.value || "",
-    facility_id: filterFacility?.dataset.value || "",
-    name: filterName?.dataset.value || "",
-    code: filterCode?.dataset.value || "",
-    description: filterDescription?.dataset.value || "",
-    status: filterStatus?.value || "",
-    role_type: filterRoleType?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
-    q: filterSearch?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    role_type: filterRoleType?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🔁 Pagination Control
-============================================================ */
-const getPagination = initPaginationControl("role", loadEntries, 25);
-
-/* ============================================================
-   📦 Load Roles
+   📦 LOAD ROLES (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) => FIELD_ORDER_ROLE.includes(f));
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.role_type)       q.set("role_type", f.role_type);
+    if (f.status)          q.set("status", f.status);
 
     const res = await authFetch(`/api/roles?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "ROLES",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -187,15 +220,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length) showToast("ℹ️ No roles found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load roles");
   } finally {
     hideLoading();
@@ -203,75 +234,63 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("roleView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("roleView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn").onclick = () => {
   [
+    globalSearch,
     filterOrg,
     filterFacility,
-    filterName,
-    filterCode,
-    filterDescription,
-    filterStatus,
     filterRoleType,
-    filterCreatedFrom,
-    filterCreatedTo,
-    filterSearch,
-  ].forEach((el) => {
-    if (el) {
-      el.value = "";
-      if (el.dataset) el.dataset.value = "";
-    }
+    filterStatus,
+    dateRange,
+  ].forEach(el => {
+    if (el) el.value = "";
   });
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `roles_${new Date().toISOString().slice(0, 10)}.xlsx`);
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_ROLE),
+    `roles_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target = viewMode === "table" ? ".table-container" : "#roleList";
-    exportToPDF("Role List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Roles List",
+    viewMode === "table" ? ".table-container" : "#roleList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initRoleModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible = localStorage.getItem("roleFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -280,73 +299,33 @@ export async function initRoleModule() {
     "roleFilterVisible"
   );
 
-  /* ----------------- Suggestion Inputs ----------------- */
-  setupSuggestionInputDynamic(
-    filterOrg,
-    filterOrgSuggestions,
-    "/api/lite/organizations",
-    (selected) => {
-      filterOrg.dataset.value = selected.id;
-      filterFacility.value = "";
-      filterFacility.dataset.value = "";
-    },
-    "name"
-  );
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-  setupSuggestionInputDynamic(
-    filterFacility,
-    filterFacilitySuggestions,
-    "/api/lite/facilities",
-    (selected) => {
-      filterFacility.dataset.value = selected.id;
-    },
-    "name",
-    {
-      extraParams: () => ({
-        organization_id: filterOrg?.dataset.value || "",
-      }),
-    }
-  );
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-  setupSuggestionInputDynamic(
-    filterName,
-    filterNameSuggestions,
-    "/api/lite/roles",
-    (selected) => (filterName.dataset.value = selected.id),
-    "name"
-  );
-
-  setupSuggestionInputDynamic(
-    filterCode,
-    filterCodeSuggestions,
-    "/api/lite/roles",
-    (selected) => (filterCode.dataset.value = selected.id),
-    "code"
-  );
-
-  setupSuggestionInputDynamic(
-    filterDescription,
-    filterDescriptionSuggestions,
-    "/api/lite/roles",
-    (selected) => (filterDescription.dataset.value = selected.id),
-    "description"
-  );
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".col-md-3")?.classList.add("hidden");
+    filterFacility?.closest(".col-md-3")?.classList.add("hidden");
+  }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {
-  // Reserved for advanced reactive behavior
-}
-
-/* ============================================================
-   🏁 Boot
-============================================================ */
-function boot() {
-  initRoleModule().catch((err) => console.error("initRoleModule failed:", err));
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initRoleModule)
+  : initRoleModule();

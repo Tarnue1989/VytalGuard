@@ -68,6 +68,7 @@ import discountPolicyRoutes from "./discountPolicyRoutes.js";
 import discountWaiverRoutes from "./discountWaiverRoutes.js";
 import discountRoutes from "./discountRoutes.js";
 import autoBillingRuleRoutes from "./autoBillingRuleRoutes.js";
+import billingTriggerRoutes from "./billingTriggerRoutes.js";
 
 /* ============================================================
    📌 Lite Routes (Autocomplete / Dropdown APIs)
@@ -172,5 +173,6 @@ router.use("/role-permissions", rolePermissionRoutes);
 router.use("/reports", reportRoutes);
 
 router.use("/debug", debugRoutes);
+router.use("/billing-triggers", billingTriggerRoutes);
 
 export default router;

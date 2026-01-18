@@ -973,34 +973,67 @@ if (includeGender && genderJoin) {
       ("deleted_at" in attrs) ? `a.deleted_at IS NULL` : `TRUE`
     ];
 
-    ["organization_id", "facility_id", "patient_id", "status", "method", "transaction_ref"].forEach(
-      (key) => {
-        if (
-          options.where[key] &&
-          !(key === "organization_id" && allowCrossTenant)
-        ) {
-          whereClauses.push(`a."${key}" = '${esc(options.where[key])}'`);
-        }
+// ============================================================
+// 5️⃣ Gender breakdown (FINAL WORKING FIX)
+// ============================================================
+if (includeGender && genderJoin) {
+  try {
+    const joinTable =
+      typeof genderJoin.model.getTableName() === "object"
+        ? genderJoin.model.getTableName().tableName
+        : genderJoin.model.getTableName();
+
+    const foreignKey =
+      genderJoin.foreignKey || `${genderJoin.as}_id`;
+
+    const whereClauses = [
+      ("deleted_at" in attrs) ? `a.deleted_at IS NULL` : `TRUE`
+    ];
+
+    // ✅ Apply base filters
+    for (const [key, val] of Object.entries(options.where || {})) {
+      if (!val) continue;
+
+      if (val[Op.in]) {
+        whereClauses.push(`a."${key}" IN ('${val[Op.in].join("','")}')`);
+      } else if (val[Op.eq]) {
+        whereClauses.push(`a."${key}" = '${esc(val[Op.eq])}'`);
+      } else {
+        whereClauses.push(`a."${key}" = '${esc(val)}'`);
       }
-    );
+    }
 
-    if (options.where.created_at?.[Op.gte]) {
+    // 🔥 APPLY LIFECYCLE STATUS (THIS IS THE FIX)
+    if (lifecycleStatusField && normalizedStatuses.length === 1) {
       whereClauses.push(
-        `a.created_at >= '${
-          options.where.created_at[Op.gte].toISOString?.() ||
-          options.where.created_at[Op.gte]
-        }'`
+        `a."${lifecycleStatusField}" = '${esc(normalizedStatuses[0])}'`
       );
     }
 
-    if (options.where.created_at?.[Op.lte]) {
-      whereClauses.push(
-        `a.created_at <= '${
-          options.where.created_at[Op.lte].toISOString?.() ||
-          options.where.created_at[Op.lte]
-        }'`
-      );
-    }
+    const whereSQL = `WHERE ${whereClauses.join(" AND ")}`;
+
+    const sql = `
+      SELECT
+        COALESCE(CAST(p.gender AS TEXT), 'Unknown') AS gender,
+        COUNT(DISTINCT p.id) AS count
+      FROM "${tableName}" AS a
+      INNER JOIN "${joinTable}" AS p ON a."${foreignKey}" = p.id
+      ${whereSQL}
+      GROUP BY COALESCE(CAST(p.gender AS TEXT), 'Unknown')
+    `;
+
+    const [rows] = await sequelize.query(sql);
+
+    summary.gender_breakdown = rows.reduce((acc, r) => {
+      acc[r.gender] = Number(r.count || 0);
+      return acc;
+    }, {});
+  } catch (err) {
+    console.warn("⚠️ Gender breakdown failed:", err.message);
+    summary.gender_breakdown = {};
+  }
+}
+
 
     const whereSQL = `WHERE ${whereClauses.join(" AND ")}`;
 
