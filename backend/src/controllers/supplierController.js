@@ -82,8 +82,8 @@ function buildSupplierSchema(userRole, mode = "create") {
     address: Joi.string().allow("", null),
     notes: Joi.string().allow("", null),
     status: Joi.string()
-      .valid(...SUPPLIER_STATUS)
-      .default(SUPPLIER_STATUS[0]),
+      .valid(...SUPPLIER_STATUS_VALUES)
+      .default(SUPPLIER_STATUS_VALUES[0]),
   };
 
   if (mode === "update") {
@@ -360,7 +360,9 @@ export const toggleSupplierStatus = async (req, res) => {
       return error(res, "Supplier not found", null, 404);
     }
 
-    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS;
+    // ✅ FIXED LINE
+    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS_VALUES;
+
     const newStatus = supplier.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await supplier.update({
@@ -493,7 +495,7 @@ export const getAllSuppliers = async (req, res) => {
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
+       🔐 TENANT SCOPE (MASTER – FIXED)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
@@ -505,10 +507,18 @@ export const getAllSuppliers = async (req, res) => {
           facility_id: req.user.facility_id,
         });
       }
-    } else if (req.query.organization_id) {
-      options.where[Op.and].push({
-        organization_id: req.query.organization_id,
-      });
+    } else {
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
     /* ========================================================

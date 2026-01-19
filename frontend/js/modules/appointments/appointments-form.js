@@ -13,6 +13,7 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
+  initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
@@ -37,8 +38,8 @@ import { APPOINTMENT_FORM_RULES } from "./appointment.form.rules.js";
 /* ============================================================
    🧩 Helpers (MASTER parity)
 ============================================================ */
-const qp = (k) => new URLSearchParams(location.search).get(k);
-const uuid = (v) => (v && v.toString().trim() !== "" ? v : null);
+const qp = k => new URLSearchParams(location.search).get(k);
+const uuid = v => (v && v.toString().trim() !== "" ? v : null);
 
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
@@ -60,6 +61,7 @@ export async function setupAppointmentFormSubmission({ form }) {
   const isEdit = Boolean(id);
 
   const token = initPageGuard(autoPagePermissionKey());
+  initLogoutWatcher();
 
   enableLiveValidation(form);
 
@@ -100,7 +102,7 @@ export async function setupAppointmentFormSubmission({ form }) {
      🔽 Dropdowns & Suggestions
   ============================================================ */
   try {
-    const hide = (el) =>
+    const hide = el =>
       el?.closest(".form-group")?.classList.add("hidden");
 
     if (role.includes("super")) {
@@ -154,7 +156,7 @@ export async function setupAppointmentFormSubmission({ form }) {
       patientIn,
       patientSug,
       "/api/lite/patients",
-      (s) => {
+      s => {
         patientId.value = s?.id || "";
         patientIn.value = s?.label || "";
       },
@@ -165,7 +167,7 @@ export async function setupAppointmentFormSubmission({ form }) {
       doctorIn,
       doctorSug,
       "/api/lite/employees",
-      (s) => {
+      s => {
         doctorId.value = s?.id || "";
         doctorIn.value =
           s?.full_name ||
@@ -217,7 +219,8 @@ export async function setupAppointmentFormSubmission({ form }) {
 
       if (entry.organization_id && orgSel) {
         orgSel.value = entry.organization_id;
-        setupSelectOptions(
+
+        await setupSelectOptions(
           facSel,
           await loadFacilitiesLite(
             { organization_id: entry.organization_id },
@@ -242,7 +245,7 @@ export async function setupAppointmentFormSubmission({ form }) {
   /* ============================================================
      📤 Submit (RULE-DRIVEN)
   ============================================================ */
-  form.onsubmit = async (e) => {
+  form.onsubmit = async e => {
     e.preventDefault();
     clearFormErrors(form);
 

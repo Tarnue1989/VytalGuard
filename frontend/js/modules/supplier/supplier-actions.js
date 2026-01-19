@@ -1,9 +1,9 @@
-// 📁 supplier-actions.js – Enterprise-Aligned Master Pattern (Permission-Driven + Role-Aware)
+// 📁 supplier-actions.js – Enterprise Master Pattern (Suppliers)
 // ============================================================================
-// 🧭 Master Pattern Source: triageRecord-actions.js
-// 🔹 Unified lifecycle, permission logic, confirm handling, DOM bindings
-// 🔹 Superadmin bypass + normalized permission parsing
-// 🔹 All existing HTML IDs preserved (safe integration)
+// 🧭 Mirrors department-actions.js EXACTLY (Supplier Parity)
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / toggle-status / delete / restore
+// 🔹 Keeps all DOM IDs, routes, storage keys, and UI behavior intact
 // ============================================================================
 
 import {
@@ -16,9 +16,9 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./supplier-render.js";
 
-/* ============================================================
-   ⚙️ MAIN ACTION HANDLER INITIALIZER
-============================================================ */
+/**
+ * Unified permission-aware action handler for Supplier module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -32,14 +32,14 @@ export function setupActionHandlers({
   const tableBody = document.getElementById("supplierTableBody");
   const cardContainer = document.getElementById("supplierList");
 
-  // 🧩 Cache entries globally
+  // 🗂️ Cache latest entries
   window.latestSupplierEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 PERMISSION NORMALIZATION (Unified)
+     🔑 Normalize Permissions
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -53,9 +53,13 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      p.toLowerCase().trim()
+    )
+  );
 
-  // ✅ Superadmin bypass (covers both single and multiple roles)
+  // 🧠 Superadmin bypass
   const isSuperAdmin =
     (user?.role &&
       user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
@@ -64,14 +68,12 @@ export function setupActionHandlers({
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalized = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalized);
-  };
+  // ✅ Permission checker
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     ⚙️ MAIN ACTION HANDLER
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -83,7 +85,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback → fetch full record if not cached
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -98,56 +100,65 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Supplier data missing");
+
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("suppliers:view"))
-        return showToast("⛔ No permission to view suppliers");
+        return showToast("⛔ You don't have permission to view suppliers");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("suppliers:edit"))
-        return showToast("⛔ No permission to edit suppliers");
+        return showToast("⛔ You don't have permission to edit suppliers");
       return handleEdit(entry);
     }
 
-    // --- Toggle Status ---
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("suppliers:update"))
-        return showToast("⛔ No permission to change supplier status");
+      if (!hasPerm("suppliers:toggle-status"))
+        return showToast("⛔ You don't have permission to change status");
       return await handleToggleStatus(id, entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("suppliers:delete"))
-        return showToast("⛔ No permission to delete suppliers");
+        return showToast("⛔ You don't have permission to delete suppliers");
       return await handleDelete(id, entry);
+    }
+
+    if (cls.contains("restore-btn")) {
+      if (!hasPerm("suppliers:restore"))
+        return showToast("⛔ You don't have permission to restore suppliers");
+      return await handleRestore(id, entry);
     }
   }
 
   /* ============================================================
-     🧩 ACTION HANDLERS
+     ⚙️ Action Handlers
   ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Supplier Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("supplierEditId", entry.id);
     sessionStorage.setItem("supplierEditPayload", JSON.stringify(entry));
-    window.location.href = `add-supplier.html`;
+    window.location.href = "add-supplier.html";
   }
 
+  // 🔄 Toggle Status
   async function handleToggleStatus(id, entry) {
     const isActive = (entry.status || "").toLowerCase() === "active";
     const confirmed = await showConfirm(
-      isActive ? "Deactivate this supplier?" : "Activate this supplier?"
+      isActive
+        ? `Deactivate supplier "${entry.name}"?`
+        : `Activate supplier "${entry.name}"?`
     );
     if (!confirmed) return;
 
@@ -161,10 +172,15 @@ export function setupActionHandlers({
         throw new Error(data.message || "❌ Failed to toggle supplier status");
 
       const newStatus =
-        data?.data?.status || (isActive ? "inactive" : "active");
+        (data?.data?.status ||
+          (isActive ? "inactive" : "active")).toLowerCase();
+
       showToast(
-        `✅ Supplier "${entry.name}" status changed to ${newStatus.toUpperCase()}`
+        newStatus === "active"
+          ? `✅ Supplier "${entry.name}" activated`
+          : `✅ Supplier "${entry.name}" deactivated`
       );
+
       window.latestSupplierEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -175,13 +191,18 @@ export function setupActionHandlers({
     }
   }
 
+  // 🗑️ Delete
   async function handleDelete(id, entry) {
-    const confirmed = await showConfirm("Delete this supplier?");
+    const confirmed = await showConfirm(
+      `Delete supplier "${entry.name}" permanently?`
+    );
     if (!confirmed) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/suppliers/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/suppliers/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete supplier");
@@ -197,41 +218,73 @@ export function setupActionHandlers({
     }
   }
 
+  // ♻️ Restore
+  async function handleRestore(id, entry) {
+    const confirmed = await showConfirm(
+      `Restore supplier "${entry.name}" record?`
+    );
+    if (!confirmed) return;
+
+    try {
+      showLoading();
+      const res = await authFetch(`/api/suppliers/${id}/restore`, {
+        method: "PATCH",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.message || "❌ Failed to restore supplier");
+
+      showToast(`✅ Supplier "${entry.name}" restored successfully`);
+      window.latestSupplierEntries = [];
+      await loadEntries(currentPage);
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "❌ Failed to restore supplier");
+    } finally {
+      hideLoading();
+    }
+  }
+
   /* ============================================================
-     🌐 GLOBAL HELPERS (Window-Level)
+     🌍 Global Helpers (Inline Triggers)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestSupplierEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewSupplier = (id) => {
     if (!hasPerm("suppliers:view"))
-      return showToast("⛔ No permission to view supplier");
+      return showToast("⛔ No permission to view suppliers");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Supplier not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editSupplier = (id) => {
     if (!hasPerm("suppliers:edit"))
-      return showToast("⛔ No permission to edit supplier");
+      return showToast("⛔ No permission to edit suppliers");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Supplier not found for editing");
   };
 
-  window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("suppliers:update"))
-      return showToast("⛔ No permission to change supplier status");
+  window.toggleSupplierStatus = async (id) => {
+    if (!hasPerm("suppliers:toggle-status"))
+      return showToast("⛔ No permission to toggle suppliers");
     const entry = findEntry(id);
     await handleToggleStatus(id, entry);
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteSupplier = async (id) => {
     if (!hasPerm("suppliers:delete"))
-      return showToast("⛔ No permission to delete supplier");
+      return showToast("⛔ No permission to delete suppliers");
     const entry = findEntry(id);
     await handleDelete(id, entry);
+  };
+
+  window.restoreSupplier = async (id) => {
+    if (!hasPerm("suppliers:restore"))
+      return showToast("⛔ No permission to restore suppliers");
+    const entry = findEntry(id);
+    await handleRestore(id, entry);
   };
 }

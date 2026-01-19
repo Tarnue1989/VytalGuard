@@ -1,13 +1,13 @@
-// 📦 supplier-fields.js – Enterprise-Aligned Master Pattern (Upgraded)
+// 📦 supplier-fields.js – Enterprise-Aligned Master Pattern (Parity Complete)
 // ============================================================================
-// 🔹 Pattern Source: role-fields.js (Enterprise Master)
+// 🔹 Pattern Source: department-constants.js (Enterprise Master)
 // 🔹 Structural Consistency: Field labels, order, role-based visibility
 // 🔹 100% ID retention (safe for linked HTML / JS references)
 // 🔹 Includes standardized metadata + hierarchical role visibility
 // ============================================================================
 
 /* ============================================================
-   🏷️ Field Labels (Enterprise-Consistent)
+   🏷️ Field Labels
 ============================================================ */
 export const FIELD_LABELS_SUPPLIER = {
   organization: "Organization",
@@ -29,7 +29,7 @@ export const FIELD_LABELS_SUPPLIER = {
 };
 
 /* ============================================================
-   📋 Field Order (Enterprise-Consistent Across Modules)
+   📋 Field Order (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_SUPPLIER = [
   "organization",
@@ -52,13 +52,7 @@ export const FIELD_ORDER_SUPPLIER = [
 
 /* ============================================================
    👥 Role-Based Field Visibility Defaults
-   (Fully Enterprise-Aligned Hierarchical Structure)
 ============================================================ */
-// 🧩 SuperAdmin → Full visibility (organization + facility + metadata)
-// 🧩 Admin → Org-level visibility with audit trail
-// 🧩 Manager → Facility-scope essentials + audit summary
-// 🧩 Staff → Operational essentials only
-
 export const FIELD_DEFAULTS_SUPPLIER = {
   superadmin: [
     "organization",
@@ -74,6 +68,8 @@ export const FIELD_DEFAULTS_SUPPLIER = {
     "created_at",
     "updatedBy",
     "updated_at",
+    "deletedBy",
+    "deleted_at",
     "actions",
   ],
 
@@ -91,6 +87,22 @@ export const FIELD_DEFAULTS_SUPPLIER = {
     "created_at",
     "updatedBy",
     "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
+  facility_head: [
+    "facility",
+    "name",
+    "contact_name",
+    "contact_phone",
+    "address",
+    "status",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
     "actions",
   ],
 
@@ -103,6 +115,8 @@ export const FIELD_DEFAULTS_SUPPLIER = {
     "status",
     "createdBy",
     "created_at",
+    "updatedBy",
+    "updated_at",
     "actions",
   ],
 
@@ -114,3 +128,9 @@ export const FIELD_DEFAULTS_SUPPLIER = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (Master Parity)
+============================================================ */
+export const MODULE_KEY_SUPPLIER = "supplier";
+export const MODULE_LABEL_SUPPLIER = "Supplier";

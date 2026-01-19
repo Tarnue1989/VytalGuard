@@ -32,7 +32,9 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Suppliers</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Add Supplier</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Add Supplier
+          </li>
         </ol>
       </div>
 
@@ -46,125 +48,225 @@
               </div>
               <div class="card-body">
 
-              <!-- 📦 Form Container -->
-              <div id="formContainer">
-                <form id="supplierForm" novalidate>
-                  <div class="row gx-4">
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="supplierForm" novalidate>
+                    <div class="row gx-4">
 
-                    <!-- ================= Supplier Info ================= -->
-                    <div class="col-12"><h6 class="mt-3">Supplier Info</h6><hr/></div>
-
-                    <!-- Supplier Name -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="name">
-                          Supplier Name <span class="text-danger">*</span>
-                        </label>
-                        <input type="text" class="form-control" id="name" name="name" required>
+                      <!-- ================= Supplier Info ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Supplier Info</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Contact Person -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="contact_name">Contact Person</label>
-                        <input type="text" class="form-control" id="contact_name" name="contact_name">
+                      <!-- Supplier Name -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="name">
+                            Supplier Name <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="name"
+                            name="name"
+                            placeholder="Enter supplier name"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Contact Email -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="contact_email">Contact Email</label>
-                        <input type="email" class="form-control" id="contact_email" name="contact_email">
+                      <!-- Contact Person -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="contact_name">
+                            Contact Person
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="contact_name"
+                            name="contact_name"
+                            placeholder="Enter contact person"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Contact Phone -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="contact_phone">Contact Phone</label>
-                        <input type="text" class="form-control" id="contact_phone" name="contact_phone">
+                      <!-- Contact Email -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="contact_email">
+                            Contact Email
+                          </label>
+                          <input
+                            type="email"
+                            class="form-control"
+                            id="contact_email"
+                            name="contact_email"
+                            placeholder="Enter contact email"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Status (hidden – backend controlled) -->
-                    <div class="col-lg-3 col-sm-6 d-none">
-                      <div class="mb-3">
-                        <label class="form-label">Status</label>
-                        <div>
-                          <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
-                            <label class="form-check-label" for="status_active">Active</label>
-                          </div>
-                          <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
-                            <label class="form-check-label" for="status_inactive">Inactive</label>
+                      <!-- Contact Phone -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="contact_phone">
+                            Contact Phone
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="contact_phone"
+                            name="contact_phone"
+                            placeholder="Enter contact phone"
+                          />
+                        </div>
+                      </div>
+
+                      <!-- Address -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="address">
+                            Address
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="address"
+                            name="address"
+                            rows="2"
+                            placeholder="Enter supplier address"
+                          ></textarea>
+                        </div>
+                      </div>
+
+                      <!-- Notes -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="notes">
+                            Notes
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="notes"
+                            name="notes"
+                            rows="2"
+                            placeholder="Additional notes"
+                          ></textarea>
+                        </div>
+                      </div>
+
+                      <!-- ================= Status ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Status</h6>
+                        <hr />
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label">
+                            Status <span class="text-danger">*</span>
+                          </label>
+                          <div class="m-0">
+                            <div class="form-check form-check-inline">
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_active"
+                                value="active"
+                                checked
+                              />
+                              <label class="form-check-label" for="status_active">
+                                Active
+                              </label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input
+                                class="form-check-input"
+                                type="radio"
+                                name="status"
+                                id="status_inactive"
+                                value="inactive"
+                              />
+                              <label class="form-check-label" for="status_inactive">
+                                Inactive
+                              </label>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-
-                    <!-- Address -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="address">Address</label>
-                        <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Notes -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="notes">Notes</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6" id="organizationFieldGroup">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">
+                            Organization <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="organizationSelect"
+                            name="organization_id"
+                          >
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- ================= Organization & Facility ================= -->
-                    <div class="col-12"><h6 class="mt-3">Assignment</h6><hr/></div>
-
-                    <!-- Organization (hidden by default) -->
-                    <div class="col-lg-3 col-sm-6 d-none" id="organizationFieldGroup">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="organizationSelect">Organization</label>
-                        <select class="form-select" id="organizationSelect" name="organization_id">
-                          <option value="">-- Select Organization --</option>
-                        </select>
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6" id="facilityFieldGroup">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">
+                            Facility <span class="text-muted">(optional)</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="facilitySelect"
+                            name="facility_id"
+                          >
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Facility (hidden by default) -->
-                    <div class="col-lg-3 col-sm-6 d-none" id="facilityFieldGroup">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="facilitySelect">Facility</label>
-                        <select class="form-select" id="facilitySelect" name="facility_id">
-                          <option value="">-- Select Facility --</option>
-                        </select>
+                      <!-- ================= Actions ================= -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-outline-secondary"
+                          >
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
+                          </button>
+                          <button
+                            type="reset"
+                            id="clearBtn"
+                            class="btn btn-warning"
+                          >
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
+                          </button>
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                          >
+                            <i class="ri-save-3-line me-1"></i>
+                            Save Supplier
+                          </button>
+                        </div>
                       </div>
+
                     </div>
-
-                    <!-- ================= Actions ================= -->
-                    <div class="col-sm-12">
-                      <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                        </button>
-                        <button type="reset" id="clearBtn" class="btn btn-warning">
-                          <i class="ri-refresh-line me-1"></i> Clear
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                          <i class="ri-save-3-line me-1"></i> Save Supplier
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-                </form>
-              </div>
-              <!-- /formContainer -->
-
+                  </form>
+                </div>
+                <!-- /formContainer -->
 
               </div>
             </div>
@@ -181,7 +283,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <!-- JS -->

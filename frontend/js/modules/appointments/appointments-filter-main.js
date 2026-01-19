@@ -7,9 +7,14 @@
 // ============================================================================
 
 import {
-  showToast, showLoading, hideLoading,
-  initPageGuard, setupToggleSection,
-  renderPaginationControls, initLogoutWatcher,
+  showToast,
+  showLoading,
+  hideLoading,
+  initPageGuard,
+  setupToggleSection,
+  renderPaginationControls,
+  initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -90,7 +95,7 @@ let visibleFields = setupVisibleFields({
 renderFieldSelector(
   {},
   visibleFields,
-  (fields) => {
+  fields => {
     visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
@@ -121,7 +126,7 @@ const filterDoctorSuggestions = qs("filterDoctorSuggestions");
 const dateRange = qs("dateRange");
 
 /* ============================================================
-   🔃 SORT BRIDGE (TABLE HEAD)
+   🔃 SORT BRIDGE
 ============================================================ */
 window.setAppointmentSort = (field, dir) => {
   sortBy = field;
@@ -155,9 +160,8 @@ setupAutoFilters({
   onChange: loadEntries,
 });
 
-
 /* ============================================================
-   📋 FILTER BUILDER (ID-ONLY)
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
@@ -173,7 +177,7 @@ function getFilters() {
 }
 
 /* ============================================================
-   📦 LOAD ENTRIES (MASTER SAFE)
+   📦 LOAD ENTRIES
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -356,7 +360,7 @@ export async function initAppointmentModule() {
     orgs.unshift({ id: "", name: "-- All Organizations --" });
     setupSelectOptions(filterOrg, orgs, "id", "name");
 
-    const reloadFacilities = async (orgId = null) => {
+    const reloadFacilities = async orgId => {
       const facs = await loadFacilitiesLite(
         orgId ? { organization_id: orgId } : {},
         true

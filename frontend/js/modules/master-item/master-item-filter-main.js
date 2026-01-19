@@ -16,6 +16,7 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -53,15 +54,14 @@ import { renderModuleSummary } from "../../utils/render-module-summary.js";
 /* ============================================================
    🔐 AUTH + USER
 ============================================================ */
-const token = initPageGuard("master-items");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 const permissions = (() => {
   try {
-    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
-      String(p.key || p).toLowerCase()
-    );
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
   } catch {
     return [];
   }
@@ -107,7 +107,7 @@ renderFieldSelector(
 /* ============================================================
    🔎 FILTER DOM
 ============================================================ */
-const qs = (id) => document.getElementById(id);
+const qs = id => document.getElementById(id);
 
 const globalSearch = qs("globalSearch");
 const filterOrg = qs("filterOrganizationSelect");
@@ -143,13 +143,17 @@ setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
-  selectInputs: [filterOrg, filterFacility, filterStatus],
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
 
 /* ============================================================
-   📋 FILTER BUILDER
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
@@ -163,7 +167,7 @@ function getFilters() {
 }
 
 /* ============================================================
-   📦 LOAD MASTER ITEMS
+   📦 LOAD MASTER ITEMS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -185,9 +189,8 @@ async function loadEntries(page = 1) {
     if (f.dateRange) q.set("dateRange", f.dateRange);
     if (f.organization_id) q.set("organization_id", f.organization_id);
     if (f.facility_id) q.set("facility_id", f.facility_id);
-    if (f.status) q.set("status", f.status);
-    if (f.feature_module_id)
-      q.set("feature_module_id", f.feature_module_id);
+    if (f.status && f.status !== "all") q.set("status", f.status);
+    if (f.feature_module_id) q.set("feature_module_id", f.feature_module_id);
 
     const res = await authFetch(`/api/master-items?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -254,15 +257,21 @@ qs("cardViewBtn").onclick = () => {
    🔄 RESET FILTERS
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
-  [globalSearch, filterOrg, filterFacility, filterStatus, dateRange].forEach(
-    (el) => {
-      if (el) el.value = "";
-    }
-  );
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    dateRange,
+  ].forEach(el => {
+    if (el) el.value = "";
+  });
+
   if (filterFeatureModule) {
     filterFeatureModule.value = "";
     filterFeatureModule.dataset.value = "";
   }
+
   loadEntries(1);
 };
 

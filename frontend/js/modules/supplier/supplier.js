@@ -1,6 +1,6 @@
 // 📦 supplier.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: triage-record.js
+// 🧭 Master Pattern: role.js / vitals.js / department.js
 // 🔹 Unified initialization entry for the Supplier module
 // 🔹 Handles module boot, imports, constants, and safe startup guard
 // ============================================================================
@@ -9,13 +9,13 @@
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters, table, and pagination)
+// 🧭 Main module init (handles filter, table, card, etc.)
 import { initSupplierModule } from "./supplier-filter-main.js";
 
 // ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
 import "./supplier-actions.js";
 
-// 🧩 Constants (for dynamic field selector or column rendering)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_SUPPLIER,
   FIELD_ORDER_SUPPLIER,
@@ -28,16 +28,20 @@ import { showToast, hideLoading } from "../../utils/index.js";
 /* ============================================================
    🚀 DOM-Ready Bootstrap
 ============================================================ */
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize if this is a Supplier page (form or list)
-    if (document.getElementById("supplierForm") || document.getElementById("supplierTableBody")) {
+    // 🧩 Initialize only if the supplier form or list container exists
+    if (
+      document.getElementById("supplierForm") ||
+      document.getElementById("supplierList")
+    ) {
       await initSupplierModule();
     }
 
-    // (Optional future hook:)
-    // if (document.getElementById("supplierReportSection")) {
-    //   await initSupplierReportModule();
+    // (Optional) Future enhancement:
+    // if (document.getElementById("supplierTableBody")) {
+    //   await initSupplierListModule();
     // }
 
   } catch (err) {

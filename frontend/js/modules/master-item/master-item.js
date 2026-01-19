@@ -2,15 +2,15 @@
 // ============================================================================
 // 🧭 FULL PARITY with department.js
 // 🔹 Unified initialization entry for the Master Item module
-// 🔹 Handles module boot, imports, constants, and safe startup guard
-// 🔹 Supports list + table + form pages transparently
+// 🔹 SAFE startup guard (list-only bootstrap)
+// 🔹 NEVER initializes list logic on form pages
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (filters, table, card, pagination, summary)
+// 🧭 Main LIST module init (filters, table, card, pagination, summary)
 import { initMasterItemModule } from "./master-item-filter-main.js";
 
 // ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
@@ -27,27 +27,18 @@ import {
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 DOM-Ready Bootstrap
+   🚀 DOM-Ready Bootstrap (MASTER SAFE)
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize only if master item form or list/table container exists
-    if (
-      document.getElementById("masterItemForm") ||
-      document.getElementById("masterItemList") ||
-      document.getElementById("masterItemTableBody")
-    ) {
+    // ✅ LIST PAGE ONLY — matches department.js behavior
+    if (document.getElementById("masterItemList")) {
       await initMasterItemModule();
     }
 
-    // (Optional future expansion)
-    // if (document.getElementById("masterItemTableBody")) {
-    //   await initMasterItemListModule();
-    // }
-
   } catch (err) {
     console.error("❌ Failed to initialize Master Item module", err);
-    hideLoading(); // ensure spinner doesn’t hang
+    hideLoading();
     showToast("❌ Failed to load Master Item module");
   }
 });
