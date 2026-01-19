@@ -1,9 +1,10 @@
-// 📦 supplier-filter-main.js – Enterprise-Aligned (Master Pattern)
+// 📦 supplier-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: triageRecord-filter-main.js
-// 🔹 Unified enterprise structure for filters, visibility, permissions,
-//   exports, and pagination.
-// 🔹 All Supplier HTML IDs preserved exactly.
+// 🔹 Mirrors department-filter-main.js EXACTLY
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (never DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Supplier Status fully wired
 // ============================================================================
 
 import {
@@ -11,75 +12,89 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import { authFetch } from "../../authSession.js";
 
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  setupSuggestionInputDynamic,
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./supplier-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./supplier-render.js";
+
 import { setupActionHandlers } from "./supplier-actions.js";
+
 import {
   FIELD_ORDER_SUPPLIER,
   FIELD_DEFAULTS_SUPPLIER,
+  FIELD_LABELS_SUPPLIER,
 } from "./supplier-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
+import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth + Logout Guard
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🧠 Role + Permission Normalization
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🌐 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("supplierView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   📋 Field Visibility Setup
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
-  moduleKey: "suppliers",
+  moduleKey: "supplier",
   userRole,
   defaultFields: FIELD_DEFAULTS_SUPPLIER,
   allowedFields: FIELD_ORDER_SUPPLIER,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -87,82 +102,107 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🧩 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterSearch = document.getElementById("filterSearch");
-const filterSearchSuggestions = document.getElementById("filterSearchSuggestions");
-const filterOrganization = document.getElementById("filterOrganization");
-const filterOrganizationSuggestions = document.getElementById("filterOrganizationSuggestions");
-const filterFacility = document.getElementById("filterFacility");
-const filterFacilitySuggestions = document.getElementById("filterFacilitySuggestions");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = id => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatusSelect");
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Paging State
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("supplierView") || "table";
+window.setSupplierSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadSupplierPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filters
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "supplier",
+  loadEntries,
+  Number(localStorage.getItem("supplierPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    global: filterSearch?.dataset.value || "",
-    organization_id: filterOrganization?.dataset.value || "",
-    facility_id: filterFacility?.dataset.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Suppliers
+   📦 LOAD SUPPLIERS
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
-    const filters = getFilters();
+    showLoading();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_SUPPLIER.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
 
-    const res = await fetch(`/api/suppliers?page=${page}&limit=10&${q}`, {
+    const res = await authFetch(`/api/suppliers?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    let result = {};
-    try {
-      result = await res.json();
-    } catch {
-      console.warn("⚠️ Non-JSON response");
-    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
-
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || 1;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "SUPPLIERS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -175,99 +215,76 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load suppliers");
+  } finally {
+    hideLoading();
   }
 }
 
 /* ============================================================
-   🧭 View Toggle
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("supplierView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("supplierView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔎 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  try {
-    showLoading();
-    await loadEntries(1);
-  } finally {
-    hideLoading();
-  }
-};
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn").onclick = () => {
   [
-    filterSearch,
-    filterOrganization,
+    globalSearch,
+    filterOrg,
     filterFacility,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
-    if (el) {
-      el.value = "";
-      if (el.dataset) el.dataset.value = "";
-    }
+    dateRange,
+  ].forEach(el => {
+    if (el) el.value = "";
   });
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Buttons
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn) {
-  exportCSVBtn.onclick = () => {
-    exportToExcel(
-      entries,
-      `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
-  };
-}
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_SUPPLIER),
+    `suppliers_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn) {
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#supplierList";
-    exportToPDF("Supplier List", target, "portrait", true);
-  };
-}
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Suppliers List",
+    viewMode === "table" ? ".table-container" : "#supplierList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initSupplierModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible =
-    localStorage.getItem("supplierFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -276,70 +293,42 @@ export async function initSupplierModule() {
     "supplierFilterVisible"
   );
 
-  // ✅ Global Search
-  if (filterSearch && filterSearchSuggestions) {
-    setupSuggestionInputDynamic(
-      filterSearch,
-      filterSearchSuggestions,
-      "/api/lite/suppliers",
-      (selected) => {
-        filterSearch.dataset.value = selected.id;
-      },
-      "label"
-    );
-  }
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-  // ✅ Organization + Facility (cascading)
-  if (filterOrganization && filterOrganizationSuggestions) {
-    setupSuggestionInputDynamic(
-      filterOrganization,
-      filterOrganizationSuggestions,
-      "/api/lite/organizations",
-      (selected) => {
-        filterOrganization.dataset.value = selected.id;
-        filterFacility.value = "";
-        filterFacility.dataset.value = "";
-      },
-      "name"
-    );
-  }
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-  if (filterFacility && filterFacilitySuggestions) {
-    setupSuggestionInputDynamic(
-      filterFacility,
-      filterFacilitySuggestions,
-      "/api/lite/facilities",
-      (selected) => {
-        filterFacility.dataset.value = selected.id;
-      },
-      "name",
-      {
-        extraParams: () => ({
-          organization_id: filterOrganization?.dataset.value || "",
-        }),
-      }
-    );
+    await reloadFacilities();
+
+    filterOrg.onchange = async () => {
+      await reloadFacilities(filterOrg.value || null);
+      loadEntries(1); // 🔑 reload after org → facility cascade
+    };
+
+    filterFacility.onchange = () => {
+      loadEntries(1); // 🔑 REQUIRED: facility must actively reload
+    };
+
+  } else {
+    filterOrg?.closest(".col-md-3")?.classList.add("hidden");
+    filterFacility?.closest(".col-md-3")?.classList.add("hidden");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🔁 Sync Helper (Reserved)
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {}
-
-/* ============================================================
-   ⚙️ Boot
-============================================================ */
-function boot() {
-  initSupplierModule().catch((err) => {
-    console.error("initSupplierModule failed:", err);
-  });
-}
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
-  boot();
-}
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initSupplierModule)
+  : initSupplierModule();

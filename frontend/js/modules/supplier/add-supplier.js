@@ -1,45 +1,50 @@
-// 📦 add-supplier.js – Enterprise-Aligned Page Controller (Add/Edit Supplier)
+// 📦 add-supplier.js – Supplier Form Page Controller (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: add-triage-record.js
-// 🔹 Unified enterprise structure — Add/Edit mode, permission guard,
-//   session-based edit cache, dropdown preloads, and safe resets.
-// 🔹 All supplier-specific fields & IDs preserved.
+// 🧭 Mirrors department-main.js responsibilities EXACTLY
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Delegates ALL business logic to supplier-form.js
 // ============================================================================
 
 import { setupSupplierFormSubmission } from "./supplier-form.js";
 
 import {
-  showToast,
-  showLoading,
-  hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
-import {
-  loadOrganizationsLite,
-  loadFacilitiesLite,
-  setupSelectOptions,
-} from "../../utils/data-loaders.js";
 
-// 🔐 Auth Guard – Automatically resolves correct permission
+/* ============================================================
+   🔐 Auth Guard + Shared State
+============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// Shared reference for consistent state tracking
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧹 Reset Form Helper → Back to Add Mode
+   📎 DOM Refs
+============================================================ */
+const form = document.getElementById("supplierForm");
+const formContainer = document.getElementById("formContainer");
+const desktopAddBtn = document.getElementById("desktopAddBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const clearBtn = document.getElementById("clearBtn");
+
+/* ============================================================
+   🧹 Reset Form Helper
 ============================================================ */
 function resetForm() {
-  const form = document.getElementById("supplierForm");
   if (!form) return;
 
   form.reset();
   sharedState.currentEditIdRef.value = null;
+
+  sessionStorage.removeItem("supplierEditId");
+  sessionStorage.removeItem("supplierEditPayload");
 
   // Clear selects
   ["organizationSelect", "facilitySelect"].forEach((id) => {
@@ -47,170 +52,62 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Default status
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
-
-  // Switch UI
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add Supplier";
-  const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Supplier`;
+  // Default status = active
+  document.getElementById("status_active")?.setAttribute("checked", true);
 }
 
 /* ============================================================
-   🚀 Main Init
+   🧭 Form Show / Hide (DEPARTMENT PATTERN)
 ============================================================ */
-document.addEventListener("DOMContentLoaded", async () => {
-  const form = document.getElementById("supplierForm");
+function showForm() {
+  formContainer?.classList.remove("hidden");
+  desktopAddBtn?.classList.add("hidden");
+}
+
+// 🔗 Expose globally (actions / hot reload)
+window.showForm = showForm;
+window.resetForm = resetForm;
+
+/* ============================================================
+   🚀 Init Entrypoint
+============================================================ */
+document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  // ✅ ALWAYS show form (EXACTLY like Department)
+  showForm();
 
-  /* ============================================================
-     🏢 Organization & Facility Handling
-  ============================================================ */
-  try {
-    if (userRole.includes("super")) {
-      // Super Admin → Full control
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      // Admin → Facility-scoped
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      // Staff → Hide both
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
-    }
-  } catch (err) {
-    console.error("❌ Org/Facility preload failed:", err);
-    showToast("❌ Could not load organization/facility lists");
-  }
-
-  /* ============================================================
-     🧩 Supplier Form Submission (Master Pattern)
-  ============================================================ */
+  // Wire form logic (ALL business logic lives in supplier-form.js)
   setupSupplierFormSubmission({
     form,
     token,
     sharedState,
     resetForm,
-    loadEntries: null,
   });
 
-  /* ============================================================
-     ✏️ Edit Mode Prefill
-  ============================================================ */
-  const editId = sessionStorage.getItem("supplierEditId");
-  const rawPayload = sessionStorage.getItem("supplierEditPayload");
-
-  async function applyPrefill(entry) {
-    if (!entry) return;
-    showLoading();
-
-    // 🧾 Basic fields
-    ["name", "contact_name", "contact_email", "contact_phone", "address", "notes"].forEach(
-      (id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = entry[id] || "";
-      }
-    );
-
-    // 🏢 Organization & Facility
-    const orgId = entry.organization_id || entry.organization?.id;
-    const facId = entry.facility_id || entry.facility?.id;
-
-    try {
-      if (orgId && orgSelect) {
-        const orgs = await loadOrganizationsLite();
-        setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-        orgSelect.value = orgId;
-      }
-
-      if (facId && facSelect) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-        facSelect.value = facId;
-      }
-    } catch (err) {
-      console.error("❌ Prefill org/fac failed:", err);
-    }
-
-    // 🔘 Status
-    const rawStatus = (entry.status || "").toLowerCase();
-    const statusEl = document.getElementById(`status_${rawStatus}`);
-    if (statusEl) statusEl.checked = true;
-
-    // 🪄 Switch UI to Edit Mode
-    const titleEl = document.querySelector(".card-title");
-    if (titleEl) titleEl.textContent = "Edit Supplier";
-    const submitBtn = form.querySelector("button[type=submit]");
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Supplier`;
-
-    hideLoading();
-  }
-
-  if (editId && rawPayload) {
-    try {
-      const entry = JSON.parse(rawPayload);
-      sharedState.currentEditIdRef.value = editId;
-      await applyPrefill(entry);
-    } catch (err) {
-      console.error("❌ Cached edit load failed:", err);
-      showToast("❌ Could not load cached supplier for editing");
-    }
-  } else {
-    // Fallback: ?id param in URL
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    if (id) {
-      sharedState.currentEditIdRef.value = id;
-      try {
-        showLoading();
-        const res = await authFetch(`/api/suppliers/${id}`);
-        const result = await res.json();
-        const entry = result?.data;
-        if (!res.ok || !entry)
-          throw new Error(result.message || "❌ Failed to fetch supplier");
-        await applyPrefill(entry);
-      } catch (err) {
-        console.error("❌ Fetch edit record failed:", err);
-        showToast(err.message || "❌ Failed to load supplier for editing");
-      } finally {
-        hideLoading();
-      }
-    }
-  }
-
-  /* ============================================================
-     🚪 Cancel & Clear Buttons
-  ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("supplierEditId");
-    sessionStorage.removeItem("supplierEditPayload");
+  /* ---------------- Cancel ---------------- */
+  cancelBtn?.addEventListener("click", () => {
+    resetForm();
     window.location.href = "/suppliers-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
+  /* ---------------- Clear ---------------- */
+  clearBtn?.addEventListener("click", () => {
+    resetForm();
+  });
+
+  /* ---------------- Desktop Add ---------------- */
+  desktopAddBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("supplierEditId");
     sessionStorage.removeItem("supplierEditPayload");
     resetForm();
+    showForm();
   });
 });
+
+/* ============================================================
+   🔁 Reserved Sync Hook (Future)
+============================================================ */
+export function syncRefsToState() {
+  // Reserved for enterprise reactive form syncing
+}

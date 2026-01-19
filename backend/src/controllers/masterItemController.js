@@ -35,6 +35,12 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 ============================================================ */
 const MODULE_KEY = "masterItem";
 const debug = makeModuleLogger("masterItem");
+/* ============================================================
+   🧩 ENUM NORMALIZATION (MASTER SAFE)
+============================================================ */
+const MASTER_ITEM_STATUS_VALUES = Array.isArray(MASTER_ITEM_STATUS)
+  ? MASTER_ITEM_STATUS
+  : Object.values(MASTER_ITEM_STATUS);
 
 /* ============================================================
    🔗 SHARED INCLUDES
@@ -300,7 +306,12 @@ export const updateItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL ITEMS (TRUE MASTER PARITY + STATUS FIXED)
+   📌 GET ALL ITEMS (MASTER PARITY WITH getAllDepartments)
+   🔹 Pagination contract identical
+   🔹 Status filter ENUM-safe
+   🔹 Feature module filter
+   🔹 Date used ONLY for filtering
+   🔹 No scope pollution in summary
 ============================================================ */
 export const getAllItems = async (req, res) => {
   try {
@@ -316,23 +327,25 @@ export const getAllItems = async (req, res) => {
     if (!allowed) return;
 
     /* ========================================================
-       ⚙️ BASE QUERY OPTIONS (MASTER PARITY)
+       ⚙️ BASE QUERY OPTIONS (MASTER)
     ======================================================== */
     const options = buildQueryOptions(req, "name", "ASC");
 
     /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS (NEVER DB COLUMNS)
+       🧹 STRIP UI-ONLY FILTERS
     ======================================================== */
     delete options.filters?.dateRange;
     delete options.filters?.light;
+    delete options.filters?.feature_module;
+    delete options.filters?.feature_module_id;
 
     /* ========================================================
-       🧱 WHERE ROOT (ALWAYS NORMALIZED)
+       🧱 WHERE ROOT (NORMALIZED)
     ======================================================== */
     options.where = { [Op.and]: [] };
 
     /* ========================================================
-       📅 DATE RANGE (MASTER – SINGLE FIELD)
+       📅 DATE RANGE (FILTER ONLY)
     ======================================================== */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
@@ -344,7 +357,7 @@ export const getAllItems = async (req, res) => {
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
+       🔐 TENANT SCOPE (SECURITY ONLY)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
@@ -370,7 +383,7 @@ export const getAllItems = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (SAFE, ADDITIVE)
+       🔍 GLOBAL SEARCH (SAFE)
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
@@ -383,14 +396,24 @@ export const getAllItems = async (req, res) => {
     }
 
     /* ========================================================
-       📌 STATUS FILTER (DB FILTER → ENUM SAFE) ✅ FIX
+       📌 STATUS FILTER (ENUM SAFE)
     ======================================================== */
     if (
       req.query.status &&
-      Object.values(MASTER_ITEM_STATUS).includes(req.query.status)
+      MASTER_ITEM_STATUS_VALUES.includes(req.query.status)
     ) {
+
       options.where[Op.and].push({
         status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       🔗 FEATURE MODULE FILTER
+    ======================================================== */
+    if (req.query.feature_module_id) {
+      options.where[Op.and].push({
+        feature_module_id: req.query.feature_module_id,
       });
     }
 
@@ -406,12 +429,16 @@ export const getAllItems = async (req, res) => {
     });
 
     /* ========================================================
-       🔢 SUMMARY (FILTER-AWARE)
+       🔢 SUMMARY (PAGE-AWARE, ENUM-BASED — SAME AS DEPT)
     ======================================================== */
-    const summary = await buildDynamicSummary({
-      model: MasterItem,
-      options,
+    const summary = { total: count };
+
+    MASTER_ITEM_STATUS_VALUES.forEach((status) => {
+      summary[status] = rows.filter(
+        (r) => r.status === status
+      ).length;
     });
+
 
     /* ========================================================
        🧾 AUDIT LOG
@@ -428,21 +455,22 @@ export const getAllItems = async (req, res) => {
     });
 
     /* ========================================================
-       ✅ RESPONSE
+       ✅ RESPONSE (IDENTICAL PAGINATION CONTRACT)
     ======================================================== */
     return success(res, "✅ Master Items loaded", {
       records: rows,
-      summary: summary || null,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
-        pageCount: options.pagination.pageCount,
+        pageCount: Math.ceil(count / options.pagination.limit),
       },
     });
   } catch (err) {
     return error(res, "❌ Failed to load items", err);
   }
 };
+
 
 /* ============================================================
    📌 GET ITEM BY ID (TRUE MASTER PARITY)

@@ -1,9 +1,9 @@
 // 📁 add-appointment.js – Init Add/Edit Appointment (MASTER-ALIGNED)
 // ============================================================================
 // 🧭 Mirrors add-feature-access.js architecture EXACTLY (appointment variant)
-// 🔹 Unified guard, edit-prefill handled in form module
-// 🔹 Shared state passed through
-// 🔹 Reset logic ADD-mode safe
+// 🔹 Unified guard (single source of truth)
+// 🔹 Edit-prefill handled inside form module
+// 🔹 ADD-mode reset only
 // 🔹 100% DOM ID retention
 // ============================================================================
 
@@ -16,14 +16,13 @@ import {
 import { setupAppointmentFormSubmission } from "./appointments-form.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 Auth Guard (SINGLE SOURCE)
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
-
+initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 /* ============================================================
-   🧠 Shared State
+   🧠 Shared State (ADD MODE ONLY)
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
@@ -39,7 +38,6 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
-  // Explicit clears (IDs preserved)
   [
     "patientInput",
     "patientId",
@@ -57,7 +55,6 @@ function resetForm() {
   const dateEl = document.getElementById("dateTime");
   if (dateEl) dateEl.value = "";
 
-  // Reset title + submit button
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Appointment";
 
@@ -75,13 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("appointmentForm");
   if (!form) return;
 
-  await setupAppointmentFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries: null,
-  });
+  await setupAppointmentFormSubmission({ form });
 
   /* ----------------------------------------------------------
      🚪 Cancel

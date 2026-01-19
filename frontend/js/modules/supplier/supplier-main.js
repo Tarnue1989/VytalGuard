@@ -1,33 +1,35 @@
-// 📦 employee-main.js – Enterprise-Aligned Master Pattern
+// 📦 employee-main.js – Form-only loader for Employee (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: triage-record-main.js
-// 🔹 Enterprise-consistent structure: unified reset logic, form visibility,
-//   permission guard, logout watcher, role normalization, and field selector.
-// 🔹 All Employee form element IDs preserved exactly.
+// 🧭 FULL PARITY WITH department-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
 import { setupEmployeeFormSubmission } from "./employee-form.js";
+
 import {
   FIELD_LABELS_EMPLOYEE,
   FIELD_ORDER_EMPLOYEE,
   FIELD_DEFAULTS_EMPLOYEE,
 } from "./employee-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Logout Guard
+   🔐 Auth Guard + Shared State
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -48,51 +50,59 @@ function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // 🧽 Clear cached edit state
+  // Clear cached edit state
   sessionStorage.removeItem("employeeEditId");
   sessionStorage.removeItem("employeeEditPayload");
 
-  // 🧾 Explicit field cleanup
+  // Clear text / date / select inputs (ID-safe)
   [
-    "first_name", "middle_name", "last_name", "gender", "dob", "phone",
-    "email", "address", "employee_no", "position", "license_no", "specialty",
-    "certifications", "hire_date", "termination_date", "emergency_contact_name",
+    "first_name",
+    "middle_name",
+    "last_name",
+    "gender",
+    "dob",
+    "phone",
+    "email",
+    "address",
+    "employee_no",
+    "position",
+    "license_no",
+    "specialty",
+    "certifications",
+    "hire_date",
+    "termination_date",
+    "emergency_contact_name",
     "emergency_contact_phone",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🏢 Dropdowns
+  // Clear dropdowns
   ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // ✅ Reset status
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Default status = active
+  document.getElementById("status_active")?.setAttribute("checked", true);
 
-  // 📸 File input & preview cleanup
+  // Clear file inputs + flags
   ["photo", "resume", "document"].forEach((type) => {
-    const preview = document.getElementById(`${type}Preview`);
-    const removeBtn = document.getElementById(
-      `remove${type.charAt(0).toUpperCase() + type.slice(1)}Btn`
-    );
-    const input = document.getElementById(`${type}Input`);
-    const flag = document.getElementById(`remove_${type}`);
-
-    if (preview) preview.innerHTML = "";
-    if (removeBtn) removeBtn.classList.add("hidden");
-    if (input) input.value = "";
-    if (flag) flag.value = "false";
+    document.getElementById(`${type}Input`)?.value = "";
+    document.getElementById(`remove_${type}`)?.setAttribute("value", "false");
+    document.getElementById(`${type}Preview`) &&
+      (document.getElementById(`${type}Preview`).innerHTML = "");
+    document
+      .getElementById(
+        `remove${type.charAt(0).toUpperCase() + type.slice(1)}Btn`
+      )
+      ?.classList.add("hidden");
   });
-
-  console.info("🧹 [Employee] Form reset complete");
 }
 
 /* ============================================================
-   🧭 Form Visibility Controls
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -107,16 +117,15 @@ function hideForm() {
   localStorage.setItem("employeeFormVisible", "false");
 }
 
-// 🌍 Expose for global use
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Employee] Cancel clicked → back to list");
     resetForm();
     window.location.href = "/employees-list.html";
   };
@@ -126,7 +135,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Employee] Switching to Add mode");
     sessionStorage.removeItem("employeeEditId");
     sessionStorage.removeItem("employeeEditPayload");
     resetForm();
@@ -135,20 +143,17 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   🔁 Loader (No-op)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initEmployeeModule() {
-  // Restore form visibility preference
-  const visible = localStorage.getItem("employeeFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  showForm(); // form-only mode (MASTER PARITY)
 
   if (form) {
     setupEmployeeFormSubmission({
@@ -162,7 +167,7 @@ export async function initEmployeeModule() {
 
   localStorage.setItem("employeePanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -170,22 +175,17 @@ export async function initEmployeeModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
   setupFieldSelector({
     module: "employees",
     fieldLabels: FIELD_LABELS_EMPLOYEE,
     fieldOrder: FIELD_ORDER_EMPLOYEE,
-    defaultFields:
-      FIELD_DEFAULTS_EMPLOYEE[role] ||
-      FIELD_DEFAULTS_EMPLOYEE.staff,
+    defaultFields: FIELD_DEFAULTS_EMPLOYEE[role],
   });
-
-  console.info(`✅ [Employee] Module initialized (role: ${role})`);
 }
 
 /* ============================================================
-   🔁 Sync Helper (Reserved)
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for future reactive linkages
+  // reserved for future reactive syncing
 }

@@ -1,20 +1,18 @@
-// 📦 add-master-item.js – Master Item Form Controller (ENTERPRISE FINAL PARITY)
+// 📦 add-master-item.js – Master Item Form Page Controller (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 FULL PARITY WITH department-main.js / patient-main.js
+// 🧭 Mirrors department-main.js / patient-main.js responsibilities EXACTLY
 // 🔹 Auth guard + logout watcher
-// 🔹 Shared state coordination (edit vs add)
+// 🔹 Form reset orchestration
+// 🔹 Edit session coordination
 // 🔹 Delegates ALL business logic to master-item-form.js
-// 🔹 NO duplicated submission logic
-// 🔹 NO duplicated dropdown logic
-// 🔹 100% ID retention (HTML + JS safe)
 // ============================================================================
 
 import { setupMasterItemFormSubmission } from "./master-item-form.js";
 
 import {
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 /* ============================================================
@@ -34,11 +32,12 @@ const sharedState = {
    📎 DOM Refs
 ============================================================ */
 const form = document.getElementById("masterItemForm");
+const formContainer = document.getElementById("formContainer");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Helper (Add Mode Only)
+   🧹 Reset Helper (Add Mode)
 ============================================================ */
 function resetForm() {
   if (!form) return;
@@ -49,7 +48,7 @@ function resetForm() {
   sessionStorage.removeItem("masterItemEditId");
   sessionStorage.removeItem("masterItemEditPayload");
 
-  // Clear hidden / select fields (ID-safe)
+  // Clear hidden + select fields (ID-safe)
   [
     "organizationSelect",
     "facilitySelect",
@@ -82,7 +81,7 @@ function resetForm() {
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // 🔗 Wire ALL business logic (single source of truth)
+  // Wire form logic (ALL business logic lives in master-item-form.js)
   setupMasterItemFormSubmission({
     form,
     token,

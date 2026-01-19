@@ -5,7 +5,7 @@
 // 🔹 Role-aware org / facility handling
 // 🔹 Clean payload normalization (UUID | null)
 // 🔹 Feature Module dynamic search (UUID-safe)
-// 🔹 Smart field toggling by item type
+// 🔹 Smart field toggling by item type (SAFE – no auto-hide on load)
 // 🔹 Controller-faithful submission flow
 // ============================================================================
 
@@ -77,7 +77,12 @@ const ITEM_TYPE_FIELD_RULES = {
   service: ["test_method", "sample_required"],
 };
 
+/* ============================================================
+   🧠 SAFE TOGGLER (NO AUTO-HIDE ON LOAD)
+============================================================ */
 function toggleFieldsByItemType(type) {
+  if (!type) return; // 🔒 CRITICAL FIX — do not collapse form on load
+
   const all = [
     "generic_group",
     "strength",
@@ -97,6 +102,7 @@ function toggleFieldsByItemType(type) {
     const wrap = document
       .getElementById(id)
       ?.closest(".col-xxl-3, .col-xxl-4, .col-xxl-6, .col-sm-6, .col-sm-12");
+
     if (wrap) wrap.classList.toggle("d-none", !show.includes(id));
   });
 }
@@ -245,7 +251,6 @@ export async function setupMasterItemFormSubmission({ form }) {
       const e = result?.data?.records?.[0];
       if (!e) return;
 
-
       [
         "name",
         "generic_group",
@@ -381,6 +386,6 @@ export async function setupMasterItemFormSubmission({ form }) {
     document
       .getElementById("status_active")
       ?.setAttribute("checked", true);
-    toggleFieldsByItemType("");
+    // ⛔ no toggleFieldsByItemType("") — intentional
   });
 }

@@ -29,7 +29,7 @@ import { enableColumnDrag } from "../../utils/table-column-drag.js";
 const SORTABLE_FIELDS = new Set([
   "organization_id",
   "facility_id",
-  "feature_module",
+  "feature_module_id", // ✅ FIXED (DB column)
   "name",
   "code",
   "item_type",
@@ -55,6 +55,7 @@ function toggleSort(field) {
   localStorage.setItem("masterItemSortBy", sortBy);
   localStorage.setItem("masterItemSortDir", sortDir);
 
+  // 🔗 Bridge to MAIN
   window.setMasterItemSort?.(sortBy, sortDir);
   window.loadMasterItemPage?.(1);
 }
@@ -200,6 +201,7 @@ function renderValue(entry, field) {
       return entry.department?.name || "—";
 
     case "feature_module":
+    case "feature_module_id": // ✅ FIXED
       return entry.featureModule?.name || "—";
 
     case "createdBy":
@@ -274,6 +276,7 @@ export function renderCard(entry, visibleFields, user) {
               "organization",
               "facility",
               "feature_module",
+              "feature_module_id",
               "status",
               "created_at",
               "updated_at",
