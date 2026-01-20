@@ -1,16 +1,31 @@
 // =============================================
-// Billing Trigger Form Rules (HTML + Controller aligned)
+// Billing Trigger Form Rules (ENTERPRISE FINAL)
+// =============================================
+// 🔹 HTML + Controller aligned
+// 🔹 Selective parity with Billable Item form rules
+// 🔹 NO phantom fields
+// 🔹 Role-aware, minimal, future-safe
 // =============================================
 
 export const BILLING_TRIGGER_FORM_RULES = [
-  /* ===== Trigger Definition ===== */
-  { id: "module_key", message: "Module Key is required" },
-  { id: "trigger_status", message: "Trigger Status is required" },
+  /* ================= Trigger Definition ================= */
+  {
+    id: "module_key",
+    message: "Module Key is required",
+  },
+  {
+    id: "trigger_status",
+    message: "Trigger Status is required",
+  },
 
-  /* ===== Status ===== */
-  { id: "is_active", message: "Active status is required", when: () => false },
+  /* ================= Status ================= */
+  {
+    id: "is_active",
+    message: "Active status is required",
+    when: () => false, // optional, defaulted by UI
+  },
 
-  /* ===== Organization (superadmin only) ===== */
+  /* ================= Organization (Superadmin only) ================= */
   {
     id: "organizationSelect",
     message: "Organization is required",
@@ -20,10 +35,10 @@ export const BILLING_TRIGGER_FORM_RULES = [
         .includes("super"),
   },
 
-  /* ===== Facility ===== */
+  /* ================= Facility ================= */
   {
     id: "facilitySelect",
     message: "Facility is required",
-    when: () => false,
+    when: () => false, // not required by controller
   },
 ];

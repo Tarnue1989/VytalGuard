@@ -32,7 +32,9 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Billable Items</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Add Billable</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Add Billable Item
+          </li>
         </ol>
       </div>
 
@@ -46,185 +48,223 @@
               </div>
               <div class="card-body">
 
-              <!-- 📦 Form Container -->
-              <div id="formContainer">
-                <form id="billableItemForm">
-                  <div class="row gx-4">
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="billableItemForm" novalidate>
+                    <div class="row gx-4">
 
-                    <!-- Organization (hidden by default) -->
-                    <div class="col-lg-3 col-sm-6 d-none" id="organizationFieldGroup">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="organizationSelect">Organization</label>
-                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      <!-- ================= Identity ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Identity</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Facility (hidden by default) -->
-                    <div class="col-lg-3 col-sm-6 d-none" id="facilityFieldGroup">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="facilitySelect">Facility</label>
-                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
-                      </div>
-                    </div>
-
-                    <!-- Department -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="departmentSelect">Department</label>
-                        <select class="form-control" id="departmentSelect" name="department_id"></select>
-                      </div>
-                    </div>
-
-                    <!-- Master Item -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="masterItemSearch">
-                          Master Item <span class="text-danger">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          id="masterItemSearch"
-                          class="form-control suggestion-input"
-                          placeholder="Search master item..."
-                          autocomplete="off"
-                        />
-                        <div id="masterItemSearchSuggestions" class="suggestions"></div>
-                      </div>
-                    </div>
-
-                    <!-- Name -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="name">
-                          Name (will autofill)<span class="text-danger">*</span>
-                        </label>
-                        <input type="text" class="form-control" id="name" readonly>
-                      </div>
-                    </div>
-
-                    <!-- Code -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="code">Code (will autofill)</label>
-                        <input type="text" class="form-control" id="code" readonly>
-                        <div class="form-text text-muted">
-                          Code is generated from the Name or Master Item.
+                      <!-- Organization (hidden by default) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 d-none" id="organizationFieldGroup">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">
+                            Organization <span class="text-danger">*</span>
+                          </label>
+                          <select class="form-control" id="organizationSelect" name="organization_id"></select>
                         </div>
                       </div>
-                    </div>
 
-                    <!-- Description -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="description">Description</label>
-                        <textarea class="form-control" id="description" rows="2"></textarea>
+                      <!-- Facility (hidden by default) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6 d-none" id="facilityFieldGroup">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">
+                            Facility <span class="text-muted">(optional)</span>
+                          </label>
+                          <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Category -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="categoryName">Category (will autofill)</label>
-                        <input type="text" class="form-control" id="categoryName" readonly>
-                        <input type="hidden" id="category_id" name="category_id">
+                      <!-- Department -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="departmentSelect">
+                            Department
+                          </label>
+                          <select class="form-control" id="departmentSelect" name="department_id"></select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Price -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="price">
-                          Price <span class="text-danger">*</span>
-                        </label>
-                        <input type="number" step="0.01" class="form-control" id="price">
+                      <!-- Master Item -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="masterItemSearch">
+                            Master Item <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control suggestion-input"
+                            id="masterItemSearch"
+                            placeholder="Search master item..."
+                            autocomplete="off"
+                          />
+                          <input type="hidden" id="master_item_id" name="master_item_id" />
+                          <div id="masterItemSearchSuggestions" class="suggestions"></div>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Currency -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="currency">Currency</label>
-                        <input type="text" class="form-control" id="currency" placeholder="USD">
+                      <!-- Name -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="name">
+                            Name <span class="text-danger">*</span>
+                          </label>
+                          <input type="text" class="form-control" id="name" name="name" readonly />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Taxable -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="taxable">
-                        <label class="form-check-label" for="taxable">Taxable?</label>
-                      </div>
-                    </div>
-
-                    <!-- Discountable -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="discountable">
-                        <label class="form-check-label" for="discountable">Discountable?</label>
-                      </div>
-                    </div>
-
-                    <!-- Override Allowed -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="overrideAllowed">
-                        <label class="form-check-label" for="overrideAllowed">Allow Override?</label>
-                      </div>
-                    </div>
-
-                    <!-- Add Item -->
-                    <div class="col-sm-12">
-                      <div class="d-flex justify-content-start mb-3">
-                        <button type="button" id="addItemBtn" class="btn btn-outline-primary">
-                          <i class="ri-add-line me-1"></i> Add Item
-                        </button>
-                      </div>
-                    </div>
-
-                    <!-- Pills -->
-                    <div class="col-sm-12">
-                      <div id="itemPillsContainer" class="mb-3">
-                        <p class="text-muted">No billables added yet.</p>
-                      </div>
-                    </div>
-
-                    <!-- Status -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label">Status</label>
-                        <div class="m-0">
-                          <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
-                            <label class="form-check-label" for="status_active">Active</label>
-                          </div>
-                          <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
-                            <label class="form-check-label" for="status_inactive">Inactive</label>
+                      <!-- Code -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="code">Code</label>
+                          <input type="text" class="form-control" id="code" name="code" readonly />
+                          <div class="form-text text-muted">
+                            Code is generated from the Name or Master Item.
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <!-- Buttons -->
-                    <div class="col-sm-12">
-                      <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                        </button>
-                        <button type="reset" id="clearBtn" class="btn btn-warning">
-                          <i class="ri-refresh-line me-1"></i> Clear
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                          <i class="ri-save-3-line me-1"></i> Submit All
-                        </button>
+                      <!-- Description -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="description">
+                            Description
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="description"
+                            name="description"
+                            rows="2"
+                          ></textarea>
+                        </div>
                       </div>
+
+                      <!-- Category -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="categoryName">
+                            Category
+                          </label>
+                          <input type="text" class="form-control" id="categoryName" readonly />
+                          <input type="hidden" id="category_id" name="category_id" />
+                        </div>
+                      </div>
+
+                      <!-- ================= Pricing ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Pricing</h6>
+                        <hr />
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="price">
+                            Price <span class="text-danger">*</span>
+                          </label>
+                          <input type="number" step="0.01" class="form-control" id="price" name="price" />
+                        </div>
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="currency">
+                            Currency
+                          </label>
+                          <input type="text" class="form-control" id="currency" name="currency" placeholder="USD" />
+                        </div>
+                      </div>
+
+                      <!-- ================= Flags ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Flags</h6>
+                        <hr />
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-check">
+                          <input class="form-check-input" type="checkbox" id="taxable" name="taxable" />
+                          <label class="form-check-label" for="taxable">Taxable</label>
+                        </div>
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-check">
+                          <input class="form-check-input" type="checkbox" id="discountable" name="discountable" checked />
+                          <label class="form-check-label" for="discountable">Discountable</label>
+                        </div>
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-check">
+                          <input class="form-check-input" type="checkbox" id="overrideAllowed" name="override_allowed" checked />
+                          <label class="form-check-label" for="overrideAllowed">Allow Override</label>
+                        </div>
+                      </div>
+
+                      <!-- ================= Batch / Pills ================= -->
+                      <div class="col-sm-12">
+                        <div class="d-flex justify-content-start mb-3">
+                          <button type="button" id="addItemBtn" class="btn btn-outline-primary">
+                            <i class="ri-add-line me-1"></i>
+                            Add Item
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="col-sm-12">
+                        <div id="itemPillsContainer" class="mb-3">
+                          <p class="text-muted">No billables added yet.</p>
+                        </div>
+                      </div>
+
+                      <!-- ================= Status ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Status</h6>
+                        <hr />
+                      </div>
+
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label">Status</label>
+                          <div class="m-0">
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked />
+                              <label class="form-check-label" for="status_active">Active</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive" />
+                              <label class="form-check-label" for="status_inactive">Inactive</label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- ================= Actions ================= -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
+                          </button>
+                          <button type="reset" id="clearBtn" class="btn btn-warning">
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
+                          </button>
+                          <button type="submit" class="btn btn-primary">
+                            <i class="ri-save-3-line me-1"></i>
+                            Submit All
+                          </button>
+                        </div>
+                      </div>
+
                     </div>
-
-                  </div>
-                </form>
-              </div>
-              <!-- /formContainer -->
-
+                  </form>
+                </div>
+                <!-- /formContainer -->
 
               </div>
             </div>
@@ -241,7 +281,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <!-- JS -->

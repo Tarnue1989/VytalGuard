@@ -186,9 +186,14 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 💰 BILLING ======================== */
-  billable_item:{active:["edit","toggle","delete","history"],inactive:["edit","toggle","delete","history"],deleted:["restore","history"]},
-  auto_billing_rule:{active:["edit","toggle","delete","history"],inactive:["edit","toggle","delete","history"],deleted:["restore","history"]},
- 
+  billable_item: {
+    active:   ["edit","toggle-status","delete"],
+    inactive: ["edit","toggle-status","delete"],
+    voided:   ["restore"],
+    deleted:  ["restore"]
+  },
+
+
   /* ======================== ⚡ BILLING TRIGGER ======================== */
   billing_trigger:{
     active:   ["edit","toggle-status","delete"],

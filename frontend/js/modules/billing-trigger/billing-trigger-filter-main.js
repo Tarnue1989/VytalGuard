@@ -1,8 +1,10 @@
-// 📦 billing-trigger-filter-main.js – Enterprise Filter + Table/Card (Master Pattern)
+// 📦 billing-trigger-filter-main.js – Enterprise Filter + Table/Card (FINAL)
 // ============================================================================
-// 🔹 Converted from patient-filter-main.js
-// 🔹 Fully aligned with BillingTrigger controller + routes
-// 🔹 Preserves ALL required IDs for list + form interoperability
+// 🔹 MASTER PARITY with billableitem-filter-main.js (selective)
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (never DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 BillingTrigger controller-aligned
 // ============================================================================
 
 import {
@@ -10,13 +12,14 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -25,59 +28,73 @@ import {
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./billing-trigger-render.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./billing-trigger-render.js";
+
 import { setupActionHandlers } from "./billing-trigger-actions.js";
+
 import {
   FIELD_ORDER_BILLING_TRIGGER,
   FIELD_DEFAULTS_BILLING_TRIGGER,
+  FIELD_LABELS_BILLING_TRIGGER,
 } from "./billing-trigger-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Role Context
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("billingTriggerView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
-  moduleKey: "billing_trigger",
+  moduleKey: "billingTrigger",
   userRole,
   defaultFields: FIELD_DEFAULTS_BILLING_TRIGGER,
   allowedFields: FIELD_ORDER_BILLING_TRIGGER,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -85,78 +102,111 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs (IDS MUST MATCH HTML)
+   🔎 FILTER DOM
 ============================================================ */
-const filterModuleKey = document.getElementById("filterModuleKey");
-const filterStatus = document.getElementById("filterStatus");
-const filterActive = document.getElementById("filterIsActive");
+const qs = (id) => document.getElementById(id);
 
-const filterOrganizationSelect = document.getElementById("filterOrganizationSelect");
-const filterFacilitySelect = document.getElementById("filterFacilitySelect");
-
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterActive   = qs("filterStatusSelect"); // ✅ FIXED
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Pagination State
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("billingTriggerView") || "table";
+window.setBillingTriggerSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadBillingTriggerPage = (p = 1) => loadEntries(p);
+
+/* ============================================================
+   📄 PAGINATION
+============================================================ */
 const getPagination = initPaginationControl(
-  "billing_trigger",
+  "billingTrigger",
   loadEntries,
-  25
+  Number(localStorage.getItem("billingTriggerPageLimit") || 25)
 );
 
 /* ============================================================
-   📋 Build Filters
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [filterOrg, filterFacility, filterActive],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    module_key: filterModuleKey?.value || "",
-    trigger_status: filterStatus?.value || "",
-    is_active: filterActive?.value || "",
-    organization_id: filterOrganizationSelect?.value || "",
-    facility_id: filterFacilitySelect?.value || "",
+    search: globalSearch?.value?.trim() || undefined,
+    organization_id: filterOrg?.value || undefined,
+    facility_id: filterFacility?.value || undefined,
+
+    // ✅ normalize status → backend-safe boolean
+    is_active:
+      filterActive?.value === "active"
+        ? true
+        : filterActive?.value === "inactive"
+        ? false
+        : undefined,
+
+    dateRange: dateRange?.value || undefined, // UI-only
   };
 }
 
 /* ============================================================
-   📦 Load Billing Triggers
+   📦 LOAD ENTRIES
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v) return;
-      q.append(k, v);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
+
+    Object.entries(f).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_BILLING_TRIGGER.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    q.set("fields", visibleFields.join(","));
 
-    const res = await authFetch(`/api/billing-triggers?${q.toString()}`);
-    const result = await res.json().catch(() => ({}));
+    const res = await authFetch(`/api/billing-triggers?${q.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "BILLING TRIGGERS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -169,16 +219,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length)
-      showToast("ℹ️ No billing triggers found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load billing triggers");
   } finally {
     hideLoading();
@@ -186,63 +233,53 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn")?.addEventListener("click", () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("billingTriggerView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("tableViewBtn")?.classList.add("active");
-  document.getElementById("cardViewBtn")?.classList.remove("active");
-});
+};
 
-document.getElementById("cardViewBtn")?.addEventListener("click", () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("billingTriggerView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("cardViewBtn")?.classList.add("active");
-  document.getElementById("tableViewBtn")?.classList.remove("active");
-});
+};
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn")?.addEventListener("click", () => {
-  loadEntries(1);
-});
-
-document.getElementById("resetFilterBtn")?.addEventListener("click", () => {
-  [
-    filterModuleKey,
-    filterStatus,
-    filterActive,
-    filterOrganizationSelect,
-    filterFacilitySelect,
-  ].forEach((el) => {
+qs("resetFilterBtn").onclick = () => {
+  [globalSearch, filterOrg, filterFacility, filterActive, dateRange].forEach(el => {
     if (el) el.value = "";
   });
   loadEntries(1);
+};
+
+/* ============================================================
+   ⬇️ EXPORT
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_BILLING_TRIGGER),
+    `billing_triggers_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Billing Triggers",
+    viewMode === "table" ? ".table-container" : "#billingTriggerList",
+    "portrait"
+  );
 });
 
 /* ============================================================
-   ⬇️ Export Tools
-============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `billing_triggers_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
-
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container.active" : "#billingTriggerList";
-    exportToPDF("Billing Triggers", target, "landscape", true);
-  };
-
-/* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initBillingTriggerModule() {
   renderDynamicTableHead(visibleFields);
@@ -254,43 +291,34 @@ export async function initBillingTriggerModule() {
     "billingTriggerFilterVisible"
   );
 
-  // Org / Facility filters (superadmin aware)
-  if (filterOrganizationSelect) {
-    setupSelectOptions(
-      filterOrganizationSelect,
-      await loadOrganizationsLite(),
-      "id",
-      "name",
-      "-- All Organizations --"
-    );
+  // 🔹 Organizations
+  if (filterOrg) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
   }
 
-  if (filterFacilitySelect && filterOrganizationSelect) {
-    filterOrganizationSelect.addEventListener("change", async () => {
-      setupSelectOptions(
-        filterFacilitySelect,
-        await loadFacilitiesLite({
-          organization_id: filterOrganizationSelect.value,
-        }),
-        "id",
-        "name",
-        "-- All Facilities --"
-      );
-    });
+  // 🔹 Facilities (ORG-SCOPED)
+  if (filterFacility) {
+    const facs = await loadFacilitiesLite();
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
   }
+
+  // 🔁 Reload facilities when org changes
+  filterOrg?.addEventListener("change", async () => {
+    const facs = await loadFacilitiesLite(filterOrg.value);
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
+    loadEntries(1);
+  });
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initBillingTriggerModule().catch((err) =>
-    console.error("initBillingTriggerModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initBillingTriggerModule)
+  : initBillingTriggerModule();

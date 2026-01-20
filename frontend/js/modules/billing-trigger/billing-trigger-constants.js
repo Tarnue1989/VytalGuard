@@ -1,6 +1,6 @@
-// 📁 billing-trigger-constants.js – Enterprise Master Pattern
+// 📁 billing-trigger-constants.js – Enterprise Master Pattern (FINAL)
 // ============================================================================
-// 🧭 Matches Patient / Employee / Delivery Record Constants Pattern
+// 🧭 Matches Billable Item / Department / Patient Constants Pattern
 // 🔹 Fully aligned with BillingTrigger model + API payload
 // 🔹 NO phantom fields
 // 🔹 Safe for list, export, detail, and lite views
@@ -21,10 +21,10 @@ export const FIELD_LABELS_BILLING_TRIGGER = {
 
   // 🧾 Audit Trail
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
   // ⚙️ System
@@ -37,6 +37,7 @@ export const FIELD_LABELS_BILLING_TRIGGER = {
 export const FIELD_ORDER_BILLING_TRIGGER = [
   "organization",
   "facility",
+
   "module_key",
   "trigger_status",
   "is_active",
@@ -53,17 +54,35 @@ export const FIELD_ORDER_BILLING_TRIGGER = [
 ];
 
 /* ============================================================
-   👥 Role-Based Default Field Sets
+   👥 Role-Based Default Field Sets (Enterprise Master)
 ============================================================ */
 export const FIELD_DEFAULTS_BILLING_TRIGGER = {
-  admin: [
+  superadmin: [
     "organization",
     "facility",
+
     "module_key",
     "trigger_status",
     "is_active",
 
-    // 🧾 AUDIT
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+
+    "actions",
+  ],
+
+  admin: [
+    "organization",
+    "facility",
+
+    "module_key",
+    "trigger_status",
+    "is_active",
+
     "createdBy",
     "created_at",
     "updatedBy",
@@ -75,11 +94,11 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
   manager: [
     "organization",
     "facility",
+
     "module_key",
     "trigger_status",
     "is_active",
 
-    // 🧾 AUDIT (read-only)
     "createdBy",
     "created_at",
 
@@ -93,3 +112,9 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (REQUIRED)
+============================================================ */
+export const MODULE_KEY_BILLING_TRIGGER = "billingTrigger";
+export const MODULE_LABEL_BILLING_TRIGGER = "Billing Trigger";

@@ -1,7 +1,13 @@
-// 📁 billableitem-constants.js
+// 📁 billableitem-constants.js – Enterprise-Aligned Master Pattern
+// ============================================================================
+// 🔹 Pattern Source: department-constants.js (Enterprise Master)
+// 🔹 Structural Consistency: Field labels, order, role-based visibility
+// 🔹 100% ID retention (safe for linked HTML + JS modules)
+// 🔹 Includes standardized metadata + hierarchical visibility map
+// ============================================================================
 
 /* ============================================================
-   📌 FIELD LABELS
+   🏷️ Field Labels
 ============================================================ */
 export const FIELD_LABELS_BILLABLE_ITEM = {
   organization: "Organization",
@@ -11,24 +17,24 @@ export const FIELD_LABELS_BILLABLE_ITEM = {
   name: "Name",
   code: "Code",
   description: "Description",
-  category_id: "Category",   
+  category: "Category",
   price: "Price",
   currency: "Currency",
   taxable: "Taxable",
   discountable: "Discountable",
-  overrideAllowed: "Allow Override",
+  override_allowed: "Allow Override",
   status: "Status",
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
   actions: "Actions",
 };
 
 /* ============================================================
-   📌 FIELD ORDER
+   📋 Field Order (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_BILLABLE_ITEM = [
   "organization",
@@ -38,12 +44,12 @@ export const FIELD_ORDER_BILLABLE_ITEM = [
   "name",
   "code",
   "description",
-  "category_id",  
+  "category",
   "price",
   "currency",
   "taxable",
   "discountable",
-  "overrideAllowed",
+  "override_allowed",
   "status",
   "createdBy",
   "created_at",
@@ -55,9 +61,33 @@ export const FIELD_ORDER_BILLABLE_ITEM = [
 ];
 
 /* ============================================================
-   📌 FIELD DEFAULTS (by role)
+   👥 Role-Based Field Visibility Defaults (Enterprise Master)
 ============================================================ */
 export const FIELD_DEFAULTS_BILLABLE_ITEM = {
+  superadmin: [
+    "organization",
+    "facility",
+    "department",
+    "masterItem",
+    "name",
+    "code",
+    "description",
+    "category",
+    "price",
+    "currency",
+    "taxable",
+    "discountable",
+    "override_allowed",
+    "status",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -65,13 +95,42 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "masterItem",
     "name",
     "code",
-    "category_id", 
+    "description",
+    "category",
     "price",
     "currency",
+    "taxable",
+    "discountable",
+    "override_allowed",
     "status",
+    "createdBy",
     "created_at",
+    "updatedBy",
+    "updated_at",
     "actions",
   ],
+
+  facility_head: [
+    "facility",
+    "department",
+    "masterItem",
+    "name",
+    "code",
+    "description",
+    "category",
+    "price",
+    "currency",
+    "taxable",
+    "discountable",
+    "override_allowed",
+    "status",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "actions",
+  ],
+
   manager: [
     "facility",
     "department",
@@ -79,12 +138,16 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "name",
     "code",
     "description",
-    "category_id",   
+    "category",
     "price",
     "currency",
+    "taxable",
+    "discountable",
+    "override_allowed",
     "status",
     "actions",
   ],
+
   staff: [
     "department",
     "masterItem",
@@ -96,3 +159,9 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata
+============================================================ */
+export const MODULE_KEY_BILLABLE_ITEM = "billableItem";
+export const MODULE_LABEL_BILLABLE_ITEM = "Billable Item";

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getAllBillingTriggers,
+  getBillingTriggerById,        // ✅ ADD THIS
   createBillingTrigger,
   updateBillingTrigger,
   deleteBillingTrigger,
@@ -20,6 +21,9 @@ const UUIDv4 =
 
 // 🔍 List
 router.get("/", verifyAuth, getAllBillingTriggers);
+
+// 🔎 Get by ID (EDIT / VIEW)
+router.get(`/:id(${UUIDv4})`, verifyAuth, getBillingTriggerById);
 
 // ➕ Create
 router.post("/", verifyAuth, createBillingTrigger);

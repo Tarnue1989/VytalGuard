@@ -1,24 +1,33 @@
-// 📦 billing-trigger-main.js – Form-only loader for Billing Trigger (Enterprise Master Pattern)
+// 📦 billing-trigger-main.js – Form-only Loader for Billing Trigger (ENTERPRISE FINAL)
 // ============================================================================
-// 🔹 Converted 1:1 from patient-main.js
-// 🔹 Aligned with BillingTrigger controller, routes, and permissions
-// 🔹 Preserves ALL DOM IDs required by form + list + RT loaders
-// 🔹 NO explanations – production-ready
+// 🧭 FULL PARITY WITH billableitem-main.js (form-only mode)
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Role-based field selector (enterprise-aligned)
+// 🔹 100% ID-safe (inputs, selects, buttons preserved)
 // ============================================================================
 
-import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
+import {
+  initPageGuard,
+  autoPagePermissionKey,
+  initLogoutWatcher,
+} from "../../utils/index.js";
+
 import { setupBillingTriggerFormSubmission } from "./billing-trigger-form.js";
+
 import {
   FIELD_LABELS_BILLING_TRIGGER,
   FIELD_ORDER_BILLING_TRIGGER,
   FIELD_DEFAULTS_BILLING_TRIGGER,
 } from "./billing-trigger-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
    🔐 Auth Guard + Shared State
 ============================================================ */
-const token = initPageGuard("billing_trigger");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const sharedState = {
@@ -26,7 +35,7 @@ const sharedState = {
 };
 
 /* ============================================================
-   📎 DOM Refs (IDS MUST MATCH FORM HTML)
+   📎 DOM Refs (ID-SAFE)
 ============================================================ */
 const form = document.getElementById("billingTriggerForm");
 const formContainer = document.getElementById("formContainer");
@@ -35,7 +44,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -45,7 +54,7 @@ function resetForm() {
   sessionStorage.removeItem("billingTriggerEditId");
   sessionStorage.removeItem("billingTriggerEditPayload");
 
-  // Explicitly clear text/select inputs
+  // Clear text / select inputs (ID-safe)
   [
     "module_key",
     "trigger_status",
@@ -56,7 +65,7 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset active flag (select → default true)
+  // Default active = true
   const activeEl = document.getElementById("is_active");
   if (activeEl) activeEl.value = "true";
 }
@@ -77,12 +86,12 @@ function hideForm() {
   localStorage.setItem("billingTriggerFormVisible", "false");
 }
 
-// 🔗 Expose globally (for actions / hot reload)
+// 🌍 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   ⚙️ Wire Button Actions
+   🔘 Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
@@ -103,40 +112,41 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder (list handled elsewhere)
+   📦 Loader Placeholder (Form-only)
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // list page owns data loading
 }
 
 /* ============================================================
-   🚀 Init Entrypoint
+   🚀 Init Entrypoint (ENTERPRISE FINAL)
 ============================================================ */
 export async function initBillingTriggerModule() {
+  // Form-only mode
   showForm();
 
-  setupBillingTriggerFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupBillingTriggerFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
+  // Ensure list panel stays hidden
   localStorage.setItem("billingTriggerPanelVisible", "false");
 
-  // Normalize role
+  /* ---------------- Role Normalization ---------------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
-  if (role.includes("super") && role.includes("admin")) {
-    role = "superadmin";
-  } else if (role.includes("admin")) {
-    role = "admin";
-  } else {
-    role = "staff";
-  }
+  if (role.includes("super") && role.includes("admin")) role = "superadmin";
+  else if (role.includes("admin")) role = "admin";
+  else role = "staff";
 
+  /* ---------------- Field Selector ---------------- */
   setupFieldSelector({
     module: "billing_trigger",
     fieldLabels: FIELD_LABELS_BILLING_TRIGGER,
@@ -146,8 +156,8 @@ export async function initBillingTriggerModule() {
 }
 
 /* ============================================================
-   (Optional) State Sync Stub
+   🔁 State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // no-op
+  // reserved for future enterprise reactive syncing
 }

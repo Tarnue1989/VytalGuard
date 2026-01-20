@@ -1,18 +1,20 @@
-// 📦 add-billing-trigger.js – Secure Add/Edit Page Controller for Billing Triggers
+// 📦 add-billing-trigger.js – Billing Trigger Form Page Controller (ENTERPRISE FINAL)
 // ============================================================================
-// 🔹 Converted 1:1 from add-patient.js
-// 🔹 Fully aligned with BillingTrigger controller & routes
-// 🔹 100% ID retention for linked HTML
+// 🧭 FULL PARITY WITH billableitem-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Role-aware org/fac loading ONLY
+// 🔹 Edit session coordination (sessionStorage + URL)
+// 🔹 Delegates ALL business logic to billing-trigger-form.js
+// 🔹 ❌ Never builds payloads
+// 🔹 ❌ Never validates fields
 // ============================================================================
 
 import { setupBillingTriggerFormSubmission } from "./billing-trigger-form.js";
+
 import {
-  showToast,
-  showLoading,
-  hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -24,91 +26,85 @@ import {
 } from "../../utils/data-loaders.js";
 
 /* ============================================================
-   🔐 Auth Guard + Shared State
+   🔐 Auth Guard + Global Watchers
 ============================================================ */
 initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
+/* ============================================================
+   🌐 Shared State (SINGLE SOURCE OF TRUTH)
+============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧹 Reset Form Helper
+   📎 DOM Refs
 ============================================================ */
-function resetForm() {
-  const form = document.getElementById("billingTriggerForm");
-  if (!form) return;
+const form = document.getElementById("billingTriggerForm");
+const cancelBtn = document.getElementById("cancelBtn");
+const clearBtn = document.querySelector("button[type=reset]");
 
-  form.reset();
-  sharedState.currentEditIdRef.value = null;
-
-  ["organizationSelect", "facilitySelect"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  const statusEl = document.getElementById("is_active");
-  if (statusEl) statusEl.value = "true";
-
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add Billing Trigger";
-
-  const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML =
-      `<i class="ri-save-3-line me-1"></i> Save Trigger`;
-  }
-}
+const orgSelect = document.getElementById("organizationSelect");
+const facSelect = document.getElementById("facilitySelect");
 
 /* ============================================================
-   🚀 Main Init
+   🚀 Init (Page Entry)
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
-  const form = document.getElementById("billingTriggerForm");
   if (!form) return;
 
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  const roleRaw = (localStorage.getItem("userRole") || "").toLowerCase();
+  const isSuper = roleRaw.includes("super");
+  const isAdmin = roleRaw.includes("admin") && !isSuper;
 
-  /* ---------------- Organization / Facility ---------------- */
+  /* ========================================================
+     🔑 EDIT MODE DETECTION (FIRST — MASTER RULE)
+  ======================================================== */
+  const editId =
+    sessionStorage.getItem("billingTriggerEditId") ||
+    new URLSearchParams(window.location.search).get("id");
+
+  if (editId) {
+    sharedState.currentEditIdRef.value = editId;
+  }
+
+  /* ========================================================
+     🌐 ORGANIZATION / FACILITY (ROLE-OWNED)
+  ======================================================== */
   try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
+    if (isSuper) {
       setupSelectOptions(
         orgSelect,
-        orgs,
+        await loadOrganizationsLite(),
         "id",
         "name",
         "-- System Default --"
       );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
-        );
+      const reloadFacilities = async (orgId = null) => {
         setupSelectOptions(
           facSelect,
-          facs,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
           "id",
           "name",
           "-- All Facilities --"
         );
-      }
+      };
 
       await reloadFacilities();
       orgSelect?.addEventListener("change", () =>
         reloadFacilities(orgSelect.value || null)
       );
-    } else if (userRole.includes("admin")) {
+    } else if (isAdmin) {
       orgSelect?.closest(".mb-3")?.classList.add("hidden");
 
-      const facs = await loadFacilitiesLite({}, true);
       setupSelectOptions(
         facSelect,
-        facs,
+        await loadFacilitiesLite({}, true),
         "id",
         "name",
         "-- All Facilities --"
@@ -118,65 +114,30 @@ document.addEventListener("DOMContentLoaded", async () => {
       facSelect?.closest(".mb-3")?.classList.add("hidden");
     }
   } catch (err) {
-    console.error(err);
-    showToast("❌ Could not load organization/facility");
+    console.error("❌ Org/Facility preload failed:", err);
   }
 
-  /* ---------------- Form Submission ---------------- */
+  /* ========================================================
+     🔗 Wire Form (AFTER editId is known)
+  ======================================================== */
   setupBillingTriggerFormSubmission({
     form,
     sharedState,
-    resetForm,
-    loadEntries: null,
   });
 
-  /* ============================================================
-     ✏️ Edit Mode Prefill
-  ============================================================ */
-  const editId = sessionStorage.getItem("billingTriggerEditId");
-  const rawPayload = sessionStorage.getItem("billingTriggerEditPayload");
-
+  /* ========================================================
+     ✏️ EDIT PREFILL (UI SEED ONLY)
+  ======================================================== */
   async function applyPrefill(entry) {
-    const fill = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val ?? "";
-    };
+    document.getElementById("module_key").value =
+      entry.module_key || "";
 
-    fill("module_key", entry.module_key);
-    fill("trigger_status", entry.trigger_status);
+    document.getElementById("trigger_status").value =
+      entry.trigger_status || "";
 
     const statusEl = document.getElementById("is_active");
     if (statusEl) {
       statusEl.value = entry.is_active ? "true" : "false";
-    }
-
-    const orgId = entry.organization_id || entry.organization?.id;
-    const facId = entry.facility_id || entry.facility?.id;
-
-    if (orgId && orgSelect) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(
-        orgSelect,
-        orgs,
-        "id",
-        "name",
-        "-- System Default --"
-      );
-      orgSelect.value = orgId;
-    }
-
-    if (facId && facSelect) {
-      const facs = await loadFacilitiesLite(
-        orgId ? { organization_id: orgId } : {}
-      );
-      setupSelectOptions(
-        facSelect,
-        facs,
-        "id",
-        "name",
-        "-- All Facilities --"
-      );
-      facSelect.value = facId;
     }
 
     const titleEl = document.querySelector(".card-title");
@@ -187,47 +148,62 @@ document.addEventListener("DOMContentLoaded", async () => {
       submitBtn.innerHTML =
         `<i class="ri-save-3-line me-1"></i> Update Billing Trigger`;
     }
+
+    if (isSuper && entry.organization_id) {
+      orgSelect.value = entry.organization_id;
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite(
+          { organization_id: entry.organization_id },
+          true
+        ),
+        "id",
+        "name",
+        "-- All Facilities --"
+      );
+
+      if (entry.facility_id) facSelect.value = entry.facility_id;
+    } else if (isAdmin && entry.facility_id) {
+      facSelect.value = entry.facility_id;
+    }
   }
 
-  if (editId && rawPayload) {
+  /* ========================================================
+     🧠 EDIT LOAD STRATEGY (ENTERPRISE STANDARD)
+     1️⃣ sessionStorage (fast path)
+     2️⃣ API GET /:id (source of truth)
+  ======================================================== */
+  if (editId) {
+    const cached = sessionStorage.getItem("billingTriggerEditPayload");
+
     try {
-      const entry = JSON.parse(rawPayload);
-      sharedState.currentEditIdRef.value = editId;
-      await applyPrefill(entry);
-    } catch {
-      showToast("❌ Failed to load cached billing trigger");
-    }
-  } else {
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (id) {
-      sharedState.currentEditIdRef.value = id;
-      try {
-        showLoading();
-        const res = await authFetch(`/api/billing-triggers/${id}`);
-        const data = await res.json();
-        if (!res.ok || !data?.data)
-          throw new Error("Failed to load billing trigger");
-        await applyPrefill(data.data);
-      } catch (err) {
-        showToast(err.message);
-      } finally {
-        hideLoading();
+      if (cached) {
+        await applyPrefill(JSON.parse(cached));
+      } else {
+        const res = await authFetch(`/api/billing-triggers/${editId}`);
+        const result = await res.json();
+        if (res.ok && result?.data) {
+          await applyPrefill(result.data);
+        }
       }
+    } catch (err) {
+      console.error("❌ Edit prefill failed:", err);
     }
   }
 
-  /* ============================================================
-     🚪 Cancel / Clear
-  ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+  /* ========================================================
+     🔘 Buttons
+  ======================================================== */
+  cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billingTriggerEditId");
     sessionStorage.removeItem("billingTriggerEditPayload");
     window.location.href = "/billing-triggers-list.html";
   });
 
-  document.querySelector("button[type=reset]")?.addEventListener("click", () => {
+  clearBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billingTriggerEditId");
     sessionStorage.removeItem("billingTriggerEditPayload");
-    resetForm();
+    window.location.reload(); // clean ADD mode
   });
 });
