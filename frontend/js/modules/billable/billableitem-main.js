@@ -1,9 +1,11 @@
-// 📦 billableitem-main.js – Form-Only Loader for Billable Items (Enterprise-Aligned)
+// 📦 billableitem-main.js – Form-only Loader for Billable Items (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: department-main.js (Form-only mode)
-// 🔹 Full enterprise structure: auth guard, logout watcher, reset/show/hide logic
-// 🔹 Role-based field selector & visibility
-// 🔹 Retains all pill-related IDs and linked components
+// 🧭 Mirrors department-main.js / patient-main.js EXACTLY (form-only mode)
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Role-based field selector (enterprise-aligned)
+// 🔹 100% ID-safe (pills, inputs, radios, buttons preserved)
 // ============================================================================
 
 import {
@@ -21,15 +23,11 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-// Automatically resolves correct permission ("billable_items:create" / "billable_items:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -44,23 +42,23 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (ID-SAFE)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // 🧩 Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("billableItemEditId");
   sessionStorage.removeItem("billableItemEditPayload");
 
-  // 🧽 Clear core input fields
+  // Clear core text inputs
   ["name", "code", "description", "price"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🏢 Reset dropdowns
+  // Clear dropdowns / selects
   [
     "organizationSelect",
     "facilitySelect",
@@ -71,18 +69,17 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // ✅ Default status active
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Default status = active
+  document.getElementById("status_active")?.setAttribute("checked", true);
 
-  // 🧱 Clear pill container
-  const pillsContainer = document.getElementById("itemPillsContainer");
-  if (pillsContainer)
-    pillsContainer.innerHTML = `<p class="text-muted">No billables added yet.</p>`;
+  // Reset pill container (must retain ID)
+  const pills = document.getElementById("itemPillsContainer");
+  if (pills)
+    pills.innerHTML = `<p class="text-muted">No billables added yet.</p>`;
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -97,7 +94,7 @@ function hideForm() {
   localStorage.setItem("billableItemFormVisible", "false");
 }
 
-// 🌐 Expose globally for action handlers
+// 🌍 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -115,33 +112,27 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // 🧹 Clear stale session data
     sessionStorage.removeItem("billableItemEditId");
     sessionStorage.removeItem("billableItemEditPayload");
-
-    // Reset and display form for Add mode
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🧠 Loader (no-op for form-only mode)
+   📦 Loader Placeholder (Form-only)
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles entries
+  return; // list page owns data loading
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initBillableItemModule() {
-  // Restore previous visibility state
-  const visible = localStorage.getItem("billableItemFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  // Form-only mode (matches Department / Patient)
+  showForm();
 
-  // Initialize form submission logic
   if (form) {
     setupBillableItemFormSubmission({
       form,
@@ -152,10 +143,10 @@ export async function initBillableItemModule() {
     });
   }
 
-  // Hide list panel for standalone form mode
+  // Ensure list panel stays hidden
   localStorage.setItem("billableItemPanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  /* ---------------- Role Normalization ---------------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -163,7 +154,7 @@ export async function initBillableItemModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
+  /* ---------------- Field Selector ---------------- */
   setupFieldSelector({
     module: "billable_items",
     fieldLabels: FIELD_LABELS_BILLABLE_ITEM,
@@ -173,8 +164,8 @@ export async function initBillableItemModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved for reactive updates)
+   🔁 State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for enterprise reactive form syncing
+  // reserved for future enterprise reactive syncing
 }

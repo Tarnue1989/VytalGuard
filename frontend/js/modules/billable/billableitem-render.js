@@ -1,120 +1,217 @@
-// 📁 billableitem-render.js – Billable Item Table & Card Renderers (Enterprise-Aligned)
+// 📁 billableitem-render.js – Entity Card System (BILLABLE ITEM | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Master Pattern: department-render.js / vital-render.js
-// 🔹 Full enterprise consistency: permissions, UI logic, tooltips, exports
-// 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 100% ID-safe (billableItemTableBody / billableItemList / tableViewBtn, etc.)
+// 🧭 FULL MASTER PARITY WITH department-render.js
+// 🔹 Table = flat | Card = structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize enabled
+// 🔹 Column drag reorder enabled
+// 🔹 Full audit section (created / updated / deleted)
+// 🔹 Permission-driven actions
+// 🔹 Export-safe
 // ============================================================================
 
 import { FIELD_LABELS_BILLABLE_ITEM } from "./billableitem-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+
+import {
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons (Centralized)
+   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "department_id",
+  "name",
+  "code",
+  "price",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+/* ============================================================
+   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+============================================================ */
+let sortBy = localStorage.getItem("billableItemSortBy") || "";
+let sortDir = localStorage.getItem("billableItemSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("billableItemSortBy", sortBy);
+  localStorage.setItem("billableItemSortDir", sortDir);
+
+  // 🔗 Bridge to MAIN
+  window.setBillableItemSort?.(sortBy, sortDir);
+  window.loadBillableItemPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
 ============================================================ */
 function getBillableItemActionButtons(entry, user) {
   return buildActionButtons({
-    module: "billable_item", // maps to STATUS_ACTION_MATRIX.billable_item
+    module: "billable_item",
     status: (entry.status || "").toLowerCase(),
     entryId: entry.id,
     user,
-    permissionPrefix: "billable_items", // aligns with backend permission keys
+    permissionPrefix: "billable_items",
   });
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    const label =
       FIELD_LABELS_BILLABLE_ITEM[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    th.dataset.key = field;
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  /* ================= Column resize ================= */
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadBillableItemPage?.(1);
+    },
+  });
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || user.username || "—";
+  const parts = [
+    user.first_name,
+    user.middle_name,
+    user.last_name,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ") : "—";
 }
 
-function renderBoolean(value) {
-  if (value === true) return `<span class="text-success">Yes</span>`;
-  if (value === false) return `<span class="text-danger">No</span>`;
-  return "—";
-}
-
+/* ============================================================
+   🧩 FIELD VALUE RENDERER
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        active: "bg-success",
-        inactive: "bg-warning text-dark",
-        deleted: "bg-danger",
-        voided: "bg-dark",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      let cls = "bg-secondary";
+      if (raw === "active") cls = "bg-success";
+      if (raw === "inactive") cls = "bg-warning text-dark";
+      if (raw === "deleted") cls = "bg-danger";
+      if (raw === "voided") cls = "bg-dark";
+
+      return `<span class="badge ${cls}">
+        ${raw.toUpperCase()}
+      </span>`;
     }
 
-    case "taxable":
-    case "discountable":
-    case "overrideAllowed":
-    case "override_allowed":
-      return renderBoolean(
-        entry.taxable ?? entry.discountable ?? entry.overrideAllowed ?? entry.override_allowed
-      );
-
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "department":
+    case "department_id":
       return entry.department?.name || "—";
 
     case "masterItem":
-      if (entry.masterItem)
-        return entry.masterItem.code
-          ? `${entry.masterItem.name} (${entry.masterItem.code})`
-          : entry.masterItem.name;
-      return "—";
+      return entry.masterItem?.name || "—";
 
+    case "category":
     case "category_id":
-      return entry.category?.name || entry.category_name || "—";
+      return entry.category?.name || "—";
 
     case "price":
-      return entry.price != null ? `${entry.price} ${entry.currency || ""}` : "—";
+      return entry.price != null
+        ? `${entry.price} ${entry.currency || ""}`
+        : "—";
 
     case "createdBy":
-      return renderUserName(entry.createdBy);
     case "updatedBy":
-      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry.deletedBy);
+      return renderUserName(entry[field]);
 
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
       return entry[field] ?? "—";
@@ -122,36 +219,103 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — BILLABLE ITEM
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_BILLABLE_ITEM[f] || f}:</strong> 
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getBillableItemActionButtons(entry, user)}
-        </div>
-      </div>`
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
+    </div>
+  `;
+
+  const status = (entry.status || "").toLowerCase();
+
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-secondary">${safe(entry.code)}</div>
+        <div class="entity-primary">${safe(entry.name)}</div>
+      </div>
+      ${
+        has("status")
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  const contextItems = [];
+  if (has("organization"))
+    contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+  if (has("facility"))
+    contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+  if (has("department"))
+    contextItems.push(`🏷️ ${safe(entry.department?.name)}`);
+
+  const context = contextItems.length
+    ? `<div class="entity-card-context">
+         ${contextItems.map((v) => `<div>${v}</div>`).join("")}
+       </div>`
     : "";
 
+  const body = `
+    <div class="entity-card-body">
+      ${has("price") ? fieldRow("Price", renderValue(entry, "price")) : ""}
+      ${has("category") ? fieldRow("Category", entry.category?.name) : ""}
+      ${has("masterItem") ? fieldRow("Master Item", entry.masterItem?.name) : ""}
+    </div>
+  `;
+
+  const audit =
+    has("created_at") || has("updated_at") || has("deleted_at")
+      ? `
+        <details class="entity-notes">
+          <summary>Audit</summary>
+          <div class="entity-card-body">
+            <div>
+              ${has("createdBy") ? fieldRow("Created By", renderUserName(entry.createdBy)) : ""}
+              ${has("created_at") ? fieldRow("Created At", formatDateTime(entry.created_at)) : ""}
+            </div>
+            <div>
+              ${has("updatedBy") ? fieldRow("Updated By", renderUserName(entry.updatedBy)) : ""}
+              ${has("updated_at") ? fieldRow("Updated At", formatDateTime(entry.updated_at)) : ""}
+              ${has("deletedBy") && entry.deletedBy ? fieldRow("Deleted By", renderUserName(entry.deletedBy)) : ""}
+              ${has("deleted_at") && entry.deleted_at ? fieldRow("Deleted At", formatDateTime(entry.deleted_at)) : ""}
+            </div>
+          </div>
+        </details>
+      `
+      : "";
+
+    const actions = has("actions")
+      ? `<div class="entity-card-footer export-ignore">
+          <div class="card-actions">
+            ${getBillableItemActionButtons(entry, user)}
+          </div>
+        </div>`
+      : "";
+
+
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card billableitem-card">
+      ${header}
+      ${context}
+      ${body}
+      ${audit}
+      ${actions}
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("billableItemTableBody");
@@ -162,32 +326,33 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No billable items found.</td></tr>`;
-
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
+            No billable items found.
+          </td>
+        </tr>`;
+      initTooltips(tableBody);
       return;
     }
 
     entries.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getBillableItemActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((field) =>
+          field === "actions"
+            ? `<td class="actions-cell text-center export-ignore">
+                 ${getBillableItemActionButtons(entry, user)}
+               </td>`
+            : `<td>${renderValue(entry, field)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -196,12 +361,12 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
     cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No billable items found.</p>`;
+      ? entries
+          .map((e) => renderCard(e, visibleFields, user))
+          .join("")
+      : `<p class="text-muted text-center">No billable items found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -210,7 +375,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers (CSV, Excel, PDF)
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -232,7 +397,7 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #billableItemList.active",
       orientation: "landscape",
     });
   });

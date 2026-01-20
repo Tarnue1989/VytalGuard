@@ -1,9 +1,10 @@
-// 📦 billableitem-filter-main.js – Filters + Table/Card (Enterprise-Aligned)
+// 📦 billableitem-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: department-filter-main.js / vital-filter-main.js
-// 🔹 Full enterprise structure — auth guard, pagination, filters, exports,
-//   field selector, unified UI logic, and consistent permission handling.
-// 🔹 100% ID and dataset key preservation for safe integration.
+// 🔹 Mirrors department-filter-main.js EXACTLY
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (never DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Billable Item Status fully wired
 // ============================================================================
 
 import {
@@ -11,79 +12,91 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   loadDepartmentsLite,
-  loadMasterItemsLite,
-  setupSuggestionInputDynamic,
   setupSelectOptions,
+  setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./billableitem-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./billableitem-render.js";
+
 import { setupActionHandlers } from "./billableitem-actions.js";
+
 import {
   FIELD_ORDER_BILLABLE_ITEM,
   FIELD_DEFAULTS_BILLABLE_ITEM,
+  FIELD_LABELS_BILLABLE_ITEM,
 } from "./billableitem-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Session Watch
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("billableItemView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
-  moduleKey: "billable_item",
+  moduleKey: "billableitem",
   userRole,
   defaultFields: FIELD_DEFAULTS_BILLABLE_ITEM,
   allowedFields: FIELD_ORDER_BILLABLE_ITEM,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -91,90 +104,117 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterDept = document.getElementById("filterDepartmentSelect");
-const filterMasterItem = document.getElementById("filterMasterItem");
-const filterMasterItemSuggestions = document.getElementById(
-  "filterMasterItemSuggestions"
-);
-const filterCategory = document.getElementById("filterCategory");
-const filterCategorySuggestions = document.getElementById(
-  "filterCategorySuggestions"
-);
-const filterName = document.getElementById("filterName");
-const filterCode = document.getElementById("filterCode");
-const filterStatus = document.getElementById("filterStatus");
+const qs = id => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterDept     = qs("filterDepartmentSelect");
+const filterStatus   = qs("filterStatusSelect");
+const dateRange      = qs("dateRange");
+
+const filterMasterItem = qs("filterMasterItem");
+const filterMasterItemSuggestions = qs("filterMasterItemSuggestions");
+const filterCategory = qs("filterCategory");
+const filterCategorySuggestions = qs("filterCategorySuggestions");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("billableItemView") || "table";
+window.setBillableItemSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadBillableItemPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "billableitem",
+  loadEntries,
+  Number(localStorage.getItem("billableitemPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterDept,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    department_id: filterDept?.value || "",
-    master_item_id: filterMasterItem?.dataset?.value || "",
-    category_id: filterCategory?.dataset?.value || "",
-    name: filterName?.value || "",
-    code: filterCode?.value || "",
-    status: filterStatus?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    department_id: filterDept?.value,
+    master_item_id: filterMasterItem?.dataset?.value,
+    category_id: filterCategory?.dataset?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🔁 Pagination Control
-============================================================ */
-const getPagination = initPaginationControl("billable_item", loadEntries, 25);
-
-/* ============================================================
-   📦 Load Billable Items
+   📦 LOAD ENTRIES
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v) return;
-      q.append(k, v);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
+
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_BILLABLE_ITEM.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    q.set("fields", visibleFields.join(","));
 
     const res = await authFetch(`/api/billable-items?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "BILLABLE ITEMS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -187,16 +227,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length)
-      showToast("ℹ️ No billable items found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load billable items");
   } finally {
     hideLoading();
@@ -204,79 +241,67 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("billableItemView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("billableItemView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn").onclick = () => {
   [
+    globalSearch,
     filterOrg,
     filterFacility,
     filterDept,
+    filterStatus,
+    dateRange,
     filterMasterItem,
     filterCategory,
-    filterName,
-    filterCode,
-    filterStatus,
-  ].forEach((el) => {
-    if (el) {
-      el.value = "";
-      if (el.dataset) el.dataset.value = "";
-    }
+  ].forEach(el => {
+    if (!el) return;
+    el.value = "";
+    if (el.dataset) el.dataset.value = "";
   });
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `billable_items_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_BILLABLE_ITEM),
+    `billable_items_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#billableItemList";
-    exportToPDF("Billable Item List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Billable Items",
+    viewMode === "table" ? ".table-container" : "#billableItemList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initBillableItemModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible =
-    localStorage.getItem("billableItemFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -285,97 +310,30 @@ export async function initBillableItemModule() {
     "billableItemFilterVisible"
   );
 
-  /* ----------------- Suggestion Inputs ----------------- */
-  setupSuggestionInputDynamic(
-    filterMasterItem,
-    filterMasterItemSuggestions,
-    "/api/lite/master-items",
-    (selected) => {
-      filterMasterItem.dataset.value = selected?.id || "";
-      filterMasterItem.value = selected?.name || "";
-    },
-    "name",
-    { minChars: 1 }
-  );
-
-  setupSuggestionInputDynamic(
-    filterCategory,
-    filterCategorySuggestions,
-    "/api/lite/master-item-categories",
-    (selected) => {
-      filterCategory.dataset.value = selected?.id || "";
-      filterCategory.value = selected?.name || "";
-    },
-    "name"
-  );
-
-  /* ----------------- Preload Org / Facility / Dept ----------------- */
-  try {
+  /* ----------------- Organization ----------------- */
+  if (filterOrg) {
     const orgs = await loadOrganizationsLite();
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      let facilities = await loadFacilitiesLite();
-      facilities.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facilities, "id", "name");
-
-      filterOrg?.addEventListener("change", async () => {
-        const selectedOrgId = filterOrg.value;
-        let facs = selectedOrgId
-          ? await loadFacilitiesLite({ organization_id: selectedOrgId })
-          : await loadFacilitiesLite();
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-      if (filterOrg) {
-        const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-        setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-        filterOrg.disabled = true;
-        filterOrg.value = scopedOrgId || "";
-      }
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(
-        filterFacility,
-        facilities,
-        "id",
-        "name",
-        "-- All Facilities --"
-      );
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-
-    const depts = await loadDepartmentsLite({}, true);
-    depts.unshift({ id: "", name: "-- All Departments --" });
-    setupSelectOptions(filterDept, depts, "id", "name");
-  } catch (err) {
-    console.error("❌ preload org/facility/department failed:", err);
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
   }
+
+  /* ----------------- Facility ----------------- */
+  if (filterFacility) {
+    const facs = await loadFacilitiesLite();
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
+  }
+
+  /* ----------------- Status ----------------- */
+  // Status is static in HTML — no loader needed
 
   await loadEntries(1);
 }
 
-/* ============================================================
-   🔁 Sync Helper (reserved)
-============================================================ */
-export function syncRefsToState() {
-  // Reserved for reactive enterprise behavior
-}
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initBillableItemModule().catch((err) =>
-    console.error("initBillableItemModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initBillableItemModule)
+  : initBillableItemModule();

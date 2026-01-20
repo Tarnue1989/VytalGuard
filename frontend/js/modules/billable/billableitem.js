@@ -2,21 +2,21 @@
 // ============================================================================
 // 🧭 Master Pattern: department.js / role.js / vitals.js
 // 🔹 Unified initialization entry for the Billable Item module
-// 🔹 Handles form + list bootstrapping with full enterprise guards
-// 🔹 Safe startup, consistent constants import, and robust error handling
+// 🔹 Handles form + filter/list bootstrapping safely
+// 🔹 Enterprise-grade startup guard, constants exposure, and error handling
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module initializer (handles filters, table, card, etc.)
+// 🧭 Main module init (filters, table, card, pagination, summary)
 import { initBillableItemModule } from "./billableitem-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
+// ⚙️ Lifecycle + action handlers (edit, delete, toggle, view)
 import "./billableitem-actions.js";
 
-// 🧩 Constants (exportable for field selector or dynamic column setup)
+// 🧩 Constants (exportable for field selector / dynamic UI)
 import {
   FIELD_LABELS_BILLABLE_ITEM,
   FIELD_ORDER_BILLABLE_ITEM,
@@ -31,7 +31,7 @@ import { showToast, hideLoading } from "../../utils/index.js";
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize module only if relevant form or list exists
+    // 🧩 Initialize only if billable item form or list is present
     if (
       document.getElementById("billableItemForm") ||
       document.getElementById("billableItemList")
@@ -39,7 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await initBillableItemModule();
     }
 
-    // (Optional) Future enhancement:
+    // (Reserved – future split initializers)
     // if (document.getElementById("billableItemTableBody")) {
     //   await initBillableItemListModule();
     // }

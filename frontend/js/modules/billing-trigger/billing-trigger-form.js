@@ -1,9 +1,11 @@
-// 📦 billing-trigger-form.js – Secure & Role-Aware Billing Trigger Form
+// 📦 billing-trigger-form.js – Enterprise-Final Billing Trigger Form
 // ============================================================================
 // 🔹 Rule-driven validation (BILLING_TRIGGER_FORM_RULES)
-// 🔹 Role-aware org/fac handling
-// 🔹 Controller-faithful (NO silent validation)
-// 🔹 Preserves ALL DOM IDs
+// 🔹 Role-aware org / facility handling
+// 🔹 Controller-faithful (no silent assumptions)
+// 🔹 FULL ID safety (matches HTML + main.js)
+// 🔹 Edit-safe (session + direct fetch fallback)
+// 🔹 FIXED: Prefill waits for dropdown hydration
 // ============================================================================
 
 import {
@@ -34,52 +36,98 @@ import { BILLING_TRIGGER_FORM_RULES } from "./billing-trigger.form.rules.js";
 /* ============================================================
    🧩 Helpers
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const getQueryParam = (k) =>
+  new URLSearchParams(window.location.search).get(k);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
+const normalizeMessage = (res, fallback) => {
+  if (!res) return fallback;
+  const msg = res.message ?? res.error ?? res.msg;
+  return typeof msg === "string" ? msg : fallback;
+};
+
+/* ============================================================
+   ✏️ PREFILL HELPER (FIXED ORDER)
+============================================================ */
+async function applyBillingTriggerPrefill(entry, {
+  userRole,
+  orgSelect,
+  facSelect,
+  statusEl,
+  setTitle,
+}) {
+  document.getElementById("module_key").value =
+    entry.module_key || "";
+
+  document.getElementById("trigger_status").value =
+    entry.trigger_status || "";
+
+  if (statusEl) {
+    statusEl.value = entry.is_active ? "true" : "false";
   }
+
+  if (userRole.includes("super") && entry.organization_id) {
+    orgSelect.value = entry.organization_id;
+
+    setupSelectOptions(
+      facSelect,
+      await loadFacilitiesLite(
+        { organization_id: entry.organization_id },
+        true
+      ),
+      "id",
+      "name",
+      "-- All Facilities --"
+    );
+
+    if (entry.facility_id) {
+      facSelect.value = entry.facility_id;
+    }
+  } else if (userRole.includes("admin") && entry.facility_id) {
+    facSelect.value = entry.facility_id;
+  }
+
+  setTitle("Update Billing Trigger");
 }
 
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
-export async function setupBillingTriggerFormSubmission({ form }) {
+export async function setupBillingTriggerFormSubmission({
+  form,
+  sharedState,
+  resetForm,
+}) {
   initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
   enableLiveValidation(form);
 
   const triggerId =
-    sessionStorage.getItem("billingTriggerEditId") || getQueryParam("id");
+    sharedState?.currentEditIdRef?.value ||
+    sessionStorage.getItem("billingTriggerEditId") ||
+    getQueryParam("id");
+
   const isEdit = Boolean(triggerId);
+  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
-  const titleEl = document.querySelector(".card-title");
-  const submitBtn = form.querySelector("button[type=submit]");
-
-  const setFormTitle = (txt) => {
-    if (titleEl) titleEl.textContent = txt;
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> ${txt}`;
-  };
-
-  setFormTitle(isEdit ? "Update Billing Trigger" : "Add Billing Trigger");
-
-  /* ---------------- DOM Refs ---------------- */
+  /* ---------------- DOM ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const statusEl = document.getElementById("is_active");
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  const titleEl = document.querySelector(".card-title");
+  const submitBtn = form.querySelector("button[type=submit]");
+
+  const setTitle = (txt) => {
+    if (titleEl) titleEl.textContent = txt;
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        `<i class="ri-save-3-line me-1"></i> ${txt}`;
+    }
+  };
+
+  setTitle(isEdit ? "Update Billing Trigger" : "Add Billing Trigger");
 
   /* ============================================================
-     🔐 ROLE-AWARE DROPDOWNS
+     🔐 ROLE-AWARE DROPDOWNS (VISIBILITY + DATA)
   ============================================================ */
   try {
     const hideOrg = () =>
@@ -128,11 +176,11 @@ export async function setupBillingTriggerFormSubmission({ form }) {
     }
   } catch (err) {
     console.error(err);
-    showToast("❌ Failed to load dropdown data");
+    showToast("❌ Failed to load organization/facility data");
   }
 
   /* ============================================================
-     ✏️ PREFILL (EDIT MODE)
+     ✏️ PREFILL (EDIT MODE — AFTER DROPDOWNS)
   ============================================================ */
   if (isEdit) {
     try {
@@ -150,16 +198,13 @@ export async function setupBillingTriggerFormSubmission({ form }) {
 
       if (!entry) throw new Error("Billing trigger not found");
 
-      document.getElementById("module_key").value =
-        entry.module_key || "";
-      document.getElementById("trigger_status").value =
-        entry.trigger_status || "";
-
-      if (statusEl) {
-        statusEl.value = entry.is_active ? "true" : "false";
-      }
-
-      setFormTitle("Update Billing Trigger");
+      await applyBillingTriggerPrefill(entry, {
+        userRole,
+        orgSelect,
+        facSelect,
+        statusEl,
+        setTitle,
+      });
     } catch (err) {
       console.error(err);
       showToast(err.message || "❌ Failed to load billing trigger");
@@ -169,7 +214,7 @@ export async function setupBillingTriggerFormSubmission({ form }) {
   }
 
   /* ============================================================
-     🛡️ SUBMIT — RULE-DRIVEN (CONTROLLER-ALIGNED)
+     🛡️ SUBMIT (RULE-DRIVEN, CONTROLLER-ALIGNED)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -195,14 +240,11 @@ export async function setupBillingTriggerFormSubmission({ form }) {
       return;
     }
 
-    const method = isEdit ? "PUT" : "POST";
-    const url = isEdit
-      ? `/api/billing-triggers/${triggerId}`
-      : `/api/billing-triggers`;
-
     const payload = {
-      module_key: document.getElementById("module_key").value,
-      trigger_status: document.getElementById("trigger_status").value,
+      module_key: document.getElementById("module_key").value.trim(),
+      trigger_status: document
+        .getElementById("trigger_status")
+        .value.trim(),
       is_active: statusEl?.value === "true",
     };
 
@@ -211,18 +253,27 @@ export async function setupBillingTriggerFormSubmission({ form }) {
       payload.facility_id = facSelect?.value || null;
     }
 
+    const method = isEdit ? "PUT" : "POST";
+    const url = isEdit
+      ? `/api/billing-triggers/${triggerId}`
+      : `/api/billing-triggers`;
+
     try {
       showLoading();
+
       const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const result = await res.json();
+
+      const result = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         applyServerErrors(form, result?.errors);
-        throw new Error(normalizeMessage(result, "Submission failed"));
+        throw new Error(
+          normalizeMessage(result, "❌ Submission failed")
+        );
       }
 
       showToast(
@@ -231,7 +282,8 @@ export async function setupBillingTriggerFormSubmission({ form }) {
           : "✅ Billing trigger created"
       );
 
-      sessionStorage.clear();
+      sessionStorage.removeItem("billingTriggerEditId");
+      sessionStorage.removeItem("billingTriggerEditPayload");
       window.location.href = "/billing-triggers-list.html";
     } catch (err) {
       console.error(err);
@@ -245,14 +297,17 @@ export async function setupBillingTriggerFormSubmission({ form }) {
      ⏮️ CANCEL / CLEAR
   ============================================================ */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.clear();
+    sessionStorage.removeItem("billingTriggerEditId");
+    sessionStorage.removeItem("billingTriggerEditPayload");
     window.location.href = "/billing-triggers-list.html";
   });
 
-  document.querySelector("button[type=reset]")?.addEventListener("click", () => {
-    clearFormErrors(form);
-    form.reset();
-    if (statusEl) statusEl.value = "true";
-    setFormTitle("Add Billing Trigger");
-  });
+  document
+    .querySelector("button[type=reset]")
+    ?.addEventListener("click", () => {
+      clearFormErrors(form);
+      form.reset();
+      if (statusEl) statusEl.value = "true";
+      setTitle("Add Billing Trigger");
+    });
 }

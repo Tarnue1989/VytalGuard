@@ -1,7 +1,11 @@
 // 📁 controllers/billingTriggerController.js
 import Joi from "joi";
 import { Op } from "sequelize";
-import { sequelize, BillingTrigger } from "../models/index.js";
+import { 
+  sequelize, 
+  BillingTrigger, 
+  Organization, 
+  Facility  } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { authzService } from "../services/authzService.js";
@@ -26,6 +30,23 @@ const MODULE_KEY = "billingTrigger";
 ============================================================ */
 const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("billingTriggerController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔗 SHARED INCLUDES (MASTER PARITY)
+============================================================ */
+const BILLING_TRIGGER_INCLUDES = [
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code"],
+    required: false, // facility may be null
+  },
+];
 
 /* ============================================================
    📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
@@ -239,7 +260,7 @@ export const toggleBillingTrigger = async (req, res) => {
 };
 
 /* ============================================================
-   📋 LIST (STRICT MASTER PARITY)
+   📋 LIST (STRICT MASTER PARITY + SUMMARY + ORG/FAC)
 ============================================================ */
 export const getAllBillingTriggers = async (req, res) => {
   try {
@@ -269,40 +290,61 @@ export const getAllBillingTriggers = async (req, res) => {
     delete options.filters?.dateRange;
     delete options.filters?.light;
 
-    options.where = { [Op.and]: [] };
-
     /* ========================================================
-       📅 DATE RANGE (UTIL-OWNED)
+       🧱 BASE WHERE (LIST + SUMMARY)
     ======================================================== */
+    const baseWhere = { [Op.and]: [] };
+
+    /* ---------------- Date Range ---------------- */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
-      options.where[Op.and].push({
+      baseWhere[Op.and].push({
         created_at: {
           [Op.between]: [dateRange.start, dateRange.end],
         },
       });
     }
 
-    /* ========================================================
-       🔐 ORG / FACILITY SCOPE
-    ======================================================== */
+    /* ---------------- Tenant Scope ---------------- */
     if (!isSuperAdmin(req.user)) {
-      options.where[Op.and].push({
+      baseWhere[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
       if (isFacilityHead(req.user)) {
-        options.where[Op.and].push({
+        baseWhere[Op.and].push({
           facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        baseWhere[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        baseWhere[Op.and].push({
+          facility_id: req.query.facility_id,
         });
       }
     }
 
+    /* ---------------- Active Filter ---------------- */
+    if (req.query.is_active !== undefined) {
+      baseWhere[Op.and].push({
+        is_active: req.query.is_active === "true",
+      });
+    }
+
     /* ========================================================
-       🔎 SEARCH
+       🔎 LIST WHERE (BASE + SEARCH)
     ======================================================== */
+    const listWhere = {
+      [Op.and]: [...baseWhere[Op.and]],
+    };
+
     if (options.search) {
-      options.where[Op.and].push({
+      listWhere[Op.and].push({
         [Op.or]: [
           { module_key: { [Op.iLike]: `%${options.search}%` } },
           { trigger_status: { [Op.iLike]: `%${options.search}%` } },
@@ -310,10 +352,19 @@ export const getAllBillingTriggers = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📄 MAIN LIST QUERY (WITH SHARED INCLUDES)
+    ======================================================== */
     const { count, rows } = await BillingTrigger.findAndCountAll({
-      where: options.where,
+      where: listWhere,
+      include: BILLING_TRIGGER_INCLUDES, // ✅ SHARED ORG / FAC INCLUDE
       attributes: Array.from(
-        new Set(["id", ...(options.attributes || [])])
+        new Set([
+          "id",
+          "organization_id",
+          "facility_id",
+          ...(options.attributes || []),
+        ])
       ),
       order: options.order,
       offset: options.offset,
@@ -321,15 +372,56 @@ export const getAllBillingTriggers = async (req, res) => {
       distinct: true,
     });
 
+    /* ========================================================
+       📊 SUMMARY (BASE WHERE ONLY)
+    ======================================================== */
+    const statusAgg = await BillingTrigger.findAll({
+      where: baseWhere,
+      attributes: [
+        "is_active",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["is_active"],
+      raw: true,
+    });
+
+    const summary = {
+      total: count,
+      active: 0,
+      inactive: 0,
+    };
+
+    statusAgg.forEach((r) => {
+      if (r.is_active === true || r.is_active === "true") {
+        summary.active = Number(r.count);
+      } else {
+        summary.inactive = Number(r.count);
+      }
+    });
+
+    if (dateRange) {
+      summary.dateRange = {
+        start: dateRange.start,
+        end: dateRange.end,
+      };
+    }
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { returned: count },
+      details: { returned: count, query: req.query },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Billing triggers loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -341,6 +433,62 @@ export const getAllBillingTriggers = async (req, res) => {
     return error(res, "❌ Failed to load billing triggers", err);
   }
 };
+
+/* ============================================================
+   📌 GET BILLING TRIGGER BY ID (MASTER PARITY + ORG/FAC)
+============================================================ */
+export const getBillingTriggerById = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { id } = req.params;
+
+    const where = { id };
+
+    /* ---------------- Tenant Scope ---------------- */
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    } else {
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
+    }
+
+    const trigger = await BillingTrigger.findOne({
+      where,
+      include: BILLING_TRIGGER_INCLUDES, // ✅ SAME SHARED INCLUDE
+    });
+
+    if (!trigger) {
+      return error(res, "❌ Billing trigger not found", null, 404);
+    }
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "view",
+      entityId: id,
+      entity: trigger,
+    });
+
+    return success(res, "✅ Billing trigger loaded", trigger);
+  } catch (err) {
+    debug.error("getById → FAILED", err);
+    return error(res, "❌ Failed to load billing trigger", err);
+  }
+};
+
 
 /* ============================================================
    📌 LITE LIST
