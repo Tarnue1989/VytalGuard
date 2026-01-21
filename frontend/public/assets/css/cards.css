@@ -307,6 +307,21 @@
   padding:6px 8px;
   border-radius:8px;
 }
+/* ================= CONSULTATION STATUS ================= */
+.consultation-card .entity-status.open{background:#0d6efd;color:#fff}
+.consultation-card .entity-status.in_progress{background:#f59e0b;color:#111}
+.consultation-card .entity-status.completed{background:#198754;color:#fff}
+.consultation-card .entity-status.verified{background:#0dcaf0;color:#111}
+.consultation-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.consultation-card .entity-status.voided{background:#dc3545;color:#fff}
+.consultation-card .entity-status.deleted{background:#dc3545;color:#fff}
+
+/* ================= CONSULTATION BODY TUNING ================= */
+.consultation-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
 
 
 

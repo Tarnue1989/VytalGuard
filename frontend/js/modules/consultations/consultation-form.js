@@ -1,14 +1,29 @@
-// 📁 consultation-form.js – Secure & Role-Aware Consultation Form (Aligned with Backend Logic)
+// 📁 consultation-form.js – Secure & Role-Aware Consultation Form (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🔹 Rule-driven validation (CONSULTATION_FORM_RULES)
+// 🔹 Role-aware org/fac handling (super / org / facility)
+// 🔹 Clean payload normalization (UUID | null | date)
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
+// 🔹 Mirrors department-form.js MASTER pattern exactly
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -18,12 +33,16 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { CONSULTATION_FORM_RULES } from "./consultation.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
+
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
@@ -35,9 +54,11 @@ function normalizeMessage(result, fallback) {
     return fallback;
   }
 }
+
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
+
 function normalizeDate(val) {
   if (!val) return null;
   const d = new Date(val);
@@ -47,141 +68,171 @@ function normalizeDate(val) {
   ).padStart(2, "0")}`;
 }
 
+function buildPersonName(obj) {
+  if (!obj) return "";
+  return [obj.first_name, obj.middle_name, obj.last_name]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /* ============================================================
-   🚀 Setup Consultation Form
+   🚀 Main Setup
 ============================================================ */
 export async function setupConsultationFormSubmission({ form }) {
-  // 🔐 Auth Guard
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const sessionId = sessionStorage.getItem("consultationEditId");
-  const queryId = getQueryParam("id");
-  const consId = sessionId || queryId;
-  const isEdit = !!consId;
+  const consId =
+    sessionStorage.getItem("consultationEditId") || getQueryParam("id");
+  const isEdit = Boolean(consId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
 
   const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Consultation");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Consultation`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Consultation");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Consultation`);
-    }
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Consultation" : "Add Consultation";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Consultation`
+          : `<i class="ri-add-line me-1"></i> Add Consultation`;
   };
   setUI(isEdit ? "edit" : "add");
 
-  /* -------------------- DOM Refs -------------------- */
+  /* ---------------- DOM Refs ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const deptSelect = document.getElementById("departmentSelect");
   const typeSelect = document.getElementById("consultationTypeSelect");
+  const appointmentSelect = document.getElementById("appointmentSelect");
+
   const patientInput = document.getElementById("patientInput");
   const patientHidden = document.getElementById("patientId");
   const patientSuggestions = document.getElementById("patientSuggestions");
-  const appointmentSelect = document.getElementById("appointmentSelect");
 
   const doctorInput = document.getElementById("doctorInput");
   const doctorHidden = document.getElementById("doctorId");
   const doctorSuggestions = document.getElementById("doctorSuggestions");
   const doctorFieldGroup = document.getElementById("doctorFieldGroup");
 
+  const dateInput = document.getElementById("consultationDate");
+  const diagnosisInput = document.getElementById("diagnosis");
+  const notesInput = document.getElementById("consultationNotes");
+  const medsInput = document.getElementById("prescribedMedications");
+
+  /* ---------------- Role ---------------- */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+  const isOrgAdmin = userRole === "organization_admin";
+
   /* ============================================================
-     🧭 Prefill Dropdowns & Suggestions
+     🌐 Dropdowns & Suggestions
   ============================================================ */
-  let userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
   try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+      };
 
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+    } else if (isOrgAdmin) {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // ✅ Department & Type
-    const depts = await loadDepartmentsLite({}, true);
-    setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
+    setupSelectOptions(
+      deptSelect,
+      await loadDepartmentsLite({}, true),
+      "id",
+      "name",
+      "-- Select Department --"
+    );
 
-    const consTypes = await loadBillableItemsLite({ category: "consultation" }, true);
-    setupSelectOptions(typeSelect, consTypes, "id", "name", "-- Select Consultation Type --");
+    setupSelectOptions(
+      typeSelect,
+      await loadBillableItemsLite({ category: "consultation" }, true),
+      "id",
+      "name",
+      "-- Select Consultation Type --"
+    );
 
-    // ✅ Patient suggestions
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
       "/api/lite/patients",
       async (selected) => {
         patientHidden.value = selected?.id || "";
-        if (selected) {
-          patientInput.value =
-            selected.label ||
-            (selected.pat_no && selected.full_name
-              ? `${selected.pat_no} - ${selected.full_name}`
-              : selected.full_name || selected.pat_no || "");
+        patientInput.value =
+          selected?.label ||
+          `${selected?.pat_no || ""} ${buildPersonName(selected)}`.trim();
 
-          // load valid appointments
-          if (appointmentSelect) {
-            appointmentSelect.innerHTML = `<option value="">— Loading... —</option>`;
-            try {
-              const res = await authFetch(`/api/lite/appointments?patient_id=${selected.id}`);
-              const data = await res.json().catch(() => ({}));
-              const appts = data?.data?.records || [];
-              const validAppts = appts.filter((a) =>
-                ["scheduled", "in_progress"].includes((a.status || "").toLowerCase())
-              );
+        if (appointmentSelect && selected?.id) {
+          appointmentSelect.innerHTML = `<option value="">— Loading... —</option>`;
+          try {
+            const res = await authFetch(
+              `/api/lite/appointments?patient_id=${selected.id}`
+            );
+            const data = await res.json().catch(() => ({}));
+            const appts = data?.data?.records || [];
+            const valid = appts.filter((a) =>
+              ["scheduled", "in_progress"].includes(
+                (a.status || "").toLowerCase()
+              )
+            );
 
-              if (!validAppts.length) {
-                appointmentSelect.innerHTML = `<option value="">— No valid appointments —</option>`;
-              } else {
-                appointmentSelect.innerHTML = `<option value="">— Select Appointment —</option>`;
-                validAppts.forEach((a) => {
-                  const formattedTime = a.date
-                    ? new Date(a.date).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "";
-                  appointmentSelect.innerHTML += `
-                    <option value="${a.id}">
-                      ${a.code || a.id} — ${formattedTime} (${a.status})
-                    </option>`;
-                });
-              }
-            } catch (err) {
-              console.error("❌ Appointment load failed:", err);
-              appointmentSelect.innerHTML = `<option value="">— Error loading —</option>`;
-            }
+            appointmentSelect.innerHTML = valid.length
+              ? `<option value="">— Select Appointment —</option>`
+              : `<option value="">— No valid appointments —</option>`;
+
+            valid.forEach((a) => {
+              appointmentSelect.innerHTML += `
+                <option value="${a.id}">
+                  ${a.code || a.id} (${a.status})
+                </option>`;
+            });
+          } catch {
+            appointmentSelect.innerHTML = `<option value="">— Error loading —</option>`;
           }
         }
       },
       "label"
     );
 
-    // ✅ Doctor suggestion (superadmins only)
-    if (userRole.includes("super")) {
+    if (isSuper) {
       doctorFieldGroup?.classList.remove("hidden");
       setupSuggestionInputDynamic(
         doctorInput,
@@ -189,94 +240,149 @@ export async function setupConsultationFormSubmission({ form }) {
         "/api/lite/employees",
         (selected) => {
           doctorHidden.value = selected?.id || "";
-          doctorInput.value =
-            selected.full_name ||
-            `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
+          doctorInput.value = buildPersonName(selected);
         },
         "full_name"
       );
     } else {
       doctorFieldGroup?.classList.add("hidden");
-      // for all normal users, backend will assign doctor automatically
-      doctorHidden.value = localStorage.getItem("employeeId") || "";
     }
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     ✏️ Prefill if Editing
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit && consId) {
     try {
       showLoading();
-      const res = await authFetch(`/api/consultations/${consId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/consultations/${consId}`);
       const result = await res.json().catch(() => ({}));
-      hideLoading();
+      if (!res.ok)
+        throw new Error(
+          normalizeMessage(result, "Failed to load consultation")
+        );
 
-      if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load consultation"));
-      const entry = result?.data;
-      if (!entry) return;
+      const e = result?.data;
+      if (!e) return;
 
-      patientHidden.value = entry.patient_id || "";
-      if (entry.patient)
-        patientInput.value =
-          entry.patient.pat_no && entry.patient.full_name
-            ? `${entry.patient.pat_no} - ${entry.patient.full_name}`
-            : entry.patient.full_name || entry.patient.pat_no || "";
+      patientHidden.value = e.patient_id || "";
+      patientInput.value = e.patient
+        ? `${e.patient.pat_no || ""} ${buildPersonName(e.patient)}`.trim()
+        : "";
 
-      if (userRole.includes("super") && entry.doctor)
-        doctorInput.value =
-          entry.doctor.full_name ||
-          `${entry.doctor.first_name || ""} ${entry.doctor.last_name || ""}`.trim();
+      if (isSuper) {
+        if (orgSelect && e.organization_id) orgSelect.value = e.organization_id;
+        if (facSelect && e.facility_id) facSelect.value = e.facility_id;
+      }
 
-      deptSelect.value = entry.department_id || "";
-      typeSelect.value = entry.consultation_type_id || "";
-      document.getElementById("consultationDate").value =
-        normalizeDate(entry.consultation_date) || "";
-      document.getElementById("diagnosis").value = entry.diagnosis || "";
-      document.getElementById("consultationNotes").value = entry.consultation_notes || "";
-      document.getElementById("prescribedMedications").value =
-        entry.prescribed_medications || "";
-      if (entry.appointment_id) appointmentSelect.value = entry.appointment_id;
+      deptSelect.value = e.department_id || "";
+      typeSelect.value = e.consultation_type_id || "";
+      dateInput.value = normalizeDate(e.consultation_date) || "";
+      diagnosisInput.value = e.diagnosis || "";
+      notesInput.value = e.consultation_notes || "";
+      medsInput.value = e.prescribed_medications || "";
+
+      if (isSuper && e.doctor) {
+        doctorHidden.value = e.doctor.id || "";
+        doctorInput.value = buildPersonName(e.doctor);
+      }
+
+      if (appointmentSelect && e.patient_id) {
+        appointmentSelect.innerHTML = `<option value="">— Loading... —</option>`;
+        try {
+          const resA = await authFetch(
+            `/api/lite/appointments?patient_id=${e.patient_id}`
+          );
+          const dataA = await resA.json().catch(() => ({}));
+          const appts = dataA?.data?.records || [];
+          const valid = appts.filter((a) =>
+            ["scheduled", "in_progress"].includes(
+              (a.status || "").toLowerCase()
+            )
+          );
+
+          appointmentSelect.innerHTML = valid.length
+            ? `<option value="">— Select Appointment —</option>`
+            : `<option value="">— No valid appointments —</option>`;
+
+          valid.forEach((a) => {
+            appointmentSelect.innerHTML += `
+              <option value="${a.id}">
+                ${a.code || a.id} (${a.status})
+              </option>`;
+          });
+
+          appointmentSelect.value = e.appointment_id || "";
+        } catch {
+          appointmentSelect.innerHTML = `<option value="">— Error loading —</option>`;
+        }
+      }
+
+      setUI("edit");
     } catch (err) {
-      hideLoading();
-      console.error("❌ Prefill error:", err);
       showToast(err.message || "❌ Could not load consultation");
+    } finally {
+      hideLoading();
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+    🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    let payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      department_id: normalizeUUID(deptSelect?.value),
-      consultation_type_id: normalizeUUID(typeSelect?.value),
-      consultation_date: normalizeDate(document.getElementById("consultationDate")?.value),
-      diagnosis: document.getElementById("diagnosis")?.value || null,
-      consultation_notes: document.getElementById("consultationNotes")?.value || null,
-      prescribed_medications:
-        document.getElementById("prescribedMedications")?.value || null,
-      appointment_id: normalizeUUID(appointmentSelect?.value),
-    };
+    const errors = [];
 
-    // 🧩 Add doctor_id only for superadmins
-    if (userRole.includes("super")) {
-      payload.doctor_id = normalizeUUID(doctorHidden.value);
+    for (const rule of CONSULTATION_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      // ✅ Skip if field does not exist in DOM (role-based / optional)
+      if (!el) continue;
+
+      // ✅ Skip hidden fields (enterprise role handling)
+      if (el.closest(".hidden")) continue;
+
+      // ❌ Validate only visible, present fields
+      if (!el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
     }
 
-    if (!payload.patient_id) return showToast("❌ Patient is required");
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    const payload = {
+      patient_id: normalizeUUID(patientHidden.value),
+      department_id: normalizeUUID(deptSelect.value),
+      consultation_type_id: normalizeUUID(typeSelect.value),
+      appointment_id: normalizeUUID(appointmentSelect.value),
+      consultation_date: normalizeDate(dateInput.value),
+      diagnosis: diagnosisInput.value || null,
+      consultation_notes: notesInput.value || null,
+      prescribed_medications: medsInput.value || null,
+    };
+
+    if (isSuper) {
+      payload.doctor_id = normalizeUUID(doctorHidden.value);
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
 
     try {
       showLoading();
+
       const url = isEdit
         ? `/api/consultations/${consId}`
         : `/api/consultations`;
@@ -287,25 +393,21 @@ export async function setupConsultationFormSubmission({ form }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const result = await res.json().catch(() => ({}));
 
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
+      }
 
       showToast(
-        isEdit ? "✅ Consultation updated successfully" : "✅ Consultation created successfully"
+        isEdit ? "✅ Consultation updated" : "✅ Consultation created"
       );
 
-      sessionStorage.removeItem("consultationEditId");
-      sessionStorage.removeItem("consultationEditPayload");
-
-      if (isEdit) window.location.href = "/consultations-list.html";
-      else {
-        form.reset();
-        setUI("add");
-      }
+      sessionStorage.clear();
+      window.location.href = "/consultations-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -313,16 +415,15 @@ export async function setupConsultationFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Cancel / Clear
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
   cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("consultationEditId");
-    sessionStorage.removeItem("consultationEditPayload");
+    sessionStorage.clear();
     window.location.href = "/consultations-list.html";
   });
+
   clearBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("consultationEditId");
-    sessionStorage.removeItem("consultationEditPayload");
+    clearFormErrors(form);
     form.reset();
     setUI("add");
   });

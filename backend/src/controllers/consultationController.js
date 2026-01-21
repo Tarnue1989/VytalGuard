@@ -64,7 +64,7 @@ const CONSULTATION_INCLUDES = [
   { model: Recommendation, as: "recommendation", attributes: ["id", "status", "reason"] },
   { model: Consultation, as: "parentConsultation", attributes: ["id", "status", "diagnosis"] },
   { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
-  { model: BillableItem, as: "consultationType", attributes: ["id", "name", "price"] },
+  { model: BillableItem, as: "consultationType", attributes: ["id", "name"] },
   { model: Prescription, as: "prescriptions", attributes: ["id", "status"] },
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
@@ -318,8 +318,8 @@ export const updateConsultation = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL CONSULTATIONS
-   ============================================================ */
+   📌 GET ALL CONSULTATIONS (MASTER FINAL)
+============================================================ */
 export const getAllConsultations = async (req, res) => {
   try {
     // 🔐 Permission check
@@ -340,16 +340,24 @@ export const getAllConsultations = async (req, res) => {
     // 🔎 Role-based visibility
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
-      FIELD_VISIBILITY_CONSULTATION[role] || FIELD_VISIBILITY_CONSULTATION.staff;
+      FIELD_VISIBILITY_CONSULTATION[role] ||
+      FIELD_VISIBILITY_CONSULTATION.staff;
 
-    // ✅ Use your existing builder, now with validated limit/page
+    // ✅ Inject validated pagination into query builder
     req.query.limit = limit;
     req.query.page = page;
 
-    const options = buildQueryOptions(req, "consultation_date", "DESC", visibleFields);
+    const options = buildQueryOptions(
+      req,
+      "consultation_date",
+      "DESC",
+      visibleFields
+    );
     options.where = options.where || {};
 
-    // 🔒 Apply org/facility scoping
+    /* ========================================================
+       🔐 ORG / FACILITY SCOPING
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
       if (role === "facility_head") {
@@ -364,7 +372,9 @@ export const getAllConsultations = async (req, res) => {
       }
     }
 
-    // 🔍 Search filter
+    /* ========================================================
+       🔍 GLOBAL SEARCH
+    ======================================================== */
     if (options.search) {
       options.where[Op.or] = [
         { diagnosis: { [Op.iLike]: `%${options.search}%` } },
@@ -372,7 +382,9 @@ export const getAllConsultations = async (req, res) => {
       ];
     }
 
-    // ✅ Safe, validated pagination used below
+    /* ========================================================
+       🗂️ QUERY
+    ======================================================== */
     const { count, rows } = await Consultation.findAndCountAll({
       where: options.where,
       include: [...CONSULTATION_INCLUDES, ...(options.include || [])],
@@ -381,7 +393,17 @@ export const getAllConsultations = async (req, res) => {
       limit,
     });
 
-    // 🧾 Audit log with pagination details
+    /* ========================================================
+       🔢 SUMMARY (STATUS-BASED, PAGE-AWARE, NO FINANCIALS)
+    ======================================================== */
+    const summary = { total: count };
+    CONSULTATION_STATUS.forEach((status) => {
+      summary[status] = rows.filter((r) => r.status === status).length;
+    });
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -393,9 +415,12 @@ export const getAllConsultations = async (req, res) => {
       },
     });
 
-    // ✅ Clean structured response
+    /* ========================================================
+       ✅ RESPONSE (MASTER CONTRACT)
+    ======================================================== */
     return success(res, "✅ Consultations loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page,
@@ -404,7 +429,6 @@ export const getAllConsultations = async (req, res) => {
       },
     });
   } catch (err) {
-    // 🚨 Clean validation failure
     if (err.statusCode === 400) {
       return error(res, err.message, null, 400);
     }
