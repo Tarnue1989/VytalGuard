@@ -1,4 +1,12 @@
-// 📦 centralstock-main.js – Pill-based Central Stock Form (Add/Edit) Page Controller
+// 📦 centralstock-main.js – Central Stock Form Page Controller (ENTERPRISE FINAL)
+// ============================================================================
+// 🧭 FULL PARITY WITH billableitem-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Role-aware org/fac loading ONLY (main owns org/fac)
+// 🔹 Edit session coordination (sessionStorage + URL)
+// 🔹 Delegates ALL business logic to centralstock-form.js
+// 🔹 ❌ Never touches pill state directly
+// ============================================================================
 
 import {
   setupCentralStockFormSubmission,
@@ -6,219 +14,205 @@ import {
 } from "./centralstock-form.js";
 
 import {
-  showToast,
-  showLoading,
-  hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
-  loadFacilitiesLite,
   loadOrganizationsLite,
-  loadSuppliersLite,
+  loadFacilitiesLite,
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
-// 🔐 Auth Guard – automatically resolve correct permission (add/edit)
-const token = initPageGuard(autoPagePermissionKey());
+import { resolveUserRole } from "../../utils/roleResolver.js";
+
+/* ============================================================
+   🔐 Auth Guard + Global Watchers
+============================================================ */
+initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// Shared reference for consistent module handling
+/* ============================================================
+   🌐 Shared State (SINGLE SOURCE OF TRUTH)
+============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
-// 🧹 Reset form helper → back to Add mode
-function resetForm() {
-  const form = document.getElementById("centralStockForm");
-  if (!form) return;
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
+const form = document.getElementById("centralStockForm");
+const cancelBtn = document.getElementById("cancelBtn");
+const clearBtn = document.getElementById("clearBtn");
 
-  form.reset();
-  sharedState.currentEditIdRef.value = null;
-
-  // Reset status
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
-
-  // Reset dropdowns
-  ["organizationSelect", "facilitySelect", "supplierSelect"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  // Reset pills
-  const pillsContainer = document.getElementById("itemPillsContainer");
-  if (pillsContainer) {
-    pillsContainer.innerHTML = `<p class="text-muted">No items added yet.</p>`;
-  }
-
-  // Reset UI state
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add Central Stock";
-  const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit All`;
-}
+const orgSelect = document.getElementById("organizationSelect");
+const facSelect = document.getElementById("facilitySelect");
 
 /* ============================================================
-   🚀 Main Init
-   ============================================================ */
+   🚀 Init (Page Entry)
+============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
-  const form = document.getElementById("centralStockForm");
   if (!form) return;
 
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const supplierSelect = document.getElementById("supplierSelect");
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  const role = resolveUserRole();
+  const isSuper = role === "superadmin";
+  const isOrgAdmin = role === "organization_admin";
 
-  /* --------------------- Organization & Facility --------------------- */
+  /* ========================================================
+     🔑 EDIT MODE DETECTION (FIRST)
+  ======================================================== */
+  const editId =
+    sessionStorage.getItem("centralStockEditId") ||
+    new URLSearchParams(window.location.search).get("id");
+
+  if (editId) {
+    sharedState.currentEditIdRef.value = editId;
+  }
+
+  /* ========================================================
+     🌐 ORGANIZATION / FACILITY (ROLE OWNER = MAIN)
+  ======================================================== */
   try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      orgSelect?.addEventListener("change", async () => {
-        const orgId = orgSelect.value;
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
         );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      });
+      };
 
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      await reloadFacilities();
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+    } else if (isOrgAdmin) {
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      facSelect?.closest(".form-group")?.classList.add("hidden");
     }
   } catch (err) {
     console.error("❌ Org/Facility preload failed:", err);
-    showToast("❌ Could not load organization/facility");
   }
 
-  /* --------------------------- Suppliers --------------------------- */
-  try {
-    const suppliers = await loadSuppliersLite({}, true);
-    setupSelectOptions(supplierSelect, suppliers, "id", "name", "-- Select Supplier --");
-  } catch (err) {
-    console.error("❌ Suppliers preload failed:", err);
-    showToast("❌ Failed to load suppliers");
-  }
-
-  /* -------------------- Form setup & submission -------------------- */
+  /* ========================================================
+     🔗 Wire Form (AFTER editId is set)
+  ======================================================== */
   setupCentralStockFormSubmission({
     form,
-    token,
     sharedState,
-    resetForm,
-    loadEntries: null,
   });
 
-  /* --------------------------- Edit Mode --------------------------- */
-  const editId = sessionStorage.getItem("centralStockEditId");
+  /* ========================================================
+     ✏️ EDIT PREFILL (SEED FORM STATE ONLY — PILLS)
+  ======================================================== */
   const rawPayload = sessionStorage.getItem("centralStockEditPayload");
 
   async function applyPrefill(entry) {
-    const { selectedItems, renderItemPills } = getCentralStockFormState();
+    const { selectedItems, renderItemPills } =
+      getCentralStockFormState();
+
     selectedItems.length = 0;
     selectedItems.push({
       master_item_id: entry.master_item_id,
       itemName: entry.masterItem?.name || "",
-      supplier_id: entry.supplier?.id || null,
+      supplier_id: entry.supplier?.id || entry.supplier_id || null,
       quantity: entry.quantity,
       received_date: entry.received_date?.split("T")[0] || "",
       expiry_date: entry.expiry_date?.split("T")[0] || "",
-      batch_number: entry.batch_number,
+      batch_number: entry.batch_number || "",
       notes: entry.notes || "",
     });
+
     renderItemPills();
 
-    // Prefill inputs
-    document.getElementById("itemSearch").dataset.value = entry.master_item_id;
-    document.getElementById("itemSearch").value = entry.masterItem?.name || "";
-    document.getElementById("supplierSelect").value = entry.supplier?.id || "";
-    document.getElementById("quantity").value = entry.quantity || "";
-    document.getElementById("receivedDate").value =
-      entry.received_date?.split("T")[0] || "";
-    document.getElementById("expiryDate").value =
-      entry.expiry_date?.split("T")[0] || "";
-    document.getElementById("batchNumber").value = entry.batch_number || "";
-    document.getElementById("notes").value = entry.notes || "";
-
-    // Org + Facility
-    if (entry.organization?.id && orgSelect) {
-      orgSelect.value = entry.organization.id;
-      if (userRole.includes("super")) {
-        const facs = await loadFacilitiesLite(
-          { organization_id: entry.organization.id },
-          true
-        );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-    }
-    if (entry.facility?.id && facSelect) facSelect.value = entry.facility.id;
-
-    // Status
-    if (entry.status) {
-      const statusEl = document.getElementById(`status_${entry.status.toLowerCase()}`);
-      if (statusEl) statusEl.checked = true;
-    }
-
-    // Switch to edit mode UI
+    /* ---------------- UI Labels ---------------- */
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Central Stock";
+
     const submitBtn = form.querySelector("button[type=submit]");
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Stock`;
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        `<i class="ri-save-3-line me-1"></i> Update Stock`;
+    }
+
+    /* ---------------- Org/Fac selection ---------------- */
+    if (isSuper && entry.organization_id) {
+      orgSelect.value = entry.organization_id;
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite(
+          { organization_id: entry.organization_id },
+          true
+        ),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+
+      if (entry.facility_id) facSelect.value = entry.facility_id;
+    } else if (isOrgAdmin && entry.facility_id) {
+      facSelect.value = entry.facility_id;
+    }
   }
 
   if (editId && rawPayload) {
     try {
-      const entry = JSON.parse(rawPayload);
-      sharedState.currentEditIdRef.value = editId;
-      await applyPrefill(entry);
+      await applyPrefill(JSON.parse(rawPayload));
     } catch (err) {
       console.error("❌ Cached edit load failed:", err);
-      showToast("❌ Could not load cached stock entry for editing");
     }
-  } else {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    if (id) {
-      sharedState.currentEditIdRef.value = id;
-      try {
-        showLoading();
-        const res = await authFetch(`/api/central-stocks/${id}`);
-        const result = await res.json();
-        const entry = result?.data;
-        if (!res.ok || !entry)
-          throw new Error(result.message || "❌ Failed to fetch stock entry");
-        await applyPrefill(entry);
-      } catch (err) {
-        console.error("❌ Failed to load stock entry:", err);
-        showToast(err.message || "❌ Failed to load stock entry for editing");
-      } finally {
-        hideLoading();
+  } else if (editId) {
+    try {
+      const res = await authFetch(`/api/central-stocks/${editId}`);
+      const result = await res.json();
+      if (res.ok && result?.data) {
+        await applyPrefill(result.data);
       }
+    } catch (err) {
+      console.error("❌ Remote edit load failed:", err);
     }
   }
 
-  /* ------------------------- Cancel & Clear ------------------------- */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+  /* ========================================================
+     🔘 Buttons
+  ======================================================== */
+  cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("centralStockEditId");
     sessionStorage.removeItem("centralStockEditPayload");
     window.location.href = "/centralstocks-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
+  clearBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("centralStockEditId");
     sessionStorage.removeItem("centralStockEditPayload");
-    resetForm();
+    window.location.reload(); // clean reset (ADD mode)
   });
 });

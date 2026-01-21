@@ -1,4 +1,10 @@
-// 📁 centralstock-actions.js – Full Permission-Driven Action Handlers for Central Stock
+// 📁 centralstock-actions.js – Enterprise Master Pattern (Central Stock)
+// ============================================================================
+// 🧭 FULL PARITY WITH billableitem-actions.js / department-actions.js
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / toggle-status / lock / delete / restore
+// 🔹 Keeps all DOM IDs, routes, API calls, and UI behavior intact
+// ============================================================================
 
 import {
   showToast,
@@ -9,11 +15,9 @@ import {
 } from "../../utils/index.js";
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./centralstock-render.js";
-import { syncRefsToState } from "./centralstock-main.js";
 
 /**
- * Unified, permission-driven action handler
- * Mirrors the appointments pattern (no hardcoded roles)
+ * Unified permission-aware action handler for Central Stock module
  */
 export function setupActionHandlers({
   entries,
@@ -22,19 +26,21 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions }
+  user, // { role, permissions, roleNames }
 }) {
-  const { currentEditIdRef } = sharedState;
+  const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("centralStockTableBody");
   const cardContainer = document.getElementById("centralStockList");
 
-  // Cache globally
+  // 🗂️ Cache latest entries (Enterprise Pattern)
   window.latestCentralStockEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
-  /* ---------------------- Normalize permissions ---------------------- */
+  /* ============================================================
+     🔑 Normalize Permissions (MASTER LOGIC)
+  ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -47,26 +53,28 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
 
-  // ✅ Super Admin bypass
+  // 🧠 Superadmin bypass (EXACT MASTER LOGIC)
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker (normalize underscoring)
-  const hasPerm = (key) => {
-    const normalizedKey = key
-      .replace(/centralstocks/gi, "central_stocks") // 🔧 fix mismatch
-      .trim()
-      .toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  // ✅ Unified permission checker
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
-  /* ---------------------- Handler dispatcher ---------------------- */
+  /* ============================================================
+     🎯 Main Dispatcher
+  ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
@@ -77,7 +85,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback fetch if missing
+    // 🩹 Fallback fetch (MASTER PATTERN)
     if (!entry) {
       try {
         showLoading();
@@ -92,60 +100,74 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Central stock data missing");
+
     const cls = btn.classList;
 
-    // --- Basic view ---
-    if (cls.contains("view-btn")) return handleView(entry);
+    if (cls.contains("view-btn")) {
+      if (!hasPerm("central_stocks:view"))
+        return showToast("⛔ You don't have permission to view stock");
+      return handleView(entry);
+    }
 
-    // --- Restricted actions ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("central_stocks:edit"))
-        return showToast("⛔ You don't have permission to edit");
+        return showToast("⛔ You don't have permission to edit stock");
       return handleEdit(entry);
     }
 
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("central_stocks:toggle-status") && !hasPerm("central_stocks:edit"))
-        return showToast("⛔ You don't have permission to toggle status");
+      if (!hasPerm("central_stocks:toggle-status"))
+        return showToast("⛔ You don't have permission to change status");
       return await handleToggleStatus(id, entry);
     }
 
     if (cls.contains("lock-btn")) {
-      if (!hasPerm("central_stocks:lock") && !hasPerm("central_stocks:edit"))
+      if (!hasPerm("central_stocks:lock"))
         return showToast("⛔ You don't have permission to lock/unlock");
       return await handleLockUnlock(id, entry);
     }
 
-    if (cls.contains("restore-btn")) {
-      if (!hasPerm("central_stocks:restore") && !hasPerm("central_stocks:edit"))
-        return showToast("⛔ You don't have permission to restore");
-      return await handleRestore(id, entry);
-    }
-
     if (cls.contains("delete-btn")) {
       if (!hasPerm("central_stocks:delete"))
-        return showToast("⛔ You don't have permission to delete");
+        return showToast("⛔ You don't have permission to delete stock");
       return await handleDelete(id, entry);
+    }
+
+    if (cls.contains("restore-btn")) {
+      if (!hasPerm("central_stocks:restore"))
+        return showToast("⛔ You don't have permission to restore stock");
+      return await handleRestore(id, entry);
     }
   }
 
-  /* ---------------------- Handlers ---------------------- */
+  /* ============================================================
+     ⚙️ Action Handlers
+  ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Central Stock Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
-    currentEditIdRef.value = entry.id;
-    window.location.href = `add-central-stock.html?id=${entry.id}`;
+    if (currentEditIdRef) currentEditIdRef.value = entry.id;
+    sessionStorage.setItem("centralStockEditId", entry.id);
+    sessionStorage.setItem(
+      "centralStockEditPayload",
+      JSON.stringify(entry)
+    );
+    window.location.href = "add-central-stock.html";
   }
 
+  // 🔄 Toggle Status
   async function handleToggleStatus(id, entry) {
     const isActive = (entry.status || "").toLowerCase() === "active";
     const confirmed = await showConfirm(
       isActive
-        ? `Deactivate stock for item "${entry.masterItem?.name || "Unknown"}"?`
-        : `Activate stock for item "${entry.masterItem?.name || "Unknown"}"?`
+        ? `Deactivate stock for "${entry.masterItem?.name || "Item"}"?`
+        : `Activate stock for "${entry.masterItem?.name || "Item"}"?`
     );
     if (!confirmed) return;
 
@@ -156,17 +178,16 @@ export function setupActionHandlers({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to toggle status");
+        throw new Error(data.message || "❌ Failed to toggle stock status");
 
       const newStatus =
-        data?.data?.status || (isActive ? "inactive" : "active");
-      const itemName =
-        entry?.masterItem?.name || data?.data?.masterItem?.name || "Stock";
+        (data?.data?.status ||
+          (isActive ? "inactive" : "active")).toLowerCase();
 
       showToast(
         newStatus === "active"
-          ? `✅ Stock "${itemName}" has been activated`
-          : `✅ Stock "${itemName}" has been deactivated`
+          ? `✅ Stock "${entry.masterItem?.name || "Item"}" activated`
+          : `✅ Stock "${entry.masterItem?.name || "Item"}" deactivated`
       );
 
       window.latestCentralStockEntries = [];
@@ -179,12 +200,13 @@ export function setupActionHandlers({
     }
   }
 
+  // 🔒 Lock / Unlock
   async function handleLockUnlock(id, entry) {
     const locked = !!entry.is_locked;
     const confirmed = await showConfirm(
       locked
-        ? `Unlock stock for "${entry.masterItem?.name || "Unknown"}"?`
-        : `Lock stock for "${entry.masterItem?.name || "Unknown"}"?`
+        ? `Unlock stock for "${entry.masterItem?.name || "Item"}"?`
+        : `Lock stock for "${entry.masterItem?.name || "Item"}"?`
     );
     if (!confirmed) return;
 
@@ -198,12 +220,10 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to update lock state");
 
-      const itemName =
-        entry?.masterItem?.name || data?.data?.masterItem?.name || "Stock";
       showToast(
         data?.data?.is_locked
-          ? `🔒 Stock "${itemName}" locked`
-          : `🔓 Stock "${itemName}" unlocked`
+          ? `🔒 Stock "${entry.masterItem?.name || "Item"}" locked`
+          : `🔓 Stock "${entry.masterItem?.name || "Item"}" unlocked`
       );
 
       window.latestCentralStockEntries = [];
@@ -216,36 +236,10 @@ export function setupActionHandlers({
     }
   }
 
-  async function handleRestore(id, entry) {
-    const confirmed = await showConfirm(
-      `Restore deleted stock entry for "${entry.masterItem?.name || "Unknown"}"?`
-    );
-    if (!confirmed) return;
-
-    try {
-      showLoading();
-      const res = await authFetch(`/api/central-stocks/${id}/restore`, {
-        method: "PATCH",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to restore stock entry");
-
-      showToast(
-        `✅ Stock entry for "${entry.masterItem?.name || "Unknown"}" restored successfully`
-      );
-      await loadEntries(currentPage);
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Failed to restore stock entry");
-    } finally {
-      hideLoading();
-    }
-  }
-
+  // 🗑️ Delete
   async function handleDelete(id, entry) {
     const confirmed = await showConfirm(
-      `Delete stock entry for "${entry.masterItem?.name || "Unknown"}"?`
+      `Delete stock entry for "${entry.masterItem?.name || "Item"}"?`
     );
     if (!confirmed) return;
 
@@ -259,8 +253,9 @@ export function setupActionHandlers({
         throw new Error(data.message || "❌ Failed to delete stock entry");
 
       showToast(
-        `✅ Stock entry for "${entry.masterItem?.name || "Unknown"}" deleted successfully`
+        `✅ Stock entry for "${entry.masterItem?.name || "Item"}" deleted`
       );
+      window.latestCentralStockEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
@@ -270,50 +265,81 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Global helpers ---------------------- */
+  // ♻️ Restore
+  async function handleRestore(id, entry) {
+    const confirmed = await showConfirm(
+      `Restore stock entry for "${entry.masterItem?.name || "Item"}"?`
+    );
+    if (!confirmed) return;
+
+    try {
+      showLoading();
+      const res = await authFetch(`/api/central-stocks/${id}/restore`, {
+        method: "PATCH",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.message || "❌ Failed to restore stock entry");
+
+      showToast(
+        `✅ Stock entry for "${entry.masterItem?.name || "Item"}" restored`
+      );
+      window.latestCentralStockEntries = [];
+      await loadEntries(currentPage);
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "❌ Failed to restore stock entry");
+    } finally {
+      hideLoading();
+    }
+  }
+
+  /* ============================================================
+     🌍 Global Helpers (Inline Triggers – MASTER PATTERN)
+  ============================================================ */
   const findEntry = (id) =>
     (window.latestCentralStockEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewCentralStock = (id) => {
+    if (!hasPerm("central_stocks:view"))
+      return showToast("⛔ No permission to view stock");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Stock not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editCentralStock = (id) => {
     if (!hasPerm("central_stocks:edit"))
-      return showToast("⛔ No permission to edit");
+      return showToast("⛔ No permission to edit stock");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Stock not found for editing");
   };
 
-  window.deleteEntry = async (id) => {
-    if (!hasPerm("central_stocks:delete"))
-      return showToast("⛔ No permission to delete");
-    const entry = findEntry(id);
-    await handleDelete(id, entry);
-  };
-
-  window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("central_stocks:toggle-status") && !hasPerm("central_stocks:edit"))
+  window.toggleCentralStockStatus = async (id) => {
+    if (!hasPerm("central_stocks:toggle-status"))
       return showToast("⛔ No permission to toggle status");
     const entry = findEntry(id);
     await handleToggleStatus(id, entry);
   };
 
-  window.lockUnlockEntry = async (id) => {
-    if (!hasPerm("central_stocks:lock") && !hasPerm("central_stocks:edit"))
+  window.lockUnlockCentralStock = async (id) => {
+    if (!hasPerm("central_stocks:lock"))
       return showToast("⛔ No permission to lock/unlock");
     const entry = findEntry(id);
     await handleLockUnlock(id, entry);
   };
 
-  window.restoreEntry = async (id) => {
-    if (!hasPerm("central_stocks:restore") && !hasPerm("central_stocks:edit"))
-      return showToast("⛔ No permission to restore");
+  window.deleteCentralStock = async (id) => {
+    if (!hasPerm("central_stocks:delete"))
+      return showToast("⛔ No permission to delete stock");
+    const entry = findEntry(id);
+    await handleDelete(id, entry);
+  };
+
+  window.restoreCentralStock = async (id) => {
+    if (!hasPerm("central_stocks:restore"))
+      return showToast("⛔ No permission to restore stock");
     const entry = findEntry(id);
     await handleRestore(id, entry);
   };

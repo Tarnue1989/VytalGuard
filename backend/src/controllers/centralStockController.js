@@ -304,7 +304,7 @@ export const updateStock = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL CENTRAL STOCK (MASTER + DATE + SUMMARY)
+   📌 GET ALL CENTRAL STOCK (MASTER PARITY + SAFE SUMMARY)
 ============================================================ */
 export const getAllStocks = async (req, res) => {
   try {
@@ -316,6 +316,9 @@ export const getAllStocks = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
     const options = buildQueryOptions(req, "received_date", "DESC");
 
     /* ========================================================
@@ -323,51 +326,66 @@ export const getAllStocks = async (req, res) => {
     ======================================================== */
     delete options.filters?.dateRange;
 
-    options.where = { [Op.and]: [] };
-
     /* ========================================================
-       📅 DATE RANGE FILTER
+       🧱 BASE WHERE (USED BY LIST + SUMMARY)
     ======================================================== */
+    const baseWhere = { [Op.and]: [] };
+
+    /* ---------------- Date Range ---------------- */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
-      options.where[Op.and].push({
+      baseWhere[Op.and].push({
         received_date: {
           [Op.between]: [dateRange.start, dateRange.end],
         },
       });
     }
 
-    /* ========================================================
-       🔐 TENANT SCOPE
-    ======================================================== */
+    /* ---------------- Tenant Scope ---------------- */
+    let summaryAllowed = false;
+
     if (!isSuperAdmin(req.user)) {
-      options.where[Op.and].push({
+      baseWhere[Op.and].push({
         organization_id: req.user.organization_id,
       });
+      summaryAllowed = true;
 
       if (!isOrgLevelUser(req.user)) {
-        options.where[Op.and].push({
+        baseWhere[Op.and].push({
           facility_id: req.user.facility_id,
         });
       }
     } else {
       if (req.query.organization_id) {
-        options.where[Op.and].push({
+        baseWhere[Op.and].push({
           organization_id: req.query.organization_id,
         });
+        summaryAllowed = true;
       }
       if (req.query.facility_id) {
-        options.where[Op.and].push({
+        baseWhere[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
     }
 
+    /* ---------------- STATUS FILTER ---------------- */
+    if (
+      req.query.status &&
+      Object.values(CENTRAL_STOCK_STATUS).includes(req.query.status)
+    ) {
+      baseWhere[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
     /* ========================================================
-       🔍 SEARCH (MASTER + JOIN AWARE)
+       🔎 SEARCH (LIST ONLY – JOINS ALLOWED)
     ======================================================== */
+    const searchWhere = [];
+
     if (options.search) {
-      options.where[Op.and].push({
+      searchWhere.push({
         [Op.or]: [
           { batch_number: { [Op.iLike]: `%${options.search}%` } },
           { "$masterItem.name$": { [Op.iLike]: `%${options.search}%` } },
@@ -377,28 +395,75 @@ export const getAllStocks = async (req, res) => {
     }
 
     /* ========================================================
-       🗂️ QUERY
+       🧱 FINAL LIST WHERE
+    ======================================================== */
+    const listWhere = {
+      [Op.and]: [...baseWhere[Op.and], ...searchWhere],
+    };
+
+    /* ========================================================
+       📄 MAIN LIST QUERY
     ======================================================== */
     const { count, rows } = await CentralStock.findAndCountAll({
-      where: options.where,
+      where: listWhere,
       include: CENTRAL_STOCK_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
+      subQuery: false,
     });
 
     /* ========================================================
-       🔢 SUMMARY (SECURITY-SAFE)
+       📊 SUMMARY (ORG-SCOPED ONLY — MASTER RULE)
     ======================================================== */
     let summary = null;
-    if (!isSuperAdmin(req.user) || req.query.organization_id) {
-      summary = await buildDynamicSummary({
-        model: CentralStock,
-        baseWhere: options.where,
-        statusEnums: Object.values(CENTRAL_STOCK_STATUS),
+
+    if (summaryAllowed) {
+      const statusCountsRaw = await CentralStock.findAll({
+        where: baseWhere,
+        attributes: [
+          "status",
+          [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        ],
+        group: ["status"],
+        raw: true,
       });
+
+      const quantityAgg = await CentralStock.findOne({
+        where: baseWhere,
+        attributes: [
+          [sequelize.fn("SUM", sequelize.col("quantity")), "total_quantity"],
+          [sequelize.fn("MIN", sequelize.col("quantity")), "min_quantity"],
+          [sequelize.fn("MAX", sequelize.col("quantity")), "max_quantity"],
+        ],
+        raw: true,
+      });
+
+      summary = { total: count };
+
+      Object.values(CENTRAL_STOCK_STATUS).forEach((s) => {
+        const row = statusCountsRaw.find((r) => r.status === s);
+        summary[s] = row ? Number(row.count) : 0;
+      });
+
+      summary.quantity = {
+        total: Number(quantityAgg?.total_quantity || 0),
+        min: Number(quantityAgg?.min_quantity || 0),
+        max: Number(quantityAgg?.max_quantity || 0),
+      };
+
+      if (dateRange) {
+        summary.dateRange = {
+          start: dateRange.start,
+          end: dateRange.end,
+        };
+      }
     }
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
