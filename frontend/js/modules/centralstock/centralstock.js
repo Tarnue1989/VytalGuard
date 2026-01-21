@@ -1,12 +1,22 @@
-// 📦 centralstock.js – Entry Point
+// 📦 centralstock.js – Entry Point (Enterprise-Aligned Master Pattern)
+// ============================================================================
+// 🧭 Master Pattern: billableitem.js / department.js / role.js
+// 🔹 Unified initialization entry for the Central Stock module
+// 🔹 Handles form + filter/list bootstrapping safely
+// 🔹 Enterprise-grade startup guard and error handling
+// ============================================================================
 
-// ✅ Main module init (list / filter page)
+/* ============================================================
+   ✅ Imports
+============================================================ */
+
+// 🧭 Main module init (filters, table, card, pagination, summary)
 import { initCentralStockModule } from "./centralstock-filter-main.js";
 
-// ✅ Load action handlers (view, edit, delete, toggle, lock, restore)
-import { setupActionHandlers } from "./centralstock-actions.js";
+// ⚙️ Lifecycle + action handlers (edit, delete, toggle, lock, restore)
+import "./centralstock-actions.js";
 
-// ✅ Constants (exposed if needed globally)
+// 🧩 Constants (exportable for field selector / dynamic UI)
 import {
   FIELD_LABELS_CENTRAL_STOCK,
   FIELD_ORDER_CENTRAL_STOCK,
@@ -16,46 +26,28 @@ import {
 // 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
+/* ============================================================
+   🚀 DOM-Ready Bootstrap
+============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🚀 Form Page (Add/Edit)
-    if (document.getElementById("centralStockForm")) {
+    // 🧩 Initialize only if Central Stock form or list is present
+    if (
+      document.getElementById("centralStockForm") ||
+      document.getElementById("centralStockList") ||
+      document.getElementById("centralStockTableBody")
+    ) {
       await initCentralStockModule();
     }
 
-    // 📋 List Page (Table/Card)
-    const tableBody = document.getElementById("centralStockTableBody");
-    if (tableBody) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
+    // (Reserved – future split initializers)
+    // if (document.getElementById("centralStockTableBody")) {
+    //   await initCentralStockListModule();
+    // }
 
-      console.log("👤 [centralstock.js] Loaded user:", user);
-
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_CENTRAL_STOCK[userRole] ||
-        FIELD_DEFAULTS_CENTRAL_STOCK.staff;
-      const token =
-        localStorage.getItem("accessToken") ||
-        sessionStorage.getItem("accessToken") ||
-        "";
-
-      setupActionHandlers({
-        entries: window.latestCentralStockEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
-    }
   } catch (err) {
-    console.error("❌ Failed to initialize central stock module", err);
+    console.error("❌ Failed to initialize Central Stock module", err);
     hideLoading();
-    showToast("❌ Failed to load central stock module");
+    showToast("❌ Failed to load Central Stock module");
   }
 });

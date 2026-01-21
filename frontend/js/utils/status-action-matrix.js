@@ -202,7 +202,11 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 🏭 INVENTORY ======================== */
-  central_stock:{active:["edit","toggle","lock","delete"],inactive:["edit","toggle","lock","delete"],locked:["unlock"],deleted:["restore"]},
+  central_stock: {
+    active:   ["edit","toggle-status","lock","delete"],
+    inactive: ["edit","toggle-status","lock","delete"],
+    deleted:  ["restore"]
+  },
   stock_request:{draft:["edit","submit","delete","void"],pending:["edit","approve","reject","cancel","void"],approved:["issue","cancel","void"],issued:["fulfill","void"],fulfilled:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 🧩 MASTER DATA ======================== */
@@ -279,6 +283,25 @@ export function buildActionButtons({
   );
 
   let allowed = STATUS_ACTION_MATRIX[module]?.[status] || [];
+  /* ========================= NORMALIZE INVENTORY ACTIONS ========================= */
+  /* ========================= INVENTORY LOCK STATE ========================= */
+  if (module === "central_stock") {
+    if (entry?.is_locked === true) {
+      allowed = allowed
+        .filter(a => a !== "lock")
+        .concat("unlock");
+    } else {
+      allowed = allowed
+        .filter(a => a !== "unlock");
+    }
+  }
+
+  
+  if (module === "central_stock") {
+    allowed = allowed.map(a =>
+      a === "toggle" ? "toggle-status" : a
+    );
+  }
 
   /* ========================= CONTEXT FLAGS ========================= */
   const isDeposit        = module === "deposit";
@@ -319,7 +342,7 @@ export function buildActionButtons({
     "complete","review","verify","finalize",
     "apply","process","reverse","clear","revert",
     "approve","reject","cancel","void",
-    "toggle-status","unlock",
+    "toggle-status","lock","unlock",
     "restore","delete","print",
     "reset-password","generate-token","revoke-sessions"
   ];
@@ -332,88 +355,113 @@ export function buildActionButtons({
 
   /* ========================= ICONS ========================= */
   const icons = {
+    /* 👁️ Core */
     view: "fa-eye",
     edit: "fa-pen",
     start: "fa-play",
     activate: "fa-calendar-check",
     "no-show": "fa-user-slash",
 
+    /* 💊 Pharmacy / Clinical */
     dispense: "fa-pills",
     "partial-dispense": "fa-divide",
+
+    /* ✅ Workflow */
     complete: "fa-check",
     review: "fa-search",
     verify: "fa-clipboard-check",
     finalize: "fa-flag-checkered",
+
+    /* 🔗 Processing */
     apply: "fa-link",
     process: "fa-gears",
     reverse: "fa-rotate-left",
     clear: "fa-check-double",
     revert: "fa-undo-alt",
+
+    /* 👍 Decisions */
     approve: "fa-thumbs-up",
     reject: "fa-thumbs-down",
     cancel: "fa-ban",
+
+    /* 🚫 Destructive */
     void: "fa-times-circle",
     restore: "fa-undo",
     delete: "fa-trash",
+
+    /* 🖨️ Output */
     print: "fa-print",
 
-    // 🔄 Dynamic toggle
+    /* 🔄 Status toggle (generic modules) */
     "toggle-status":
       status === "active" ? "fa-user-slash" : "fa-user-check",
 
-    // 👤 User
-    unlock: "fa-unlock",
+    /* 🏭 INVENTORY (Central Stock) */
+    toggle:
+      status === "active" ? "fa-toggle-off" : "fa-toggle-on",
+
+    lock:   "fa-lock",
+    unlock: "fa-lock-open",
+
+    /* 👤 User / Security */
     "reset-password": "fa-key",
     "generate-token": "fa-ticket-alt",
     "revoke-sessions": "fa-sign-out-alt",
 
+    /* 🧠 System */
     summary: "fa-file-medical",
-    revalidate: "fa-sync-alt"
+    revalidate: "fa-sync-alt",
   };
 
   /* ========================= TITLES ========================= */
   const titles = {
+    /* 👁️ Core */
     view: "View",
     edit: "Edit",
 
+    /* ▶️ Lifecycle */
     start: "Start",
     complete: "Complete",
     review: "Review",
     verify: "Verify",
     finalize: "Finalize",
-    activate: "Activate Appointment",   // 📅
-    "no-show": "Mark No Show",           // 🚫
 
+    /* 📅 Appointment */
+    activate: "Activate Appointment",
+    "no-show": "Mark No Show",
+
+    /* 🔗 Processing */
     clear: isDeposit ? "Clear Deposit" : "Clear Record",
     revert: "Revert to Pending",
 
     apply: isDeposit ? "Apply Deposit"
-         : isDiscountWaiver ? "Apply Waiver"
-         : isDiscount ? "Apply Discount"
-         : isRefund ? "Apply Refund"
-         : isPharmacyTx ? "Apply Pharmacy Transaction"
-         : module === "invoice" ? "Apply Invoice"
-         : "Apply",
+        : isDiscountWaiver ? "Apply Waiver"
+        : isDiscount ? "Apply Discount"
+        : isRefund ? "Apply Refund"
+        : isPharmacyTx ? "Apply Pharmacy Transaction"
+        : module === "invoice" ? "Apply Invoice"
+        : "Apply",
 
     process: isRefundDeposit ? "Process Deposit Refund"
-           : isRefund ? "Process Refund"
-           : isDiscountWaiver ? "Process Waiver"
-           : isPharmacyTx ? "Process Pharmacy Transaction"
-           : module === "invoice" ? "Process Invoice"
-           : "Process",
+          : isRefund ? "Process Refund"
+          : isDiscountWaiver ? "Process Waiver"
+          : isPharmacyTx ? "Process Pharmacy Transaction"
+          : module === "invoice" ? "Process Invoice"
+          : "Process",
 
     reverse: isRefundDeposit ? "Reverse Deposit Refund"
-           : isRefund ? "Reverse Refund"
-           : isDeposit ? "Reverse Deposit"
-           : isDiscountWaiver ? "Reverse Waiver"
-           : isDiscount ? "Reverse Discount"
-           : isPharmacyTx ? "Reverse Transaction"
-           : module === "invoice" ? "Reverse Invoice"
-           : "Reverse",
+          : isRefund ? "Reverse Refund"
+          : isDeposit ? "Reverse Deposit"
+          : isDiscountWaiver ? "Reverse Waiver"
+          : isDiscount ? "Reverse Discount"
+          : isPharmacyTx ? "Reverse Transaction"
+          : module === "invoice" ? "Reverse Invoice"
+          : "Reverse",
 
+    /* 👍 Decisions */
     approve: isRefundDeposit ? "Approve Deposit Refund"
-           : isRefund ? "Approve Refund"
-           : "Approve",
+          : isRefund ? "Approve Refund"
+          : "Approve",
 
     reject: isRefundDeposit ? "Reject Deposit Refund"
           : isRefund ? "Reject Refund"
@@ -423,20 +471,33 @@ export function buildActionButtons({
           : isRefund ? "Cancel Refund"
           : "Cancel",
 
+    /* 🖨️ Output */
     print: isRefundDeposit ? "Print Deposit Refund Receipt"
-         : isRefund ? "Print Refund Receipt"
-         : isDeposit ? "Print Deposit Receipt"
-         : module === "invoice" ? "Print Invoice"
-         : "Print",
+        : isRefund ? "Print Refund Receipt"
+        : isDeposit ? "Print Deposit Receipt"
+        : module === "invoice" ? "Print Invoice"
+        : "Print",
 
+    /* 🔄 Status (generic) */
     "toggle-status":
       status === "active" ? "Deactivate" : "Activate",
 
-    unlock: "Unlock Account",
+    /* 🏭 INVENTORY (Central Stock) */
+    toggle:
+      status === "active" ? "Deactivate Stock" : "Activate Stock",
+    lock:
+      entry?.is_locked === true ? "Unlock Stock" : "Lock Stock",
+
+    unlock:
+      entry?.is_locked === true ? "Unlock Stock" : "Lock Stock",
+
+
+    /* 👤 User / Security */
     "reset-password": "Reset Password",
     "generate-token": "Generate Reset Token",
-    "revoke-sessions": "Revoke Sessions"
+    "revoke-sessions": "Revoke Sessions",
   };
+
 
   /* ========================= BUILD ========================= */
   let html = "";
@@ -452,12 +513,13 @@ export function buildActionButtons({
   }
 
   for (const act of allowed) {
-    const backend =
-      (act === "toggle" || ["clear","revert"].includes(act)) ? "toggle-status" :
-      act === "complete" ? "finalize" :
-      act === "toggle-status" && module === "user" ? "edit" :
-      act === "toggle-status" && module === "supplier" ? "update" :
-      act;
+  const backend =
+    act === "toggle-status" ? "toggle-status" :
+    act === "lock" || act === "unlock" ? "update" :
+    act === "complete" ? "finalize" :
+    act === "toggle-status" && module === "user" ? "edit" :
+    act === "toggle-status" && module === "supplier" ? "update" :
+    act;
 
     const permKey = `${permissionPrefix}:${backend}`;
 
@@ -503,50 +565,55 @@ export function buildActionButtons({
 
 /* ============================================================
    Action Labels Default (GLOBAL FALLBACK)
-   Used by titles {...actionLabels}
+   Used ONLY when titles[action] is missing
+   ⚠️ Must remain generic + inventory-safe
 ============================================================ */
 const actionLabels = {
-  // 👁️ Base
+  /* 👁️ Base */
   view: "View",
   edit: "Edit",
 
-  // ▶️ Lifecycle
+  /* ▶️ Lifecycle */
   start: "Start",
   complete: "Complete",
   review: "Review",
   verify: "Verify",
   finalize: "Finalize",
 
-  // 🔗 Processing
+  /* 🔗 Processing (generic fallback only) */
   apply: "Apply",
   process: "Process",
   reverse: "Reverse",
   clear: "Clear",
   revert: "Revert",
 
-  // 👍 Decisions
+  /* 👍 Decisions */
   approve: "Approve",
   reject: "Reject",
   cancel: "Cancel",
 
-  // 🚫 Destructive
+  /* 🚫 Destructive */
   void: "Void",
   restore: "Restore",
   delete: "Delete",
 
-  // 🖨️ Output
+  /* 🖨️ Output */
   print: "Print",
 
-  // 🔄 Status
-  "toggle-status": "Toggle Status",
+  /* 🔄 Status (neutral fallback) */
+  "toggle-status": "Activate / Deactivate",
 
-  // 👤 USER / SECURITY (important)
-  unlock: "Unlock Account",
+  /* 🏭 INVENTORY-SAFE FALLBACKS */
+  lock: "Lock",
+  unlock: "Unlock",
+
+  /* 👤 USER / SECURITY (fallback only — titles override this) */
   "reset-password": "Reset Password",
   "generate-token": "Generate Reset Token",
   "revoke-sessions": "Revoke Sessions",
 
-  // 🧠 Advanced / system
+  /* 🧠 Advanced / system */
   summary: "Summary",
-  revalidate: "Revalidate"
+  revalidate: "Revalidate",
 };
+

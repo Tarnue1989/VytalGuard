@@ -4,10 +4,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VytalGuard - Central Stocks</title>
+  <title>VytalGuard - Central Stock</title>
 
   <!-- Meta -->
-  <meta name="description" content="VytalGuard HMS - Central Stocks">
+  <meta name="description" content="VytalGuard HMS - Central Stock">
   <link rel="shortcut icon" href="assets/images/favicon.svg">
 
   <!-- CSS -->
@@ -18,11 +18,14 @@
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
   <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
   <link rel="stylesheet" href="assets/css/summary.css">
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  />
 </head>
 
 <body>
@@ -39,17 +42,10 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Central Stock</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Stocks</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Stocks
+          </li>
         </ol>
-
-        <div class="ms-auto d-lg-flex d-none flex-row">
-          <div class="input-group">
-            <span class="input-group-text bg-primary-lighten">
-              <i class="ri-calendar-2-line text-primary"></i>
-            </span>
-            <input type="text" id="dateRange" class="form-control custom-daterange">
-          </div>
-        </div>
       </div>
 
       <!-- Body -->
@@ -60,24 +56,21 @@
             <div class="card">
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title">Central Stock</h5>
-                <a href="add-central-stock.html" class="btn btn-primary ms-auto">
+                <a href="add-central-stock.html" class="btn btn-primary btn-sm ms-auto">
                   <i class="ri-add-line me-1"></i> Add
                 </a>
               </div>
 
               <div class="card-body">
 
-                <!-- Filters -->
+                <!-- ================= Filters ================= -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
-                    <div class="d-flex align-items-center gap-2">
-                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-filter me-1"></i> Filters
-                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
-                      </button>
-                    </div>
+                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-filter me-1"></i> Filters
+                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                    </button>
 
-                    <!-- ✅ Export Buttons -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
@@ -92,120 +85,106 @@
                   </div>
 
                   <div id="filterCollapse" class="card-body filter-body">
-                    <div class="section-label mb-2"><strong>Filter Stocks</strong></div>
+                    <div class="section-label mb-2">
+                      <strong>Filter Central Stock</strong>
+                    </div>
+
                     <div class="row g-3 filter-grid compact">
 
-                  <!-- Organization -->
-                  <div class="col-md-3">
-                    <div class="field-wrapper">
-                      <label for="filterOrganizationSelect" class="form-label">Organization</label>
-                      <select id="filterOrganizationSelect" class="form-control" required>
-                        <option value="">Select Organization</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <!-- Facility -->
-                  <div class="col-md-3">
-                    <div class="field-wrapper">
-                      <label for="filterFacilitySelect" class="form-label">Facility</label>
-                      <select id="filterFacilitySelect" class="form-control" required>
-                        <option value="">Select Facility</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <!-- Item -->
-                  <div class="col-md-3">
-                    <div class="field-wrapper">
-                      <label for="filterItem" class="form-label">Item</label>
-                      <input
-                        type="text"
-                        id="filterItem"
-                        class="form-control suggestion-input"
-                        autocomplete="off"
-                      />
-                      <!-- ✅ hidden field for selected item ID -->
-                      <input type="hidden" id="filterItemId" />
-                      <div id="filterItemSuggestions" class="suggestions"></div>
-                    </div>
-                  </div>
-
-                      <!-- Supplier -->
-                      <div class="col-md-3">
+                      <!-- 🔍 GLOBAL SEARCH (MASTER PATTERN) -->
+                      <div class="col-md-4">
                         <div class="field-wrapper">
-                          <label for="filterSupplier" class="form-label">Supplier</label>
-                          <select id="filterSupplier" class="form-select">
-                            <option value="">-- All Suppliers --</option>
-                          </select>
+                          <label for="globalSearch" class="form-label">Search</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-search-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="globalSearch"
+                              class="form-control"
+                              placeholder="Item, batch, supplier…"
+                              autocomplete="off"
+                            />
+                          </div>
                         </div>
                       </div>
 
-
-                      <!-- Batch Number -->
+                      <!-- ORGANIZATION -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
-                          <label for="filterBatchNumber" class="form-label">Batch Number</label>
-                          <input type="text" id="filterBatchNumber" class="form-control" autocomplete="off" />
+                          <label for="filterOrganizationSelect" class="form-label">Organization</label>
+                          <select id="filterOrganizationSelect" class="form-select"></select>
                         </div>
                       </div>
 
-                      <!-- Status -->
+                      <!-- FACILITY -->
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterFacilitySelect" class="form-label">Facility</label>
+                          <select id="filterFacilitySelect" class="form-select"></select>
+                        </div>
+                      </div>
+
+                      <!-- STATUS (MASTER PATTERN) -->
                       <div class="col-md-2">
                         <div class="field-wrapper">
-                          <label for="filterStatus" class="form-label">Status</label>
-                          <select id="filterStatus" class="form-select">
-                            <option value="">🔄 All Statuses</option>
+                          <label for="filterStatusSelect" class="form-label">Status</label>
+                          <select id="filterStatusSelect" class="form-select">
+                            <option value="">All</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
-                            <option value="deleted">Deleted</option>
                           </select>
                         </div>
                       </div>
 
-                      <!-- Dates -->
-                      <div class="col-md-2">
+                      <!-- 📅 DATE RANGE (SINGLE FIELD – MASTER RULE) -->
+                      <div class="col-md-3">
                         <div class="field-wrapper">
-                          <label for="filterCreatedFrom" class="form-label">From Date</label>
-                          <input type="date" id="filterCreatedFrom" class="form-control" />
-                        </div>
-                      </div>
-                      <div class="col-md-2">
-                        <div class="field-wrapper">
-                          <label for="filterCreatedTo" class="form-label">To Date</label>
-                          <input type="date" id="filterCreatedTo" class="form-control" />
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="dateRange"
+                              class="form-control custom-daterange"
+                              placeholder="Select date range"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <!-- Actions -->
+                      <!-- ACTIONS -->
                       <div class="col-12 d-flex gap-2 filter-actions">
-                        <button id="filterBtn" class="btn btn-primary btn-sm">
-                          <i class="fas fa-search me-1"></i> Search
-                        </button>
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
                       </div>
+
                     </div>
                   </div>
                 </div>
 
-                <!-- View Toggle -->
-                <div class="d-flex mb-2 view-toggle compact">
+                <!-- ================= View Toggle ================= -->
+                <div class="d-flex mb-2 view-toggle compact align-items-center">
                   <div class="dropdown relative-wrapper export-ignore">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                            id="fieldSelectorBtn"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                    >
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2 field-selector-dropdown"
-                         id="fieldSelectorDropdown"
-                         style="min-width:240px;">
-                      <!-- dynamic checkboxes -->
-                    </div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
-                  <div class="btn-group" role="group">
+
+                  <div class="btn-group ms-2">
                     <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                       <i class="fas fa-th me-1"></i> Card View
                     </button>
@@ -213,59 +192,44 @@
                       <i class="fas fa-table me-1"></i> Table View
                     </button>
                   </div>
-                </div>                                    
-                <!-- Records per page -->
-                <div class="btn-group align-items-center ms-2" role="group">
+                </div>
 
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">
-                    Show
-                  </span>
-
-                  <select id="recordsPerPage"
-                          class="btn btn-outline-secondary btn-sm text-center"
-                          style="width:64px; appearance:auto;">
+                <!-- ================= Records Per Page ================= -->
+                <div class="btn-group align-items-center ms-2">
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Show</span>
+                  <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm">
                     <option value="10">10</option>
                     <option value="25" selected>25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                   </select>
-
-                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">
-                    Rows
-                  </span>
-
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Rows</span>
                 </div>
 
-                <!-- 📊 Breakdown Summary -->
+                <!-- ================= Summary ================= -->
                 <hr class="my-2">
-
-                <div class="text-muted fw-semibold small mb-1">
-                  Breakdown Summary
-                </div>
-
+                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
                 <div class="module-summary">
-  <div id="moduleSummary"></div>
-</div>
+                  <div id="moduleSummary"></div>
+                </div>
                 <hr class="my-2">
 
-                <!-- Table -->
+                <!-- ================= Table ================= -->
                 <div class="table-responsive table-container active">
                   <table class="table m-0 align-middle data-table print-table">
-                    <caption class="visually-hidden">Central Stock table listing with dynamic fields</caption>
                     <thead id="dynamicTableHead"></thead>
                     <tbody id="centralStockTableBody"></tbody>
                   </table>
                 </div>
 
-                <!-- Card list -->
+                <!-- ================= Cards ================= -->
                 <div id="centralStockList" class="card-list"></div>
 
-                <!-- Pagination -->
+                <!-- ================= Pagination ================= -->
                 <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
 
               </div>
             </div>
-            <!-- /card -->
 
           </div>
         </div>
@@ -278,19 +242,9 @@
     </div>
   </div>
 
-  <!-- overlays / modals / toasts -->
+  <!-- overlays -->
   <div id="loadingOverlay" class="hidden">
     <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
-  </div>
-
-  <div id="viewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="viewModalTitle">Details</h2>
-        <button id="closeViewModal" class="close-btn" aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body" id="viewModalBody"></div>
-    </div>
   </div>
 
   <!-- JS -->
@@ -306,7 +260,6 @@
   <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
   <script src="assets/js/custom.js"></script>
 
-  <!-- html2pdf -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <script type="module" src="/js/logout.js"></script>

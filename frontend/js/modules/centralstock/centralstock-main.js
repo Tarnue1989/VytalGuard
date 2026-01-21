@@ -1,4 +1,15 @@
-// 📦 centralstock-main.js – Form-only loader for Central Stock
+// 📦 centralstock-main.js – Form-only Loader for Central Stock (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🧭 FULL PARITY WITH billableitem-main.js (Form-only mode)
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset logic
+// 🔹 Session-safe edit caching (ID ref only)
+// 🔹 Role-based field selector (enterprise-aligned)
+// 🔹 100% ID-safe (pills, inputs, buttons preserved)
+// 🔹 ❌ NEVER detect edit via URL
+// 🔹 ❌ NEVER fetch edit payload here
+// 🔹 ❌ NEVER touch pill state directly
+// ============================================================================
 
 import {
   initPageGuard,
@@ -7,66 +18,74 @@ import {
 } from "../../utils/index.js";
 
 import { setupCentralStockFormSubmission } from "./centralstock-form.js";
+
 import {
   FIELD_LABELS_CENTRAL_STOCK,
   FIELD_ORDER_CENTRAL_STOCK,
   FIELD_DEFAULTS_CENTRAL_STOCK,
 } from "./centralstock-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
-// 🔐 Auth – automatic permission resolution ("central_stocks:create" or "central_stocks:edit")
-const token = initPageGuard(autoPagePermissionKey());
-
-// 🔁 Global logout watcher
+/* ============================================================
+   🔐 Auth Guard + Shared State
+============================================================ */
+initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// 🌐 Shared State
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
-// 📎 DOM Refs
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("centralStockForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
-/* ------------------------- Helpers ------------------------- */
-
-// 🧹 Reset form
+/* ============================================================
+   🧹 Reset Form Helper (ID-SAFE — MASTER PARITY)
+============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
+
   if (form) form.reset();
 
   // Clear cached edit state
   sessionStorage.removeItem("centralStockEditId");
   sessionStorage.removeItem("centralStockEditPayload");
 
-  // Explicitly clear text fields
-  ["batchNumber", "notes", "quantity"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
+  // Clear core inputs
+  ["batchNumber", "quantity", "receivedDate", "expiryDate", "notes"].forEach(
+    (id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    }
+  );
 
-  // Clear organization + facility + supplier dropdowns
+  // Clear selects
   ["organizationSelect", "facilitySelect", "supplierSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Clear pill container
-  const pillsContainer = document.getElementById("itemPillsContainer");
-  if (pillsContainer) {
-    pillsContainer.innerHTML = `<p class="text-muted">No items added yet.</p>`;
-  }
+  // Reset pills container (ID preserved)
+  const pills = document.getElementById("itemPillsContainer");
+  if (pills)
+    pills.innerHTML = `<p class="text-muted">No items added yet.</p>`;
 
-  // Reset status radio (default Active)
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  // Reset submit label
+  const submitBtn = form?.querySelector("button[type=submit]");
+  if (submitBtn)
+    submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Submit All`;
 }
 
-// 🧭 Form show/hide
+/* ============================================================
+   🧭 Form Show / Hide
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -80,12 +99,13 @@ function hideForm() {
   localStorage.setItem("centralStockFormVisible", "false");
 }
 
-// 🔗 Expose globally so action handlers can reuse
+// 🌍 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
-/* ------------------------- Wire Buttons ------------------------- */
-
+/* ============================================================
+   🔘 Button Wiring (MASTER PARITY)
+============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
@@ -97,41 +117,48 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // 🧹 Ensure stale edit data is gone
     sessionStorage.removeItem("centralStockEditId");
     sessionStorage.removeItem("centralStockEditPayload");
-
-    // Reset form for clean Add mode
     resetForm();
     showForm();
   };
 }
 
-/* ------------------------- Loader ------------------------- */
+/* ============================================================
+   📦 Loader Placeholder (Form-only)
+============================================================ */
 async function loadEntries() {
-  return; // noop (list page handles this)
+  return; // list page owns data loading
 }
 
-/* ------------------------- Init ------------------------- */
+/* ============================================================
+   🚀 Init Entrypoint (MASTER PARITY)
+============================================================ */
 export async function initCentralStockModule() {
-  showForm(); // open the form by default
-  setupCentralStockFormSubmission({ form, token, sharedState, resetForm, loadEntries });
+  // Form-only mode
+  showForm();
 
+  if (form) {
+    setupCentralStockFormSubmission({
+      form,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
+
+  // Ensure list panel stays hidden
   localStorage.setItem("centralStockPanelVisible", "false");
 
-  // 📌 Normalize role before pulling defaults
+  /* ---------------- Role Normalization ---------------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
-  if (role.includes("super") && role.includes("admin")) {
-    role = "superadmin";
-  } else if (role.includes("admin")) {
-    role = "admin";
-  } else {
-    role = "staff";
-  }
+  if (role.includes("super") && role.includes("admin")) role = "superadmin";
+  else if (role.includes("admin")) role = "admin";
+  else role = "staff";
 
-  // 🧩 Field selector setup (role-based defaults)
+  /* ---------------- Field Selector ---------------- */
   setupFieldSelector({
     module: "central_stock",
     fieldLabels: FIELD_LABELS_CENTRAL_STOCK,
@@ -140,7 +167,9 @@ export async function initCentralStockModule() {
   });
 }
 
-// (Optional)
+/* ============================================================
+   🔁 State Sync Stub
+============================================================ */
 export function syncRefsToState() {
-  // no-op
+  // reserved for future enterprise reactive syncing
 }

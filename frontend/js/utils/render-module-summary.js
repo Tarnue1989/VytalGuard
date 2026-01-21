@@ -27,7 +27,7 @@ export function renderModuleSummary(
 
   /* ================= STATUS → CLASS MAP ================= */
   const mapClass = (k) => {
-    const key = k.toLowerCase();
+    const key = String(k).toLowerCase();
     if (/success|approved|completed|active/.test(key)) return "summary--success";
     if (/pending|scheduled|progress/.test(key)) return "summary--warning";
     if (/cancelled|rejected|failed|no_show/.test(key)) return "summary--danger";
@@ -41,31 +41,37 @@ export function renderModuleSummary(
   const fmt = (k, v) => {
     if (v === null || v === undefined) return "—";
 
-    // ✅ Object-safe summaries (gender_breakdown, status maps)
-    if (typeof v === "object") {
+    /* ----------------------------------------------------
+       ✅ OBJECT VALUES (currency maps, status maps, etc.)
+       - Example: { USD: 19 }
+       - Renders as: USD: 19
+    ---------------------------------------------------- */
+    if (typeof v === "object" && !Array.isArray(v)) {
       return formatSummaryObject(v, {
         separator: " / ",
         emptyValue: "—",
-        transformKey: (x) => x.replace(/_/g, " ").toUpperCase(),
+        transformKey: (x) => String(x).replace(/_/g, " ").toUpperCase(),
       });
     }
 
-    const lower = k.toLowerCase();
+    const lower = String(k).toLowerCase();
 
-    const isCurrency =
-      /amount|balance|value|sum|applied|remaining/.test(lower);
+    const isCurrencyValue =
+      /amount|balance|value|sum|applied|remaining|price|cost|avg|min|max/.test(
+        lower
+      );
 
     const isCount =
       /_count$|^count$|total$|total_count$/.test(lower);
 
-    if (isCurrency && !isNaN(v)) {
+    if (isCurrencyValue && !isNaN(v)) {
       return `$${Number(v).toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
     }
 
-    if (isCount) {
+    if (isCount && !isNaN(v)) {
       return Number(v).toLocaleString();
     }
 
@@ -77,7 +83,7 @@ export function renderModuleSummary(
     if (k === "total" || k === "total_count") {
       return `TOTAL ${moduleLabel.toUpperCase()}`;
     }
-    return k.replace(/_/g, " ").toUpperCase();
+    return String(k).replace(/_/g, " ").toUpperCase();
   };
 
   /* ================= EMPTY ================= */

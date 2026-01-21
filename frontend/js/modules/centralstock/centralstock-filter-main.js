@@ -1,9 +1,11 @@
-// 📦 centralstock-filter-main.js – Filters + Table/Card (Enterprise Pattern Aligned)
+// 📦 centralstock-filter-main.js – Enterprise Filter + Table/Card (FULL MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors appointment-filter-main.js for unified lifecycle & summary logic
-// 🔹 Adds universal summary renderer using #moduleSummary
-// 🔹 Handles quantity/value totals, expired counts, org/facility filters
-// 🔹 Now includes dynamic records-per-page dropdown behavior
+// 🔹 FULL PARITY WITH billableitem-filter-main.js
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single field, NEVER DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Central Stock Status fully wired
+// 🔹 Summary, export, view toggle, field selector aligned
 // ============================================================================
 
 import {
@@ -11,79 +13,92 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   loadSuppliersLite,
-  loadMasterItemsLite,
-  setupSuggestionInputDynamic,
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./centralstock-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./centralstock-render.js";
+import { formatDate } from "../../utils/ui-utils.js";
+
 import { setupActionHandlers } from "./centralstock-actions.js";
+
 import {
   FIELD_ORDER_CENTRAL_STOCK,
   FIELD_DEFAULTS_CENTRAL_STOCK,
+  FIELD_LABELS_CENTRAL_STOCK,
 } from "./centralstock-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("centralStockView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "central_stock",
+  moduleKey: "centralstock",
   userRole,
   defaultFields: FIELD_DEFAULTS_CENTRAL_STOCK,
   allowedFields: FIELD_ORDER_CENTRAL_STOCK,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -91,141 +106,121 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterItem = document.getElementById("filterItem");
-const filterItemHidden = document.getElementById("filterItemId");
-const filterItemSuggestions = document.getElementById("filterItemSuggestions");
-const filterSupplier = document.getElementById("filterSupplier");
-const filterStatus = document.getElementById("filterStatus");
-const filterBatchNumber = document.getElementById("filterBatchNumber");
-const filterReceivedFrom = document.getElementById("filterReceivedFrom");
-const filterReceivedTo = document.getElementById("filterReceivedTo");
+const qs = (id) => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatusSelect");
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   📊 Universal Summary Renderer
+   🔃 SORT BRIDGE
 ============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
-
-  const colorMap = {
-    active: "text-success",
-    inactive: "text-muted",
-    expired: "text-danger",
-    quarantined: "text-warning",
-    total_quantity: "text-primary",
-    total_value: "text-teal",
-    expired_count: "text-danger",
-  };
-
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 justify-content-start align-items-center fw-semibold small mb-3">
-      ${keys
-        .map((key) => {
-          const val = summary[key] ?? 0;
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
+window.setCentralStockSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadCentralStockPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination / State
+   📄 PAGINATION
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("centralStockView") || "table";
-
-// 🧩 Load saved user preference for records per page (default 25)
-const savedLimit = parseInt(localStorage.getItem("centralStockPageLimit") || "25", 10);
-let getPagination = initPaginationControl("central_stock", loadEntries, savedLimit);
-
-/* ✅ Bind Records-Per-Page Dropdown if present */
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  // Apply saved limit
-  recordsPerPageSelect.value = savedLimit;
-
-  // Update pagination dynamically when changed
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("centralStockPageLimit", newLimit);
-    getPagination = initPaginationControl("central_stock", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+const getPagination = initPaginationControl(
+  "centralstock",
+  loadEntries,
+  Number(localStorage.getItem("centralstockPageLimit") || 25)
+);
 
 /* ============================================================
-   📋 Filters
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER CONTRACT)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    master_item_id: filterItemHidden?.value || "",
-    supplier_id: filterSupplier?.value || "",
-    status: filterStatus?.value || "",
-    batch_number: filterBatchNumber?.value || "",
-    received_from: filterReceivedFrom?.value || "",
-    received_to: filterReceivedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value, // UI-only
   };
 }
 
 /* ============================================================
-   📦 Load Central Stocks (with Summary)
+   📦 LOAD ENTRIES
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.received_from) q.append("received_date[gte]", filters.received_from);
-    if (filters.received_to) q.append("received_date[lte]", filters.received_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["received_from", "received_to"].includes(k)) return;
-      q.append(k, v);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_CENTRAL_STOCK.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    q.set("fields", visibleFields.join(","));
 
     const res = await authFetch(`/api/central-stocks?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
+
+    if (data.summary) {
+      const summary = { ...data.summary };
+
+      if (summary.dateRange?.start || summary.dateRange?.end) {
+        summary.dateRange = {
+          start: summary.dateRange.start
+            ? formatDate(summary.dateRange.start)
+            : "—",
+          end: summary.dateRange.end
+            ? formatDate(summary.dateRange.end)
+            : "—",
+        };
+      }
+
+      renderModuleSummary(summary, "moduleSummary", {
+        moduleLabel: "CENTRAL STOCK",
+      });
+    }
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -238,105 +233,73 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length) showToast("ℹ️ No central stock entries found");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
-    showToast("❌ Failed to load central stocks");
+    console.error(err);
+    showToast("❌ Failed to load central stock");
   } finally {
     hideLoading();
   }
 }
 
 /* ============================================================
-   🧭 View Toggle
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("centralStockView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("tableViewBtn")?.classList.add("active");
-  document.getElementById("cardViewBtn")?.classList.remove("active");
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("centralStockView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("cardViewBtn")?.classList.add("active");
-  document.getElementById("tableViewBtn")?.classList.remove("active");
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-document.getElementById("resetFilterBtn").onclick = () => {
-  [
-    filterItem,
-    filterSupplier,
-    filterStatus,
-    filterBatchNumber,
-    filterReceivedFrom,
-    filterReceivedTo,
-  ].forEach((el) => (el ? (el.value = "") : null));
-  if (filterItemHidden) filterItemHidden.value = "";
+qs("resetFilterBtn").onclick = () => {
+  [globalSearch, filterOrg, filterFacility, filterStatus, dateRange].forEach(
+    (el) => {
+      if (!el) return;
+      el.value = "";
+    }
+  );
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `central_stocks_${new Date().toISOString().slice(0, 10)}.xlsx`);
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_CENTRAL_STOCK),
+    `central_stock_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector =
-        viewMode === "table" ? ".table-container" : "#centralStockList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
-
-      const summaryHTML =
-        document.getElementById("moduleSummary")?.outerHTML || "";
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Central Stock List", "#exportWrapper", "portrait", true);
-      setTimeout(() => tempDiv.remove(), 1000);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Central Stock",
+    viewMode === "table" ? ".table-container" : "#centralStockList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initCentralStockModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible = localStorage.getItem("centralStockFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -345,61 +308,29 @@ export async function initCentralStockModule() {
     "centralStockFilterVisible"
   );
 
-  setupSuggestionInputDynamic(
-    filterItem,
-    filterItemSuggestions,
-    "/api/lite/master-items",
-    (selected) => {
-      filterItemHidden.value = selected?.id || "";
-      filterItem.value = selected?.name || "";
-    },
-    "name"
-  );
-
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      }
-
-      await reloadFacilities();
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      facs.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      filterFacility?.closest(".form-group")?.classList.add("hidden");
-    }
-
-    const suppliers = await loadSuppliersLite({}, true);
-    setupSelectOptions(filterSupplier, suppliers, "id", "name", "-- All Suppliers --");
-  } catch (err) {
-    console.error("❌ preload dropdowns failed:", err);
-    showToast("❌ Failed to load filter dropdowns");
+  /* ----------------- Organization ----------------- */
+  if (filterOrg) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
   }
+
+  /* ----------------- Facility ----------------- */
+  if (filterFacility) {
+    const facs = await loadFacilitiesLite();
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
+  }
+
+  /* ----------------- Status ----------------- */
+  // static in HTML
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initCentralStockModule().catch((err) =>
-    console.error("initCentralStockModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initCentralStockModule)
+  : initCentralStockModule();
