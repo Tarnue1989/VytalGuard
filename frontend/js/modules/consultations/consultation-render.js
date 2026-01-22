@@ -2,7 +2,7 @@
 // ============================================================================
 // 🧭 FULL MASTER PARITY WITH department-render.js
 // 🔹 Table = flat | Card = RICH + structured
-// 🔹 Card now includes diagnosis, notes, prescriptions, department, registration
+// 🔹 Card includes diagnosis, notes, prescriptions, department, registration
 // 🔹 Field-selector safe
 // 🔹 Backend sorting bridge
 // 🔹 Column resize + drag enabled
@@ -75,6 +75,8 @@ export function renderDynamicTableHead(visibleFields) {
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
+    th.dataset.key = field;
+
     const label =
       FIELD_LABELS_CONSULTATION[field] || field.replace(/_/g, " ");
 
@@ -148,7 +150,7 @@ function renderRegistration(entry) {
 }
 
 /* ============================================================
-   🧩 TABLE VALUE RENDERER
+   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -171,33 +173,64 @@ function renderValue(entry, field) {
       return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
+    /* ===== ASSOCIATIONS ===== */
+    case "organization":
     case "organization_id":
       return entry.organization?.name || "—";
+
+    case "facility":
     case "facility_id":
       return entry.facility?.name || "—";
+
+    case "patient":
     case "patient_id":
       return renderPatient(entry);
+
+    case "doctor":
     case "doctor_id":
       return renderUserName(entry.doctor);
+
+    case "department":
     case "department_id":
       return entry.department?.name || "—";
+
     case "consultationType":
+    case "consultation_type_id":
       return entry.consultationType?.name || "—";
+
     case "registrationLog":
+    case "registration_log_id":
       return renderRegistration(entry);
 
+    case "appointment":
+      return entry.appointment
+        ? formatDate(entry.appointment.appointment_date)
+        : "—";
+
+    case "parentConsultation":
+    case "parent_consultation_id":
+      return entry.parentConsultation
+        ? formatDate(entry.parentConsultation.consultation_date)
+        : "—";
+
+    /* ===== DATES ===== */
     case "consultation_date":
     case "created_at":
     case "updated_at":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    /* ===== FALLBACK (NEVER LEAK OBJECTS) ===== */
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH (ALL KEY DETAILS)
+   🗂️ CARD RENDERER — RICH
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);

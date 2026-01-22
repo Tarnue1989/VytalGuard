@@ -323,6 +323,19 @@
   border-radius:8px;
 }
 
+/* ================= REGISTRATION LOG STATUS ================= */
+.registration-log-card .entity-status.pending{background:#f59e0b;color:#111}
+.registration-log-card .entity-status.completed{background:#198754;color:#fff}
+.registration-log-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.registration-log-card .entity-status.voided,
+.registration-log-card .entity-status.deleted{background:#dc3545;color:#fff}
+
+/* ================= REGISTRATION LOG BODY TUNING ================= */
+.registration-log-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
 
 
 

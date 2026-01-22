@@ -26,7 +26,7 @@ import { FIELD_VISIBILITY_CONSULTATION } from "../constants/fieldVisibility.js";
 import { billingService } from "../services/billingService.js";
 import { shouldTriggerBilling } from "../constants/billing.js";
 import { validatePaginationStrict } from "../utils/query-utils.js";
-
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 // 🔖 Local enum map for readability
 const CS = {
   OPEN: CONSULTATION_STATUS[0],
@@ -331,7 +331,7 @@ export const getAllConsultations = async (req, res) => {
     });
     if (!allowed) return;
 
-    // 🔎 Strict pagination validation (throws 400 if invalid)
+    // 🔎 Strict pagination validation
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
       maxLimit: 200,
@@ -343,9 +343,17 @@ export const getAllConsultations = async (req, res) => {
       FIELD_VISIBILITY_CONSULTATION[role] ||
       FIELD_VISIBILITY_CONSULTATION.staff;
 
-    // ✅ Inject validated pagination into query builder
-    req.query.limit = limit;
-    req.query.page = page;
+    /* ========================================================
+       📅 DATE RANGE (UI-ONLY — MUST BE STRIPPED)
+    ======================================================== */
+    const { dateRange, ...safeQuery } = req.query;
+
+    // Inject safe pagination back
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+
+    // Replace req.query ONLY with safeQuery
+    req.query = safeQuery;
 
     const options = buildQueryOptions(
       req,
@@ -354,6 +362,25 @@ export const getAllConsultations = async (req, res) => {
       visibleFields
     );
     options.where = options.where || {};
+
+    /* ========================================================
+      📅 DATE RANGE (UI-ONLY → consultation_date)
+    ======================================================== */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+
+      // normalizeDateRangeLocal returns Date objects
+      // consultation_date is DATEONLY → compare as YYYY-MM-DD
+      if (start && end) {
+        options.where.consultation_date = {
+          [Op.between]: [
+            start.toISOString().slice(0, 10),
+            end.toISOString().slice(0, 10),
+          ],
+        };
+      }
+    }
+
 
     /* ========================================================
        🔐 ORG / FACILITY SCOPING
@@ -394,7 +421,7 @@ export const getAllConsultations = async (req, res) => {
     });
 
     /* ========================================================
-       🔢 SUMMARY (STATUS-BASED, PAGE-AWARE, NO FINANCIALS)
+       🔢 SUMMARY (STATUS-BASED, PAGE-AWARE)
     ======================================================== */
     const summary = { total: count };
     CONSULTATION_STATUS.forEach((status) => {
@@ -409,7 +436,7 @@ export const getAllConsultations = async (req, res) => {
       module: MODULE_KEY,
       action: "list",
       details: {
-        query: req.query,
+        query: safeQuery, // ✅ no dateRange leak
         returned: count,
         pagination: { page, limit },
       },

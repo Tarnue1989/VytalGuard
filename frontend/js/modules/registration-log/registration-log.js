@@ -1,64 +1,54 @@
-// 📦 registrationLog.js – Entry point (permission-driven, unified pattern)
+// 📦 registrationLog.js – Entry Point (Enterprise-Aligned Master Pattern)
+// ============================================================================
+// 🧭 Master Pattern: department.js / role.js / vitals.js
+// 🔹 Unified initialization entry for the Registration Log module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 NO business logic, NO API calls here
+// ============================================================================
 
-// ✅ Main module init
+/* ============================================================
+   ✅ Imports
+============================================================ */
+
+// 🧭 Main module init (handles filters, table, card, pagination, etc.)
 import { initRegistrationLogModule } from "./registrationLog-filter-main.js";
 
-// ✅ Load action handlers (view, edit, delete, toggle, lifecycle)
-import { setupActionHandlers } from "./registration-log-actions.js";
+// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, workflow)
+import "./registration-log-actions.js";
 
-// ✅ Constants
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_REGISTRATION_LOG,
   FIELD_ORDER_REGISTRATION_LOG,
   FIELD_DEFAULTS_REGISTRATION_LOG,
 } from "./registration-log-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Async-safe Startup
-   ============================================================ */
+   🚀 DOM-Ready Bootstrap
+============================================================ */
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // ✅ If this is a form page → init module
-    if (document.getElementById("registrationLogForm")) {
+    // 🧩 Initialize ONLY if registration log form or list exists
+    if (
+      document.getElementById("registrationLogForm") ||
+      document.getElementById("registrationLogList") ||
+      document.getElementById("registrationLogTableBody")
+    ) {
       await initRegistrationLogModule();
     }
 
-    // ✅ If this is a list page → wire up actions
-    const tableBody = document.getElementById("registrationLogTableBody");
-    if (tableBody) {
-      // Build user context
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
+    // (Optional future enhancement)
+    // if (document.getElementById("registrationLogTableBody")) {
+    //   await initRegistrationLogListModule();
+    // }
 
-      console.log("👤 [registrationLog.js] Loaded user:", user);
-
-      // Shared state + placeholders for consistency
-      const sharedState = {};
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_REGISTRATION_LOG[userRole] ||
-        FIELD_DEFAULTS_REGISTRATION_LOG.staff;
-      const token = localStorage.getItem("accessToken") || "";
-
-      // ✅ Attach action handlers dynamically
-      setupActionHandlers({
-        entries: window.latestRegistrationLogEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
-    }
   } catch (err) {
-    console.error("❌ Failed to initialize registration log module", err);
+    console.error("❌ Failed to initialize Registration Log module", err);
     hideLoading();
-    showToast("❌ Failed to load registration log module");
+    showToast("❌ Failed to load Registration Log module");
   }
 });

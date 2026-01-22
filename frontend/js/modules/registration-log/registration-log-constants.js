@@ -1,9 +1,13 @@
-// 📁 registrationLog-constants.js — Upgraded to Master Pattern (Role-Aware, Structured, Consistent)
+// 📁 registrationLog-constants.js – Enterprise-Aligned Master Pattern
+// ============================================================================
+// 🔹 Pattern Source: department-constants.js (Enterprise Master)
+// 🔹 Structural Consistency: Field labels, order, role-based visibility
+// 🔹 100% ID retention (safe for linked HTML + JS modules)
+// 🔹 Includes standardized metadata + hierarchical visibility map
+// ============================================================================
 
 /* ============================================================
-   🏷️ FIELD LABELS
-   ------------------------------------------------------------
-   Defines human-readable names for all Registration Log fields
+   🏷️ Field Labels
 ============================================================ */
 export const FIELD_LABELS_REGISTRATION_LOG = {
   organization: "Organization",
@@ -30,9 +34,7 @@ export const FIELD_LABELS_REGISTRATION_LOG = {
 };
 
 /* ============================================================
-   🧾 FIELD ORDER
-   ------------------------------------------------------------
-   Controls the column order for rendering in tables/lists
+   📋 Field Order (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_REGISTRATION_LOG = [
   "organization",
@@ -59,10 +61,12 @@ export const FIELD_ORDER_REGISTRATION_LOG = [
 ];
 
 /* ============================================================
-   🔐 FIELD DEFAULTS (Role-Based Visibility)
-   ------------------------------------------------------------
-   Controls which fields are visible per user role
+   👥 Role-Based Field Visibility Defaults (Enterprise-Aligned)
 ============================================================ */
+// 🧩 Superadmin / Org Owner: Full visibility including audit + delete metadata
+// 🧩 Admin / Manager: Operational + lifecycle visibility
+// 🧩 Facility Head: Scoped operational visibility
+// 🧩 Staff: Essential operational fields only
 export const FIELD_DEFAULTS_REGISTRATION_LOG = {
   superadmin: [
     "organization",
@@ -186,3 +190,9 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (For dynamic routing / UI context)
+============================================================ */
+export const MODULE_KEY_REGISTRATION_LOG = "registration_log";
+export const MODULE_LABEL_REGISTRATION_LOG = "Registration Log";

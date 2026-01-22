@@ -27,6 +27,7 @@ import { billingService } from "../services/billingService.js";
 import { shouldTriggerBilling } from "../constants/billing.js";
 import { isSuperAdmin } from "../utils/role-utils.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 
 /* ============================================================
    🧭 MODULE CONFIG
@@ -363,7 +364,7 @@ export const updateRegistrationLog = async (req, res) => {
   }
 };
 /* ============================================================
-   📌 GET ALL REGISTRATION LOGS
+   📌 GET ALL REGISTRATION LOGS (MASTER FINAL + SUMMARY)
 ============================================================ */
 export const getAllRegistrationLogs = async (req, res) => {
   try {
@@ -389,17 +390,44 @@ export const getAllRegistrationLogs = async (req, res) => {
       FIELD_VISIBILITY_REGISTRATION_LOG[role] ||
       FIELD_VISIBILITY_REGISTRATION_LOG.staff;
 
+    /* ============================================================
+       🧠 QUERY OPTIONS (MASTER SAFE)
+    ============================================================ */
     const options = buildQueryOptions(
       req,
       "registration_time",
       "DESC",
       visibleFields
     );
+
     options.where = options.where || {};
 
-    /* ================= TENANT SCOPE ================= */
+    /* ============================================================
+       🧹 UI-ONLY FILTER STRIP (CRITICAL FIX)
+       ❌ dateRange must NEVER reach Sequelize
+    ============================================================ */
+    const { dateRange } = req.query || {};
+    if (dateRange) {
+      delete options.where.dateRange;
+    }
+
+    /* ============================================================
+       📅 DATE RANGE (MASTER PATTERN)
+       UI-only → maps to REAL column
+    ============================================================ */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      options.where.registration_time = {
+        [Op.between]: [start, end],
+      };
+    }
+
+    /* ============================================================
+       🏢 TENANT SCOPE (ENTERPRISE SAFE)
+    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
+
       if (role === "facility_head") {
         options.where.facility_id = req.user.facility_id;
       }
@@ -412,7 +440,9 @@ export const getAllRegistrationLogs = async (req, res) => {
       }
     }
 
-    /* ================= SEARCH ================= */
+    /* ============================================================
+       🔍 GLOBAL SEARCH (MASTER SAFE)
+    ============================================================ */
     if (options.search) {
       options.where[Op.or] = [
         { visit_reason: { [Op.iLike]: `%${options.search}%` } },
@@ -420,6 +450,9 @@ export const getAllRegistrationLogs = async (req, res) => {
       ];
     }
 
+    /* ============================================================
+       📦 QUERY
+    ============================================================ */
     const { count, rows } = await RegistrationLog.findAndCountAll({
       where: options.where,
       include: [...REGISTRATION_LOG_INCLUDES, ...(options.include || [])],
@@ -428,17 +461,35 @@ export const getAllRegistrationLogs = async (req, res) => {
       limit: options.limit,
     });
 
+    /* ============================================================
+       📊 SUMMARY (STATUS-BASED, PAGE-AWARE)
+    ============================================================ */
+    const summary = { total: count };
+    REGISTRATION_LOG_STATUS.forEach((status) => {
+      summary[status] = rows.filter(
+        (r) => r.log_status === status
+      ).length;
+    });
+
+    /* ============================================================
+       🧾 AUDIT
+    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        pagination: options.pagination,
+      },
     });
 
     debug.log("LIST → success", { returned: count });
 
     return success(res, "✅ Registration Logs loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,

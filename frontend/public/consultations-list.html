@@ -163,26 +163,27 @@
                         </div>
                       </div>
 
-                      <!-- Date Range -->
-                      <div class="col-xxl-2 col-lg-3 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="filterCreatedFrom">From Date</label>
-                          <input type="date" id="filterCreatedFrom" class="form-control" />
-                        </div>
-                      </div>
 
-                      <div class="col-xxl-2 col-lg-3 col-sm-6">
+                      <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
+                      <div class="col-md-3">
                         <div class="field-wrapper">
-                          <label class="form-label" for="filterCreatedTo">To Date</label>
-                          <input type="date" id="filterCreatedTo" class="form-control" />
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="dateRange"
+                              class="form-control custom-daterange"
+                              placeholder="Select date range"
+                            />
+                          </div>
                         </div>
                       </div>
 
                       <!-- Filter Buttons -->
                       <div class="col-12 d-flex gap-2 filter-actions mt-2">
-                        <button id="filterBtn" class="btn btn-primary btn-sm">
-                          <i class="fas fa-search me-1"></i> Search
-                        </button>
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>

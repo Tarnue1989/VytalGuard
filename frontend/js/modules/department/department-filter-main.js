@@ -1,10 +1,10 @@
-// 📦 department-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// 📦 consultation-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors role-filter-main.js EXACTLY
+// 🔹 Mirrors department-filter-main.js EXACTLY
 // 🔹 Auto search, auto filters, sorting, pagination
 // 🔹 UI-only dateRange (never DB column)
 // 🔹 Org / Facility fully wired
-// 🔹 Department Status fully wired
+// 🔹 Consultation Status fully wired
 // ============================================================================
 
 import {
@@ -15,6 +15,7 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -31,15 +32,15 @@ import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 import {
   renderList,
   renderDynamicTableHead,
-} from "./department-render.js";
+} from "./consultation-render.js";
 
-import { setupActionHandlers } from "./department-actions.js";
+import { setupActionHandlers } from "./consultation-actions.js";
 
 import {
-  FIELD_ORDER_DEPARTMENT,
-  FIELD_DEFAULTS_DEPARTMENT,
-  FIELD_LABELS_DEPARTMENT,
-} from "./department-constants.js";
+  FIELD_ORDER_CONSULTATION,
+  FIELD_DEFAULTS_CONSULTATION,
+  FIELD_LABELS_CONSULTATION,
+} from "./consultation-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
@@ -47,13 +48,11 @@ import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
 import { mapDataForExport } from "../../utils/export-mapper.js";
 import { syncViewToggleUI } from "../../utils/view-toggle.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
-import { autoPagePermissionKey } from "../../utils/index.js";
 
 /* ============================================================
    🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
-
 initLogoutWatcher();
 
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
@@ -65,7 +64,6 @@ const permissions = (() => {
     return [];
   }
 })();
-
 const user = { role: userRole, permissions };
 
 /* ============================================================
@@ -73,7 +71,7 @@ const user = { role: userRole, permissions };
 ============================================================ */
 let entries = [];
 let currentPage = 1;
-let viewMode = localStorage.getItem("departmentView") || "table";
+let viewMode = localStorage.getItem("consultationView") || "table";
 let sortBy = "";
 let sortDir = "asc";
 
@@ -83,10 +81,10 @@ const sharedState = { currentEditIdRef: { value: null } };
    👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "department",
+  moduleKey: "consultation",
   userRole,
-  defaultFields: FIELD_DEFAULTS_DEPARTMENT,
-  allowedFields: FIELD_ORDER_DEPARTMENT,
+  defaultFields: FIELD_DEFAULTS_CONSULTATION,
+  allowedFields: FIELD_ORDER_CONSULTATION,
 });
 
 /* ============================================================
@@ -100,7 +98,7 @@ renderFieldSelector(
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
-  FIELD_ORDER_DEPARTMENT
+  FIELD_ORDER_CONSULTATION
 );
 
 /* ============================================================
@@ -108,41 +106,43 @@ renderFieldSelector(
 ============================================================ */
 const qs = id => document.getElementById(id);
 
-const globalSearch   = qs("globalSearch");
-const filterOrg      = qs("filterOrganizationSelect");
-const filterFacility = qs("filterFacilitySelect");
-const filterStatus   = qs("filterStatusSelect"); // ✅ Department status
-const dateRange      = qs("dateRange");
+const filterPatient    = qs("filterPatient");
+const filterDoctor     = qs("filterDoctor");
+const filterDepartment = qs("filterDepartment");
+const filterType       = qs("filterConsultationType");
+const filterStatus     = qs("filterStatus");
+const filterOrg        = qs("filterOrganizationSelect");
+const filterFacility   = qs("filterFacilitySelect");
+const dateRange        = qs("dateRange"); // ✅ MASTER single-field
 
 /* ============================================================
-   🔃 SORT BRIDGE (TABLE HEAD)
+   🔃 SORT BRIDGE
 ============================================================ */
-window.setDepartmentSort = (field, dir) => {
+window.setConsultationSort = (field, dir) => {
   sortBy = field;
   sortDir = dir;
 };
-window.loadDepartmentPage = (p = 1) => loadEntries(p);
+window.loadConsultationPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
    📄 PAGINATION
 ============================================================ */
 const getPagination = initPaginationControl(
-  "department",
+  "consultation",
   loadEntries,
-  Number(localStorage.getItem("departmentPageLimit") || 25)
+  Number(localStorage.getItem("consultationPageLimit") || 25)
 );
 
 /* ============================================================
-   🔎 AUTO SEARCH / FILTERS
+   🔎 AUTO SEARCH / FILTERS (MASTER)
 ============================================================ */
-setupAutoSearch(globalSearch, loadEntries);
-
 setupAutoFilters({
-  searchInput: globalSearch,
   selectInputs: [
+    filterDepartment,
+    filterType,
+    filterStatus,
     filterOrg,
     filterFacility,
-    filterStatus, // ✅ ADD
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -153,16 +153,19 @@ setupAutoFilters({
 ============================================================ */
 function getFilters() {
   return {
-    search: globalSearch?.value?.trim(),
+    patient: filterPatient?.value?.trim(),
+    doctor: filterDoctor?.value?.trim(),
+    department_id: filterDepartment?.value,
+    consultation_type: filterType?.value,
+    status: filterStatus?.value,
     organization_id: filterOrg?.value,
     facility_id: filterFacility?.value,
-    status: filterStatus?.value, // ✅ ADD
-    dateRange: dateRange?.value,
+    dateRange: dateRange?.value, // ✅ UI-only
   };
 }
 
 /* ============================================================
-   📦 LOAD DEPARTMENTS (MASTER SAFE)
+   📦 LOAD CONSULTATIONS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -180,13 +183,16 @@ async function loadEntries(page = 1) {
       q.set("sort_order", sortDir);
     }
 
-    if (f.search)          q.set("search", f.search);
-    if (f.dateRange)       q.set("dateRange", f.dateRange);
-    if (f.organization_id) q.set("organization_id", f.organization_id);
-    if (f.facility_id)     q.set("facility_id", f.facility_id);
-    if (f.status)          q.set("status", f.status); // ✅ ADD
+    if (f.patient)           q.set("patient", f.patient);
+    if (f.doctor)            q.set("doctor", f.doctor);
+    if (f.department_id)     q.set("department_id", f.department_id);
+    if (f.consultation_type) q.set("consultation_type", f.consultation_type);
+    if (f.status)            q.set("status", f.status);
+    if (f.organization_id)   q.set("organization_id", f.organization_id);
+    if (f.facility_id)       q.set("facility_id", f.facility_id);
+    if (f.dateRange)         q.set("dateRange", f.dateRange); // ✅ FIXED
 
-    const res = await authFetch(`/api/departments?${q.toString()}`, {
+    const res = await authFetch(`/api/consultations?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -201,7 +207,7 @@ async function loadEntries(page = 1) {
 
     data.summary &&
       renderModuleSummary(data.summary, "moduleSummary", {
-        moduleLabel: "DEPARTMENTS",
+        moduleLabel: "CONSULTATIONS",
       });
 
     syncViewToggleUI({ mode: viewMode });
@@ -224,7 +230,7 @@ async function loadEntries(page = 1) {
     );
   } catch (err) {
     console.error(err);
-    showToast("❌ Failed to load departments");
+    showToast("❌ Failed to load consultations");
   } finally {
     hideLoading();
   }
@@ -235,31 +241,32 @@ async function loadEntries(page = 1) {
 ============================================================ */
 qs("tableViewBtn").onclick = () => {
   viewMode = "table";
-  localStorage.setItem("departmentView", "table");
+  localStorage.setItem("consultationView", "table");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 qs("cardViewBtn").onclick = () => {
   viewMode = "card";
-  localStorage.setItem("departmentView", "card");
+  localStorage.setItem("consultationView", "card");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔄 RESET FILTERS
+   🔄 RESET FILTERS (MASTER SAFE)
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
   [
-    globalSearch,
+    filterPatient,
+    filterDoctor,
+    filterDepartment,
+    filterType,
+    filterStatus,
     filterOrg,
     filterFacility,
-    filterStatus,
     dateRange,
-  ].forEach(el => {
-    if (el) el.value = "";
-  });
+  ].forEach(el => el && (el.value = ""));
   loadEntries(1);
 };
 
@@ -269,15 +276,15 @@ qs("resetFilterBtn").onclick = () => {
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
   exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_DEPARTMENT),
-    `departments_${new Date().toISOString().slice(0, 10)}.csv`
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_CONSULTATION),
+    `consultations_${new Date().toISOString().slice(0, 10)}.csv`
   );
 });
 
 qs("exportPDFBtn")?.addEventListener("click", () => {
   exportToPDF(
-    "Departments List",
-    viewMode === "table" ? ".table-container" : "#departmentList",
+    "Consultations List",
+    viewMode === "table" ? ".table-container" : "#consultationList",
     "portrait"
   );
 });
@@ -285,14 +292,14 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
 /* ============================================================
    🚀 INIT
 ============================================================ */
-export async function initDepartmentModule() {
+export async function initConsultationModule() {
   renderDynamicTableHead(visibleFields);
 
   setupToggleSection(
     "toggleFilterBtn",
     "filterCollapse",
     "filterChevron",
-    "departmentFilterVisible"
+    "consultationFilterVisible"
   );
 
   if (userRole.includes("super") || userRole.includes("admin")) {
@@ -311,9 +318,6 @@ export async function initDepartmentModule() {
 
     await reloadFacilities();
     filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
-  } else {
-    filterOrg?.closest(".col-md-3")?.classList.add("hidden");
-    filterFacility?.closest(".col-md-3")?.classList.add("hidden");
   }
 
   await loadEntries(1);
@@ -323,5 +327,5 @@ export async function initDepartmentModule() {
    🏁 BOOT
 ============================================================ */
 document.readyState === "loading"
-  ? document.addEventListener("DOMContentLoaded", initDepartmentModule)
-  : initDepartmentModule();
+  ? document.addEventListener("DOMContentLoaded", initConsultationModule)
+  : initConsultationModule();

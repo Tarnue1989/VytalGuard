@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -42,15 +43,6 @@
           Registration Logs List
         </li>
       </ol>
-
-      <div class="ms-auto d-none d-md-flex flex-row">
-        <div class="input-group">
-          <span class="input-group-text bg-primary-lighten">
-            <i class="ri-calendar-2-line text-primary"></i>
-          </span>
-          <input type="text" id="dateRange" class="form-control custom-daterange" />
-        </div>
-      </div>
     </div>
 
     <!-- Body -->
@@ -63,10 +55,8 @@
             <!-- Card Header -->
             <div class="card-header d-flex align-items-center justify-content-between">
               <h5 class="card-title">Registration Logs</h5>
-              <a href="add-registration-log.html"
-                 class="btn btn-primary btn-sm ms-auto d-flex align-items-center gap-1">
-                <i class="ri-add-line"></i>
-                <span>Add</span>
+              <a href="add-registration-log.html" class="btn btn-primary btn-sm ms-auto">
+                <i class="ri-add-line me-1"></i> Add
               </a>
             </div>
 
@@ -75,9 +65,8 @@
               <!-- Filters -->
               <div class="card panel-card mb-3">
                 <div class="card-header d-flex align-items-center justify-content-between">
-
                   <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-filter me-1"></i>Filter
+                    <i class="fas fa-filter me-1"></i> Filters
                     <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
                   </button>
 
@@ -92,120 +81,96 @@
                       <i class="fas fa-file-pdf me-1"></i> PDF
                     </button>
                   </div>
-
                 </div>
 
                 <div id="filterCollapse" class="card-body filter-body">
-                  <div class="section-label mb-2"><strong>Filter Registration Logs</strong></div>
+                  <div class="section-label mb-2">
+                    <strong>Filter Registration Logs</strong>
+                  </div>
 
                   <div class="row g-3 filter-grid compact">
 
-                    <!-- Patient -->
+                    <!-- 🔍 GLOBAL SEARCH -->
+                    <div class="col-md-4">
+                      <div class="field-wrapper">
+                        <label for="globalSearch" class="form-label">Search</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-search-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="globalSearch"
+                            class="form-control"
+                            placeholder="Reason or source…"
+                            autocomplete="off"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                      <!-- Patient -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterPatient">Patient</label>
+                          <input type="text" id="filterPatient" class="form-control suggestion-input"
+                                 placeholder="Search patient..." autocomplete="off" />
+                          <input type="hidden" id="filterPatientId" />
+                          <div id="filterPatientSuggestions" class="suggestions"></div>
+                        </div>
+                      </div>
+
+                    <!-- ORGANIZATION -->
                     <div class="col-md-3">
                       <div class="field-wrapper">
-                        <label for="filterPatient" class="form-label">Patient</label>
-                        <input type="text" id="filterPatient" class="form-control suggestion-input"
-                               placeholder="Search Patient..." autocomplete="off" />
-                        <input type="hidden" id="filterPatientId" />
-                        <div id="filterPatientSuggestions" class="suggestions"></div>
+                        <label for="filterOrganizationSelect" class="form-label">Organization</label>
+                        <select id="filterOrganizationSelect" class="form-select"></select>
                       </div>
                     </div>
 
-                    <!-- Registrar -->
+                    <!-- FACILITY -->
                     <div class="col-md-3">
                       <div class="field-wrapper">
-                        <label for="filterRegistrar" class="form-label">Registrar</label>
-                        <input type="text" id="filterRegistrar" class="form-control suggestion-input"
-                               placeholder="Search Employee..." autocomplete="off" />
-                        <input type="hidden" id="filterRegistrarId" />
-                        <div id="filterRegistrarSuggestions" class="suggestions"></div>
+                        <label for="filterFacilitySelect" class="form-label">Facility</label>
+                        <select id="filterFacilitySelect" class="form-select"></select>
                       </div>
                     </div>
 
-                    <!-- Registration Type -->
-                    <div class="col-md-3">
-                      <label for="filterRegistrationType" class="form-label">Registration Type</label>
-                      <select id="filterRegistrationType" class="form-select"></select>
-                    </div>
-
-                    <!-- Method -->
-                    <div class="col-md-3">
-                      <label for="filterMethod" class="form-label">Method</label>
-                      <select id="filterMethod" class="form-select">
-                        <option value="">All</option>
-                        <option value="walk_in">Walk-in</option>
-                        <option value="appointment">Appointment</option>
-                        <option value="referral">Referral</option>
-                        <option value="transfer">Transfer</option>
-                      </select>
-                    </div>
-
-                    <!-- Category -->
-                    <div class="col-md-3">
-                      <label for="filterCategory" class="form-label">Category</label>
-                      <select id="filterCategory" class="form-select">
-                        <option value="">All</option>
-                        <option value="general">General</option>
-                        <option value="insured">Insured</option>
-                        <option value="vip">VIP</option>
-                        <option value="staff">Staff</option>
-                        <option value="charity">Charity</option>
-                      </select>
-                    </div>
-
-                    <!-- Status -->
-                    <div class="col-md-3">
-                      <label for="filterStatus" class="form-label">Status</label>
-                      <select id="filterStatus" class="form-select">
-                        <option value="">All</option>
-                        <option value="draft">Draft</option>
-                        <option value="pending">Pending</option>
-                        <option value="active">Active</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                        <option value="voided">Voided</option>
-                      </select>
-                    </div>
-
-                    <!-- Reason -->
-                    <div class="col-md-3">
-                      <label for="filterReason" class="form-label">Reason</label>
-                      <input type="text" id="filterReason" class="form-control" />
-                    </div>
-
-                    <!-- Source -->
-                    <div class="col-md-3">
-                      <label for="filterSource" class="form-label">Source</label>
-                      <input type="text" id="filterSource" class="form-control" />
-                    </div>
-
-                    <!-- Org / Facility -->
-                    <div class="col-md-3">
-                      <label for="filterOrganizationSelect" class="form-label">Organization</label>
-                      <select id="filterOrganizationSelect" class="form-select"></select>
-                    </div>
-
-                    <div class="col-md-3">
-                      <label for="filterFacilitySelect" class="form-label">Facility</label>
-                      <select id="filterFacilitySelect" class="form-select"></select>
-                    </div>
-
-                    <!-- Dates -->
+                    <!-- STATUS -->
                     <div class="col-md-2">
-                      <label for="filterCreatedFrom" class="form-label">From Date</label>
-                      <input type="date" id="filterCreatedFrom" class="form-control" />
+                      <div class="field-wrapper">
+                        <label for="filterStatus" class="form-label">Status</label>
+                        <select id="filterStatus" class="form-select">
+                          <option value="">All</option>
+                          <option value="draft">Draft</option>
+                          <option value="pending">Pending</option>
+                          <option value="active">Active</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                          <option value="voided">Voided</option>
+                        </select>
+                      </div>
                     </div>
 
-                    <div class="col-md-2">
-                      <label for="filterCreatedTo" class="form-label">To Date</label>
-                      <input type="date" id="filterCreatedTo" class="form-control" />
+                    <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
+                    <div class="col-md-3">
+                      <div class="field-wrapper">
+                        <label for="dateRange" class="form-label">Date Range</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-calendar-2-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="dateRange"
+                            class="form-control custom-daterange"
+                            placeholder="Select date range"
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <!-- Actions -->
+                    <!-- ACTIONS -->
                     <div class="col-12 d-flex gap-2 filter-actions">
-                      <button id="filterBtn" class="btn btn-primary btn-sm">
-                        <i class="fas fa-search me-1"></i> Search
-                      </button>
                       <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-times me-1"></i> Clear
                       </button>
@@ -217,42 +182,50 @@
 
               <!-- View Toggle -->
               <div class="d-flex mb-2 view-toggle compact align-items-center">
-
                 <div class="dropdown relative-wrapper export-ignore">
-                  <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                          id="fieldSelectorBtn"
-                          data-bs-toggle="dropdown">
+                  <button
+                    class="btn btn-outline-primary btn-sm dropdown-toggle"
+                    id="fieldSelectorBtn"
+                    data-bs-toggle="dropdown"
+                  >
                     <i class="fas fa-columns me-1"></i> Select Fields
                   </button>
-                  <div class="dropdown-menu p-2 field-selector-dropdown"
-                       id="fieldSelectorDropdown"
-                       style="min-width:240px;"></div>
+                  <div
+                    class="dropdown-menu p-2 field-selector-dropdown"
+                    id="fieldSelectorDropdown"
+                    style="min-width:240px;"
+                  ></div>
                 </div>
 
                 <div class="btn-group ms-2">
                   <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
-                    <i class="fas fa-th me-1"></i> Card
+                    <i class="fas fa-th me-1"></i> Card View
                   </button>
                   <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
-                    <i class="fas fa-table me-1"></i> Table
+                    <i class="fas fa-table me-1"></i> Table View
                   </button>
                 </div>
-
               </div>
 
-              <!-- Records Per Page (OWN ROW — AS REQUESTED) -->
-              <div class="btn-group align-items-center mb-2">
-                <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
-                <select id="recordsPerPage"
-                        class="btn btn-outline-secondary btn-sm text-center"
-                        style="width:64px; appearance:auto;">
+              <!-- Records Per Page -->
+              <div class="btn-group align-items-center ms-2">
+                <span class="btn btn-outline-secondary btn-sm pe-none">Show</span>
+                <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm">
                   <option value="10">10</option>
                   <option value="25" selected>25</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
+                <span class="btn btn-outline-secondary btn-sm pe-none">Rows</span>
               </div>
+
+              <!-- Summary -->
+              <hr class="my-2">
+              <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
+              <div class="module-summary">
+                <div id="moduleSummary"></div>
+              </div>
+              <hr class="my-2">
 
               <!-- Table -->
               <div class="table-responsive table-container active">
@@ -262,7 +235,7 @@
                 </table>
               </div>
 
-              <!-- Card List -->
+              <!-- Cards -->
               <div id="registrationLogList" class="card-list"></div>
 
               <!-- Pagination -->
@@ -282,17 +255,17 @@
   </div>
 </div>
 
-<!-- Loading -->
+<!-- overlays -->
 <div id="loadingOverlay" class="hidden">
   <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
 </div>
 
 <!-- View Modal -->
-<div id="viewModal" class="modal hidden" role="dialog" aria-modal="true">
+<div id="viewModal" class="modal hidden">
   <div class="modal-content">
     <div class="modal-header">
       <h2 id="viewModalTitle">Details</h2>
-      <button id="closeViewModal" class="close-btn" aria-label="Close">&times;</button>
+      <button id="closeViewModal" class="close-btn">&times;</button>
     </div>
     <div class="modal-body" id="viewModalBody"></div>
   </div>

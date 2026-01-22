@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,6 +17,7 @@
   <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
   <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
 </head>
+
 <body>
   <div class="page-wrapper">
     <div class="app-container">
@@ -26,9 +28,13 @@
       <!-- Breadcrumb -->
       <div class="app-hero-header d-flex align-items-center">
         <ol class="breadcrumb">
-          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
           <li class="breadcrumb-item">Registration Logs</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Add Registration Log</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Add Registration Log
+          </li>
         </ol>
       </div>
 
@@ -42,211 +48,248 @@
               </div>
               <div class="card-body">
 
-              <!-- 📦 Form Container -->
-              <div id="formContainer">
-                <form id="registrationLogForm">
-                  <div class="row gx-4">
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="registrationLogForm" novalidate>
+                    <div class="row gx-4">
 
-                    <!-- Patient (REQUIRED – suggestion input) -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="patientInput">
-                          Patient <span class="text-danger">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          class="form-control suggestion-input"
-                          id="patientInput"
-                          placeholder="Search patient..."
-                          autocomplete="off"
-                        />
-                        <input type="hidden" id="patientId" name="patient_id" />
-                        <div id="patientSuggestions" class="suggestions"></div>
+                      <!-- ================= Identity ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Identity</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Registrar -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="field-wrapper">
-                        <label class="form-label" for="registrarInput">Registrar</label>
-                        <input
-                          type="text"
-                          class="form-control suggestion-input"
-                          id="registrarInput"
-                          placeholder="Search registrar..."
-                          autocomplete="off"
-                        />
-                        <input type="hidden" id="registrarId" name="registrar_id" />
-                        <div id="registrarSuggestions" class="suggestions"></div>
+                      <!-- Patient -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="patientInput">
+                            Patient <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control suggestion-input"
+                            id="patientInput"
+                            placeholder="Search patient..."
+                            autocomplete="off"
+                          />
+                          <input type="hidden" id="patientId" name="patient_id" />
+                          <div id="patientSuggestions" class="suggestions"></div>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Registration Type -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="registrationTypeSelect">
-                          Registration Type
-                        </label>
-                        <select
-                          class="form-control"
-                          id="registrationTypeSelect"
-                          name="registration_type_id"
-                        ></select>
+                      <!-- Registrar -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="registrarInput">
+                            Registrar
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control suggestion-input"
+                            id="registrarInput"
+                            placeholder="Search registrar..."
+                            autocomplete="off"
+                          />
+                          <input type="hidden" id="registrarId" name="registrar_id" />
+                          <div id="registrarSuggestions" class="suggestions"></div>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Registration Method (REQUIRED) -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="registrationMethod">
-                          Method <span class="text-danger">*</span>
-                        </label>
-                        <select
-                          class="form-control"
-                          id="registrationMethod"
-                          name="registration_method"
-                        >
-                          <option value="">-- Select Method --</option>
-                          <option value="walk_in">Walk-in</option>
-                          <option value="appointment">Appointment</option>
-                          <option value="referral">Referral</option>
-                          <option value="transfer">Transfer</option>
-                        </select>
+                      <!-- Registration Type -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="registrationTypeSelect">
+                            Registration Type
+                          </label>
+                          <select
+                            class="form-control"
+                            id="registrationTypeSelect"
+                            name="registration_type_id"
+                          >
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Patient Category (REQUIRED) -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="patientCategory">
-                          Category <span class="text-danger">*</span>
-                        </label>
-                        <select
-                          class="form-control"
-                          id="patientCategory"
-                          name="patient_category"
-                        >
-                          <option value="">-- Select Category --</option>
-                          <option value="general">General</option>
-                          <option value="insured">Insured</option>
-                          <option value="vip">VIP</option>
-                          <option value="staff">Staff</option>
-                          <option value="charity">Charity</option>
-                        </select>
+                      <!-- ================= Registration Details ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Registration Details</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                    <!-- Visit Reason -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="visitReason">Visit Reason</label>
-                        <input
-                          type="text"
-                          class="form-control"
-                          id="visitReason"
-                          name="visit_reason"
-                          placeholder="Enter reason for visit"
-                        />
+                      <!-- Registration Method -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="registrationMethod">
+                            Method <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="registrationMethod"
+                            name="registration_method"
+                          >
+                            <option value="">-- Select Method --</option>
+                            <option value="walk_in">Walk-in</option>
+                            <option value="appointment">Appointment</option>
+                            <option value="referral">Referral</option>
+                            <option value="transfer">Transfer</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Source -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="registrationSource">Source</label>
-                        <input
-                          type="text"
-                          class="form-control"
-                          id="registrationSource"
-                          name="registration_source"
-                        />
+                      <!-- Patient Category -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="patientCategory">
+                            Category <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="patientCategory"
+                            name="patient_category"
+                          >
+                            <option value="">-- Select Category --</option>
+                            <option value="general">General</option>
+                            <option value="insured">Insured</option>
+                            <option value="vip">VIP</option>
+                            <option value="staff">Staff</option>
+                            <option value="charity">Charity</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Emergency -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="form-check mt-4">
-                        <input
-                          class="form-check-input"
-                          type="checkbox"
-                          id="isEmergency"
-                          name="is_emergency"
-                        />
-                        <label class="form-check-label" for="isEmergency">
-                          Emergency Case
-                        </label>
+                      <!-- Visit Reason -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="visitReason">
+                            Visit Reason
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="visitReason"
+                            name="visit_reason"
+                            placeholder="Enter reason for visit"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Notes -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3">
-                        <label class="form-label" for="notes">Notes</label>
-                        <textarea
-                          class="form-control"
-                          id="notes"
-                          name="notes"
-                          rows="2"
-                        ></textarea>
+                      <!-- Source -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="registrationSource">
+                            Source
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="registrationSource"
+                            name="registration_source"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Organization (superadmin only via JS) -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="organizationSelect">
-                          Organization
-                        </label>
-                        <select
-                          class="form-control"
-                          id="organizationSelect"
-                          name="organization_id"
-                        ></select>
+                      <!-- Emergency -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="form-check mt-4">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="isEmergency"
+                            name="is_emergency"
+                          />
+                          <label class="form-check-label" for="isEmergency">
+                            Emergency Case
+                          </label>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Facility -->
-                    <div class="col-lg-3 col-sm-6">
-                      <div class="mb-3 form-group">
-                        <label class="form-label" for="facilitySelect">Facility</label>
-                        <select
-                          class="form-control"
-                          id="facilitySelect"
-                          name="facility_id"
-                        ></select>
+                      <!-- Notes -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="notes">
+                            Notes
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="notes"
+                            name="notes"
+                            rows="2"
+                          ></textarea>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Buttons -->
-                    <div class="col-sm-12">
-                      <div class="d-flex gap-2 justify-content-end">
-                        <button
-                          type="button"
-                          id="cancelBtn"
-                          class="btn btn-outline-secondary"
-                        >
-                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                        </button>
-                        <button
-                          type="reset"
-                          id="clearBtn"
-                          class="btn btn-warning"
-                        >
-                          <i class="ri-refresh-line me-1"></i> Clear
-                        </button>
-                        <button
-                          type="submit"
-                          class="btn btn-primary"
-                        >
-                          <i class="ri-save-3-line me-1"></i> Submit
-                        </button>
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
                       </div>
-                    </div>
 
-                  </div>
-                </form>
-              </div>
-              <!-- /formContainer -->
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">
+                            Organization
+                          </label>
+                          <select
+                            class="form-control"
+                            id="organizationSelect"
+                            name="organization_id"
+                          >
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">
+                            Facility <span class="text-muted">(optional)</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="facilitySelect"
+                            name="facility_id"
+                          >
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- ================= Actions ================= -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-outline-secondary"
+                          >
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
+                          </button>
+                          <button
+                            type="reset"
+                            id="clearBtn"
+                            class="btn btn-warning"
+                          >
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
+                          </button>
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                          >
+                            <i class="ri-save-3-line me-1"></i>
+                            Submit Registration
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </form>
+                </div>
+                <!-- /formContainer -->
 
               </div>
             </div>
@@ -263,7 +306,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <!-- JS -->

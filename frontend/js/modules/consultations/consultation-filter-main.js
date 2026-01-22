@@ -323,16 +323,18 @@ export async function initConsultationModule() {
     "consultationFilterVisible"
   );
 
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      filterPatient.value = selected?.label || "";
-    },
-    "label"
-  );
+    setupSuggestionInputDynamic(
+      filterPatient,
+      filterPatientSuggestions,
+      "/api/lite/patients",
+      (selected) => {
+        filterPatientHidden.value = selected?.id || "";
+        filterPatient.value = selected?.label || "";
+        loadEntries(1); // ✅ IMMEDIATE SEARCH
+      },
+      "label"
+    );
+
 
   if (userRole.includes("super")) {
     setupSuggestionInputDynamic(
@@ -342,6 +344,7 @@ export async function initConsultationModule() {
       (selected) => {
         filterDoctorHidden.value = selected?.id || "";
         filterDoctor.value = selected?.full_name || "";
+        loadEntries(1); // ✅ IMMEDIATE SEARCH
       },
       "full_name"
     );
