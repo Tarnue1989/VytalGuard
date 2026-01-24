@@ -7,14 +7,14 @@ import {
   createVital,
   updateVital,
   deleteVital,
-  toggleVitalStatus,
   startVital,
-  finalizeVital,
+  completeVital,
   verifyVital,
+  finalizeVital,
+  cancelVital,
   voidVital,
 } from "../controllers/vitalController.js";
 import { verifyAuth } from "../middleware/verifyAuth.js";
-
 
 const router = Router();
 
@@ -24,30 +24,29 @@ const UUIDv4 =
 
 /* ============================================================
    📌 VITAL ROUTES
-   ============================================================ */
+============================================================ */
 
 // 🔍 List & Lookup
-router.get("/", verifyAuth,  getAllVitals);
-router.get("/lite", verifyAuth,  getAllVitalsLite);
-router.get(`/:id(${UUIDv4})`, verifyAuth,  getVitalById);
+router.get("/", verifyAuth, getAllVitals);
+router.get("/lite", verifyAuth, getAllVitalsLite);
+router.get(`/:id(${UUIDv4})`, verifyAuth, getVitalById);
 
 // ➕ Create / ✏️ Update / 🗑️ Delete
-router.post("/", verifyAuth,  createVital);
-router.put(`/:id(${UUIDv4})`, verifyAuth,  updateVital);
-router.delete(`/:id(${UUIDv4})`, verifyAuth,  deleteVital);
-
-// 🔄 Toggle Active/Inactive
-router.patch(`/:id(${UUIDv4})/toggle-status`, verifyAuth,  toggleVitalStatus);
+router.post("/", verifyAuth, createVital);
+router.put(`/:id(${UUIDv4})`, verifyAuth, updateVital);
+router.delete(`/:id(${UUIDv4})`, verifyAuth, deleteVital);
 
 /* ============================================================
-   📌 LIFECYCLE ROUTES
-   ============================================================ */
-router.patch(`/:id(${UUIDv4})/start`, verifyAuth,  startVital);
-router.patch(`/:id(${UUIDv4})/finalize`, verifyAuth,  finalizeVital);
-router.patch(`/:id(${UUIDv4})/verify`, verifyAuth,  verifyVital);
-router.patch(`/:id(${UUIDv4})/void`, verifyAuth,  voidVital);
+   🔄 LIFECYCLE ROUTES (EXPLICIT STATE MACHINE)
+============================================================ */
+router.patch(`/:id(${UUIDv4})/start`, verifyAuth, startVital);
+router.patch(`/:id(${UUIDv4})/complete`, verifyAuth, completeVital);
+router.patch(`/:id(${UUIDv4})/verify`, verifyAuth, verifyVital);
+router.patch(`/:id(${UUIDv4})/finalize`, verifyAuth, finalizeVital);
+router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth, cancelVital);
+router.patch(`/:id(${UUIDv4})/void`, verifyAuth, voidVital);
 
 /* ============================================================
    ✅ EXPORT
-   ============================================================ */
+============================================================ */
 export default router;

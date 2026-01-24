@@ -1,8 +1,12 @@
-// 📦 vital-filter-main.js – Enterprise Filter + Table/Card (MASTER PATTERN)
+// 📦 vital-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🧭 Mirrors department-filter-main.js exactly
-// 🔹 Role-aware filters, pagination, export, field visibility
-// 🔹 Non-breaking: preserves all IDs, HTML, and behavior
+// 🧭 FULL PARITY WITH ekg-record-filter-main.js (HTML-AWARE)
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (SINGLE FIELD, NEVER DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Vital status fully wired
+// 🔹 DOM-safe suggestion inputs
+// 🔹 PRESERVES ALL EXISTING API CALLS (/api/vitals)
 // ============================================================================
 
 import {
@@ -10,64 +14,75 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  setupSuggestionInputDynamic,
   setupSelectOptions,
+  setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./vital-render.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./vital-render.js";
+
 import { setupActionHandlers } from "./vital-actions.js";
+
 import {
   FIELD_ORDER_VITAL,
   FIELD_DEFAULTS_VITAL,
 } from "./vital-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Role Context
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("vitalView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
-
 let visibleFields = setupVisibleFields({
   moduleKey: "vital",
   userRole,
@@ -75,11 +90,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_VITAL,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -87,92 +105,111 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM (HTML-AWARE)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
+const qs = (id) => document.getElementById(id);
 
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
+const globalSearch = qs("globalSearch"); // may be null (HTML-safe)
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus = qs("filterStatus");
+const dateRange = qs("dateRange");
 
-const filterNurse = document.getElementById("filterNurse");
-const filterNurseHidden = document.getElementById("filterNurseId");
-const filterNurseSuggestions = document.getElementById("filterNurseSuggestions");
+const filterPatient = qs("filterPatient");
+const filterPatientId = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-const filterSearch = document.getElementById("filterSearch");
-
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const filterNurse = qs("filterNurse");
+const filterNurseId = qs("filterNurseId");
+const filterNurseSuggestions = qs("filterNurseSuggestions");
 
 /* ============================================================
-   🌍 View + Pagination State
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("vitalView") || "table";
-
-const getPagination = initPaginationControl("vital", loadEntries, 25);
+window.setVitalSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadVitalPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filters
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "vital",
+  loadEntries,
+  Number(localStorage.getItem("vitalPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+if (globalSearch) setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch || null,
+  selectInputs: [filterOrg, filterFacility, filterStatus],
+  dateRangeInput: dateRange || null,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    nurse_id: filterNurseHidden?.value || "",
-    status: filterStatus?.value || "",
-    q: filterSearch?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    patient_id: filterPatientId?.value,
+    nurse_id: filterNurseId?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Vitals
+   📦 LOAD DATA
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from)
-      q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to)
-      q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_VITAL.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    const res = await authFetch(`/api/vitals?${q.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-    const res = await authFetch(`/api/vitals?${q.toString()}`);
-    const result = await res.json().catch(() => ({}));
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
-
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "VITALS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -185,16 +222,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length)
-      showToast("ℹ️ No vitals found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load vitals");
   } finally {
     hideLoading();
@@ -202,80 +236,63 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("vitalView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("tableViewBtn")?.classList.add("active");
-  document.getElementById("cardViewBtn")?.classList.remove("active");
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("vitalView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("cardViewBtn")?.classList.add("active");
-  document.getElementById("tableViewBtn")?.classList.remove("active");
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
-    filterPatient,
-    filterNurse,
+    globalSearch,
+    filterOrg,
+    filterFacility,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-    filterSearch,
+    dateRange,
   ].forEach((el) => el && (el.value = ""));
 
-  if (filterPatientHidden) filterPatientHidden.value = "";
-  if (filterNurseHidden) filterNurseHidden.value = "";
+  if (filterPatient) filterPatient.value = "";
+  if (filterPatientId) filterPatientId.value = "";
+  if (filterNurse) filterNurse.value = "";
+  if (filterNurseId) filterNurseId.value = "";
 
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   ⬇️ Export Tools
+   📤 EXPORT (MASTER)
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `vitals_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportExcelBtn")?.addEventListener("click", () => {
+  const mapped = mapDataForExport(entries, visibleFields);
+  exportToExcel(
+    mapped,
+    `vitals_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#vitalList";
-    exportToPDF("Vital List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  const target = viewMode === "table" ? ".table-container" : "#vitalList";
+  exportToPDF("Vitals", target, "portrait", true);
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initVitalModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible =
-    localStorage.getItem("vitalFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -284,94 +301,76 @@ export async function initVitalModule() {
     "vitalFilterVisible"
   );
 
-  /* ---------------- Patient & Nurse Suggestions ---------------- */
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      if (selected)
-        filterPatient.value =
-          selected.label ||
-          (selected.pat_no && selected.full_name
-            ? `${selected.pat_no} - ${selected.full_name}`
-            : selected.full_name || selected.pat_no || "");
-    },
-    "label"
-  );
+  /* ========= PATIENT SUGGESTION ========= */
+  if (filterPatient && filterPatientSuggestions && filterPatientId) {
+    setupSuggestionInputDynamic(
+      filterPatient,
+      filterPatientSuggestions,
+      "/api/lite/patients",
+      (selected) => {
+        filterPatientId.value = selected?.id || "";
+        filterPatient.value = selected?.label || "";
+        loadEntries(1);
+      },
+      "label"
+    );
 
-  setupSuggestionInputDynamic(
-    filterNurse,
-    filterNurseSuggestions,
-    "/api/lite/employees",
-    (selected) => {
-      filterNurseHidden.value = selected?.id || "";
-      if (selected)
-        filterNurse.value =
-          selected.full_name ||
-          `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
-    },
-    "full_name"
-  );
+    filterPatient.addEventListener("input", () => {
+      if (!filterPatient.value.trim()) {
+        filterPatientId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
 
-  /* ---------------- Org / Facility ---------------- */
-  try {
+  /* ========= NURSE SUGGESTION (MASTER PARITY) ========= */
+  if (filterNurse && filterNurseSuggestions && filterNurseId) {
+    setupSuggestionInputDynamic(
+      filterNurse,
+      filterNurseSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterNurseId.value = selected?.id || "";
+        filterNurse.value = selected?.full_name || "";
+        loadEntries(1); // ✅ immediate filter
+      },
+      "full_name" // ✅ REQUIRED (same as doctor / technician)
+    );
+
+    filterNurse.addEventListener("input", () => {
+      if (!filterNurse.value.trim()) {
+        filterNurseId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
+
+  /* ========= ORG / FACILITY ========= */
+  if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      let facs = await loadFacilitiesLite();
+    const reloadFacilities = async (orgId = null) => {
+      if (!filterFacility) return;
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-      filterOrg?.addEventListener("change", async () => {
-        const orgId = filterOrg.value;
-        let facilities = orgId
-          ? await loadFacilitiesLite({ organization_id: orgId })
-          : await loadFacilitiesLite();
-        facilities.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facilities, "id", "name");
-      });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-
-      const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-      setupSelectOptions(
-        filterOrg,
-        scopedOrg ? [scopedOrg] : [],
-        "id",
-        "name"
-      );
-      filterOrg.disabled = true;
-      filterOrg.value = scopedOrgId || "";
-
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(filterFacility, facilities, "id", "name");
-
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-  } catch (err) {
-    console.error("❌ preload org/facility failed:", err);
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initVitalModule().catch((err) =>
-    console.error("initVitalModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initVitalModule)
+  : initVitalModule();

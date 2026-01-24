@@ -252,6 +252,22 @@ async function loadEntries(page = 1) {
     hideLoading();
   }
 }
+/* ============================================================
+   🧭 VIEW TOGGLE
+============================================================ */
+qs("tableViewBtn").onclick = () => {
+  viewMode = "table";
+  localStorage.setItem("centralStockView", "table");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("centralStockView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
 
 /* ============================================================
    🔄 RESET FILTERS (FULL + SAFE)

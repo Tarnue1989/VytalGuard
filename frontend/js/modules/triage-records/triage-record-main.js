@@ -1,34 +1,37 @@
-// 📦 triage-record-main.js – Form-only loader for Triage Record (Enterprise-Aligned)
+// 📦 triage-record-main.js – Form-only Loader for Triage Record (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🧭 Master Pattern: vital-main.js
-// 🔹 Enterprise-aligned structure: unified form visibility, reset, auth guard,
-//   role normalization, and field selector setup.
-// 🔹 All original Triage Record HTML IDs are preserved exactly.
+// 🧭 Mirrors vital-main.js / ekg-record-main.js / registrationLog-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
 import { setupTriageRecordFormSubmission } from "./triage-record-form.js";
+
 import {
   FIELD_LABELS_TRIAGE_RECORD,
   FIELD_ORDER_TRIAGE_RECORD,
   FIELD_DEFAULTS_TRIAGE_RECORD,
 } from "./triage-record-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Logout Guard
+   🔐 Auth Guard + Shared State (MASTER PARITY)
 ============================================================ */
-// Automatically detects correct permission ("triage_records:create" / "triage_records:edit")
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey(["triage_records:create", "triage_records:edit"])
+);
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -43,18 +46,21 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("triageRecordEditId");
   sessionStorage.removeItem("triageRecordEditPayload");
 
-  // Text/numeric fields
+  // Clear visible inputs
   [
+    "patientInput",
+    "doctorInput",
+    "nurseInput",
     "bp",
     "pulse",
     "rr",
@@ -68,15 +74,12 @@ function resetForm() {
     "symptoms",
     "triageNotes",
     "recordedAt",
-    "patientInput",
-    "doctorInput",
-    "nurseInput",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Dropdowns
+  // Clear dropdowns
   [
     "organizationSelect",
     "facilitySelect",
@@ -87,18 +90,24 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Hidden IDs
+  // Clear hidden IDs
   ["patientId", "doctorId", "nurseId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset state
-  console.info("🧹 [Triage Record] Form reset complete");
+  // Reset UI labels
+  const titleEl = document.querySelector(".card-title");
+  if (titleEl) titleEl.textContent = "Add Triage Record";
+
+  const submitBtn = form?.querySelector("button[type=submit]");
+  if (submitBtn)
+    submitBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Triage Record`;
 }
 
 /* ============================================================
-   🧭 Form Visibility Controls
+   🧭 Form Show / Hide (MASTER PARITY)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -113,16 +122,15 @@ function hideForm() {
   localStorage.setItem("triageRecordFormVisible", "false");
 }
 
-// Expose globally for reuse
+// 🔗 Expose globally (actions / parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Triage Record] Cancel clicked → back to list");
     resetForm();
     window.location.href = "/triage-records-list.html";
   };
@@ -132,7 +140,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Triage Record] Switching to Add mode");
     sessionStorage.removeItem("triageRecordEditId");
     sessionStorage.removeItem("triageRecordEditPayload");
     resetForm();
@@ -141,22 +148,18 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   🧠 No-op Loader (handled by list page)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initTriageRecordModule() {
-  // Restore form visibility preference
-  const visible = localStorage.getItem("triageRecordFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  showForm(); // form-only mode
 
-  // Initialize form submission
   if (form) {
     setupTriageRecordFormSubmission({
       form,
@@ -167,10 +170,9 @@ export async function initTriageRecordModule() {
     });
   }
 
-  // Hide list panel on standalone form
   localStorage.setItem("triageRecordPanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  // Normalize role (MASTER PARITY)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -178,7 +180,6 @@ export async function initTriageRecordModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
   setupFieldSelector({
     module: "triage_records",
     fieldLabels: FIELD_LABELS_TRIAGE_RECORD,
@@ -187,13 +188,11 @@ export async function initTriageRecordModule() {
       FIELD_DEFAULTS_TRIAGE_RECORD[role] ||
       FIELD_DEFAULTS_TRIAGE_RECORD.staff,
   });
-
-  console.info(`✅ [Triage Record] Module initialized (role: ${role})`);
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for future reactive linkages
+  // reserved for future reactive syncing
 }

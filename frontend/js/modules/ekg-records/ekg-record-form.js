@@ -1,14 +1,30 @@
-// 📦 ekg-record-form.js – Secure + Role-Aware EKG Record Form (Master Pattern)
+// 📦 ekg-record-form.js – Secure & Role-Aware EKG Record Form (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🔹 Rule-driven validation (EKG_RECORD_FORM_RULES)
+// 🔹 Role-aware org / facility handling
+// 🔹 Suggestion inputs (patient / technician)
+// 🔹 Add + Edit parity
+// 🔹 Controller-faithful (no silent mapping)
+// 🔹 FULL parity with registrationLog-form.js + centralstock-form.js
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -17,327 +33,349 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import {
+  resolveUserRole,
+  getOrganizationId,
+  getFacilityId,
+} from "../../utils/roleResolver.js";
+
+import { EKG_RECORD_FORM_RULES } from "./ekg-record.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 HELPERS
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const qs = (id) => document.getElementById(id);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
+const normalizeUUID = (v) =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
 
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-
-function normalizeDate(val) {
+const normalizeDate = (val) => {
   if (!val) return null;
   const d = new Date(val);
-  if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/* ============================================================
+   🛡️ RULE VALIDATION (CENTRAL STOCK PARITY)
+============================================================ */
+function validateUsingRules(form) {
+  const errors = [];
+
+  for (const rule of EKG_RECORD_FORM_RULES) {
+    if (typeof rule.when === "function" && !rule.when()) continue;
+
+    const el =
+      document.getElementById(rule.id) ||
+      form.querySelector(`[name="${rule.id}"]`);
+
+    if (!el) continue;
+
+    let value;
+    if (el.type === "checkbox") value = el.checked;
+    else if (el.type === "radio")
+      value = document.querySelector(`input[name="${el.name}"]:checked`);
+    else value = el.value;
+
+    if (
+      value === null ||
+      value === undefined ||
+      value === "" ||
+      value === false
+    ) {
+      errors.push({ field: rule.id, message: rule.message });
+    }
+  }
+
+  return errors;
 }
 
 /* ============================================================
-   🚀 Main Form Setup
+   🚀 MAIN SETUP
 ============================================================ */
 export async function setupEKGRecordFormSubmission({ form }) {
-  // 🔐 Auth Guard + Logout Watcher
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(
+    autoPagePermissionKey(["ekg_records:create", "ekg_records:edit"])
+  );
   initLogoutWatcher();
+  enableLiveValidation(form);
 
   const sessionId = sessionStorage.getItem("ekgRecordEditId");
-  const queryId = getQueryParam("id");
+  const payload = sessionStorage.getItem("ekgRecordEditPayload");
+  const queryId = new URLSearchParams(window.location.search).get("id");
+
   const ekgId = sessionId || queryId;
-  const isEdit = !!ekgId;
+  const isEdit = Boolean(ekgId || payload);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
+  const cancelBtn = qs("cancelBtn");
+  const clearBtn = qs("clearBtn");
 
-  function setAddModeUI() {
-    if (titleEl) titleEl.textContent = "Add EKG Record";
+  const setUI = (edit) => {
+    if (titleEl)
+      titleEl.textContent = edit ? "Update EKG Record" : "Add EKG Record";
     if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit`;
-  }
-  function setEditModeUI() {
-    if (titleEl) titleEl.textContent = "Edit EKG Record";
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Record`;
-  }
-  isEdit ? setEditModeUI() : setAddModeUI();
+      submitBtn.innerHTML = edit
+        ? `<i class="ri-save-3-line me-1"></i> Update`
+        : `<i class="ri-add-line me-1"></i> Submit`;
+  };
 
-  // 📋 DOM Refs
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const patientInput = document.getElementById("patientInput");
-  const patientHidden = document.getElementById("patientId");
-  const patientSuggestions = document.getElementById("patientSuggestions");
-  const technicianInput = document.getElementById("technicianInput");
-  const technicianHidden = document.getElementById("technicianId");
-  const technicianSuggestions = document.getElementById("technicianSuggestions");
-  const registrationLogSelect = document.getElementById("registrationLogSelect");
-  const consultationSelect = document.getElementById("consultationSelect");
-  const billableSelect = document.getElementById("billableItemSelect");
+  setUI(isEdit);
+
+  /* ================= DOM ================= */
+  const orgSelect = qs("organizationSelect");
+  const facSelect = qs("facilitySelect");
+  const billableSelect = qs("billableItemSelect");
+
+  const patientInput = qs("patientInput");
+  const patientId = qs("patientId");
+  const patientSuggestions = qs("patientSuggestions");
+
+  const technicianInput = qs("technicianInput");
+  const technicianId = qs("technicianId");
+  const technicianSuggestions = qs("technicianSuggestions");
+
+  const registrationLogSelect = qs("registrationLogSelect");
+  const consultationSelect = qs("consultationSelect");
+
+  /* ================= ROLE ================= */
+  const role = resolveUserRole();
+  const isSuper = role === "superadmin";
+  const isOrgAdmin = role === "organization_admin" || role === "admin";
+
+  /* ================= VISIBILITY HELPERS ================= */
+  const showOrg = () =>
+    orgSelect?.closest(".form-group")?.classList.remove("hidden");
+  const hideOrg = () =>
+    orgSelect?.closest(".form-group")?.classList.add("hidden");
+
+  const showFac = () =>
+    facSelect?.closest(".form-group")?.classList.remove("hidden");
+  const hideFac = () =>
+    facSelect?.closest(".form-group")?.classList.add("hidden");
 
   /* ============================================================
-     📡 Helper → Load Registration Logs for Patient
-  ============================================================ */
-  async function reloadRegistrationLogs(patientId, preselectId = null) {
-    if (!patientId) {
-      setupSelectOptions(registrationLogSelect, [], "id", "label", "-- Select Registration Log --");
-      return;
-    }
-    try {
-      const res = await authFetch(`/api/lite/registration-logs?patient_id=${patientId}&status=active`);
-      const regLogs = await res.json();
-      const logs = regLogs?.data?.records || regLogs?.data || [];
-      const logOptions = logs.map((l) => {
-        const d = l.registration_time ? new Date(l.registration_time) : null;
-        const dateLabel = d
-          ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-          : "";
-        return {
-          id: l.id,
-          label: [l.patient || "", dateLabel].filter(Boolean).join(" | "),
-        };
-      });
-      setupSelectOptions(registrationLogSelect, logOptions, "id", "label", "-- Select Registration Log --");
-      if (preselectId) registrationLogSelect.value = preselectId;
-    } catch (err) {
-      console.error("❌ Failed to load registration logs:", err);
-      setupSelectOptions(registrationLogSelect, [], "id", "label", "-- Select Registration Log --");
-    }
-  }
-
-  /* ============================================================
-     🧭 Prefill Dropdowns (Role-Aware)
+     🌐 DROPDOWNS & SUGGESTIONS
   ============================================================ */
   try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
-    if (userRole.includes("super")) {
-      // 🏢 Super Admin → can select any org/facility
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      // 🧑‍💼 Admin → facility only (org auto, hidden)
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else if (userRole.includes("facilityhead")) {
-      // 👨‍🏫 Facility Head → both hidden
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
-    } else if (userRole.includes("orgowner")) {
-      // 🏛 Org Owner → both hidden
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
+    if (isSuper) {
+      showOrg();
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
     } else {
-      // 👨‍⚕️ Doctor, nurse, staff → both hidden
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
+      hideOrg();
     }
 
-    // 👩‍⚕️ Patient suggestions
+    if (isSuper || isOrgAdmin) {
+      showFac();
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite(
+          { organization_id: getOrganizationId() },
+          true
+        ),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+      if (getFacilityId()) facSelect.value = getFacilityId();
+    } else {
+      hideFac();
+    }
+
+    setupSelectOptions(
+      billableSelect,
+      await loadBillableItemsLite({ category: "ekg" }, true),
+      "id",
+      "name",
+      "-- Select EKG Item --"
+    );
+
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
       "/api/lite/patients",
       (selected) => {
-        patientHidden.value = selected?.id || "";
-        if (selected) {
-          patientInput.value =
-            selected.label ||
-            (selected.pat_no && selected.full_name
-              ? `${selected.pat_no} - ${selected.full_name}`
-              : selected.full_name || selected.pat_no || "");
-        }
-        reloadRegistrationLogs(patientHidden.value);
+        patientId.value = selected?.id || "";
+        patientInput.value = selected?.label || "";
       },
       "label"
     );
 
-    // 🧑‍🔬 Technician suggestions
+
     setupSuggestionInputDynamic(
       technicianInput,
       technicianSuggestions,
       "/api/lite/employees",
-      (selected) => {
-        technicianHidden.value = selected?.id || "";
-        if (selected)
-          technicianInput.value =
-            selected.full_name ||
-            `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
-      },
-      "full_name"
+      (t) => {
+        technicianId.value = t?.id || "";
+        technicianInput.value = t?.full_name || "";
+      }
     );
-
-    // 💓 Billable EKG items
-    const ekgItems = await loadBillableItemsLite({ category: "ekg" }, true);
-    setupSelectOptions(billableSelect, ekgItems, "id", "name", "-- Select EKG Item --");
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
-
   /* ============================================================
-     ✏️ Prefill if Editing
+    ✏️ PREFILL (EDIT MODE)
   ============================================================ */
-  if (isEdit && ekgId) {
+  if (isEdit) {
     try {
       showLoading();
-      const raw = sessionStorage.getItem("ekgRecordEditPayload");
-      let entry = raw ? JSON.parse(raw) : null;
 
-      if (!entry) {
-        const res = await authFetch(`/api/ekg-records/${ekgId}`);
-        const result = await res.json();
-        entry = result?.data;
-        if (!res.ok || !entry)
-          throw new Error(normalizeMessage(result, "❌ Failed to load EKG record"));
-      }
+      let entry =
+        JSON.parse(
+          sessionStorage.getItem("ekgRecordEditPayload") || "null"
+        ) ||
+        (await (await authFetch(`/api/ekg-records/${ekgId}`)).json()).data;
 
-      // 🔁 Fill inputs
-      document.getElementById("recordedDate").value = entry.recorded_date ? normalizeDate(entry.recorded_date) : "";
-      document.getElementById("heartRate").value = entry.heart_rate || "";
-      document.getElementById("prInterval").value = entry.pr_interval || "";
-      document.getElementById("qrsDuration").value = entry.qrs_duration || "";
-      document.getElementById("qtInterval").value = entry.qt_interval || "";
-      document.getElementById("axis").value = entry.axis || "";
-      document.getElementById("rhythm").value = entry.rhythm || "";
-      document.getElementById("interpretation").value = entry.interpretation || "";
-      document.getElementById("recommendation").value = entry.recommendation || "";
-      document.getElementById("note").value = entry.note || "";
+      if (!entry) throw new Error("EKG Record not found");
 
-      if (entry.organization_id && orgSelect) orgSelect.value = entry.organization_id;
-      if (entry.facility_id && facSelect) facSelect.value = entry.facility_id;
-      if (entry.billable_item_id) billableSelect.value = entry.billable_item_id;
-      if (entry.registration_log_id) await reloadRegistrationLogs(entry.patient_id, entry.registration_log_id);
+      /* ---------- Patient ---------- */
+      patientId.value = entry.patient_id || "";
 
       if (entry.patient) {
-        patientHidden.value = entry.patient.id;
-        patientInput.value =
+        const name =
           entry.patient.label ||
-          `${entry.patient.pat_no || ""} ${entry.patient.full_name || ""}`.trim();
-      }
-      if (entry.technician) {
-        technicianHidden.value = entry.technician.id;
-        technicianInput.value =
-          entry.technician.full_name ||
-          `${entry.technician.first_name || ""} ${entry.technician.last_name || ""}`.trim();
+          `${entry.patient.first_name} ${entry.patient.last_name}`;
+
+        const patNo = entry.patient.pat_no
+          ? ` (${entry.patient.pat_no})`
+          : "";
+
+        patientInput.value = `${name}${patNo}`;
+      } else {
+        patientInput.value = "";
       }
 
-      setEditModeUI();
+      /* ---------- Technician ---------- */
+      technicianId.value = entry.technician_id || "";
+      technicianInput.value = entry.technician?.label || "";
+
+      /* ---------- Core Fields ---------- */
+      qs("recordedDate").value = normalizeDate(entry.recorded_date);
+      qs("heartRate").value = entry.heart_rate ?? "";
+      qs("prInterval").value = entry.pr_interval ?? "";
+      qs("qrsDuration").value = entry.qrs_duration ?? "";
+      qs("qtInterval").value = entry.qt_interval ?? "";
+      qs("axis").value = entry.axis ?? "";
+      qs("rhythm").value = entry.rhythm ?? "";
+      qs("interpretation").value = entry.interpretation ?? "";
+      qs("recommendation").value = entry.recommendation ?? "";
+      qs("note").value = entry.note ?? "";
+      qs("isEmergency").checked = !!entry.is_emergency;
+
+      /* ---------- Tenant ---------- */
+      if (isSuper && entry.organization_id) {
+        orgSelect.value = entry.organization_id;
+      }
+
+      if ((isSuper || isOrgAdmin) && entry.facility_id) {
+        facSelect.value = entry.facility_id;
+      }
+
+      /* ---------- Billing ---------- */
+      if (entry.billable_item_id) {
+        billableSelect.value = entry.billable_item_id;
+      }
+
+      setUI(true);
     } catch (err) {
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load EKG record");
+      console.error(err);
+      showToast("❌ Failed to load EKG record");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+    🛡️ SUBMIT (CENTRAL-STOCK VALIDATION PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const ruleErrors = validateUsingRules(form);
+    if (ruleErrors.length) {
+      applyServerErrors(form, ruleErrors);
+      return showToast("❌ Fix highlighted fields");
+    }
 
     const payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      technician_id: normalizeUUID(technicianHidden.value),
-      organization_id: normalizeUUID(orgSelect?.value || localStorage.getItem("organizationId")),
-      facility_id: normalizeUUID(facSelect?.value || localStorage.getItem("facilityId")),
-      billable_item_id: normalizeUUID(billableSelect?.value),
+      organization_id: isSuper ? normalizeUUID(orgSelect.value) : null,
+      facility_id: normalizeUUID(facSelect.value),
+      patient_id: normalizeUUID(patientId.value),
+      technician_id: normalizeUUID(technicianId.value),
+      billable_item_id: normalizeUUID(billableSelect.value),
       registration_log_id: normalizeUUID(registrationLogSelect?.value),
       consultation_id: normalizeUUID(consultationSelect?.value),
-      recorded_date: document.getElementById("recordedDate")?.value || null,
-      heart_rate: document.getElementById("heartRate")?.value || null,
-      pr_interval: document.getElementById("prInterval")?.value || null,
-      qrs_duration: document.getElementById("qrsDuration")?.value || null,
-      qt_interval: document.getElementById("qtInterval")?.value || null,
-      axis: document.getElementById("axis")?.value || null,
-      rhythm: document.getElementById("rhythm")?.value || null,
-      interpretation: document.getElementById("interpretation")?.value || null,
-      recommendation: document.getElementById("recommendation")?.value || null,
-      note: document.getElementById("note")?.value || null,
-      is_emergency: document.getElementById("isEmergency")?.checked || false,
+      recorded_date: qs("recordedDate").value,
+      heart_rate: qs("heartRate").value || null,
+      pr_interval: qs("prInterval").value || null,
+      qrs_duration: qs("qrsDuration").value || null,
+      qt_interval: qs("qtInterval").value || null,
+      axis: qs("axis").value || null,
+      rhythm: qs("rhythm").value || null,
+      interpretation: qs("interpretation").value || null,
+      recommendation: qs("recommendation").value || null,
+      note: qs("note").value || null,
+      is_emergency: qs("isEmergency").checked,
     };
-
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.billable_item_id) return showToast("❌ Billable Item is required");
-    if (!payload.recorded_date) return showToast("❌ Recorded Date is required");
-
-    const url = isEdit ? `/api/ekg-records/${ekgId}` : `/api/ekg-records`;
-    const method = isEdit ? "PUT" : "POST";
 
     try {
       showLoading();
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
 
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+      const res = await authFetch(
+        isEdit ? `/api/ekg-records/${ekgId}` : `/api/ekg-records`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!res.ok) throw new Error("Submission failed");
+
+      showToast(isEdit ? "✅ Updated" : "✅ Created");
 
       if (isEdit) {
-        showToast("✅ EKG Record updated successfully");
-        sessionStorage.removeItem("ekgRecordEditId");
-        sessionStorage.removeItem("ekgRecordEditPayload");
+        // EDIT → go back to list
+        sessionStorage.clear();
         window.location.href = "/ekg-records-list.html";
       } else {
-        showToast("✅ EKG Record created successfully");
+        // CREATE → stay on form (clean state)
+        sessionStorage.removeItem("ekgRecordEditId");
+        sessionStorage.removeItem("ekgRecordEditPayload");
+        clearFormErrors(form);
         form.reset();
-        setupSelectOptions(registrationLogSelect, [], "id", "label", "-- Select Registration Log --");
-        setAddModeUI();
+        patientId.value = "";
+        technicianId.value = "";
+        setUI(false);
       }
     } catch (err) {
-      console.error("❌ Submission error:", err);
-      showToast(err.message || "❌ Submission error");
+      console.error(err);
+      showToast("❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
 
-  /* ============================================================
-     🔙 Cancel / Clear Handlers
-  ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("ekgRecordEditId");
-    sessionStorage.removeItem("ekgRecordEditPayload");
+  cancelBtn?.addEventListener("click", () => {
+    sessionStorage.clear();
     window.location.href = "/ekg-records-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("ekgRecordEditId");
-    sessionStorage.removeItem("ekgRecordEditPayload");
+  clearBtn?.addEventListener("click", () => {
     form.reset();
-    patientHidden.value = "";
-    technicianHidden.value = "";
-    setupSelectOptions(registrationLogSelect, [], "id", "label", "-- Select Registration Log --");
-    setAddModeUI();
+    setUI(false);
   });
 }

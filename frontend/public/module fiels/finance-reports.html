@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Reports | VytalGuard</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard Finance Reports">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- ************* CSS Files ************* -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/css/dashboard-theme.css">
+
+  <!-- ************* Vendor CSS (SAME AS DASHBOARD) ************* -->
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+  <link rel="stylesheet" href="assets/vendor/jquery-ui/jquery-ui.min.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+
+  <!-- Print -->
+  <style>
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading -->
+  <div id="loading-wrapper">
+    <div class="spin-wrapper"><div class="circle"></div><div class="circle"></div></div>
+    <div class="spin-wrapper"><div class="circle"></div><div class="circle"></div></div>
+    <div class="spin-wrapper"><div class="circle"></div><div class="circle"></div></div>
+  </div>
+
+  <!-- Page wrapper -->
+  <div class="page-wrapper">
+
+    <div id="overlay"></div>
+
+    <div class="main-container" style="margin-left:0;">
+
+      <div class="app-container">
+
+        <!-- App header -->
+        <div class="app-header d-flex align-items-center"></div>
+
+        <!-- Hero header -->
+        <div class="app-hero-header d-flex align-items-center no-print">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+              <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+            </li>
+            <li class="breadcrumb-item">Reports</li>
+            <li class="breadcrumb-item text-primary">Finance</li>
+          </ol>
+
+          <!-- DATE RANGE + APPLY (CORRECT ORDER) -->
+          <div class="ms-auto d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 mt-2 mt-sm-0">
+            <label class="form-label fw-semibold text-muted mb-0 small">
+              <i class="ri-filter-3-line text-primary me-1"></i>
+              Filter Date Range:
+            </label>
+
+            <div class="input-group input-group-sm" style="max-width:230px;">
+              <span class="input-group-text bg-primary-lighten">
+                <i class="ri-calendar-2-line text-primary"></i>
+              </span>
+              <input
+                type="text"
+                id="financeDateRange"
+                class="form-control custom-daterange"
+                placeholder="Select date range"
+              />
+            </div>
+
+            <!-- Apply AFTER date -->
+            <button
+              id="financeApplyBtn"
+              class="btn btn-sm btn-primary d-flex align-items-center"
+            >
+              <i class="ri-check-line me-1"></i>
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <!-- App body -->
+        <div class="app-body">
+
+          <div class="container-fluid" id="financeReportWrapper">
+
+            <!-- Title + Print -->
+            <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+              <h4 class="mb-0">Finance Reports</h4>
+              <button
+                id="financePrintBtn"
+                class="btn btn-sm btn-outline-secondary"
+              >
+                Print
+              </button>
+            </div>
+
+            <!-- Summary -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <strong>Finance Summary</strong>
+              </div>
+              <div class="card-body">
+                <div id="financeSummary" class="row g-3"></div>
+              </div>
+            </div>
+
+            <!-- Revenue by Service -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <strong>Revenue by Service</strong>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Items</th>
+                      <th>Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody id="financeServiceTable"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Payments -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <strong>Payments by Method</strong>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                  <thead>
+                    <tr>
+                      <th>Method</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="financePaymentsTable"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Deposits -->
+            <div class="card mb-3">
+              <div class="card-header">
+                <strong>Deposit Summary</strong>
+              </div>
+              <div class="card-body">
+                <div id="financeDepositSummary"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="app-footer">
+          <span>© VytalGuard HMS 2025</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ************* JavaScript Files ************* -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+
+  <!-- Vendor JS -->
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/jquery-ui/jquery-ui.min.js"></script>
+  <script src="assets/vendor/jquery-ui/custom.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+
+  <!-- Global -->
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Finance entry -->
+  <script type="module" src="/js/modules/reports-finance/finance-reports.js"></script>
+
+</body>
+</html>

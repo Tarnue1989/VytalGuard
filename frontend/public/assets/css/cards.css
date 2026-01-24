@@ -337,6 +337,78 @@
   border-radius:8px;
 }
 
+/* ================= EKG RECORD STATUS ================= */
+.ekg-record-card .entity-status.pending{background:#f59e0b;color:#111}
+.ekg-record-card .entity-status.in_progress{background:#f59e0b;color:#111}
+.ekg-record-card .entity-status.active{background:#198754;color:#fff}
+.ekg-record-card .entity-status.completed{background:#198754;color:#fff}
+.ekg-record-card .entity-status.verified{background:#0dcaf0;color:#111}
+.ekg-record-card .entity-status.finalized{background:#111827;color:#fff}
+.ekg-record-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.ekg-record-card .entity-status.voided,
+.ekg-record-card .entity-status.deleted{background:#dc3545;color:#fff}
+
+
+/* ================= EKG RECORD BODY TUNING ================= */
+.ekg-record-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ================= DELIVERY RECORD STATUS ================= */
+
+.delivery-record-card .entity-status.pending{background:#f59e0b;color:#111}
+.delivery-record-card .entity-status.scheduled{background:#f59e0b;color:#111}
+.delivery-record-card .entity-status.in_progress{background:#f59e0b;color:#111}
+.delivery-record-card .entity-status.active{background:#198754;color:#fff}
+.delivery-record-card .entity-status.completed{background:#198754;color:#fff}
+.delivery-record-card .entity-status.verified{background:#0dcaf0;color:#111}
+.delivery-record-card .entity-status.finalized{background:#111827;color:#fff}
+.delivery-record-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.delivery-record-card .entity-status.voided{background:#dc3545;color:#fff}
+
+/* ================= DELIVERY RECORD BODY TUNING ================= */
+
+.delivery-record-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ============================================================
+   ULTRASOUND RECORD STATUS
+   ============================================================ */
+.ultrasound-record-card .entity-status.pending{background:#f59e0b;color:#111}
+.ultrasound-record-card .entity-status.in_progress{background:#f59e0b;color:#111}
+.ultrasound-record-card .entity-status.active{background:#198754;color:#fff}
+.ultrasound-record-card .entity-status.completed{background:#198754;color:#fff}
+.ultrasound-record-card .entity-status.verified{background:#0dcaf0;color:#111}
+.ultrasound-record-card .entity-status.finalized{background:#111827;color:#fff}
+.ultrasound-record-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.ultrasound-record-card .entity-status.voided{background:#dc3545;color:#fff}
+.ultrasound-record-card .entity-status.deleted{background:#dc3545;color:#fff}
+
+/* ============================================================
+   ULTRASOUND RECORD BODY TUNING
+   ============================================================ */
+.ultrasound-record-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+.scan-type-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #0d6efd;
+  border-radius: 6px;
+  color: #0d6efd;
+  background: transparent;
+  line-height: 1.4;
+}
+
 
 
 

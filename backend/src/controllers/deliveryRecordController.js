@@ -42,14 +42,7 @@ const MODULE_KEY = "delivery_record";
 /* ============================================================
    🔖 STATUS MAP (ENUM-DRIVEN)
 ============================================================ */
-const DS = {
-  SCHEDULED: DELIVERY_STATUS[0],
-  IN_PROGRESS: DELIVERY_STATUS[1],
-  COMPLETED: DELIVERY_STATUS[2],
-  VERIFIED: DELIVERY_STATUS[3],
-  CANCELLED: DELIVERY_STATUS[4],
-  VOIDED: DELIVERY_STATUS[5],
-};
+const DS = DELIVERY_STATUS;
 
 /* ============================================================
    🔗 SHARED INCLUDES
@@ -188,7 +181,7 @@ export const createDeliveryRecord = async (req, res) => {
   }
 };
 /* ============================================================
-   📌 UPDATE DELIVERY RECORD (MASTER-ALIGNED)
+   📌 UPDATE DELIVERY RECORD — MASTER-ALIGNED + LOCKED STATES
 ============================================================ */
 export const updateDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
@@ -202,7 +195,6 @@ export const updateDeliveryRecord = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-
     debug.log("update → incoming body", req.body);
 
     const { value, errors } = validate(
@@ -216,9 +208,7 @@ export const updateDeliveryRecord = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ========================================================
-       🧭 ORG / FACILITY RESOLUTION (MASTER)
-    ======================================================== */
+    /* ================= ORG / FACILITY (MASTER) ================= */
     const { orgId, facilityId } = resolveOrgFacility({
       user: req.user,
       value,
@@ -237,9 +227,18 @@ export const updateDeliveryRecord = async (req, res) => {
       return error(res, "Delivery record not found", null, 404);
     }
 
-    /* ========================================================
-       🔁 DELIVERY TYPE AUTO-REFRESH
-    ======================================================== */
+    /* ================= LOCK FINAL STATES ================= */
+    if ([DS.FINALIZED, DS.VOIDED].includes(record.status)) {
+      await t.rollback();
+      return error(
+        res,
+        "Finalized or voided delivery records cannot be modified",
+        null,
+        400
+      );
+    }
+
+    /* ================= DELIVERY TYPE AUTO-REFRESH ================= */
     if (
       value.billable_item_id &&
       value.billable_item_id !== record.billable_item_id
@@ -283,14 +282,22 @@ export const updateDeliveryRecord = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 START DELIVERY (scheduled → in_progress)
+   📌 START DELIVERY (scheduled → in_progress) — MASTER-ALIGNED
 ============================================================ */
 export const startDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "start",
+      res,
+    });
+    if (!allowed) return;
 
+    const { id } = req.params;
     debug.log("start → request", { id });
 
     const where = { id };
@@ -303,6 +310,17 @@ export const startDeliveryRecord = async (req, res) => {
     if (!record) {
       await t.rollback();
       return error(res, "Delivery record not found", null, 404);
+    }
+
+    /* ================= MASTER STATE GUARDS ================= */
+    if ([DS.FINALIZED, DS.VOIDED].includes(record.status)) {
+      await t.rollback();
+      return error(
+        res,
+        "Finalized or voided delivery records cannot be started",
+        null,
+        400
+      );
     }
 
     if (record.status !== DS.SCHEDULED) {
@@ -325,9 +343,7 @@ export const startDeliveryRecord = async (req, res) => {
       { transaction: t }
     );
 
-    /* ========================================================
-       💰 BILLING NOTIFY (DB-DRIVEN, SAFE)
-    ======================================================== */
+    /* ================= BILLING (MASTER RULE) ================= */
     await billingService.triggerAutoBilling({
       module: MODULE_KEY,
       entity: record,
@@ -359,13 +375,20 @@ export const startDeliveryRecord = async (req, res) => {
 };
 
 /* ============================================================
-   📌 COMPLETE DELIVERY (in_progress → completed)
+   📌 COMPLETE DELIVERY (in_progress → completed) — MASTER-ALIGNED
 ============================================================ */
 export const completeDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "complete",
+      res,
+    });
+    if (!allowed) return;
 
+    const { id } = req.params;
     debug.log("complete → request", { id });
 
     const where = { id };
@@ -380,14 +403,15 @@ export const completeDeliveryRecord = async (req, res) => {
       return error(res, "Delivery record not found", null, 404);
     }
 
+    /* ================= MASTER STATE GUARDS ================= */
+    if ([DS.VOIDED, DS.FINALIZED].includes(record.status)) {
+      await t.rollback();
+      return error(res, "Finalized or voided delivery records cannot be completed", null, 400);
+    }
+
     if (record.status !== DS.IN_PROGRESS) {
       await t.rollback();
-      return error(
-        res,
-        "Only in-progress delivery records can be completed",
-        null,
-        400
-      );
+      return error(res, "Only in-progress delivery records can be completed", null, 400);
     }
 
     const oldStatus = record.status;
@@ -400,9 +424,7 @@ export const completeDeliveryRecord = async (req, res) => {
       { transaction: t }
     );
 
-    /* ========================================================
-       💰 BILLING (DB-DRIVEN)
-    ======================================================== */
+    /* ================= BILLING (MASTER RULE) ================= */
     await billingService.triggerAutoBilling({
       module: MODULE_KEY,
       entity: record,
@@ -433,15 +455,23 @@ export const completeDeliveryRecord = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 CANCEL DELIVERY (scheduled/in_progress → cancelled)
+   📌 CANCEL DELIVERY (scheduled/in_progress → cancelled) — MASTER
 ============================================================ */
 export const cancelDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "cancel",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
     const { reason } = req.body;
-
     debug.log("cancel → request", { id, reason });
 
     const where = { id };
@@ -454,6 +484,12 @@ export const cancelDeliveryRecord = async (req, res) => {
     if (!record) {
       await t.rollback();
       return error(res, "Delivery record not found", null, 404);
+    }
+
+    /* ================= MASTER STATE GUARDS ================= */
+    if ([DS.VOIDED, DS.FINALIZED].includes(record.status)) {
+      await t.rollback();
+      return error(res, "Finalized or voided delivery records cannot be cancelled", null, 400);
     }
 
     if (![DS.SCHEDULED, DS.IN_PROGRESS].includes(record.status)) {
@@ -471,14 +507,13 @@ export const cancelDeliveryRecord = async (req, res) => {
     await record.update(
       {
         status: DS.CANCELLED,
+        cancel_reason: reason || null,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    /* ========================================================
-       💰 BILLING VOID (DB-DRIVEN)
-    ======================================================== */
+    /* ================= BILLING ROLLBACK ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -513,16 +548,20 @@ export const cancelDeliveryRecord = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 VOID DELIVERY (any → voided, admin/superadmin only)
+   📌 VOID DELIVERY (any → voided) — MASTER-ALIGNED
 ============================================================ */
 export const voidDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "Only admin/superadmin can void delivery records", null, 403);
-    }
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "void",
+      res,
+    });
+    if (!allowed) return;
 
     const { id } = req.params;
     const { reason } = req.body;
@@ -539,11 +578,17 @@ export const voidDeliveryRecord = async (req, res) => {
       return error(res, "Delivery record not found", null, 404);
     }
 
+    if (record.status === DS.VOIDED) {
+      await t.rollback();
+      return error(res, "Delivery record is already voided", null, 400);
+    }
+
     const oldStatus = record.status;
 
     await record.update(
       {
         status: DS.VOIDED,
+        void_reason: reason || null,
         voided_by_id: req.user?.id || null,
         voided_at: new Date(),
         updated_by_id: req.user?.id || null,
@@ -581,11 +626,19 @@ export const voidDeliveryRecord = async (req, res) => {
 };
 
 /* ============================================================
-   📌 VERIFY DELIVERY (completed → verified)
+   📌 VERIFY DELIVERY (completed → verified) — MASTER-ALIGNED
 ============================================================ */
 export const verifyDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "verify",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const where = { id };
@@ -598,6 +651,12 @@ export const verifyDeliveryRecord = async (req, res) => {
     if (!record) {
       await t.rollback();
       return error(res, "Delivery record not found", null, 404);
+    }
+
+    /* ================= MASTER STATE GUARDS ================= */
+    if ([DS.VOIDED, DS.FINALIZED].includes(record.status)) {
+      await t.rollback();
+      return error(res, "Finalized or voided delivery records cannot be verified", null, 400);
     }
 
     if (record.status !== DS.COMPLETED) {
@@ -617,6 +676,7 @@ export const verifyDeliveryRecord = async (req, res) => {
       { transaction: t }
     );
 
+    /* ================= BILLING (MASTER RULE) ================= */
     await billingService.triggerAutoBilling({
       module: MODULE_KEY,
       entity: record,
@@ -646,16 +706,20 @@ export const verifyDeliveryRecord = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 FINALIZE DELIVERY (verified → finalized, admin/superadmin only)
+   📌 FINALIZE DELIVERY (verified → finalized) — MASTER-ALIGNED
 ============================================================ */
 export const finalizeDeliveryRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "Only admin/superadmin can finalize delivery records", null, 403);
-    }
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "finalize",
+      res,
+    });
+    if (!allowed) return;
 
     const { id } = req.params;
 
@@ -680,6 +744,7 @@ export const finalizeDeliveryRecord = async (req, res) => {
 
     await record.update(
       {
+        status: DS.FINALIZED,
         finalized_by_id: req.user?.id || null,
         finalized_at: new Date(),
         updated_by_id: req.user?.id || null,
@@ -695,7 +760,7 @@ export const finalizeDeliveryRecord = async (req, res) => {
       action: "finalize",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: "FINALIZED" },
+      details: { from: oldStatus, to: DS.FINALIZED },
     });
 
     return success(res, "Delivery record finalized", record);
@@ -704,6 +769,7 @@ export const finalizeDeliveryRecord = async (req, res) => {
     return error(res, "Failed to finalize delivery record", err);
   }
 };
+
 
 /* ============================================================
    📌 DELETE DELIVERY RECORD (Soft Delete + Billing Rollback)
@@ -772,8 +838,10 @@ export const deleteDeliveryRecord = async (req, res) => {
     return error(res, "Failed to delete delivery record", err);
   }
 };
+
+
 /* ============================================================
-   📌 GET ALL DELIVERY RECORDS (MASTER-ALIGNED + DATE + SUMMARY)
+   📌 GET ALL DELIVERY RECORDS — MASTER-ALIGNED + SUMMARY
 ============================================================ */
 export const getAllDeliveryRecords = async (req, res) => {
   try {
@@ -794,30 +862,14 @@ export const getAllDeliveryRecords = async (req, res) => {
     const safeFields = visibleFields.filter(f => f !== "actions");
 
     const options = buildQueryOptions(req, "delivery_date", "DESC", safeFields);
-
-    /* ========================================================
-       🧹 UI-ONLY FILTER STRIPPING
-    ======================================================== */
-    delete options.filters?.light;
-
     options.where = options.where || {};
-    options.where[Op.and] = options.where[Op.and] || [];
 
-    /* ========================================================
-       📅 DATE RANGE FILTER (UI → DB SAFE)
-    ======================================================== */
-    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
-    if (dateRange) {
-      options.where[Op.and].push({
-        delivery_date: {
-          [Op.between]: [dateRange.start, dateRange.end],
-        },
-      });
-    }
+    /* ================= UI-ONLY FILTER STRIP ================= */
+    delete options.filters?.light;
+    const { dateRange } = req.query || {};
+    if (dateRange) delete options.where.dateRange;
 
-    /* ========================================================
-       🧭 ORG / FACILITY SCOPING
-    ======================================================== */
+    /* ================= ORG / FACILITY ================= */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
       if (role === "facility_head") {
@@ -830,45 +882,44 @@ export const getAllDeliveryRecords = async (req, res) => {
         options.where.facility_id = req.query.facility_id;
     }
 
-    /* ========================================================
-       🔍 SEARCH (GLOBAL, ADDITIVE)
-    ======================================================== */
-    if (options.search) {
-      options.where[Op.and].push({
-        [Op.or]: [
-          { delivery_type: { [Op.iLike]: `%${options.search}%` } },
-          { notes: { [Op.iLike]: `%${options.search}%` } },
-        ],
-      });
+    /* ================= DATE RANGE (MASTER) ================= */
+    if (dateRange) {
+      const range = normalizeDateRangeLocal(dateRange);
+      if (range) {
+        options.where.delivery_date = {
+          [Op.between]: [range.start, range.end],
+        };
+      }
     }
 
-    /* ========================================================
-       🔍 EXTRA FILTERS
-    ======================================================== */
+    /* ================= GLOBAL SEARCH ================= */
+    if (options.search) {
+      options.where[Op.or] = [
+        { delivery_type: { [Op.iLike]: `%${options.search}%` } },
+        { notes: { [Op.iLike]: `%${options.search}%` } },
+      ];
+    }
+
+    /* ================= EXTRA FILTERS ================= */
     if (req.query.patient_id)
-      options.where[Op.and].push({ patient_id: req.query.patient_id });
+      options.where.patient_id = req.query.patient_id;
 
     if (req.query.doctor_id)
-      options.where[Op.and].push({ doctor_id: req.query.doctor_id });
+      options.where.doctor_id = req.query.doctor_id;
 
     if (req.query.midwife_id)
-      options.where[Op.and].push({ midwife_id: req.query.midwife_id });
+      options.where.midwife_id = req.query.midwife_id;
 
     if (req.query.consultation_id)
-      options.where[Op.and].push({ consultation_id: req.query.consultation_id });
+      options.where.consultation_id = req.query.consultation_id;
 
     if (req.query.status) {
       const statuses = Array.isArray(req.query.status)
         ? req.query.status
         : [req.query.status];
-      options.where[Op.and].push({
-        status: { [Op.in]: statuses },
-      });
+      options.where.status = { [Op.in]: statuses };
     }
 
-    /* ========================================================
-       📦 QUERY
-    ======================================================== */
     const { count, rows } = await DeliveryRecord.findAndCountAll({
       where: options.where,
       include: [...DELIVERY_INCLUDES, ...(options.include || [])],
@@ -877,20 +928,22 @@ export const getAllDeliveryRecords = async (req, res) => {
       limit: options.limit,
     });
 
-    /* ========================================================
-       📊 DYNAMIC SUMMARY (ENTERPRISE)
-    ======================================================== */
-    const summary = await buildDynamicSummary({
-      model: DeliveryRecord,
-      baseWhere: options.where,
-      statusEnums: DELIVERY_STATUS,
+    /* ================= MASTER SUMMARY ================= */
+    const summary = { total: count };
+    Object.values(DELIVERY_STATUS).forEach(status => {
+      summary[status] = rows.filter(r => r.status === status).length;
     });
+
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        pagination: options.pagination,
+      },
     });
 
     return success(res, "Delivery records loaded", {

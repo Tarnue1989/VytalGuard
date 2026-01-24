@@ -1,71 +1,102 @@
-// 📦 delivery-record-filter-main.js – Filters + Table/Card (enterprise-aligned with Central Stock)
+// 📦 delivery-record-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// ============================================================================
+// 🔹 FULL PARITY WITH ekg-record-filter-main.js
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single field, NEVER DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Delivery Record status fully wired
+// 🔹 DOM-safe suggestion inputs
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import { authFetch } from "../../authSession.js";
 
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
-  loadEmployeesLite,
-  loadDepartmentsLite,
-  loadBillableItemsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./delivery-record-render.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./delivery-record-render.js";
+
 import { setupActionHandlers } from "./delivery-record-actions.js";
+
 import {
   FIELD_ORDER_DELIVERY_RECORD,
   FIELD_DEFAULTS_DELIVERY_RECORD,
 } from "./delivery-record-constants.js";
-import { setupVisibleFields } from "../../utils/field-visibility.js";
 
-// 🔐 Auth → automatically detect correct permission (e.g. "delivery_records:view")
+import { setupVisibleFields } from "../../utils/field-visibility.js";
+import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
+
+/* ============================================================
+   🔐 AUTH + USER
+============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-// 📌 Role (normalized)
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map(p =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
-// 🔑 Permissions from storage
-const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-let user = { role: userRole, permissions: perms };
+/* ============================================================
+   🧠 STATE
+============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("deliveryRecordView") || "table";
+let sortBy = "";
+let sortDir = "asc";
 
-// ✅ Shared state
 const sharedState = { currentEditIdRef: { value: null } };
 
-// 🛟 No-form stubs
-window.showForm = () => {};
-window.resetForm = () => {};
-
-// 📋 Field visibility
-window.entries = [];
+/* ============================================================
+   👁️ FIELD VISIBILITY
+============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "delivery_record",
+  moduleKey: "delivery_records",
   userRole,
   defaultFields: FIELD_DEFAULTS_DELIVERY_RECORD,
   allowedFields: FIELD_ORDER_DELIVERY_RECORD,
 });
 
-// 🧩 Field selector
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -73,94 +104,120 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🧩 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterDoctor = document.getElementById("filterDoctor");
-const filterDoctorHidden = document.getElementById("filterDoctorId");
-const filterDoctorSuggestions = document.getElementById("filterDoctorSuggestions");
-const filterMidwife = document.getElementById("filterMidwife");
-const filterMidwifeHidden = document.getElementById("filterMidwifeId");
-const filterMidwifeSuggestions = document.getElementById("filterMidwifeSuggestions");
-const filterDepartment = document.getElementById("filterDepartmentSelect");
-const filterConsultation = document.getElementById("filterConsultationSelect");
-const filterBillableItem = document.getElementById("filterBillableItemSelect");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
 
-// ⬇️ Export buttons
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch = qs("globalSearch");
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus = qs("filterStatus");
+const dateRange = qs("dateRange");
 
-// 🌐 View & paging state
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("deliveryRecordView") || "table";
+const filterPatient = qs("filterPatient");
+const filterPatientId = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterDoctor = qs("filterDoctor");
+const filterDoctorId = qs("filterDoctorId");
+const filterDoctorSuggestions = qs("filterDoctorSuggestions");
+
+const filterMidwife = qs("filterMidwife");
+const filterMidwifeId = qs("filterMidwifeId");
+const filterMidwifeSuggestions = qs("filterMidwifeSuggestions");
 
 /* ============================================================
-   📋 Build Filters
+   🔃 SORT BRIDGE
+============================================================ */
+window.setDeliveryRecordSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadDeliveryRecordPage = (p = 1) => loadEntries(p);
+
+/* ============================================================
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "delivery_records",
+  loadEntries,
+  Number(localStorage.getItem("deliveryRecordPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    doctor_id: filterDoctorHidden?.value || "",
-    midwife_id: filterMidwifeHidden?.value || "",
-    department_id: filterDepartment?.value || "",
-    consultation_id: filterConsultation?.value || "",
-    billable_item_id: filterBillableItem?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    patient_id: filterPatientId?.value,
+    doctor_id: filterDoctorId?.value,
+    midwife_id: filterMidwifeId?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Delivery Records
+   📦 LOAD DATA
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
-    const filters = getFilters();
+    showLoading();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || k === "created_from" || k === "created_to") return;
-      q.append(k, v);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
+
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_DELIVERY_RECORD.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
-
-    const res = await fetch(`/api/delivery-records?page=${page}&limit=10&${q}`, {
+    const res = await authFetch(`/api/delivery-records?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    let result = {};
-    try {
-      result = await res.json();
-    } catch {
-      console.warn("⚠️ Non-JSON response");
-    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
-
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || 1;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "DELIVERY RECORDS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -173,102 +230,79 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load delivery records");
-  }
-}
-
-/* ============================================================
-   🧭 View toggle
-============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
-  viewMode = "table";
-  localStorage.setItem("deliveryRecordView", "table");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
-
-document.getElementById("cardViewBtn").onclick = () => {
-  viewMode = "card";
-  localStorage.setItem("deliveryRecordView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
-
-/* ============================================================
-   🔍 Filter actions
-============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  try {
-    showLoading();
-    await loadEntries(1);
   } finally {
     hideLoading();
   }
+}
+/* ============================================================
+   🧭 VIEW TOGGLE
+============================================================ */
+qs("tableViewBtn").onclick = () => {
+  viewMode = "table";
+  localStorage.setItem("centralStockView", "table");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("centralStockView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+/* ============================================================
+   🔄 RESET FILTERS (FULL + SAFE)
+============================================================ */
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
-    "filterPatient","filterDoctor","filterMidwife","filterDepartment",
-    "filterConsultation","filterBillableItem","filterStatus",
-    "filterCreatedFrom","filterCreatedTo"
-  ].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    dateRange,
+  ].forEach(el => el && (el.value = ""));
 
-  if (filterPatientHidden) filterPatientHidden.value = "";
-  if (filterDoctorHidden) filterDoctorHidden.value = "";
-  if (filterMidwifeHidden) filterMidwifeHidden.value = "";
-
-  if (userRole.includes("super")) {
-    if (filterOrg) filterOrg.value = "";
-    if (filterFacility) filterFacility.value = "";
-  } else {
-    const scopedOrgId = localStorage.getItem("organizationId");
-    const scopedFacId = localStorage.getItem("facilityId");
-    if (filterOrg) filterOrg.value = scopedOrgId || "";
-    if (filterFacility) filterFacility.value = scopedFacId || "";
-  }
+  if (filterPatient) filterPatient.value = "";
+  if (filterPatientId) filterPatientId.value = "";
+  if (filterDoctor) filterDoctor.value = "";
+  if (filterDoctorId) filterDoctorId.value = "";
+  if (filterMidwife) filterMidwife.value = "";
+  if (filterMidwifeId) filterMidwifeId.value = "";
 
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   ⬇️ Export
+   📤 EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () => {
-    exportToExcel(entries, `delivery_records_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
+qs("exportExcelBtn")?.addEventListener("click", () => {
+  const mapped = mapDataForExport(entries, visibleFields);
+  exportToExcel(
+    mapped,
+    `delivery_records_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target = viewMode === "table" ? ".table-container" : "#deliveryRecordList";
-    exportToPDF("Delivery Record List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  const target =
+    viewMode === "table" ? ".table-container" : "#deliveryRecordList";
+  exportToPDF("Delivery Records", target, "portrait", true);
+});
 
 /* ============================================================
-   🚀 Init module
+   🚀 INIT
 ============================================================ */
 export async function initDeliveryRecordModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible = localStorage.getItem("deliveryRecordFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -277,119 +311,96 @@ export async function initDeliveryRecordModule() {
     "deliveryRecordFilterVisible"
   );
 
-  // ✅ Patient filter
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      if (selected) {
-        filterPatient.value =
-          selected.label ||
-          (selected.pat_no && selected.full_name
-            ? `${selected.pat_no} - ${selected.full_name}`
-            : selected.full_name || selected.pat_no || "");
-      }
-    },
-    "label"
-  );
+  /* ========= PATIENT SUGGESTION ========= */
+  if (filterPatient && filterPatientSuggestions && filterPatientId) {
+    setupSuggestionInputDynamic(
+      filterPatient,
+      filterPatientSuggestions,
+      "/api/lite/patients",
+      (selected) => {
+        filterPatientId.value = selected?.id || "";
+        filterPatient.value = selected?.label || "";
+        loadEntries(1);
+      },
+      "label"
+    );
 
-  // ✅ Doctor filter
-  setupSuggestionInputDynamic(
-    filterDoctor,
-    filterDoctorSuggestions,
-    "/api/lite/employees",
-    (selected) => {
-      filterDoctorHidden.value = selected?.id || "";
-      if (selected) {
-        filterDoctor.value =
-          selected.full_name ||
-          `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
+    filterPatient.addEventListener("input", () => {
+      if (!filterPatient.value.trim()) {
+        filterPatientId.value = "";
+        loadEntries(1);
       }
-    },
-    "full_name"
-  );
+    });
+  }
 
-  // ✅ Midwife filter
-  setupSuggestionInputDynamic(
-    filterMidwife,
-    filterMidwifeSuggestions,
-    "/api/lite/employees",
-    (selected) => {
-      filterMidwifeHidden.value = selected?.id || "";
-      if (selected) {
-        filterMidwife.value =
-          selected.full_name ||
-          `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
+  /* ========= DOCTOR SUGGESTION ========= */
+  if (filterDoctor && filterDoctorSuggestions && filterDoctorId) {
+    setupSuggestionInputDynamic(
+      filterDoctor,
+      filterDoctorSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterDoctorId.value = selected?.id || "";
+        filterDoctor.value = selected?.full_name || "";
+        loadEntries(1);
       }
-    },
-    "full_name"
-  );
+    );
 
-  // ✅ preload org + facilities + dropdowns
-  try {
+    filterDoctor.addEventListener("input", () => {
+      if (!filterDoctor.value.trim()) {
+        filterDoctorId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
+
+  /* ========= MIDWIFE SUGGESTION ========= */
+  if (filterMidwife && filterMidwifeSuggestions && filterMidwifeId) {
+    setupSuggestionInputDynamic(
+      filterMidwife,
+      filterMidwifeSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterMidwifeId.value = selected?.id || "";
+        filterMidwife.value = selected?.full_name || "";
+        loadEntries(1);
+      }
+    );
+
+    filterMidwife.addEventListener("input", () => {
+      if (!filterMidwife.value.trim()) {
+        filterMidwifeId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
+
+  /* ========= ORG / FACILITY ========= */
+  if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      let facilities = await loadFacilitiesLite();
-      facilities.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facilities, "id", "name");
+    const reloadFacilities = async (orgId = null) => {
+      if (!filterFacility) return;
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-      filterOrg?.addEventListener("change", async () => {
-        const selectedOrgId = filterOrg.value;
-        let facs = selectedOrgId
-          ? await loadFacilitiesLite({ organization_id: selectedOrgId })
-          : await loadFacilitiesLite();
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-      if (filterOrg) {
-        const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-        setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-        filterOrg.disabled = true;
-        filterOrg.value = scopedOrgId || "";
-      }
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(filterFacility, facilities, "id", "name", "-- All Facilities --");
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-
-    // ✅ Departments + Billable Items (Delivery)
-    const departments = await loadDepartmentsLite({}, true);
-    setupSelectOptions(filterDepartment, departments, "id", "name", "-- All Departments --");
-
-    const billables = await loadBillableItemsLite({ category: "delivery" }, true);
-    setupSelectOptions(filterBillableItem, billables, "id", "name", "-- All Billable Items --");
-  } catch (err) {
-    console.error("❌ preload org/facility failed:", err);
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   ❌ no-op sync
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {}
-
-/* ============================================================
-   ---- boot ----
-============================================================ */
-function boot() {
-  initDeliveryRecordModule().catch((err) => {
-    console.error("initDeliveryRecordModule failed:", err);
-  });
-}
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
-  boot();
-}
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initDeliveryRecordModule)
+  : initDeliveryRecordModule();

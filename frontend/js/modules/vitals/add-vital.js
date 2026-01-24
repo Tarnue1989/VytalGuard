@@ -1,10 +1,13 @@
 // 📦 vital-main.js – Vital Form Page Controller (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Master Pattern: department-main.js
+// 🧭 Mirrors ekg-record-main.js / add-registration-log.js / department-main.js exactly
 // 🔹 Auth guard + logout watcher
-// 🔹 Form reset & edit session orchestration
+// 🔹 Form visibility & reset orchestration
+// 🔹 Edit session coordination
 // 🔹 Delegates ALL business logic to vital-form.js
-// 🔹 NO dropdown logic here (prevents double-init bugs)
+// ❌ NO API calls
+// ❌ NO dropdown loading
+// ❌ NO suggestion logic
 // ============================================================================
 
 import { setupVitalFormSubmission } from "./vital-form.js";
@@ -12,12 +15,15 @@ import { setupVitalFormSubmission } from "./vital-form.js";
 import {
   initPageGuard,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 /* ============================================================
    🔐 Auth Guard + Global Watchers
 ============================================================ */
-const token = initPageGuard("vitals");
+const token = initPageGuard(
+  autoPagePermissionKey(["vitals:create", "vitals:edit"])
+);
 initLogoutWatcher();
 
 /* ============================================================
@@ -36,7 +42,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Helper (Add Mode)
+   🧹 Reset Helper (Add Mode – MASTER PARITY)
 ============================================================ */
 function resetForm() {
   if (!form) return;
@@ -44,6 +50,7 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
+  // Clear cached edit state
   sessionStorage.removeItem("vitalEditId");
   sessionStorage.removeItem("vitalEditPayload");
 
@@ -74,7 +81,7 @@ function resetForm() {
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // 🔗 Wire form logic (ALL business logic lives in vital-form.js)
+  // Delegate ALL business logic to form module
   setupVitalFormSubmission({
     form,
     token,

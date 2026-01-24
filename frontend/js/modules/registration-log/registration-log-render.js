@@ -211,11 +211,12 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — REGISTRATION LOG
+   🗂️ CARD RENDERER — REGISTRATION LOG (FULL)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
-  const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
@@ -226,11 +227,16 @@ export function renderCard(entry, visibleFields, user) {
 
   const status = (entry.log_status || "").toLowerCase();
 
+  /* ================= HEADER ================= */
   const header = `
     <div class="entity-card-header">
       <div>
-        <div class="entity-secondary">${safe(entry.registration_method)}</div>
-        <div class="entity-primary">${safe(entry.patient?.first_name)} ${safe(entry.patient?.last_name)}</div>
+        <div class="entity-secondary">
+          ${safe(entry.registration_method)}
+        </div>
+        <div class="entity-primary">
+          ${safe(entry.patient?.first_name)} ${safe(entry.patient?.last_name)}
+        </div>
       </div>
       ${
         has("log_status")
@@ -242,13 +248,22 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
+  /* ================= CONTEXT ================= */
   const contextItems = [];
+
   if (has("organization"))
     contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
+
   if (has("facility"))
     contextItems.push(`📍 ${safe(entry.facility?.name)}`);
+
   if (has("registrar"))
-    contextItems.push(`👤 ${renderUserName(entry.registrar)}`);
+    contextItems.push(`👤 ${safe(renderUserName(entry.registrar))}`);
+
+  if (has("registration_time"))
+    contextItems.push(
+      `🕒 ${formatDateTime(entry.registration_time)}`
+    );
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
@@ -256,19 +271,47 @@ export function renderCard(entry, visibleFields, user) {
        </div>`
     : "";
 
+  /* ================= BODY (FULL DETAILS) ================= */
   const body = `
     <div class="entity-card-body">
       <div>
-        ${has("visit_reason") ? fieldRow("Visit Reason", entry.visit_reason) : ""}
-        ${has("patient_category") ? fieldRow("Category", entry.patient_category) : ""}
+        ${has("patient_category")
+          ? fieldRow("Patient Category", entry.patient_category)
+          : ""}
+        ${has("visit_reason")
+          ? fieldRow("Visit Reason", entry.visit_reason)
+          : ""}
+        ${has("registration_source")
+          ? fieldRow("Registration Source", entry.registration_source)
+          : ""}
       </div>
+
       <div>
-        ${has("registration_source") ? fieldRow("Source", entry.registration_source) : ""}
-        ${has("is_emergency") ? fieldRow("Emergency", entry.is_emergency ? "Yes" : "No") : ""}
+        ${has("registration_type")
+          ? fieldRow(
+              "Registration Type",
+              entry.registrationType?.name
+            )
+          : ""}
+        ${has("is_emergency")
+          ? fieldRow(
+              "Emergency",
+              entry.is_emergency ? "Yes" : "No"
+            )
+          : ""}
+        ${has("invoice")
+          ? fieldRow(
+              "Invoice",
+              entry.invoice
+                ? `${entry.invoice.invoice_number}`
+                : "—"
+            )
+          : ""}
       </div>
     </div>
   `;
 
+  /* ================= AUDIT ================= */
   const audit =
     has("created_at") || has("updated_at") || has("deleted_at")
       ? `
@@ -276,26 +319,58 @@ export function renderCard(entry, visibleFields, user) {
           <summary>Audit</summary>
           <div class="entity-card-body">
             <div>
-              ${has("createdBy") ? fieldRow("Created By", renderUserName(entry.createdBy)) : ""}
-              ${has("created_at") ? fieldRow("Created At", formatDateTime(entry.created_at)) : ""}
+              ${has("createdBy")
+                ? fieldRow(
+                    "Created By",
+                    renderUserName(entry.createdBy)
+                  )
+                : ""}
+              ${has("created_at")
+                ? fieldRow(
+                    "Created At",
+                    formatDateTime(entry.created_at)
+                  )
+                : ""}
             </div>
             <div>
-              ${has("updatedBy") ? fieldRow("Updated By", renderUserName(entry.updatedBy)) : ""}
-              ${has("updated_at") ? fieldRow("Updated At", formatDateTime(entry.updated_at)) : ""}
-              ${has("deletedBy") && entry.deletedBy ? fieldRow("Deleted By", renderUserName(entry.deletedBy)) : ""}
-              ${has("deleted_at") && entry.deleted_at ? fieldRow("Deleted At", formatDateTime(entry.deleted_at)) : ""}
+              ${has("updatedBy")
+                ? fieldRow(
+                    "Updated By",
+                    renderUserName(entry.updatedBy)
+                  )
+                : ""}
+              ${has("updated_at")
+                ? fieldRow(
+                    "Updated At",
+                    formatDateTime(entry.updated_at)
+                  )
+                : ""}
+              ${has("deletedBy") && entry.deletedBy
+                ? fieldRow(
+                    "Deleted By",
+                    renderUserName(entry.deletedBy)
+                  )
+                : ""}
+              ${has("deleted_at") && entry.deleted_at
+                ? fieldRow(
+                    "Deleted At",
+                    formatDateTime(entry.deleted_at)
+                  )
+                : ""}
             </div>
           </div>
         </details>
       `
       : "";
 
+  /* ================= ACTIONS ================= */
   const actions = has("actions")
     ? `<div class="entity-card-footer export-ignore">
          ${getRegistrationLogActionButtons(entry, user)}
        </div>`
     : "";
 
+  /* ================= FINAL ================= */
   return `
     <div class="entity-card registration-log-card">
       ${header}

@@ -1,29 +1,37 @@
-// 📦 ultrasoundRecord-main.js – Form-only loader for UltrasoundRecord (Master Pattern Aligned)
+// 📦 ultrasoundRecord-main.js – Form-only Loader for Ultrasound Record (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🧭 Mirrors delivery-record-main.js / ekg-record-main.js / registrationLog-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
+// ============================================================================
 
 import {
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
 import { setupUltrasoundFormSubmission } from "./ultrasound-record-form.js";
+
 import {
   FIELD_LABELS_ULTRASOUND_RECORD,
   FIELD_ORDER_ULTRASOUND_RECORD,
   FIELD_DEFAULTS_ULTRASOUND_RECORD,
 } from "./ultrasound-record-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State (MASTER PARITY)
 ============================================================ */
-
-// Automatically resolves correct permission ("ultrasound-records:create" / "ultrasound-records:edit")
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey(["ultrasound_records:create", "ultrasound_records:edit"])
+);
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -38,7 +46,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -48,13 +56,12 @@ function resetForm() {
   sessionStorage.removeItem("ultrasoundEditId");
   sessionStorage.removeItem("ultrasoundEditPayload");
 
-  // Explicitly clear text fields
+  // Clear visible inputs
   [
     "patientInput",
     "consultationInput",
     "maternityVisitInput",
     "technicianInput",
-    "scanType",
     "scanDate",
     "scanLocation",
     "ultraFindings",
@@ -81,8 +88,8 @@ function resetForm() {
   [
     "organizationSelect",
     "facilitySelect",
-    "billableItemSelect",
     "departmentSelect",
+    "billableItemSelect",
     "registrationLogSelect",
   ].forEach((id) => {
     const el = document.getElementById(id);
@@ -97,15 +104,15 @@ function resetForm() {
     }
   );
 
-  // Reset checkboxes
-  ["isEmergency", "ultrasoundDone", "previousCesarean"].forEach((id) => {
+  // Reset flags
+  ["isEmergency", "previousCesarean"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.checked = false;
   });
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide (MASTER PARITY)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -120,7 +127,7 @@ function hideForm() {
   localStorage.setItem("ultrasoundFormVisible", "false");
 }
 
-// Expose globally for cross-module reuse
+// Expose globally (parity with other modules)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -130,7 +137,7 @@ window.resetForm = resetForm;
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/ultrasound-records-list.html"; // ✅ plural redirect
+    window.location.href = "/ultrasound-records-list.html";
   };
 }
 
@@ -138,7 +145,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // Ensure stale edit data is cleared
     sessionStorage.removeItem("ultrasoundEditId");
     sessionStorage.removeItem("ultrasoundEditPayload");
     resetForm();
@@ -147,25 +153,27 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   🧠 Loader (no-op)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles loading
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initUltrasoundModule() {
-  showForm(); // auto-open form on standalone page
+  showForm(); // form-only mode
 
-  setupUltrasoundFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupUltrasoundFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("ultrasoundPanelVisible", "false");
 
@@ -177,18 +185,19 @@ export async function initUltrasoundModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🧩 Initialize Field Selector (role-based)
   setupFieldSelector({
     module: "ultrasound_record",
     fieldLabels: FIELD_LABELS_ULTRASOUND_RECORD,
     fieldOrder: FIELD_ORDER_ULTRASOUND_RECORD,
-    defaultFields: FIELD_DEFAULTS_ULTRASOUND_RECORD[role],
+    defaultFields:
+      FIELD_DEFAULTS_ULTRASOUND_RECORD[role] ||
+      FIELD_DEFAULTS_ULTRASOUND_RECORD.staff,
   });
 }
 
 /* ============================================================
-   🔁 Sync Helper
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for advanced reactive integration
+  // reserved for future reactive syncing
 }

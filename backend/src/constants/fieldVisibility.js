@@ -859,7 +859,7 @@ export const FIELD_VISIBILITY_EKG_RECORD = {
 
 /* -------------------- Ultrasound Record -------------------- */
 export const FIELD_VISIBILITY_ULTRASOUND_RECORD = {
-    superadmin: FIELD_ORDER_ULTRASOUND_RECORD,
+  superadmin: FIELD_ORDER_ULTRASOUND_RECORD,
   organization_admin: FIELD_ORDER_ULTRASOUND_RECORD,
 
   manager: [
@@ -870,6 +870,7 @@ export const FIELD_VISIBILITY_ULTRASOUND_RECORD = {
     "status", "is_emergency",
     "verified_by_id", "verified_at",
     "finalized_by_id", "finalized_at",
+    "cancelled_by_id", "cancelled_at",
     "voided_by_id", "voided_at", "void_reason"
   ],
 

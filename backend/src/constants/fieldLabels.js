@@ -1035,11 +1035,13 @@ export const FIELD_LABELS_ULTRASOUND_RECORD = {
   is_emergency: "Emergency Case", status: "Status",
   verified_by_id: "Verified By", verified_at: "Verified At",
   finalized_by_id: "Finalized By", finalized_at: "Finalized At",
+  cancelled_by_id: "Cancelled By", cancelled_at: "Cancelled At",
   voided_by_id: "Voided By", voided_at: "Voided At", void_reason: "Void Reason",
   source: "Source", file_path: "File Path",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By",
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At"
 };
+
 
 
 /* ============================================================

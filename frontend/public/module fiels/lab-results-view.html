@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lab Request View</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- App CSS -->
+  <link rel="shortcut icon" href="/logo.png" />
+  <link rel="stylesheet" href="/assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="/assets/css/main.min.css" />
+
+  <style>
+    /* ===========================
+       CLINICAL LAB TABLE LAYOUT
+       (MATCHES TABLE JS)
+    ============================ */
+
+    body {
+      font-size: 0.85rem;
+    }
+
+    /* ---------- Header ---------- */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #dee2e6;
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ---------- Section Title ---------- */
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin: 0.75rem 0 0.4rem;
+      border-bottom: 1px solid #dee2e6;
+      padding-bottom: 3px;
+      color: #495057;
+    }
+
+    /* ---------- Info Grid ---------- */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 6px 14px;
+    }
+
+    .info-item span {
+      font-size: 0.7rem;
+      color: #6c757d;
+    }
+
+    .info-item div {
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    /* ---------- Tests List ---------- */
+    #testsList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    #testsList li {
+      background: #f1f3f5;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    /* ---------- Results Table ---------- */
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 0.8rem;
+      margin-top: 4px;
+    }
+
+    .results-table th {
+      text-align: left;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #6c757d;
+      border-bottom: 1px solid #dee2e6;
+      padding: 6px;
+    }
+
+    .results-table td {
+      padding: 6px;
+      border-bottom: 1px solid #f1f3f5;
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    /* Column priority */
+    .results-table th:nth-child(1),
+    .results-table td:nth-child(1) { width: 25%; }
+
+    .results-table th:nth-child(2),
+    .results-table td:nth-child(2) {
+      width: 40%;
+      font-weight: 600;
+    }
+
+    .results-table th:nth-child(3),
+    .results-table td:nth-child(3) {
+      width: 10%;
+      white-space: nowrap;
+    }
+
+    .results-table th:nth-child(4),
+    .results-table td:nth-child(4) { width: 25%; }
+
+    /* ===========================
+       PRINT (A4 – FINAL)
+    ============================ */
+    @media print {
+
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+
+      body {
+        font-size: 0.75rem;
+      }
+
+      /* Expand printable width */
+      .container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      thead {
+        display: table-header-group;
+      }
+
+      tr,
+      td,
+      th {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="app-body container mt-3">
+
+  <!-- HEADER -->
+  <div class="page-header">
+    <div class="d-flex align-items-center gap-2">
+      <!-- BACK BUTTON -->
+        <button
+        id="backBtn"
+        class="btn btn-outline-secondary btn-sm no-print"
+        title="Go back"
+        >
+        <i class="ri-arrow-left-line"></i>
+        </button>
+
+        </button>
+
+      <div>
+        <strong>Laboratory Request</strong>
+        <div id="requestStatus"></div>
+      </div>
+    </div>
+
+    <!-- PRINT BUTTON -->
+    <div class="no-print">
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        onclick="window.print()"
+      >
+        <i class="ri-printer-line"></i> Print
+      </button>
+    </div>
+  </div>
+
+  <!-- PATIENT INFO -->
+  <div class="section-title">Patient & Request Information</div>
+  <div class="info-grid" id="requestInfo"></div>
+
+  <!-- REQUESTED TESTS -->
+  <div class="section-title">Requested Lab Tests</div>
+  <ul id="testsList"></ul>
+
+  <!-- LAB RESULTS -->
+  <div class="section-title d-none" id="resultsTitle">Lab Results</div>
+  <div id="resultsSection" class="d-none">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Test</th>
+          <th>Result</th>
+          <th>Status</th>
+          <th>Status Updated By</th>
+        </tr>
+      </thead>
+      <tbody id="resultsContainer">
+        <!-- JS injects <tr> rows -->
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- MODULE SCRIPT -->
+<script type="module" src="/js/modules/labrequest/lab-request-view.js"></script>
+</body>
+</html>

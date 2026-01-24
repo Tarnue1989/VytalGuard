@@ -153,10 +153,19 @@
         </div>
 
         <div class="app-body dashboard-modern">
-
+          <!-- 🔍 Dashboard KPI Search (GLOBAL) -->
+          <div class="dashboard-search-wrapper">
+            <input
+              id="dashboardSearch"
+              type="text"
+              class="form-control form-control-sm dashboard-search-input"
+              placeholder="Search dashboard KPIs…"
+              autocomplete="off"
+            />
+          </div>
           <!-- ===== DASHBOARD SECTION ===== -->
           <div data-dashboard-section="dashboard">
-            
+
             <!-- TOP KPI STRIP -->
             <div class="container-fluid px-4 mb-4">
               <div class="dashboard-kpi-strip" id="top-kpis"></div>
@@ -265,9 +274,10 @@
   <script src="assets/js/custom.js"></script>
 
   <!-- Dashboard logic -->
-  <script type="module" src="js/dashboard/index.js"></script>
-  <script src="/assets/vendor/apexcharts/apexcharts.min.js"></script>
-  <script type="module" src="js/dashboard/dashboard-tabs.js"></script>
+<script src="/assets/vendor/apexcharts/apexcharts.min.js"></script>
+
+<script type="module" src="js/dashboard/index.js"></script>
+<script type="module" src="js/dashboard/dashboard-tabs.js"></script>
 
 </body>
 

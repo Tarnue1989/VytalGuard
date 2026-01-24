@@ -1,4 +1,10 @@
-// 📁 ekg-record-actions.js – Full Permission-Driven Action Handlers for EKG Records
+// 📁 ekg-record-actions.js – Enterprise Master Pattern (EKG Records)
+// ============================================================================
+// 🧭 FULL PARITY WITH registrationLog-actions.js
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / start / complete / verify / finalize / cancel / void / delete
+// 🔹 Keeps all DOM IDs, routes, API calls, and UI behavior intact
+// ============================================================================
 
 import {
   showToast,
@@ -11,8 +17,7 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./ekg-record-render.js";
 
 /**
- * Unified, permission-driven action handler
- * Mirrors the centralstock master pattern (no hardcoded roles)
+ * Unified permission-aware action handler for EKG Record module
  */
 export function setupActionHandlers({
   entries,
@@ -21,19 +26,20 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, roleNames, permissions }
+  user, // { role, permissions, roleNames }
 }) {
+  const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("ekgRecordTableBody");
   const cardContainer = document.getElementById("ekgRecordList");
 
-  // cache last entries globally
+  // 🗂️ Cache latest entries
   window.latestEKGRecordEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Normalize Permissions
+     🔑 Normalize Permissions
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -47,25 +53,28 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      p.toLowerCase().trim()
+    )
+  );
+
+  // 🧠 Superadmin bypass
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalizedKey = key
-      .replace(/ekgrecords/gi, "ekg_records")
-      .trim()
-      .toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  // ✅ Permission checker
+  const hasPerm = (key) =>
+    isSuperAdmin ||
+    userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     🧠 Main Dispatcher
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -77,7 +86,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback fetch
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -92,91 +101,87 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ EKG record data missing");
+
     const cls = btn.classList;
 
-    // --- Basic View ---
-    if (cls.contains("view-btn")) return handleView(entry);
+    if (cls.contains("view-btn")) {
+      if (!hasPerm("ekg_records:view"))
+        return showToast("⛔ You don't have permission to view EKG records");
+      return handleView(entry);
+    }
 
-    // --- Core Actions ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("ekg_records:edit"))
-        return showToast("⛔ You don't have permission to edit");
+        return showToast("⛔ You don't have permission to edit EKG records");
       return handleEdit(entry);
+    }
+
+    if (cls.contains("start-btn")) {
+      if (!hasPerm("ekg_records:edit"))
+        return showToast("⛔ No permission to start EKG records");
+      return await handleLifecycle(id, "start");
+    }
+
+    if (cls.contains("complete-btn")) {
+      if (!hasPerm("ekg_records:edit"))
+        return showToast("⛔ No permission to complete EKG records");
+      return await handleLifecycle(id, "complete");
+    }
+
+    if (cls.contains("verify-btn")) {
+      if (!hasPerm("ekg_records:verify"))
+        return showToast("⛔ No permission to verify EKG records");
+      return await handleLifecycle(id, "verify");
+    }
+
+    if (cls.contains("finalize-btn")) {
+      if (!hasPerm("ekg_records:finalize"))
+        return showToast("⛔ No permission to finalize EKG records");
+      return await handleLifecycle(id, "finalize");
+    }
+
+    if (cls.contains("cancel-btn")) {
+      if (!hasPerm("ekg_records:edit"))
+        return showToast("⛔ No permission to cancel EKG records");
+      return await handleLifecycle(id, "cancel");
+    }
+
+    if (cls.contains("void-btn")) {
+      if (!hasPerm("ekg_records:void"))
+        return showToast("⛔ No permission to void EKG records");
+      return await handleLifecycle(id, "void");
     }
 
     if (cls.contains("delete-btn")) {
       if (!hasPerm("ekg_records:delete"))
-        return showToast("⛔ You don't have permission to delete");
+        return showToast("⛔ You don't have permission to delete EKG records");
       return await handleDelete(id, entry);
-    }
-
-    // --- Lifecycle Actions ---
-    const lifecycleMap = {
-      "start-btn": "start",
-      "complete-btn": "complete",
-      "verify-btn": "verify",
-      "finalize-btn": "finalize",
-      "cancel-btn": "cancel",
-      "void-btn": "void",
-    };
-
-    for (const [clsName, action] of Object.entries(lifecycleMap)) {
-      if (cls.contains(clsName)) {
-        if (!hasPerm(`ekg_records:${action}`) && !hasPerm("ekg_records:edit"))
-          return showToast(`⛔ You don't have permission to ${action} records`);
-        return await handleLifecycle(id, entry, action);
-      }
     }
   }
 
   /* ============================================================
-     🧩 Handlers
+     ⚙️ Action Handlers
   ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("EKG Record Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
-    if (!entry?.id) return showToast("❌ Missing record ID");
+    if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("ekgRecordEditId", entry.id);
-    window.location.href = `add-ekg-record.html?id=${entry.id}`;
+    sessionStorage.setItem("ekgRecordEditPayload", JSON.stringify(entry));
+    window.location.href = "add-ekg-record.html";
   }
 
-  async function handleDelete(id, entry) {
+  // 🔁 Lifecycle (start / complete / verify / finalize / cancel / void)
+  async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(
-      `Delete EKG record for "${entry.patient?.full_name || "Unknown"}"?`
+      `Are you sure you want to ${action} this EKG record?`
     );
-    if (!confirmed) return;
-
-    try {
-      showLoading();
-      const res = await authFetch(`/api/ekg-records/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete EKG record");
-
-      showToast(`✅ EKG record deleted successfully`);
-      window.latestEKGRecordEntries = [];
-      await loadEntries(currentPage);
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Failed to delete EKG record");
-    } finally {
-      hideLoading();
-    }
-  }
-
-  async function handleLifecycle(id, entry, action) {
-    const actionTitles = {
-      start: "Start this EKG record?",
-      complete: "Mark this EKG record as completed?",
-      verify: "Verify this EKG record?",
-      finalize: "Finalize this EKG record? (Admin/Superadmin only)",
-      cancel: "Cancel this EKG record?",
-      void: "Void this EKG record? (Admin/Superadmin only)",
-    };
-    const confirmed = await showConfirm(actionTitles[action]);
     if (!confirmed) return;
 
     try {
@@ -188,7 +193,7 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || `❌ Failed to ${action} EKG record`);
 
-      showToast(`✅ EKG record ${action} successful`);
+      showToast(`✅ EKG Record ${action} successful`);
       window.latestEKGRecordEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -199,8 +204,35 @@ export function setupActionHandlers({
     }
   }
 
+  // 🗑️ Delete
+  async function handleDelete(id, entry) {
+    const confirmed = await showConfirm(
+      "Delete this EKG record permanently?"
+    );
+    if (!confirmed) return;
+
+    try {
+      showLoading();
+      const res = await authFetch(`/api/ekg-records/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.message || "❌ Failed to delete EKG record");
+
+      showToast("✅ EKG Record deleted successfully");
+      window.latestEKGRecordEntries = [];
+      await loadEntries(currentPage);
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "❌ Failed to delete EKG record");
+    } finally {
+      hideLoading();
+    }
+  }
+
   /* ============================================================
-     🌍 Global Helper Shortcuts
+     🌍 Global Helpers (Inline Triggers)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestEKGRecordEntries || entries || []).find(
@@ -208,41 +240,23 @@ export function setupActionHandlers({
     );
 
   window.viewEKGRecord = (id) => {
+    if (!hasPerm("ekg_records:view"))
+      return showToast("⛔ No permission to view EKG records");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ EKG record not found for viewing");
   };
 
   window.editEKGRecord = (id) => {
     if (!hasPerm("ekg_records:edit"))
-      return showToast("⛔ No permission to edit");
+      return showToast("⛔ No permission to edit EKG records");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ EKG record not found for editing");
   };
 
   window.deleteEKGRecord = async (id) => {
     if (!hasPerm("ekg_records:delete"))
-      return showToast("⛔ No permission to delete");
+      return showToast("⛔ No permission to delete EKG records");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
-
-  const lifecycleActions = [
-    "start",
-    "complete",
-    "verify",
-    "finalize",
-    "cancel",
-    "void",
-  ];
-
-  lifecycleActions.forEach((action) => {
-    window[`${action}EKGRecord`] = async (id) => {
-      if (!hasPerm(`ekg_records:${action}`) && !hasPerm("ekg_records:edit"))
-        return showToast(`⛔ No permission to ${action} record`);
-      const entry = findEntry(id);
-      await handleLifecycle(id, entry, action);
-    };
-  });
 }

@@ -1,393 +1,442 @@
-// 📁 ultrasoundRecord-form.js
-// ============================================================
-// 🧭 Secure & Role-Aware Ultrasound Record Form (Enterprise-Aligned)
-// ============================================================
+// 📁 ultrasound-record-form.js – Secure & Role-Aware Ultrasound Record Form
+// ============================================================================
+// 🔹 Rule-driven validation (ULTRASOUND_RECORD_FORM_RULES) ✅ ENFORCED
+// 🔹 Role-aware org / facility handling (SUPER / ORG ADMIN / USER)
+// 🔹 SELECT-based consultation & maternity
+// 🔹 Patient + Technician via suggestion input
+// 🔹 Auto-reload consultation & maternity by patient
+// 🔹 Add + Edit parity (RESOLVED ONCE, EARLY)
+// 🔹 Controller-faithful payload (NO silent mapping)
+// 🔹 API calls PRESERVED
+// 🔹 FULL MASTER PARITY with ekg-record-form.js
+// 🔹 PAGE CONTROL DELEGATED TO ultrasound-main.js
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
-  initPageGuard,
-  autoPagePermissionKey,
-  initLogoutWatcher,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   loadDepartmentsLite,
   loadBillableItemsLite,
+  loadConsultationsLite,
+  loadMaternityVisitsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import { ULTRASOUND_RECORD_FORM_RULES } from "./ultrasound-record.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 HELPERS
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-function normalizeDate(val) {
+const qs = (id) => document.getElementById(id);
+
+const normalizeUUID = (v) =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
+
+const normalizeDate = (val) => {
   if (!val) return null;
   const d = new Date(val);
-  if (isNaN(d.getTime())) return null;
+  if (Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
   ).padStart(2, "0")}`;
-}
-function renderPatientLabel(p) {
+};
+
+const renderPatientLabel = (p) => {
   if (!p) return "";
   const full = [p.first_name, p.last_name].filter(Boolean).join(" ");
-  return `${p.pat_no ? p.pat_no + " - " : ""}${full || p.full_name || ""}`.trim();
+  return `${p.pat_no ? p.pat_no + " - " : ""}${full}`.trim();
+};
+
+/* ============================================================
+   🛡️ RULE VALIDATION
+============================================================ */
+function validateUsingRules(form) {
+  const errors = [];
+
+  for (const rule of ULTRASOUND_RECORD_FORM_RULES) {
+    if (typeof rule.when === "function" && !rule.when()) continue;
+
+    const el =
+      document.getElementById(rule.id) ||
+      form.querySelector(`[name="${rule.id}"]`);
+
+    if (!el) continue;
+
+    const value = el.type === "checkbox" ? el.checked : el.value;
+
+    if (
+      value === null ||
+      value === undefined ||
+      value === "" ||
+      value === false
+    ) {
+      errors.push({ field: rule.id, message: rule.message });
+    }
+  }
+
+  return errors;
 }
 
 /* ============================================================
-   🚀 Setup Ultrasound Record Form
+   🔐 EDIT PREFILL LOCK (PATIENT PARITY)
 ============================================================ */
-export async function setupUltrasoundFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
-  initLogoutWatcher();
+let isPrefilling = false;
 
-  const sessionId = sessionStorage.getItem("ultrasoundEditId");
-  const queryId = getQueryParam("id");
-  const recordId = sessionId || queryId;
-  const isEdit = !!recordId;
-
-  const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  const cancelBtn = document.getElementById("cancelBtn");
-  const clearBtn = document.getElementById("clearBtn");
-
-  const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Ultrasound Record");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Ultrasound`);
-    } else {
-      titleEl && (titleEl.textContent = "Add Ultrasound Record");
-      submitBtn &&
-        (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Ultrasound`);
-    }
-  };
-  setUI(isEdit ? "edit" : "add");
+/* ============================================================
+   🚀 MAIN FORM LOGIC (NO PAGE CONTROL)
+============================================================ */
+export async function setupUltrasoundFormSubmission({
+  form,
+  sharedState,
+  resetForm,
+}) {
+  enableLiveValidation(form);
 
   /* ============================================================
-     🧭 Prefill Dropdowns & Suggestions
+     🔐 RESOLVE EDIT MODE ONCE (MASTER RULE)
   ============================================================ */
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  const params = new URLSearchParams(window.location.search);
 
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const deptSelect = document.getElementById("departmentSelect");
-  const billableSelect = document.getElementById("billableItemSelect");
-  const regLogSelect = document.getElementById("registrationLogSelect");
+  const sessionId = sessionStorage.getItem("ultrasoundEditId");
+  const payload = sessionStorage.getItem("ultrasoundEditPayload");
 
-  const patientInput = document.getElementById("patientInput");
-  const patientHidden = document.getElementById("patientId");
-  const patientSuggestions = document.getElementById("patientSuggestions");
+  const queryId =
+    params.get("id") ||
+    params.get("ultrasound_id") ||
+    params.get("recordId");
 
-  const consultationInput = document.getElementById("consultationInput");
-  const consultationHidden = document.getElementById("consultationId");
-  const consultationSuggestions = document.getElementById("consultationSuggestions");
+  const recordId = sessionId || queryId;
+  const isEdit = Boolean(recordId || payload);
 
-  const maternityInput = document.getElementById("maternityVisitInput");
-  const maternityHidden = document.getElementById("maternityVisitId");
-  const maternitySuggestions = document.getElementById("maternitySuggestions");
+  console.log("ULTRASOUND EDIT MODE:", {
+    recordId,
+    payloadExists: Boolean(payload),
+    isEdit,
+  });
 
-  const technicianInput = document.getElementById("technicianInput");
-  const technicianHidden = document.getElementById("technicianId");
-  const technicianSuggestions = document.getElementById("technicianSuggestions");
+  if (isEdit) {
+    sharedState.currentEditIdRef.value = recordId;
+  }
 
+  /* ================= DOM ================= */
+  const orgSelect = qs("organizationSelect");
+  const facSelect = qs("facilitySelect");
+  const deptSelect = qs("departmentSelect");
+  const billableSelect = qs("billableItemSelect");
+
+  const consultationSelect = qs("consultationSelect");
+  const maternityVisitSelect = qs("maternityVisitSelect");
+
+  const patientInput = qs("patientInput");
+  const patientId = qs("patientId");
+  const patientSuggestions = qs("patientSuggestions");
+
+  const technicianInput = qs("technicianInput");
+  const technicianId = qs("technicianId");
+  const technicianSuggestions = qs("technicianSuggestions");
+
+  /* ================= ROLE ================= */
+  const role = (localStorage.getItem("userRole") || "").toLowerCase();
+  const isSuper = role.includes("super");
+  const isAdmin = role.includes("admin");
+
+  /* ============================================================
+     📥 LOAD REFERENCE DATA
+  ============================================================ */
   try {
-    // 🏢 Org + Facility
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      if (orgSelect) setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        if (facSelect)
-          setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      const reloadFacilities = async () => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgSelect.value ? { organization_id: orgSelect.value } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+      };
+
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      if (facSelect)
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
+      orgSelect?.addEventListener("change", reloadFacilities);
+    } else if (isAdmin) {
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     }
 
-    // 🧭 Departments
-    if (deptSelect) {
-      const depts = await loadDepartmentsLite({}, true);
-      setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
-    }
+    setupSelectOptions(
+      deptSelect,
+      await loadDepartmentsLite({}, true),
+      "id",
+      "name",
+      "-- Select Department --"
+    );
 
-    // 💲 Billable Items (Ultrasound scan types)
-    const billables = await loadBillableItemsLite({ category: "ultrasound" }, true);
-    if (billableSelect)
-      setupSelectOptions(billableSelect, billables, "id", "name", "-- Select Ultrasound Type --");
+    setupSelectOptions(
+      billableSelect,
+      await loadBillableItemsLite({ category: "ultrasound" }, true),
+      "id",
+      "name",
+      "-- Select Ultrasound Type --"
+    );
 
-    // 🧍 Patient suggestion
+    setupSelectOptions(
+      consultationSelect,
+      [],
+      "id",
+      "label",
+      "-- Select Consultation --"
+    );
+
+    setupSelectOptions(
+      maternityVisitSelect,
+      [],
+      "id",
+      "visit_type",
+      "-- Select Maternity Visit --"
+    );
+
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
       "/api/lite/patients",
-      (sel) => {
-        patientHidden.value = sel?.id || "";
-        patientInput.value =
-          renderPatientLabel(sel) ||
-          (sel?.label ||
-            sel?.pat_no ||
-            [sel?.first_name, sel?.last_name].filter(Boolean).join(" "));
+      async (p) => {
+        if (isPrefilling) return;
+
+        patientId.value = p?.id || "";
+        patientInput.value = p?.label || "";
+
+        setupSelectOptions(
+          consultationSelect,
+          await loadConsultationsLite({ patient_id: p?.id }, true),
+          "id",
+          "label",
+          "-- Select Consultation --"
+        );
+
+        setupSelectOptions(
+          maternityVisitSelect,
+          await loadMaternityVisitsLite({ patient_id: p?.id }, true),
+          "id",
+          "visit_type",
+          "-- Select Maternity Visit --"
+        );
       },
       "label"
     );
 
-    // 📋 Consultation suggestion
-    setupSuggestionInputDynamic(
-      consultationInput,
-      consultationSuggestions,
-      "/api/lite/consultations",
-      (sel) => {
-        consultationHidden.value = sel?.id || "";
-        consultationInput.value =
-          sel?.label ||
-          `Consultation (${sel?.status || "—"}) on ${normalizeDate(sel?.consultation_date) || "—"}`;
-      },
-      "label"
-    );
-
-    // 🤰 Maternity Visit suggestion
-    setupSuggestionInputDynamic(
-      maternityInput,
-      maternitySuggestions,
-      "/api/lite/maternity-visits",
-      (sel) => {
-        maternityHidden.value = sel?.id || "";
-        maternityInput.value =
-          sel?.label || `Visit on ${normalizeDate(sel?.visit_date) || "—"}`;
-      },
-      "label"
-    );
-
-    // 🧑‍⚕️ Technician suggestion
     setupSuggestionInputDynamic(
       technicianInput,
       technicianSuggestions,
       "/api/lite/employees",
-      (sel) => {
-        technicianHidden.value = sel?.id || "";
-        technicianInput.value =
-          sel?.full_name ||
-          [sel?.first_name, sel?.last_name].filter(Boolean).join(" ");
+      (t) => {
+        if (isPrefilling) return;
+
+        technicianId.value = t?.id || "";
+        technicianInput.value = t?.full_name || "";
       },
       "full_name"
     );
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     ✏️ Prefill if Editing
+     ✏️ PREFILL (EDIT MODE — PATIENT SAFE)
   ============================================================ */
   if (isEdit && recordId) {
     try {
       showLoading();
-      const res = await authFetch(`/api/ultrasound-records/${recordId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const result = await res.json().catch(() => ({}));
+      isPrefilling = true;
+
+      let entry =
+        JSON.parse(
+          sessionStorage.getItem("ultrasoundEditPayload") || "null"
+        ) ||
+        (await (await authFetch(`/api/ultrasound-records/${recordId}`)).json())
+          .data;
+
+      if (!entry) throw new Error();
+
+      if (isSuper && entry.organization_id)
+        orgSelect.value = entry.organization_id;
+
+      if ((isSuper || isAdmin) && entry.facility_id)
+        facSelect.value = entry.facility_id;
+
+      setupSelectOptions(
+        deptSelect,
+        await loadDepartmentsLite({}, true),
+        "id",
+        "name",
+        "-- Select Department --"
+      );
+      deptSelect.value = entry.department_id || "";
+
+      setupSelectOptions(
+        billableSelect,
+        await loadBillableItemsLite({ category: "ultrasound" }, true),
+        "id",
+        "name",
+        "-- Select Ultrasound Type --"
+      );
+      billableSelect.value = entry.billable_item_id || "";
+
+      patientId.value = entry.patient_id || "";
+      patientInput.value =
+        entry.patient?.label || renderPatientLabel(entry.patient);
+
+      setupSelectOptions(
+        consultationSelect,
+        await loadConsultationsLite({ patient_id: entry.patient_id }, true),
+        "id",
+        "label",
+        "-- Select Consultation --"
+      );
+      consultationSelect.value = entry.consultation_id || "";
+
+      setupSelectOptions(
+        maternityVisitSelect,
+        await loadMaternityVisitsLite({ patient_id: entry.patient_id }, true),
+        "id",
+        "visit_type",
+        "-- Select Maternity Visit --"
+      );
+      maternityVisitSelect.value = entry.maternity_visit_id || "";
+
+      technicianId.value = entry.technician_id || "";
+      technicianInput.value = entry.technician?.full_name || "";
+
+      qs("scanDate").value = normalizeDate(entry.scan_date);
+      qs("scanLocation").value = entry.scan_location || "";
+      qs("ultraFindings").value = entry.ultra_findings || "";
+      qs("note").value = entry.note || "";
+      qs("numberOfFetus").value = entry.number_of_fetus ?? "";
+      qs("biparietalDiameter").value = entry.biparietal_diameter ?? "";
+      qs("presentation").value = entry.presentation ?? "";
+      qs("lie").value = entry.lie ?? "";
+      qs("position").value = entry.position ?? "";
+      qs("amnioticVolume").value = entry.amniotic_volume ?? "";
+      qs("fetalHeartRate").value = entry.fetal_heart_rate ?? "";
+      qs("gender").value = entry.gender ?? "";
+      qs("previousCesarean").checked = !!entry.previous_cesarean;
+      qs("prevCesDate").value = normalizeDate(entry.prev_ces_date);
+      qs("prevCesLocation").value = entry.prev_ces_location || "";
+      qs("cesareanDate").value = normalizeDate(entry.cesarean_date);
+      qs("indication").value = entry.indication || "";
+      qs("nextOfKin").value = entry.next_of_kin || "";
+      qs("isEmergency").checked = !!entry.is_emergency;
+    } catch {
+      showToast("❌ Failed to load ultrasound record");
+    } finally {
+      isPrefilling = false;
       hideLoading();
-      if (!res.ok) throw new Error(normalizeMessage(result, "Failed to load record"));
-      const entry = result?.data;
-      if (!entry) return;
-
-      // 🔹 Basic fields
-      document.getElementById("scanDate").value = normalizeDate(entry.scan_date) || "";
-      document.getElementById("scanLocation").value = entry.scan_location || "";
-      document.getElementById("ultraFindings").value = entry.ultra_findings || "";
-      document.getElementById("note").value = entry.note || "";
-      document.getElementById("numberOfFetus").value = entry.number_of_fetus || "";
-      document.getElementById("biparietalDiameter").value = entry.biparietal_diameter || "";
-      document.getElementById("presentation").value = entry.presentation || "";
-      document.getElementById("lie").value = entry.lie || "";
-      document.getElementById("position").value = entry.position || "";
-      document.getElementById("amnioticVolume").value = entry.amniotic_volume || "";
-      document.getElementById("fetalHeartRate").value = entry.fetal_heart_rate || "";
-      document.getElementById("gender").value = entry.gender || "";
-      document.getElementById("previousCesarean").checked = !!entry.previous_cesarean;
-      document.getElementById("prevCesDate").value = normalizeDate(entry.prev_ces_date) || "";
-      document.getElementById("prevCesLocation").value = entry.prev_ces_location || "";
-      document.getElementById("cesareanDate").value = normalizeDate(entry.cesarean_date) || "";
-      document.getElementById("indication").value = entry.indication || "";
-      document.getElementById("nextOfKin").value = entry.next_of_kin || "";
-      document.getElementById("isEmergency").checked = !!entry.is_emergency;
-
-      if (orgSelect && entry.organization_id) orgSelect.value = entry.organization_id;
-      if (facSelect && entry.facility_id) facSelect.value = entry.facility_id;
-      if (billableSelect && entry.billable_item_id)
-        billableSelect.value = entry.billable_item_id;
-
-      // 🔹 Prefill linked relations (with proper label + name)
-      if (entry.patient) {
-        patientHidden.value = entry.patient.id || "";
-        patientInput.value = renderPatientLabel(entry.patient);
-      }
-      if (entry.consultation) {
-        consultationHidden.value = entry.consultation.id || "";
-        consultationInput.value =
-          `Consultation (${entry.consultation.status || "—"}) on ${
-            normalizeDate(entry.consultation.consultation_date) || "—"
-          }`;
-      }
-      if (entry.maternityVisit) {
-        maternityHidden.value = entry.maternityVisit.id || "";
-        maternityInput.value =
-          `Visit on ${normalizeDate(entry.maternityVisit.visit_date) || "—"}`;
-      }
-      if (entry.technician) {
-        technicianHidden.value = entry.technician.id || "";
-        technicianInput.value =
-          [entry.technician.first_name, entry.technician.last_name].filter(Boolean).join(" ") ||
-          entry.technician.full_name ||
-          "";
-      }
-
-      setUI("edit");
-    } catch (err) {
-      hideLoading();
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load ultrasound record");
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+     🛡️ SUBMIT — MASTER TENANT PARITY
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      consultation_id: normalizeUUID(consultationHidden.value),
-      maternity_visit_id: normalizeUUID(maternityHidden.value),
-      technician_id: normalizeUUID(technicianHidden.value),
-      organization_id: normalizeUUID(orgSelect?.value || localStorage.getItem("organizationId")),
-      facility_id: normalizeUUID(facSelect?.value || localStorage.getItem("facilityId")),
-      billable_item_id: normalizeUUID(billableSelect?.value),
-      registration_log_id: normalizeUUID(regLogSelect?.value),
-      scan_date: document.getElementById("scanDate")?.value || null,
-      scan_location: document.getElementById("scanLocation")?.value || null,
-      ultra_findings: document.getElementById("ultraFindings")?.value || null,
-      note: document.getElementById("note")?.value || null,
-      number_of_fetus:
-        parseInt(document.getElementById("numberOfFetus")?.value || 0, 10) || null,
-      biparietal_diameter:
-        parseFloat(document.getElementById("biparietalDiameter")?.value || 0) || null,
-      presentation: document.getElementById("presentation")?.value || null,
-      lie: document.getElementById("lie")?.value || null,
-      position: document.getElementById("position")?.value || null,
-      amniotic_volume:
-        parseFloat(document.getElementById("amnioticVolume")?.value || 0) || null,
-      fetal_heart_rate:
-        parseInt(document.getElementById("fetalHeartRate")?.value || 0, 10) || null,
-      gender: document.getElementById("gender")?.value || null,
-      previous_cesarean: document.getElementById("previousCesarean")?.checked || false,
-      prev_ces_date: document.getElementById("prevCesDate")?.value || null,
-      prev_ces_location: document.getElementById("prevCesLocation")?.value || null,
-      cesarean_date: document.getElementById("cesareanDate")?.value || null,
-      indication: document.getElementById("indication")?.value || null,
-      next_of_kin: document.getElementById("nextOfKin")?.value || null,
-      is_emergency: document.getElementById("isEmergency")?.checked || false,
-    };
+    const errors = validateUsingRules(form);
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
 
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.billable_item_id) return showToast("❌ Scan Type is required");
-    if (!payload.scan_date) return showToast("❌ Scan Date is required");
+    const url = isEdit
+      ? `/api/ultrasound-records/${recordId}`
+      : `/api/ultrasound-records`;
+
+    const formData = new FormData(form);
+
+    const orgId = normalizeUUID(
+      isSuper
+        ? orgSelect?.value
+        : localStorage.getItem("organizationId")
+    );
+
+    const facId = normalizeUUID(
+      isSuper || isAdmin
+        ? facSelect?.value
+        : localStorage.getItem("facilityId")
+    );
+
+    if (orgId) formData.set("organization_id", orgId);
+    if (facId) formData.set("facility_id", facId);
+
+    for (const [k, v] of formData.entries()) {
+      if (v === "") formData.delete(k);
+    }
 
     try {
       showLoading();
-      const url = isEdit
-        ? `/api/ultrasound-records/${recordId}`
-        : `/api/ultrasound-records`;
-      const method = isEdit ? "PUT" : "POST";
 
       const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        method: isEdit ? "PUT" : "POST",
+        body: formData,
       });
+
       const result = await res.json().catch(() => ({}));
 
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+      if (!res.ok) {
+        applyServerErrors(form, result?.errors);
+        throw new Error(result?.message || "Submission failed");
+      }
 
       showToast(
         isEdit
-          ? "✅ Ultrasound record updated successfully"
-          : "✅ Ultrasound record created successfully"
+          ? "✅ Ultrasound record updated"
+          : "✅ Ultrasound record created"
       );
 
       sessionStorage.removeItem("ultrasoundEditId");
       sessionStorage.removeItem("ultrasoundEditPayload");
 
-      if (isEdit) window.location.href = "/ultrasound-records-list.html";
-      else {
-        form.reset();
-        setUI("add");
+      if (isEdit) {
+        window.location.href = "/ultrasound-records-list.html";
+      } else {
+        resetForm?.();
       }
     } catch (err) {
-      console.error("❌ Submission error:", err);
-      showToast(err.message || "❌ Submission error");
+      console.error(err);
+      showToast(err.message || "❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
-
-  /* ============================================================
-     🚪 Cancel / Clear
-  ============================================================ */
-  cancelBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("ultrasoundEditId");
-    sessionStorage.removeItem("ultrasoundEditPayload");
-    window.location.href = "/ultrasound-records-list.html";
-  });
-
-  clearBtn?.addEventListener("click", () => {
-    sessionStorage.removeItem("ultrasoundEditId");
-    sessionStorage.removeItem("ultrasoundEditPayload");
-    form.reset();
-    setUI("add");
-  });
 }
-
-/* ============================================================
-   🧭 DOM Ready Wrapper
-============================================================ */
-document.addEventListener("DOMContentLoaded", async () => {
-  const form = document.getElementById("ultrasoundRecordForm");
-  if (form) await setupUltrasoundFormSubmission({ form });
-});

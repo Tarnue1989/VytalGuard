@@ -891,6 +891,7 @@ export const FIELD_ORDER_ULTRASOUND_RECORD = [
   "is_emergency", "status",
   "verified_by_id", "verified_at",
   "finalized_by_id", "finalized_at",
+  "cancelled_by_id", "cancelled_at",
   "voided_by_id", "voided_at", "void_reason",
   "source", "file_path",
   "created_by_id", "updated_by_id", "deleted_by_id",

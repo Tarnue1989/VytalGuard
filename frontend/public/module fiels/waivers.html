@@ -1,0 +1,21 @@
+<div class="view-actions d-flex gap-2">
+  <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+    <i class="fas fa-file-csv me-1"></i> CSV
+  </button>
+  <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-file-excel me-1"></i> Excel
+  </button>
+  <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+    <i class="fas fa-file-pdf me-1"></i> PDF
+  </button>
+</div>
+
+<div class="table-responsive table-container active">
+  <table class="table m-0 align-middle data-table print-table">
+    <thead id="dynamicTableHead"></thead>
+    <tbody id="waiverTableBody"></tbody>
+  </table>
+</div>
+
+<div id="waiverList" class="card-list"></div>
+<div id="paginationButtons" class="pagination-controls text-center mt-3"></div>

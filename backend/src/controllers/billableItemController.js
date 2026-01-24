@@ -26,7 +26,7 @@ import { isSuperAdmin, isFacilityHead } from "../utils/role-utils.js";
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (Billable Item)
 ============================================================ */
-const MODULE_KEY = "billableItem";
+const MODULE_KEY = "billable_items";
 
 const DEBUG_OVERRIDE = true; // 👈 turn OFF in prod
 const debug = makeModuleLogger("billableItemController", DEBUG_OVERRIDE);

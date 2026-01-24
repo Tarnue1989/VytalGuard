@@ -157,7 +157,11 @@ const KPI_HANDLERS = {
   prescriptions: K("prescriptions", Prescription, PRESCRIPTION_STATUS, { total_value: fn("SUM", col("total_cost")) }),
   payments: K("payments", Payment, PAYMENT_STATUS, { total_amount: fn("SUM", col("amount")), avg_amount: fn("AVG", col("amount")) }),
   consultations: K("consultations", Consultation, CONSULTATION_STATUS),
-  deliveries: K("deliveries", DeliveryRecord, DELIVERY_STATUS),
+  delivery_records: K(
+    "delivery_records",
+    DeliveryRecord,
+    DELIVERY_STATUS
+  ),
   deposits: K("deposits", Deposit, DEPOSIT_STATUS, { total_value: fn("SUM", col("amount")) }),
   discounts: K("discounts", Discount, DISCOUNT_STATUS, { total_value: fn("SUM", col("value")) }),
   discount_waivers: K("discount_waivers", DiscountWaiver, DISCOUNT_WAIVER_STATUS, { total_value: fn("SUM", col("amount")) }),
@@ -444,6 +448,7 @@ export const getDashboardData = async (req, res) => {
         key: mod.key,
         label: mod.name,
         icon: mod.icon || "activity",
+        category: mod.category, 
         link: mod.route || `/${mod.key.replace(/_/g, "-")}-list.html`,
         total: resolveTotal(summary),
         value: summary.total_amount || summary.total_value || null,

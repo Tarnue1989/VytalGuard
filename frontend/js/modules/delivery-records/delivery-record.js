@@ -1,12 +1,22 @@
-// 📦 deliveryRecord.js – Entry Point (aligned with Central Stock master pattern)
+// 📦 delivery-record.js – Entry Point (Enterprise-Aligned Master Pattern)
+// ============================================================================
+// 🧭 Master Pattern: ekg-record.js / registrationLog.js / department.js
+// 🔹 Unified initialization entry for the Delivery Record module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 NO business logic, NO API calls here
+// ============================================================================
 
-// ✅ Main module init (list / filter page)
+/* ============================================================
+   ✅ Imports
+============================================================ */
+
+// 🧭 Main module init (handles filters, table, card, pagination, etc.)
 import { initDeliveryRecordModule } from "./delivery-record-filter-main.js";
 
-// ✅ Load action handlers (view, edit, delete, lifecycle actions)
-import { setupActionHandlers } from "./delivery-record-actions.js";
+// ⚙️ Lifecycle + action handlers (side-effect import only)
+import "./delivery-record-actions.js";
 
-// ✅ Constants (exposed if needed globally)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_DELIVERY_RECORD,
   FIELD_ORDER_DELIVERY_RECORD,
@@ -16,46 +26,23 @@ import {
 // 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
+/* ============================================================
+   🚀 DOM-Ready Bootstrap
+============================================================ */
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🚀 Form Page (Add/Edit)
-    if (document.getElementById("deliveryRecordForm")) {
+    // 🧩 Initialize ONLY if delivery record form or list exists
+    if (
+      document.getElementById("deliveryRecordForm") ||
+      document.getElementById("deliveryRecordList") ||
+      document.getElementById("deliveryRecordTableBody")
+    ) {
       await initDeliveryRecordModule();
     }
-
-    // 📋 List Page (Table/Card)
-    const tableBody = document.getElementById("deliveryRecordTableBody");
-    if (tableBody) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
-
-      console.log("👤 [deliveryRecord.js] Loaded user:", user);
-
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_DELIVERY_RECORD[userRole] ||
-        FIELD_DEFAULTS_DELIVERY_RECORD.staff;
-      const token =
-        localStorage.getItem("accessToken") ||
-        sessionStorage.getItem("accessToken") ||
-        "";
-
-      setupActionHandlers({
-        entries: window.latestDeliveryRecordEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
-    }
   } catch (err) {
-    console.error("❌ Failed to initialize delivery record module", err);
+    console.error("❌ Failed to initialize Delivery Record module", err);
     hideLoading();
-    showToast("❌ Failed to load delivery record module");
+    showToast("❌ Failed to load Delivery Record module");
   }
 });

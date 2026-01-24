@@ -1089,6 +1089,7 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "previous_cesarean", "prev_ces_date", "prev_ces_location", "cesarean_date",
     "indication", "next_of_kin", "is_emergency", "status",
     "verified_by_id", "verified_at", "finalized_by_id", "finalized_at",
+    "cancelled_by_id", "cancelled_at",
     "voided_by_id", "voided_at", "void_reason",
     "source", "file_path",
     "created_by_id", "updated_by_id", "deleted_by_id",
@@ -1101,13 +1102,16 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "scan_type", "scan_date", "scan_location",
     "ultra_findings", "note", "number_of_fetus", "presentation",
     "fetal_heart_rate", "gender", "previous_cesarean",
-    "is_emergency", "status", "verified_by_id", "verified_at"
+    "is_emergency", "status",
+    "verified_by_id", "verified_at",
+    "cancelled_by_id", "cancelled_at"
   ],
 
   manager: [
     "id", "patient_id", "consultation_id", "technician_id",
     "scan_type", "scan_date", "ultra_findings",
-    "status", "verified_at"
+    "status", "verified_at",
+    "cancelled_at"
   ],
 
   staff: [

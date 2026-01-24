@@ -1,22 +1,65 @@
-// 📁 triage-record-render.js – Enterprise-Aligned Master Pattern (Permission-Driven + Role-Aware)
+// 📁 triage-record-render.js – Entity Card System (TRIAGE RECORD | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Master Pattern: vital-render.js
-// 🔹 Full enterprise consistency (permissions, UI logic, tooltips, exports)
-// 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 Displays patient number + full name properly
+// 🧭 FULL MASTER PARITY WITH vital-render.js
+// 🔹 Table = flat | Card = structured (entity-card system)
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize enabled
+// 🔹 Column drag reorder enabled
+// 🔹 Full audit section (created / updated / deleted / verified / finalized / voided)
+// 🔹 Permission-driven actions (superadmin-aware)
+// 🔹 Export-safe
 // ============================================================================
 
 import { FIELD_LABELS_TRIAGE_RECORD } from "./triage-record-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+
+import {
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons (centralized)
+   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "recorded_at",
+  "triage_status",
+  "created_at",
+  "updated_at",
+]);
+
+/* ============================================================
+   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+============================================================ */
+let sortBy = localStorage.getItem("triageRecordSortBy") || "";
+let sortDir = localStorage.getItem("triageRecordSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("triageRecordSortBy", sortBy);
+  localStorage.setItem("triageRecordSortDir", sortDir);
+
+  window.setTriageRecordSort?.(sortBy, sortDir);
+  window.loadTriageRecordPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS (PERMISSION-DRIVEN)
 ============================================================ */
 function getTriageRecordActionButtons(entry, user) {
   return buildActionButtons({
-    module: "triage_record", // maps to STATUS_ACTION_MATRIX.triage_record
+    module: "triage_record",
     status: (entry.triage_status || "").toLowerCase(),
     entryId: entry.id,
     user,
@@ -25,26 +68,79 @@ function getTriageRecordActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_TRIAGE_RECORD[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+    const label =
+      FIELD_LABELS_TRIAGE_RECORD[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    th.dataset.key = field;
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  /* ================= Column resize ================= */
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadTriageRecordPage?.(1);
+    },
+  });
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
@@ -55,61 +151,76 @@ function renderUserName(user) {
 function renderPatient(entry) {
   const p = entry.patient;
   if (!p) return "—";
-  const patNo = p.pat_no || "—";
+  const patNo = p.pat_no || "";
   const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
-  return `${patNo} - ${name || "Unnamed"}`;
+  return `${patNo} ${name}`.trim() || "—";
 }
 
+/* ============================================================
+   🧩 FIELD VALUE RENDERER
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "triage_status": {
       const raw = (entry.triage_status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        open: "bg-info",
-        in_progress: "bg-warning text-dark",
-        completed: "bg-primary",
-        verified: "bg-success",
-        cancelled: "bg-danger",
-        voided: "bg-dark text-light",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      let cls = "bg-secondary";
+      if (raw === "open") cls = "bg-info";
+      if (raw === "in_progress") cls = "bg-warning text-dark";
+      if (raw === "completed") cls = "bg-primary";
+      if (raw === "verified") cls = "bg-success";
+      if (raw === "finalized") cls = "bg-dark";
+      if (raw === "cancelled") cls = "bg-danger";
+      if (raw === "voided") cls = "bg-secondary";
+
+      return `<span class="badge ${cls}">
+        ${raw ? raw.toUpperCase() : "—"}
+      </span>`;
     }
 
     case "organization":
       return entry.organization?.name || "—";
+
     case "facility":
       return entry.facility?.name || "—";
+
     case "patient":
       return renderPatient(entry);
+
     case "doctor":
       return renderUserName(entry.doctor);
+
     case "nurse":
       return renderUserName(entry.nurse);
+
     case "registrationLog":
       return entry.registrationLog
-        ? `${entry.registrationLog.registration_time ? formatDate(entry.registrationLog.registration_time) : ""} (${entry.registrationLog.log_status || "—"})`
+        ? `${formatDateTime(entry.registrationLog.registration_time)} (${entry.registrationLog.log_status})`
         : "—";
+
     case "triageType":
       return entry.triageType?.name || "—";
+
     case "invoice":
       return entry.invoice
         ? `${entry.invoice.invoice_number || ""} (${entry.invoice.status || "—"})`
         : "—";
+
     case "createdBy":
-      return renderUserName(entry.createdBy);
     case "updatedBy":
-      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry.deletedBy);
+    case "verifiedBy":
+    case "finalizedBy":
+    case "voidedBy":
+      return renderUserName(entry[field]);
 
     case "recorded_at":
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+    case "verified_at":
+    case "finalized_at":
+    case "voided_at":
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
       return entry[field] ?? "—";
@@ -117,40 +228,103 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🧱 CARD RENDERER (ENTITY SYSTEM)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const patientLabel = renderPatient(entry);
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_TRIAGE_RECORD[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getTriageRecordActionButtons(entry, user)}
+  const fieldRow = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
+    </div>
+  `;
+
+  const status = (entry.triage_status || "").toLowerCase();
+
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-secondary">
+          ${has("recorded_at") ? formatDateTime(entry.recorded_at) : "—"}
         </div>
-      </div>`
+        <div class="entity-primary">
+          ${renderPatient(entry)}
+        </div>
+      </div>
+      ${
+        has("triage_status")
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  const context = `
+    <div class="entity-card-context">
+      <div>🏥 ${safe(entry.organization?.name)}</div>
+      <div>📍 ${safe(entry.facility?.name)}</div>
+      <div>👤 ${renderUserName(entry.nurse)}</div>
+    </div>
+  `;
+
+  const body = `
+    <div class="entity-card-body">
+      <div>
+        ${fieldRow("Blood Pressure", entry.bp)}
+        ${fieldRow("Pulse", entry.pulse)}
+        ${fieldRow("Resp. Rate", entry.rr)}
+        ${fieldRow("Temperature", entry.temp)}
+        ${fieldRow("SpO₂", entry.oxygen)}
+      </div>
+      <div>
+        ${fieldRow("Weight", entry.weight)}
+        ${fieldRow("Height", entry.height)}
+        ${fieldRow("RBG", entry.rbg)}
+        ${fieldRow("Pain Score", entry.pain_score)}
+        ${fieldRow("Position", entry.position)}
+      </div>
+    </div>
+  `;
+
+  const audit = `
+    <details class="entity-notes">
+      <summary>Audit</summary>
+      <div class="entity-card-body">
+        <div>
+          ${fieldRow("Created By", renderUserName(entry.createdBy))}
+          ${fieldRow("Created At", formatDateTime(entry.created_at))}
+        </div>
+        <div>
+          ${fieldRow("Updated By", renderUserName(entry.updatedBy))}
+          ${fieldRow("Updated At", formatDateTime(entry.updated_at))}
+        </div>
+      </div>
+    </details>
+  `;
+
+  const actions = has("actions")
+    ? `<div class="entity-card-footer export-ignore">
+         ${getTriageRecordActionButtons(entry, user)}
+       </div>`
     : "";
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-header bg-light fw-semibold">
-        ${patientLabel}
-      </div>
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card triage-record-card">
+      ${header}
+      ${context}
+      ${body}
+      ${audit}
+      ${actions}
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER (TABLE + CARD)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("triageRecordTableBody");
@@ -161,32 +335,33 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No triage records found.</td></tr>`;
-
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
+            No triage records found.
+          </td>
+        </tr>`;
+      initTooltips(tableBody);
       return;
     }
 
     entries.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getTriageRecordActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((field) =>
+          field === "actions"
+            ? `<td class="actions-cell text-center export-ignore">
+                 ${getTriageRecordActionButtons(entry, user)}
+               </td>`
+            : `<td>${renderValue(entry, field)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -195,12 +370,10 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No triage records found.</p>`;
+      : `<p class="text-muted text-center">No triage records found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -209,7 +382,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -231,7 +404,7 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #triageRecordList.active",
       orientation: "landscape",
     });
   });

@@ -1,6 +1,6 @@
-// 📁 ultrasoundRecord-constants.js
+// 📁 ultrasoundRecord-constants.js – MASTER-ALIGNED (Delivery Record Pattern)
 // ============================================================
-// 🧭 Enterprise-Aligned Master Pattern (Consultation-style)
+// 🧭 Enterprise Master Pattern (DeliveryRecord-style)
 // ============================================================
 
 export const FIELD_LABELS_ULTRASOUND_RECORD = {
@@ -16,15 +16,15 @@ export const FIELD_LABELS_ULTRASOUND_RECORD = {
   technician: "Technician",
 
   // 🔍 Scan Info
-  scan_type: "Scan Type",
   scan_date: "Scan Date",
+  scan_type: "Scan Type",
   scan_location: "Scan Location",
   ultra_findings: "Findings",
-  note: "Note",
+  note: "Notes",
 
   // 🧬 Measurements
   number_of_fetus: "No. of Fetuses",
-  biparietal_diameter: "Biparietal Diameter (cm)",
+  biparietal_diameter: "Biparietal Diameter",
   presentation: "Presentation",
   lie: "Lie",
   position: "Position",
@@ -32,8 +32,7 @@ export const FIELD_LABELS_ULTRASOUND_RECORD = {
   fetal_heart_rate: "Fetal Heart Rate",
   gender: "Gender",
 
-  // 🧠 Clinical Info
-  ultrasound_done: "Ultrasound Done",
+  // 🧠 Clinical / History
   previous_cesarean: "Previous Cesarean",
   prev_ces_date: "Prev Cesarean Date",
   prev_ces_location: "Prev Cesarean Location",
@@ -41,34 +40,36 @@ export const FIELD_LABELS_ULTRASOUND_RECORD = {
   indication: "Indication",
   next_of_kin: "Next of Kin",
 
-  // ⚙️ Meta
-  is_emergency: "Emergency",
+  // ⚙️ Status & Flags
+  is_emergency: "Emergency?",
   source: "Source",
   file_path: "File Path",
-  void_reason: "Void Reason",
+  void_reason: "Void / Cancel Reason",
   status: "Status",
 
-  // 🕓 Lifecycle Audit
-  verified_at: "Verified At",
-  verifiedBy: "Verified By",
-  finalized_at: "Finalized At",
-  finalizedBy: "Finalized By",
-  voided_at: "Voided At",
-  voidedBy: "Voided By",
-
-  // 🧾 System Audit
+  // 🧾 Lifecycle / Audit
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
+  cancelledBy: "Cancelled By",
+  cancelled_at: "Cancelled At",
+  verifiedBy: "Verified By",
+  verified_at: "Verified At",
+  finalizedBy: "Finalized By",
+  finalized_at: "Finalized At",
+  voidedBy: "Voided By",
+  voided_at: "Voided At",
+
+  // ⚙️ System
   actions: "Actions",
 };
 
 // ============================================================
-// 🧱 Field Order (used for table rendering & default exports)
+// 🧱 Field Order (Canonical – Table / Card / Export)
 // ============================================================
 
 export const FIELD_ORDER_ULTRASOUND_RECORD = [
@@ -83,8 +84,8 @@ export const FIELD_ORDER_ULTRASOUND_RECORD = [
   "invoice",
   "technician",
 
-  "scan_type",
   "scan_date",
+  "scan_type",
   "scan_location",
   "ultra_findings",
   "note",
@@ -97,7 +98,6 @@ export const FIELD_ORDER_ULTRASOUND_RECORD = [
   "amniotic_volume",
   "fetal_heart_rate",
   "gender",
-  "ultrasound_done",
 
   "previous_cesarean",
   "prev_ces_date",
@@ -112,12 +112,14 @@ export const FIELD_ORDER_ULTRASOUND_RECORD = [
   "void_reason",
   "status",
 
-  "verified_at",
+  "cancelledBy",
+  "cancelled_at",
   "verifiedBy",
-  "finalized_at",
+  "verified_at",
   "finalizedBy",
-  "voided_at",
+  "finalized_at",
   "voidedBy",
+  "voided_at",
 
   "createdBy",
   "created_at",
@@ -130,12 +132,10 @@ export const FIELD_ORDER_ULTRASOUND_RECORD = [
 ];
 
 // ============================================================
-// 🔐 Role-Based Field Defaults (Permission-Driven Visibility)
+// 🔐 Role-Based Field Defaults (Delivery MASTER Pattern)
 // ============================================================
 
 export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
-  superadmin: FIELD_ORDER_ULTRASOUND_RECORD,
-
   admin: [
     "organization",
     "facility",
@@ -148,8 +148,8 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "invoice",
     "technician",
 
-    "scan_type",
     "scan_date",
+    "scan_type",
     "scan_location",
     "ultra_findings",
     "note",
@@ -162,7 +162,6 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "amniotic_volume",
     "fetal_heart_rate",
     "gender",
-    "ultrasound_done",
 
     "previous_cesarean",
     "prev_ces_date",
@@ -177,12 +176,14 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "void_reason",
     "status",
 
-    "verified_at",
+    "cancelledBy",
+    "cancelled_at",
     "verifiedBy",
-    "finalized_at",
+    "verified_at",
     "finalizedBy",
-    "voided_at",
+    "finalized_at",
     "voidedBy",
+    "voided_at",
 
     "createdBy",
     "created_at",
@@ -190,6 +191,7 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "actions",
   ],
 
@@ -204,8 +206,8 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "invoice",
     "technician",
 
-    "scan_type",
     "scan_date",
+    "scan_type",
     "scan_location",
     "ultra_findings",
     "note",
@@ -222,12 +224,14 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "is_emergency",
     "status",
 
-    "verified_at",
     "verifiedBy",
+    "verified_at",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
@@ -236,11 +240,39 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "patient",
     "consultation",
     "technician",
-    "scan_type",
+
     "scan_date",
+    "scan_type",
     "ultra_findings",
     "fetal_heart_rate",
+
     "status",
     "actions",
   ],
+};
+
+// ============================================================
+// 🎭 Field Masks (Compact – Delivery MASTER Pattern)
+// ============================================================
+
+export const FIELD_MASKS_ULTRASOUND_RECORD = {
+  scan_date: "date",
+  prev_ces_date: "date",
+  cesarean_date: "date",
+
+  created_at: "datetime",
+  updated_at: "datetime",
+  deleted_at: "datetime",
+  cancelled_at: "datetime",
+  verified_at: "datetime",
+  finalized_at: "datetime",
+  voided_at: "datetime",
+
+  is_emergency: "boolean",
+  previous_cesarean: "boolean",
+
+  number_of_fetus: "number",
+  biparietal_diameter: "decimal",
+  amniotic_volume: "decimal",
+  fetal_heart_rate: "number",
 };

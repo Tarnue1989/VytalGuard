@@ -1,9 +1,9 @@
 // 📁 vital-actions.js – Enterprise Master Pattern (Vitals)
 // ============================================================================
-// 🧭 Mirrors department-actions.js exactly
+// 🧭 FULL PARITY WITH ekg-record-actions.js (Enterprise Master)
 // 🔹 Permission-driven (superadmin-aware)
-// 🔹 Unified lifecycle: view / edit / start / finalize / verify / void / delete
-// 🔹 Keeps all DOM IDs, routes, and UI behavior intact
+// 🔹 Unified lifecycle: view / edit / start / complete / verify / finalize / cancel / void / delete
+// 🔹 Keeps all DOM IDs, routes, API calls, and UI behavior intact
 // ============================================================================
 
 import {
@@ -70,7 +70,8 @@ export function setupActionHandlers({
 
   // ✅ Permission checker
   const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
+    isSuperAdmin ||
+    userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
      🎯 Main Dispatcher
@@ -116,35 +117,39 @@ export function setupActionHandlers({
     }
 
     if (cls.contains("start-btn")) {
-      if (!hasPerm("vitals:start"))
-        return showToast("⛔ No permission to start vital");
-      return await handleLifecycle(id, "start", "Start this vital record?");
+      if (!hasPerm("vitals:edit"))
+        return showToast("⛔ No permission to start vitals");
+      return await handleLifecycle(id, "start");
     }
 
-    if (cls.contains("finalize-btn") || cls.contains("complete-btn")) {
-      if (!hasPerm("vitals:finalize"))
-        return showToast("⛔ No permission to complete vital");
-      return await handleLifecycle(
-        id,
-        "finalize",
-        "Mark this vital as completed?"
-      );
+    if (cls.contains("complete-btn")) {
+      if (!hasPerm("vitals:edit"))
+        return showToast("⛔ No permission to complete vitals");
+      return await handleLifecycle(id, "complete");
     }
 
     if (cls.contains("verify-btn")) {
       if (!hasPerm("vitals:verify"))
-        return showToast("⛔ No permission to verify vital");
-      return await handleLifecycle(id, "verify", "Verify this vital record?");
+        return showToast("⛔ No permission to verify vitals");
+      return await handleLifecycle(id, "verify");
+    }
+
+    if (cls.contains("finalize-btn")) {
+      if (!hasPerm("vitals:finalize"))
+        return showToast("⛔ No permission to finalize vitals");
+      return await handleLifecycle(id, "finalize");
+    }
+
+    if (cls.contains("cancel-btn")) {
+      if (!hasPerm("vitals:edit"))
+        return showToast("⛔ No permission to cancel vitals");
+      return await handleLifecycle(id, "cancel");
     }
 
     if (cls.contains("void-btn")) {
       if (!hasPerm("vitals:void"))
-        return showToast("⛔ No permission to void vital");
-      return await handleLifecycle(
-        id,
-        "void",
-        "Void this vital record?"
-      );
+        return showToast("⛔ No permission to void vitals");
+      return await handleLifecycle(id, "void");
     }
 
     if (cls.contains("delete-btn")) {
@@ -172,9 +177,11 @@ export function setupActionHandlers({
     window.location.href = "add-vital.html";
   }
 
-  // 🔁 Lifecycle
-  async function handleLifecycle(id, action, confirmMsg) {
-    const confirmed = await showConfirm(confirmMsg);
+  // 🔁 Lifecycle (start / complete / verify / finalize / cancel / void)
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(
+      `Are you sure you want to ${action} this vital record?`
+    );
     if (!confirmed) return;
 
     try {
@@ -186,14 +193,7 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || `❌ Failed to ${action} vital`);
 
-      const label =
-        action === "finalize"
-          ? "completed"
-          : action === "void"
-          ? "voided"
-          : action;
-
-      showToast(`✅ Vital ${label} successfully`);
+      showToast(`✅ Vital ${action} successful`);
       window.latestVitalEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -206,7 +206,9 @@ export function setupActionHandlers({
 
   // 🗑️ Delete
   async function handleDelete(id, entry) {
-    const confirmed = await showConfirm("Delete this vital record?");
+    const confirmed = await showConfirm(
+      "Delete this vital record permanently?"
+    );
     if (!confirmed) return;
 
     try {
@@ -230,7 +232,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🌍 Global Helpers
+     🌍 Global Helpers (Inline Triggers)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestVitalEntries || entries || []).find(
@@ -239,35 +241,22 @@ export function setupActionHandlers({
 
   window.viewVital = (id) => {
     if (!hasPerm("vitals:view"))
-      return showToast("⛔ No permission to view vital");
+      return showToast("⛔ No permission to view vitals");
     const entry = findEntry(id);
     if (entry) handleView(entry);
   };
 
   window.editVital = (id) => {
     if (!hasPerm("vitals:edit"))
-      return showToast("⛔ No permission to edit vital");
+      return showToast("⛔ No permission to edit vitals");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
   };
 
   window.deleteVital = async (id) => {
     if (!hasPerm("vitals:delete"))
-      return showToast("⛔ No permission to delete vital");
+      return showToast("⛔ No permission to delete vitals");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
-
-  ["start", "finalize", "verify", "void"].forEach((action) => {
-    window[`${action}Vital`] = async (id) => {
-      if (!hasPerm(`vitals:${action}`))
-        return showToast(`⛔ No permission to ${action} vital`);
-      const entry = findEntry(id);
-      await handleLifecycle(
-        id,
-        action,
-        `Proceed to ${action === "finalize" ? "complete" : action} this vital record?`
-      );
-    };
-  });
 }
