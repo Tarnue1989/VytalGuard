@@ -16,7 +16,7 @@ export const ORG_STATUS = ['active', 'inactive'];
 // ============================================================
 export const EMPLOYEE_STATUS = ['active', 'inactive', 'on_leave', 'terminated'];
 export const DEPARTMENT_STATUS = ['active', 'inactive'];
-export const GENDER_TYPES = ['Male', 'Female'];
+export const GENDER_TYPES = ['male', 'female'];
 
 // ============================================================
 // 🔹 Patient Demographics
@@ -159,7 +159,14 @@ export const PROCEDURE_STATUS = ['scheduled', 'in_progress', 'completed', 'cance
 export const RADIOLOGY_STATUS = ['pending', 'in_progress', 'completed', 'verified', 'cancelled'];
 export const MATERNITY_VISIT_STATUS = ['scheduled', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
 export const SURGERY_STATUS = ['scheduled', 'in_progress', 'completed', 'verified', 'finalized','cancelled', 'voided'];
-export const DELIVERY_STATUS = ['scheduled', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
+export const DELIVERY_STATUS = {
+  SCHEDULED: 'scheduled',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+  VERIFIED: 'verified',
+  CANCELLED: 'cancelled',
+  VOIDED: 'voided',
+};
 export const NURSING_NOTE_STATUS = ['draft', 'finalized', 'voided'];
 
 // ============================================================

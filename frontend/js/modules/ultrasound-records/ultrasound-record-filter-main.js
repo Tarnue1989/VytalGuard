@@ -1,22 +1,29 @@
-// 📦 ultrasoundRecord-filter-main.js – Filters + Table/Card (Master Pattern Aligned)
+// 📦 ultrasoundRecord-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// ============================================================================
+// 🔹 FULL PARITY WITH delivery-record-filter-main.js
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single field, NEVER DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 Ultrasound Record status fully wired
+// 🔹 DOM-safe suggestion inputs
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
-  loadEmployeesLite,
   loadBillableItemsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
@@ -24,62 +31,73 @@ import {
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./ultrasound-record-render.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./ultrasound-record-render.js";
+
 import { setupActionHandlers } from "./ultrasound-record-actions.js";
+
 import {
   FIELD_ORDER_ULTRASOUND_RECORD,
   FIELD_DEFAULTS_ULTRASOUND_RECORD,
 } from "./ultrasound-record-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("ultrasoundRecordView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
-  moduleKey: "ultrasound_record",
+  moduleKey: "ultrasound_records",
   userRole,
   defaultFields: FIELD_DEFAULTS_ULTRASOUND_RECORD,
   allowedFields: FIELD_ORDER_ULTRASOUND_RECORD,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -87,91 +105,115 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterTechnician = document.getElementById("filterTechnician");
-const filterTechnicianHidden = document.getElementById("filterTechnicianId");
-const filterTechnicianSuggestions = document.getElementById("filterTechnicianSuggestions");
-const filterScanType = document.getElementById("filterScanType");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch = qs("globalSearch");
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus = qs("filterStatus");
+const dateRange = qs("dateRange");
+
+const filterPatient = qs("filterPatient");
+const filterPatientId = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterTechnician = qs("filterTechnician");
+const filterTechnicianId = qs("filterTechnicianId");
+const filterTechnicianSuggestions = qs("filterTechnicianSuggestions");
+
+const filterScanType = qs("filterScanType");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("ultrasoundView") || "table";
+window.setUltrasoundRecordSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadUltrasoundRecordPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "ultrasound_records",
+  loadEntries,
+  Number(localStorage.getItem("ultrasoundRecordPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [filterOrg, filterFacility, filterStatus, filterScanType],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    technician_id: filterTechnicianHidden?.value || "",
-    scan_type: filterScanType?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    patient_id: filterPatientId?.value,
+    technician_id: filterTechnicianId?.value,
+    billable_item_id: filterScanType?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🔁 Pagination Control
-============================================================ */
-const getPagination = initPaginationControl("ultrasound_record", loadEntries, 25);
-
-/* ============================================================
-   📦 Load Ultrasound Records
+   📦 LOAD DATA
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_ULTRASOUND_RECORD.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
 
     const res = await authFetch(`/api/ultrasound-records?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    if (data.summary) {
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "ULTRASOUND RECORDS",
+      });
+    }
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -184,16 +226,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length)
-      showToast("ℹ️ No ultrasound records found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load ultrasound records");
   } finally {
     hideLoading();
@@ -201,177 +240,153 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
-  localStorage.setItem("ultrasoundView", "table");
+  localStorage.setItem("ultrasoundRecordView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-
-  // ✅ Update button active states
-  document.getElementById("tableViewBtn")?.classList.add("active");
-  document.getElementById("cardViewBtn")?.classList.remove("active");
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
-  localStorage.setItem("ultrasoundView", "card");
+  localStorage.setItem("ultrasoundRecordView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-
-  // ✅ Update button active states
-  document.getElementById("cardViewBtn")?.classList.add("active");
-  document.getElementById("tableViewBtn")?.classList.remove("active");
 };
 
-
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
-    filterPatient,
-    filterTechnician,
-    filterScanType,
+    globalSearch,
+    filterOrg,
+    filterFacility,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => (el ? (el.value = "") : null));
+    filterScanType,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
 
-  filterPatientHidden.value = "";
-  filterTechnicianHidden.value = "";
+  if (filterPatient) filterPatient.value = "";
+  if (filterPatientId) filterPatientId.value = "";
+  if (filterTechnician) filterTechnician.value = "";
+  if (filterTechnicianId) filterTechnicianId.value = "";
+
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   ⬇️ Export Tools
+   📤 EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `ultrasound_records_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportExcelBtn")?.addEventListener("click", () => {
+  const mapped = mapDataForExport(entries, visibleFields);
+  exportToExcel(
+    mapped,
+    `ultrasound_records_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#ultrasoundRecordList";
-    exportToPDF("Ultrasound Record List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  const target =
+    viewMode === "table" ? ".table-container" : "#ultrasoundRecordList";
+  exportToPDF("Ultrasound Records", target, "portrait", true);
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
-export async function initUltrasoundModule() {
+export async function initUltrasoundRecordModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible =
-    localStorage.getItem("ultrasoundFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
     "filterCollapse",
     "filterChevron",
-    "ultrasoundFilterVisible"
+    "ultrasoundRecordFilterVisible"
   );
 
-  /* ----------------- Suggestion Inputs ----------------- */
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      if (selected)
-        filterPatient.value =
-          selected.label ||
-          (selected.pat_no && selected.full_name
-            ? `${selected.pat_no} - ${selected.full_name}`
-            : selected.full_name || selected.pat_no || "");
-    },
-    "label"
-  );
+  /* ========= PATIENT SUGGESTION ========= */
+  if (filterPatient && filterPatientSuggestions && filterPatientId) {
+    setupSuggestionInputDynamic(
+      filterPatient,
+      filterPatientSuggestions,
+      "/api/lite/patients",
+      (selected) => {
+        filterPatientId.value = selected?.id || "";
+        filterPatient.value = selected?.label || "";
+        loadEntries(1);
+      },
+      "label"
+    );
 
-  setupSuggestionInputDynamic(
-    filterTechnician,
-    filterTechnicianSuggestions,
-    "/api/lite/employees",
-    (selected) => {
-      filterTechnicianHidden.value = selected?.id || "";
-      if (selected)
-        filterTechnician.value =
-          selected.full_name ||
-          `${selected.first_name || ""} ${selected.last_name || ""}`.trim();
-    },
-    "full_name"
-  );
-
-  /* ============================================================
-     🧭 Prefill Dropdowns (Org, Facility, Scan Type)
-  ============================================================ */
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
-        );
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
+    filterPatient.addEventListener("input", () => {
+      if (!filterPatient.value.trim()) {
+        filterPatientId.value = "";
+        loadEntries(1);
       }
+    });
+  }
 
-      await reloadFacilities();
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
+  /* ========= TECHNICIAN SUGGESTION (MASTER PARITY) ========= */
+  if (filterTechnician && filterTechnicianSuggestions && filterTechnicianId) {
+    setupSuggestionInputDynamic(
+      filterTechnician,
+      filterTechnicianSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterTechnicianId.value = selected?.id || "";
+        filterTechnician.value = selected?.full_name || "";
+        loadEntries(1); // ✅ immediate filter
+      },
+      "full_name" // ✅ REQUIRED (same as consultation)
+    );
+
+    filterTechnician.addEventListener("input", () => {
+      if (!filterTechnician.value.trim()) {
+        filterTechnicianId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
+
+  /* ========= ORG / FACILITY ========= */
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
+
+    const reloadFacilities = async (orgId = null) => {
+      if (!filterFacility) return;
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      filterFacility?.closest(".form-group")?.classList.add("hidden");
-    }
+    };
 
-    // ✅ Scan Type (Billable Item preload)
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  }
+
+  /* ========= SCAN TYPE ========= */
+  if (filterScanType) {
     const scanTypes = await loadBillableItemsLite(
       { category: "ultrasound" },
       true
     );
-    setupSelectOptions(filterScanType, scanTypes, "id", "name", "-- All Types --");
-  } catch (err) {
-    console.error("❌ preload dropdowns failed:", err);
-    showToast("❌ Failed to load filter dropdowns");
+    scanTypes.unshift({ id: "", name: "-- All Types --" });
+    setupSelectOptions(filterScanType, scanTypes, "id", "name");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initUltrasoundModule().catch((err) =>
-    console.error("initUltrasoundModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initUltrasoundRecordModule)
+  : initUltrasoundRecordModule();

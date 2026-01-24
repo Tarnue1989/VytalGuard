@@ -1,34 +1,44 @@
-// 📦 registrationLog-main.js – Form-only loader for Registration Log (permission-driven)
+// 📦 registrationLog-main.js – Form-only loader for Registration Log (Enterprise Master Pattern)
+// ============================================================================
+// 🧭 Mirrors department-main.js / patient-main.js structure exactly
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
+// ============================================================================
 
 import {
   initPageGuard,
   initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
+
 import { setupRegistrationLogFormSubmission } from "./registration-log-form.js";
+
 import {
   FIELD_LABELS_REGISTRATION_LOG,
   FIELD_ORDER_REGISTRATION_LOG,
   FIELD_DEFAULTS_REGISTRATION_LOG,
 } from "./registration-log-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard
-   ============================================================ */
-// Auto-detect proper permission (e.g., registration_logs:create / edit)
+   🔐 Auth Guard + Shared State
+============================================================ */
 const token = initPageGuard(
   autoPagePermissionKey(["registration_logs:create", "registration_logs:edit"])
 );
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State + DOM Refs
-   ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("registrationLogForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -36,8 +46,8 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
-   ============================================================ */
+   🧹 Reset Form Helper (MASTER PARITY)
+============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
@@ -58,7 +68,7 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset selects
+  // Clear dropdowns
   [
     "organizationSelect",
     "facilitySelect",
@@ -70,7 +80,7 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Clear hidden fields
+  // Clear hidden IDs
   ["patientId", "registrarId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -79,10 +89,11 @@ function resetForm() {
   // Reset emergency flag
   const emergency = document.getElementById("isEmergency");
   if (emergency) emergency.checked = false;
-
-  console.info("🧹 [Registration Log] Form reset complete");
 }
 
+/* ============================================================
+   🧭 Form Show / Hide (MASTER PARITY)
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -96,16 +107,15 @@ function hideForm() {
   localStorage.setItem("registrationLogFormVisible", "false");
 }
 
-// Expose globally so other modules can call them
+// 🔗 Expose globally (actions / hot reload parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
-   ============================================================ */
+   ⚙️ Button Wiring
+============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Registration Log] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/registration-logs-list.html";
   };
@@ -115,7 +125,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Registration Log] Switching to Add mode");
     sessionStorage.removeItem("registrationLogEditId");
     sessionStorage.removeItem("registrationLogEditPayload");
     resetForm();
@@ -124,29 +133,31 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Stub (no list handling here)
-   ============================================================ */
+   📦 Loader Placeholder
+============================================================ */
 async function loadEntries() {
-  return; // no-op (handled by list page)
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Init
-   ============================================================ */
+   🚀 Init Entrypoint
+============================================================ */
 export async function initRegistrationLogModule() {
-  showForm(); // open form immediately
+  showForm(); // form-only mode (matches Department / Patient)
 
-  setupRegistrationLogFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupRegistrationLogFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("registrationLogPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role for field defaults (MASTER PARITY)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -154,7 +165,6 @@ export async function initRegistrationLogModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🔧 Setup field selector
   setupFieldSelector({
     module: "registration_log",
     fieldLabels: FIELD_LABELS_REGISTRATION_LOG,
@@ -163,13 +173,11 @@ export async function initRegistrationLogModule() {
       FIELD_DEFAULTS_REGISTRATION_LOG[role] ||
       FIELD_DEFAULTS_REGISTRATION_LOG.staff,
   });
-
-  console.info(`✅ [Registration Log] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   (Optional)
-   ============================================================ */
+   (Optional) State Sync Stub
+============================================================ */
 export function syncRefsToState() {
-  // placeholder for future syncs
+  // reserved for future reactive syncing
 }

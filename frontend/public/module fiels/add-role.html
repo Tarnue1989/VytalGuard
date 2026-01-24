@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Role</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Role">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Roles</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Role</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Role</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="roleForm" novalidate>
+                  <div class="row gx-4">
+
+                    <!-- ================= Role Information ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Role Information</h6>
+                      <hr/>
+                    </div>
+
+                    <!-- Role Name -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="name">
+                          Role Name <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          id="name"
+                          name="name"
+                          minlength="3"
+                          data-required="true"
+                          placeholder="Enter role name"
+                        >
+                      </div>
+                    </div>
+
+                    <!-- Role Code -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="code">
+                          Code <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          id="code"
+                          name="code"
+                          placeholder="Enter code"
+                          pattern="[A-Za-z0-9_\-]+"
+                          maxlength="50"
+                          data-required="true"
+                        >
+                      </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="col-xxl-6 col-lg-8 col-sm-12">
+                      <div class="mb-3">
+                        <label class="form-label" for="description">Description</label>
+                        <textarea
+                          class="form-control"
+                          id="description"
+                          name="description"
+                          rows="2"
+                          placeholder="Enter role description"
+                        ></textarea>
+                      </div>
+                    </div>
+
+                    <!-- ================= Role Settings ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Role Settings</h6>
+                      <hr/>
+                    </div>
+
+                    <!-- Role Type -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Role Type</label>
+                        <div>
+                          <div class="form-check form-check-inline">
+                            <input
+                              class="form-check-input"
+                              type="radio"
+                              name="is_system"
+                              id="is_system_false"
+                              value="false"
+                              checked
+                            >
+                            <label class="form-check-label" for="is_system_false">
+                              Custom
+                            </label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input
+                              class="form-check-input"
+                              type="radio"
+                              name="is_system"
+                              id="is_system_true"
+                              value="true"
+                            >
+                            <label class="form-check-label" for="is_system_true">
+                              System
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <div>
+                          <div class="form-check form-check-inline">
+                            <input
+                              class="form-check-input"
+                              type="radio"
+                              name="status"
+                              id="status_active"
+                              value="active"
+                              checked
+                            >
+                            <label class="form-check-label" for="status_active">
+                              Active
+                            </label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input
+                              class="form-check-input"
+                              type="radio"
+                              name="status"
+                              id="status_inactive"
+                              value="inactive"
+                            >
+                            <label class="form-check-label" for="status_inactive">
+                              Inactive
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- ================= Assignment Scope ================= -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Assignment Scope</h6>
+                      <hr/>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select
+                          class="form-select"
+                          id="organizationSelect"
+                          name="organization_id"
+                        >
+                          <option value="">-- Select Organization --</option>
+                          <!-- dynamically populated by JS -->
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select
+                          class="form-select"
+                          id="facilitySelect"
+                          name="facility_id"
+                        >
+                          <option value="">-- Select Facility --</option>
+                          <!-- dynamically populated by JS -->
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- ================= Actions ================= -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button
+                          type="button"
+                          id="cancelBtn"
+                          class="btn btn-outline-secondary"
+                        >
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button
+                          type="reset"
+                          id="clearBtn"
+                          class="btn btn-warning"
+                        >
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                        >
+                          <i class="ri-save-3-line me-1"></i> Save Role
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/role/add-role.js"></script>
+</body>
+</html>

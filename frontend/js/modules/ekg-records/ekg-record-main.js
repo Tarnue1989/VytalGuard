@@ -1,28 +1,37 @@
-// 📦 ekg-record-main.js – Form-only Loader for EKG Record (secure + role-aware)
+// 📦 ekg-record-main.js – Form-only Loader for EKG Record (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🧭 Mirrors registrationLog-main.js / department-main.js exactly
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
+// ============================================================================
 
 import {
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { setupEKGRecordFormSubmission } from "./ekg-record-form.js";
+
 import {
   FIELD_LABELS_EKG_RECORD,
   FIELD_ORDER_EKG_RECORD,
   FIELD_DEFAULTS_EKG_RECORD,
 } from "./ekg-record-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth – automatic permission resolution ("ekg_records:create" / "ekg_records:edit")
+   🔐 Auth Guard + Shared State (MASTER PARITY)
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey(["ekg_records:create", "ekg_records:edit"])
+);
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -37,7 +46,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form (clear + restore add mode)
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -47,7 +56,7 @@ function resetForm() {
   sessionStorage.removeItem("ekgRecordEditId");
   sessionStorage.removeItem("ekgRecordEditPayload");
 
-  // Clear text inputs
+  // Clear visible text inputs
   [
     "patientInput",
     "technicianInput",
@@ -83,17 +92,17 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Clear date field
+  // Reset date field
   const dateInput = document.getElementById("recordedDate");
   if (dateInput) dateInput.value = "";
 
-  // Reset status if applicable
-  const pendingStatus = document.getElementById("status_pending");
-  if (pendingStatus) pendingStatus.checked = true;
+  // Reset emergency flag
+  const emergency = document.getElementById("isEmergency");
+  if (emergency) emergency.checked = false;
 }
 
 /* ============================================================
-   🧭 Form Show / Hide
+   🧭 Form Show / Hide (MASTER PARITY)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -108,17 +117,17 @@ function hideForm() {
   localStorage.setItem("ekgRecordFormVisible", "false");
 }
 
-// 🔗 Expose globally (for reuse in action handlers)
+// 🔗 Expose globally (actions / parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🎛️ Button Wiring
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/ekg-records-list.html"; // ✅ consistent plural route
+    window.location.href = "/ekg-records-list.html";
   };
 }
 
@@ -126,58 +135,59 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // 🧹 Remove stale session edits
     sessionStorage.removeItem("ekgRecordEditId");
     sessionStorage.removeItem("ekgRecordEditPayload");
-
-    // Reset and open form
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   📥 Loader (noop – list handles fetch)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return; // noop
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Init Module
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initEKGRecordModule() {
-  showForm(); // open form by default
-  setupEKGRecordFormSubmission({ form, token, sharedState, resetForm, loadEntries });
+  showForm(); // form-only mode (matches Registration Log / Department)
+
+  if (form) {
+    setupEKGRecordFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("ekgRecordPanelVisible", "false");
 
-  // 📌 Normalize user role
+  // Normalize role for field defaults (MASTER PARITY)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
-  if (role.includes("super") && role.includes("admin")) {
-    role = "superadmin";
-  } else if (role.includes("admin")) {
-    role = "admin";
-  } else {
-    role = "staff";
-  }
+  if (role.includes("super") && role.includes("admin")) role = "superadmin";
+  else if (role.includes("admin")) role = "admin";
+  else role = "staff";
 
-  /* ============================================================
-     🧩 Field Selector Setup (Role-Based)
-  ============================================================ */
   setupFieldSelector({
     module: "ekg_record",
     fieldLabels: FIELD_LABELS_EKG_RECORD,
     fieldOrder: FIELD_ORDER_EKG_RECORD,
-    defaultFields: FIELD_DEFAULTS_EKG_RECORD[role],
+    defaultFields:
+      FIELD_DEFAULTS_EKG_RECORD[role] ||
+      FIELD_DEFAULTS_EKG_RECORD.staff,
   });
 }
 
 /* ============================================================
-   (Optional)
+   (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // no-op for compatibility
+  // reserved for future reactive syncing
 }

@@ -24,9 +24,10 @@ import { auditService } from "../services/auditService.js";
 import { FIELD_VISIBILITY_ULTRASOUND_RECORD } from "../constants/fieldVisibility.js";
 import { billingService } from "../services/billingService.js";
 import { shouldTriggerBilling } from "../constants/billing.js";
-import { validatePaginationStrict } from "../utils/query-utils.js";
 import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
-import { isSuperAdmin, hasRole, getUserRoles } from "../utils/role-utils.js";
+import { isSuperAdmin} from "../utils/role-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { validate } from "../utils/validation.js";
 
 // 🔖 Local enum map for readability
 const USS = {
@@ -65,21 +66,24 @@ const ULTRASOUND_INCLUDES = [
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "cancelledBy", attributes: ["id", "first_name", "last_name"] },
+
 ];
 
 /* ============================================================
    📋 JOI SCHEMA – Auto-Handled `scan_type` (no longer required)
 ============================================================ */
-function buildUltrasoundSchema(mode = "create") {
+function buildUltrasoundSchema(user, mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
-    consultation_id: Joi.string().uuid().allow(null, ""),
-    maternity_visit_id: Joi.string().uuid().allow(null, ""),
-    registration_log_id: Joi.string().uuid().allow(null, ""),
-    department_id: Joi.string().uuid().allow(null, ""),
-    invoice_id: Joi.string().uuid().allow(null, ""),
-    billable_item_id: Joi.string().uuid().allow(null, ""),
-    technician_id: Joi.string().uuid().allow(null, ""),
+
+    consultation_id: Joi.string().uuid().allow("", null),
+    maternity_visit_id: Joi.string().uuid().allow("", null),
+    registration_log_id: Joi.string().uuid().allow("", null),
+    department_id: Joi.string().uuid().allow("", null),
+    invoice_id: Joi.string().uuid().allow("", null),
+    billable_item_id: Joi.string().uuid().allow("", null),
+    technician_id: Joi.string().uuid().allow("", null),
 
     scan_type: Joi.string().allow("", null),
     scan_date: Joi.date().required(),
@@ -94,7 +98,7 @@ function buildUltrasoundSchema(mode = "create") {
     position: Joi.string().allow("", null),
     amniotic_volume: Joi.number().precision(2).allow(null),
     fetal_heart_rate: Joi.number().allow(null),
-    gender: Joi.string().valid("male", "female").allow(null),
+    gender: Joi.string().valid("male", "female").allow("", null),
 
     previous_cesarean: Joi.boolean().default(false),
     prev_ces_date: Joi.date().allow(null),
@@ -108,20 +112,30 @@ function buildUltrasoundSchema(mode = "create") {
     source: Joi.string().allow("", null),
     file_path: Joi.string().allow("", null),
 
-    organization_id: Joi.string().uuid().allow(null),
-    facility_id: Joi.string().uuid().allow(null),
+    // 🔒 default: derived from session
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
   };
 
-  if (mode === "update") {
-    Object.keys(base).forEach(k => (base[k] = base[k].optional()));
+  /* 🔓 SUPERADMIN OVERRIDE (PATIENT PARITY) */
+  if (isSuperAdmin(user)) {
+    base.organization_id = Joi.string().uuid().allow("", null);
+    base.facility_id = Joi.string().uuid().allow("", null);
   }
+
+  if (mode === "update") {
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
+    });
+  }
+
   return Joi.object(base);
 }
 
 
 /* ============================================================
    📌 CREATE ULTRASOUND RECORD – Auto-Fill scan_type
-   (Enterprise-grade: full audit meta + model parity)
+   (Enterprise-grade: Patient-Parity Validation)
 ============================================================ */
 export const createUltrasoundRecord = async (req, res) => {
   const t = await sequelize.transaction();
@@ -134,27 +148,66 @@ export const createUltrasoundRecord = async (req, res) => {
     });
     if (!allowed) return;
 
-    const schema = buildUltrasoundSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    /* ================= VALIDATION ================= */
+    const { value, errors } = validate(
+      buildUltrasoundSchema(req.user, "create"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    // 🧩 Auto-derive scan_type from Billable Item if not provided
+    /* ================= NORMALIZE EMPTY STRINGS ================= */
+    [
+      "consultation_id",
+      "maternity_visit_id",
+      "registration_log_id",
+      "department_id",
+      "invoice_id",
+      "billable_item_id",
+      "technician_id",
+      "organization_id",
+      "facility_id",
+      "number_of_fetus",
+      "biparietal_diameter",
+      "amniotic_volume",
+      "fetal_heart_rate",
+    ].forEach((f) => {
+      if (value[f] === "") value[f] = null;
+    });
+
+    /* ================= AUTO SCAN TYPE ================= */
     if (!value.scan_type && value.billable_item_id) {
       const billable = await BillableItem.findByPk(value.billable_item_id);
       if (billable?.name) value.scan_type = billable.name;
     }
 
-    // 🏢 Determine tenant context
+    /* ================= SCAN TYPE SAFETY ================= */
+    if (!value.scan_type) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        errors: [{ field: "scan_type", message: "Scan type is required" }],
+      });
+    }
+
+    /* ================= ORG / FACILITY ================= */
     let orgId, facilityId;
     if (isSuperAdmin(req.user)) {
       orgId = value.organization_id;
       facilityId = value.facility_id;
+
       if (!orgId || !facilityId) {
         await t.rollback();
-        return error(res, "Organization and Facility required for superadmin", null, 400);
+        return res.status(400).json({
+          success: false,
+          errors: [
+            { field: "organization_id", message: "Organization is required" },
+            { field: "facility_id", message: "Facility is required" },
+          ],
+        });
       }
     } else {
       orgId = req.user.organization_id;
@@ -163,11 +216,11 @@ export const createUltrasoundRecord = async (req, res) => {
       value.facility_id = facilityId;
     }
 
-    // 🔗 Resolve related links (consultation, patient, maternity, etc.)
+    /* ================= CLINICAL LINKS ================= */
     value._currentUser = req.user;
     await resolveClinicalLinks(value, orgId, facilityId, t);
 
-    // 🧾 Create record
+    /* ================= CREATE ================= */
     const created = await UltrasoundRecord.create(
       {
         ...value,
@@ -181,46 +234,31 @@ export const createUltrasoundRecord = async (req, res) => {
 
     await t.commit();
 
-    // 🔍 Reload with associations for full response
     const full = await UltrasoundRecord.findOne({
       where: { id: created.id },
       include: ULTRASOUND_INCLUDES,
     });
 
-    // 🧠 Audit creation with meta scope
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "create",
       entityId: created.id,
-      entity: created,
-      details: { ...value, status: USS.PENDING },
-      meta: {
-        scope_org: orgId,
-        scope_fac: facilityId,
-        outcome: "success",
-      },
+      entity: full,
     });
 
     return success(res, "✅ Ultrasound record created", full);
   } catch (err) {
     await t.rollback();
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "create",
-      details: { outcome: "failed", error: err.message },
-    });
-
     return error(res, "❌ Failed to create ultrasound record", err);
   }
 };
 
 
+
 /* ============================================================
    📌 UPDATE ULTRASOUND RECORD – Auto-Fill scan_type
-   (Enterprise-grade: full audit meta + model parity)
+   (Enterprise-grade: Patient-Parity Validation)
 ============================================================ */
 export const updateUltrasoundRecord = async (req, res) => {
   const t = await sequelize.transaction();
@@ -234,30 +272,83 @@ export const updateUltrasoundRecord = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const schema = buildUltrasoundSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+
+    /* ================= VALIDATION ================= */
+    const { value, errors } = validate(
+      buildUltrasoundSchema(req.user, "update"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return res.status(400).json({ success: false, errors });
     }
 
-    const record = await UltrasoundRecord.findOne({ where: { id }, transaction: t });
+    /* ================= NORMALIZE EMPTY STRINGS ================= */
+    [
+      "consultation_id",
+      "maternity_visit_id",
+      "registration_log_id",
+      "department_id",
+      "invoice_id",
+      "billable_item_id",
+      "technician_id",
+      "organization_id",
+      "facility_id",
+      "number_of_fetus",
+      "biparietal_diameter",
+      "amniotic_volume",
+      "fetal_heart_rate",
+    ].forEach((f) => {
+      if (value[f] === "") value[f] = null;
+    });
+
+    const record = await UltrasoundRecord.findOne({
+      where: { id },
+      transaction: t,
+    });
     if (!record) {
       await t.rollback();
       return error(res, "Ultrasound record not found", null, 404);
     }
 
-    // 🧩 Auto-derive scan_type if missing
+    /* ================= FILE LOCK ================= */
+    if ([USS.FINALIZED, USS.VOIDED].includes(record.status)) {
+      if ("file_path" in value || "source" in value) {
+        await t.rollback();
+        return error(
+          res,
+          "Finalized or voided ultrasound records cannot modify file attachments",
+          null,
+          400
+        );
+      }
+    }
+
+    /* ================= AUTO SCAN TYPE ================= */
     if (!value.scan_type && value.billable_item_id) {
       const billable = await BillableItem.findByPk(value.billable_item_id);
       if (billable?.name) value.scan_type = billable.name;
     }
 
-    // 🏢 Ensure tenant scope integrity
+    /* ================= SCAN TYPE SAFETY ================= */
+    if (!value.scan_type && record.scan_type) {
+      value.scan_type = record.scan_type;
+    }
+
+    if (!value.scan_type) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        errors: [{ field: "scan_type", message: "Scan type is required" }],
+      });
+    }
+
+    /* ================= ORG / FACILITY ================= */
     let orgId, facilityId;
     if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || record.organization_id;
-      facilityId = value.facility_id || record.facility_id;
+      orgId = value.organization_id ?? record.organization_id;
+      facilityId = value.facility_id ?? record.facility_id;
     } else {
       orgId = req.user.organization_id;
       facilityId = req.user.facility_id;
@@ -265,47 +356,37 @@ export const updateUltrasoundRecord = async (req, res) => {
       value.facility_id = facilityId;
     }
 
-    // 🔗 Resolve any clinical link consistency
+    /* ================= CLINICAL LINKS ================= */
     value._currentUser = req.user;
     await resolveClinicalLinks(value, orgId, facilityId, t);
 
-    // 🧾 Perform update
-    await record.update({ ...value, updated_by_id: req.user?.id || null }, { transaction: t });
+    /* ================= UPDATE ================= */
+    await record.update(
+      {
+        ...value,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
     await t.commit();
 
-    // 🔍 Reload for full output
     const full = await UltrasoundRecord.findOne({
       where: { id },
       include: ULTRASOUND_INCLUDES,
     });
 
-    // 🧠 Audit log with full meta scope
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "update",
       entityId: id,
       entity: full,
-      details: value,
-      meta: {
-        scope_org: record.organization_id,
-        scope_fac: record.facility_id,
-        outcome: "success",
-      },
     });
 
     return success(res, "✅ Ultrasound record updated", full);
   } catch (err) {
     await t.rollback();
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      entityId: req.params.id,
-      details: { outcome: "failed", error: err.message },
-    });
-
     return error(res, "❌ Failed to update ultrasound record", err);
   }
 };
@@ -454,20 +535,29 @@ export const cancelUltrasound = async (req, res) => {
 
     if (![USS.PENDING, USS.IN_PROGRESS].includes(rec.status)) {
       await t.rollback();
-      return error(res, "❌ Only pending or in-progress ultrasounds can be cancelled", null, 400);
+      return error(
+        res,
+        "❌ Only pending or in-progress ultrasounds can be cancelled",
+        null,
+        400
+      );
     }
 
     const oldStatus = rec.status;
+
+    /* ================= CANCEL (NOT VOID) ================= */
     await rec.update(
       {
         status: USS.CANCELLED,
-        void_reason: reason || null,
-        voided_by_id: user?.id || null,
+        void_reason: reason || null,        // shared reason field (OK)
+        cancelled_by_id: user?.id || null,  // ✅ correct field
+        cancelled_at: new Date(),            // ✅ correct timestamp
         updated_by_id: user?.id || null,
       },
       { transaction: t }
     );
 
+    /* ================= BILLING ROLLBACK ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: rec.id,
@@ -476,6 +566,7 @@ export const cancelUltrasound = async (req, res) => {
     });
 
     await t.commit();
+
     await auditService.logAction({
       user,
       module: MODULE_KEY,
@@ -493,6 +584,7 @@ export const cancelUltrasound = async (req, res) => {
     return success(res, "✅ Ultrasound cancelled & charges voided", rec);
   } catch (err) {
     await t.rollback();
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -500,6 +592,7 @@ export const cancelUltrasound = async (req, res) => {
       entityId: req.params.id,
       details: { outcome: "failed", error: err.message },
     });
+
     return error(res, "❌ Failed to cancel ultrasound", err);
   }
 };
@@ -640,6 +733,9 @@ export const finalizeUltrasound = async (req, res) => {
 /* ============================================================
    6️⃣ VOID ULTRASOUND (any → voided)
    ============================================================ */
+/* ============================================================
+   6️⃣ VOID ULTRASOUND (any → voided) — REASON REQUIRED
+   ============================================================ */
 export const voidUltrasound = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -654,7 +750,13 @@ export const voidUltrasound = async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    // 🧭 Scope filter (multi-tenant safe)
+    // ❗ HARD REQUIRE VOID REASON
+    if (!reason || !reason.trim()) {
+      await t.rollback();
+      return error(res, "Void reason is required", null, 400);
+    }
+
+    // 🧭 Tenant scope
     const where = { id };
     if (!isSuperAdmin(user)) {
       where.organization_id = user.organization_id;
@@ -662,24 +764,27 @@ export const voidUltrasound = async (req, res) => {
     }
 
     const rec = await UltrasoundRecord.findOne({ where, transaction: t });
-    if (!rec) return error(res, "❌ Ultrasound record not found", null, 404);
+    if (!rec) {
+      await t.rollback();
+      return error(res, "❌ Ultrasound record not found", null, 404);
+    }
 
-    // 🔄 Status update + audit metadata
     const oldStatus = rec.status;
     const now = new Date();
 
+    // 🔄 Update record
     await rec.update(
       {
         status: USS.VOIDED,
-        void_reason: reason || null,
+        void_reason: reason.trim(),
         voided_by_id: user?.id || null,
-        voided_at: now,                 // ✅ Timestamp properly set
+        voided_at: now,
         updated_by_id: user?.id || null,
       },
       { transaction: t }
     );
 
-    // 💳 Roll back related billing
+    // 💳 Roll back billing
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: rec.id,
@@ -689,7 +794,7 @@ export const voidUltrasound = async (req, res) => {
 
     await t.commit();
 
-    // 🧾 Audit Log (detailed trace)
+    // 🧾 Audit log
     await auditService.logAction({
       user,
       module: MODULE_KEY,
@@ -699,8 +804,8 @@ export const voidUltrasound = async (req, res) => {
       details: {
         from: oldStatus,
         to: USS.VOIDED,
-        reason: reason || null,
-        voided_at: now.toISOString(),  // ✅ Explicit timestamp log
+        reason: reason.trim(),
+        voided_at: now.toISOString(),
       },
       meta: {
         scope_org: rec.organization_id,
@@ -724,7 +829,6 @@ export const voidUltrasound = async (req, res) => {
     return error(res, "❌ Failed to void ultrasound", err);
   }
 };
-
 
 /* ============================================================
    📌 DELETE ULTRASOUND (Soft Delete + Billing Rollback)
@@ -901,7 +1005,7 @@ export const getAllUltrasoundsLite = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL ULTRASOUND RECORDS (with ?status= support)
-   (Upgraded: audit meta + org/fac meta for trace)
+   (MASTER-ALIGNED: audit meta + org/fac scope + UI dateRange safe)
 ============================================================ */
 export const getAllUltrasounds = async (req, res) => {
   try {
@@ -914,56 +1018,124 @@ export const getAllUltrasounds = async (req, res) => {
     if (!allowed) return;
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
     const visibleFields =
-      FIELD_VISIBILITY_ULTRASOUND_RECORD[role] || FIELD_VISIBILITY_ULTRASOUND_RECORD.staff;
+      FIELD_VISIBILITY_ULTRASOUND_RECORD[role] ||
+      FIELD_VISIBILITY_ULTRASOUND_RECORD.staff;
 
     const FRONTEND_ONLY_FIELDS = ["actions"];
-    const safeFields = visibleFields.filter(f => !FRONTEND_ONLY_FIELDS.includes(f));
+    const safeFields = visibleFields.filter(
+      (f) => !FRONTEND_ONLY_FIELDS.includes(f)
+    );
 
     const options = buildQueryOptions(req, "scan_date", "DESC", safeFields);
     options.where = options.where || {};
 
+    /* ================= DATE RANGE ================= */
+    const { dateRange } = req.query;
+    if (dateRange) {
+      const { startDate, endDate } = normalizeDateRangeLocal(dateRange);
+      if (startDate && endDate) {
+        options.where.scan_date = { [Op.between]: [startDate, endDate] };
+      }
+    }
+    delete options.where.dateRange;
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head") options.where.facility_id = req.user.facility_id;
+      if (role === "facility_head") {
+        options.where.facility_id = req.user.facility_id;
+      }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        options.where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        options.where.facility_id = req.query.facility_id;
     }
 
+    /* ================= SEARCH ================= */
     if (options.search) {
       options.where[Op.or] = [
         { scan_type: { [Op.iLike]: `%${options.search}%` } },
         { ultra_findings: { [Op.iLike]: `%${options.search}%` } },
         { note: { [Op.iLike]: `%${options.search}%` } },
+        { void_reason: { [Op.iLike]: `%${options.search}%` } },
       ];
     }
 
-    if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
-    if (req.query.technician_id) options.where.technician_id = req.query.technician_id;
-    if (req.query.consultation_id) options.where.consultation_id = req.query.consultation_id;
-    if (req.query.maternity_visit_id) options.where.maternity_visit_id = req.query.maternity_visit_id;
-
+    /* ================= STATUS FILTER ================= */
     if (req.query.status) {
-      const statuses = Array.isArray(req.query.status)
+      const statuses = (Array.isArray(req.query.status)
         ? req.query.status
-        : [req.query.status];
-      options.where.status = { [Op.in]: statuses };
+        : [req.query.status]
+      ).filter((s) => ULTRASOUND_STATUS.includes(s));
+      if (statuses.length) {
+        options.where.status = { [Op.in]: statuses };
+      }
     }
 
+    /* ================= QUERY ================= */
     const { count, rows } = await UltrasoundRecord.findAndCountAll({
       where: options.where,
-      include: [...ULTRASOUND_INCLUDES, ...(options.include || [])],
+      include: ULTRASOUND_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
     });
 
+    /* ================= SUMMARY ================= */
+    const summary = {
+      total: count,
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+      verified: 0,
+      finalized: 0,
+      cancelled: 0,
+      voided: 0,
+      emergency: 0,
+      withConsultation: 0,
+      withRegistration: 0,
+    };
+
+    rows.forEach((r) => {
+      if (summary[r.status] !== undefined) summary[r.status]++;
+      if (r.is_emergency) summary.emergency++;
+      if (r.consultation_id) summary.withConsultation++;
+      if (r.registration_log_id) summary.withRegistration++;
+    });
+
+    /* ================= CARD-SAFE FLATTENING ================= */
+    const records = rows.map((r) => ({
+      ...r.toJSON(),
+
+      patient_name: r.patient
+        ? `${r.patient.first_name} ${r.patient.last_name}`
+        : "—",
+      patient_no: r.patient?.pat_no ?? "—",
+
+      technician_name: r.technician
+        ? `${r.technician.first_name} ${r.technician.last_name}`
+        : "—",
+
+      department_name: r.department?.name ?? "—",
+
+      billable_name: r.billableItem?.name ?? r.scan_type,
+      billable_price: r.billableItem?.price ?? null,
+
+      registration_status: r.registrationLog?.log_status ?? null,
+
+      created_by_name: r.createdBy
+        ? `${r.createdBy.first_name} ${r.createdBy.last_name}`
+        : "—",
+    }));
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: { returned: count },
       meta: {
         scope_org: req.user.organization_id,
         scope_fac: req.user.facility_id,
@@ -972,7 +1144,8 @@ export const getAllUltrasounds = async (req, res) => {
     });
 
     return success(res, "✅ Ultrasound records loaded", {
-      records: rows,
+      summary,
+      records,
       pagination: {
         total: count,
         page: options.pagination.page,

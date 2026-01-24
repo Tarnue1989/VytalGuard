@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VytalGuard - Patient Chart Summary</title>
+    <link rel="stylesheet" href="../assets/fonts/remix/remixicon.css" />
+    <link rel="stylesheet" href="../assets/css/main.min.css" />
+    <link rel="stylesheet" href="../assets/css/admin-global.css" />
+  </head>
+  <body>
+    <div class="page-wrapper">
+      <div class="app-container">
+        <div class="app-header d-flex align-items-center"></div>
+
+        <div class="app-hero-header d-flex align-items-center">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+              <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+            </li>
+            <li class="breadcrumb-item">Patient Charts</li>
+            <li class="breadcrumb-item text-primary" aria-current="page">Summary</li>
+          </ol>
+        </div>
+
+        <div class="app-body">
+          <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <h5 class="card-title">Patient Chart Summary</h5>
+              <button id="backToCharts" class="btn btn-outline-secondary btn-sm">
+                <i class="ri-arrow-left-line"></i> Back to Charts
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="patientChartSummary" class="p-3">
+                <p class="text-muted">Loading summary...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-footer"><span>© VytalGuard HMS 2025</span></div>
+      </div>
+    </div>
+
+    <script type="module" src="../js/modules/patientchart/patientchart-summary-main.js"></script>
+  </body>
+</html>

@@ -106,7 +106,15 @@ export const STATUS_ACTION_MATRIX = {
   surgery:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 🩻 ULTRASOUND ======================== */
-  ultrasound_record:{pending:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["review","finalize","void"],reviewed:["finalize","void"],finalized:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
+  ultrasound_record: {
+    pending:      ["edit", "start", "cancel", "void"],
+    in_progress:  ["complete", "cancel", "void"],
+    completed:    ["verify", "void"],
+    verified:     ["finalize", "void"],
+    finalized:    ["void"],
+    cancelled:    ["void"],
+    voided:       []
+  },
 
   /* ======================== 🧪 LAB ======================== */
   lab_request:{draft:["edit","submit","delete","void"],pending:["edit","cancel","void"],approved:["process","void"],processed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},

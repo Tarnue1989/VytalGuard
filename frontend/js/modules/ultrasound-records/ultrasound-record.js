@@ -1,16 +1,23 @@
-// 📦 ultrasoundRecord.js – Entry Point (Master Pattern Aligned)
+// 📦 ultrasound-record.js – Entry Point (Enterprise-Aligned Master Pattern)
+// ============================================================================
+// 🧭 Master Pattern: delivery-record.js / ekg-record.js / registrationLog.js
+// 🔹 Unified initialization entry for the Ultrasound Record module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 NO business logic
+// 🔹 NO API calls
+// ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles form, filters, etc.)
-import { initUltrasoundModule } from "./ultrasound-record-filter-main.js";
+// 🧭 Main module init (filters, table, card, pagination, etc.)
+import { initUltrasoundModule } from "./ultrasoundRecord-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, start, verify, etc.)
+// ⚙️ Lifecycle + action handlers (side-effect import only)
 import "./ultrasound-record-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_ULTRASOUND_RECORD,
   FIELD_ORDER_ULTRASOUND_RECORD,
@@ -26,19 +33,17 @@ import { showToast, hideLoading } from "../../utils/index.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Only initialize if the ultrasound form or list is present
-    if (document.getElementById("ultrasoundRecordForm")) {
+    // 🧩 Initialize ONLY if ultrasound record form or list exists
+    if (
+      document.getElementById("ultrasoundRecordForm") ||
+      document.getElementById("ultrasoundRecordList") ||
+      document.getElementById("ultrasoundRecordTableBody")
+    ) {
       await initUltrasoundModule();
     }
-
-    // (Optional) future expansion:
-    // if (document.getElementById("ultrasoundRecordTableBody")) {
-    //   await initUltrasoundListModule();
-    // }
-
   } catch (err) {
-    console.error("❌ Failed to initialize ultrasound module", err);
+    console.error("❌ Failed to initialize Ultrasound Record module", err);
     hideLoading();
-    showToast("❌ Failed to load ultrasound module");
+    showToast("❌ Failed to load Ultrasound Record module");
   }
 });

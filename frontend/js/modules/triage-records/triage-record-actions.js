@@ -1,10 +1,11 @@
-// 📁 triageRecord-actions.js – Enterprise-Aligned Master Pattern (Permission-Driven + Role-Aware)
+// 📁 triageRecord-actions.js – Enterprise MASTER Parity (Actions)
 // ============================================================================
-// 🧭 Master Pattern Source: vital-actions.js
-// 🔹 Same lifecycle flow, permission logic, confirm handling, and DOM bindings
-// 🔹 Supports: start → complete → verify → cancel → void
-// 🔹 Includes full superadmin bypass and normalized permission parsing
-// 🔹 All existing HTML element IDs preserved exactly
+// 🧭 MASTER SOURCE: vital-actions.js
+// 🔹 FULL lifecycle parity: view / edit / start / complete / verify / finalize / cancel / void / delete
+// 🔹 Permission-driven (superadmin-aware, normalized)
+// 🔹 Unified table + card dispatcher
+// 🔹 Identical confirm / loading / reload behavior
+// 🔹 ALL existing API routes, DOM IDs, and storage keys PRESERVED
 // ============================================================================
 
 import {
@@ -17,6 +18,9 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./triage-record-render.js";
 
+/**
+ * Unified permission-aware action handler for Triage Record module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -30,14 +34,14 @@ export function setupActionHandlers({
   const tableBody = document.getElementById("triageRecordTableBody");
   const cardContainer = document.getElementById("triageRecordList");
 
-  // 🧩 Cache entries globally
+  // 🗂️ Cache latest entries
   window.latestTriageRecordEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 PERMISSION NORMALIZATION (Unified)
+     🔑 Normalize Permissions (MASTER)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -51,24 +55,28 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      p.toLowerCase().trim()
+    )
+  );
 
-  // ✅ Superadmin bypass (covers both single and multiple roles)
+  // 🧠 Superadmin bypass
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalized = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalized);
-  };
+  // ✅ Permission checker
+  const hasPerm = (key) =>
+    isSuperAdmin ||
+    userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     ⚙️ MAIN ACTION HANDLER
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -80,7 +88,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback → fetch full record if not cached
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -95,108 +103,90 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Triage record data missing");
+
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("triage_records:view"))
-        return showToast("⛔ No permission to view triage records");
+        return showToast("⛔ You don't have permission to view triage records");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("triage_records:edit"))
-        return showToast("⛔ No permission to edit triage records");
+        return showToast("⛔ You don't have permission to edit triage records");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
-    if (cls.contains("delete-btn")) {
-      if (!hasPerm("triage_records:delete"))
-        return showToast("⛔ No permission to delete triage records");
-      return await handleDelete(id, entry);
-    }
-
-    // --- Lifecycle Actions ---
     if (cls.contains("start-btn")) {
-      if (!hasPerm("triage_records:start"))
+      if (!hasPerm("triage_records:edit"))
         return showToast("⛔ No permission to start triage record");
-      return await handleLifecycle(id, "start", "Start this triage record?");
+      return await handleLifecycle(id, "start");
     }
 
-    if (cls.contains("complete-btn") || cls.contains("finalize-btn")) {
-      if (!hasPerm("triage_records:complete"))
+    if (cls.contains("complete-btn")) {
+      if (!hasPerm("triage_records:edit"))
         return showToast("⛔ No permission to complete triage record");
-      return await handleLifecycle(
-        id,
-        "complete",
-        "Mark this triage record as completed?"
-      );
+      return await handleLifecycle(id, "complete");
     }
 
     if (cls.contains("verify-btn")) {
       if (!hasPerm("triage_records:verify"))
         return showToast("⛔ No permission to verify triage record");
-      return await handleLifecycle(id, "verify", "Verify this triage record?");
+      return await handleLifecycle(id, "verify");
+    }
+
+    if (cls.contains("finalize-btn")) {
+      if (!hasPerm("triage_records:finalize"))
+        return showToast("⛔ No permission to finalize triage record");
+      return await handleLifecycle(id, "finalize");
     }
 
     if (cls.contains("cancel-btn")) {
-      if (!hasPerm("triage_records:cancel"))
+      if (!hasPerm("triage_records:edit"))
         return showToast("⛔ No permission to cancel triage record");
-      return await handleLifecycle(id, "cancel", "Cancel this triage record?");
+      return await handleLifecycle(id, "cancel");
     }
 
     if (cls.contains("void-btn")) {
       if (!hasPerm("triage_records:void"))
         return showToast("⛔ No permission to void triage record");
-      return await handleLifecycle(
-        id,
-        "void",
-        "Void this triage record? (Admin/Superadmin only)"
-      );
+      return await handleLifecycle(id, "void");
+    }
+
+    if (cls.contains("delete-btn")) {
+      if (!hasPerm("triage_records:delete"))
+        return showToast("⛔ You don't have permission to delete triage records");
+      return await handleDelete(id, entry);
     }
   }
 
   /* ============================================================
-     🧩 ACTION HANDLERS
+     ⚙️ Action Handlers
   ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Triage Record Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("triageRecordEditId", entry.id);
-    sessionStorage.setItem("triageRecordEditPayload", JSON.stringify(entry));
-    window.location.href = `add-triage-record.html`;
+    sessionStorage.setItem(
+      "triageRecordEditPayload",
+      JSON.stringify(entry)
+    );
+    window.location.href = "add-triage-record.html";
   }
 
-  async function handleDelete(id, entry) {
-    const confirmed = await showConfirm("Delete this triage record?");
-    if (!confirmed) return;
-
-    try {
-      showLoading();
-      const res = await authFetch(`/api/triage-records/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete triage record");
-
-      showToast("✅ Triage record deleted successfully");
-      window.latestTriageRecordEntries = [];
-      await loadEntries(currentPage);
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Failed to delete triage record");
-    } finally {
-      hideLoading();
-    }
-  }
-
-  async function handleLifecycle(id, action, confirmMsg) {
-    const confirmed = await showConfirm(confirmMsg);
+  // 🔁 Lifecycle (start / complete / verify / finalize / cancel / void)
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(
+      `Are you sure you want to ${action} this triage record?`
+    );
     if (!confirmed) return;
 
     try {
@@ -206,66 +196,80 @@ export function setupActionHandlers({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || `❌ Failed to ${action} triage record`);
+        throw new Error(
+          data.message || `❌ Failed to ${action} triage record`
+        );
 
-      const label =
-        action === "complete"
-          ? "completed"
-          : action === "void"
-          ? "voided"
-          : action;
-      showToast(`✅ Triage record ${label} successfully`);
+      showToast(`✅ Triage record ${action} successful`);
       window.latestTriageRecordEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
-      showToast(err.message || `❌ Failed to ${action} triage record`);
+      showToast(
+        err.message || `❌ Failed to ${action} triage record`
+      );
+    } finally {
+      hideLoading();
+    }
+  }
+
+  // 🗑️ Delete
+  async function handleDelete(id, entry) {
+    const confirmed = await showConfirm(
+      "Delete this triage record permanently?"
+    );
+    if (!confirmed) return;
+
+    try {
+      showLoading();
+      const res = await authFetch(`/api/triage-records/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          data.message || "❌ Failed to delete triage record"
+        );
+
+      showToast("✅ Triage record deleted successfully");
+      window.latestTriageRecordEntries = [];
+      await loadEntries(currentPage);
+    } catch (err) {
+      console.error(err);
+      showToast(
+        err.message || "❌ Failed to delete triage record"
+      );
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     🌐 GLOBAL HELPERS (Window-Level)
+     🌍 Global Helpers (Inline Triggers)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestTriageRecordEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewTriageRecord = (id) => {
     if (!hasPerm("triage_records:view"))
       return showToast("⛔ No permission to view triage record");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Triage record not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editTriageRecord = (id) => {
     if (!hasPerm("triage_records:edit"))
       return showToast("⛔ No permission to edit triage record");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Triage record not found for editing");
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteTriageRecord = async (id) => {
     if (!hasPerm("triage_records:delete"))
       return showToast("⛔ No permission to delete triage record");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
-
-  ["start", "complete", "verify", "cancel", "void"].forEach((action) => {
-    window[`${action}Entry`] = async (id) => {
-      if (!hasPerm(`triage_records:${action}`))
-        return showToast(`⛔ No permission to ${action} triage record`);
-      const entry = findEntry(id);
-      await handleLifecycle(
-        id,
-        action,
-        `Proceed to ${action} this triage record?`
-      );
-    };
-  });
 }

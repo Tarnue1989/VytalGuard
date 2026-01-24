@@ -83,7 +83,7 @@ const sharedState = { currentEditIdRef: { value: null } };
    👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "billableitem",
+  moduleKey: "billable_items",
   userRole,
   defaultFields: FIELD_DEFAULTS_BILLABLE_ITEM,
   allowedFields: FIELD_ORDER_BILLABLE_ITEM,

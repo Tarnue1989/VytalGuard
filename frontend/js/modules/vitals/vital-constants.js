@@ -1,8 +1,9 @@
-// 📁 vital-constants.js – Enterprise-Aligned Master Pattern
+// 📁 vital-constants.js – Enterprise-Aligned MASTER Parity
 // ============================================================================
-// 🔹 Pattern Source: department-constants.js / consultation-constants.js
-// 🔹 Structural Consistency: labels, order, role-based visibility
-// 🔹 100% field ID retention (safe for HTML + renderers)
+// 🔹 Pattern Source: ekgRecord-constants.js (Enterprise Master)
+// 🔹 Structural Consistency: labels, order, lifecycle + audit visibility
+// 🔹 100% field ID retention (safe for HTML + renderers + filters)
+// 🔹 FULL parity with EKG where clinically applicable
 // ============================================================================
 
 /* ============================================================
@@ -16,6 +17,7 @@ export const FIELD_LABELS_VITAL = {
   consultation: "Consultation",
   triageRecord: "Triage Record",
   nurse: "Nurse",
+
   bp: "Blood Pressure",
   pulse: "Pulse",
   rr: "Respiration Rate",
@@ -26,14 +28,24 @@ export const FIELD_LABELS_VITAL = {
   rbg: "Random Blood Glucose",
   pain_score: "Pain Score",
   position: "Position",
+
   status: "Status",
   recorded_at: "Recorded At",
+
+  finalized_at: "Finalized At",
+  finalizedBy: "Finalized By",
+  verified_at: "Verified At",
+  verifiedBy: "Verified By",
+  voided_at: "Voided At",
+  voidedBy: "Voided By",
+
   createdBy: "Created By",
   created_at: "Created At",
   updatedBy: "Updated By",
   updated_at: "Updated At",
   deletedBy: "Deleted By",
   deleted_at: "Deleted At",
+
   actions: "Actions",
 };
 
@@ -48,6 +60,7 @@ export const FIELD_ORDER_VITAL = [
   "consultation",
   "triageRecord",
   "nurse",
+
   "bp",
   "pulse",
   "rr",
@@ -58,21 +71,31 @@ export const FIELD_ORDER_VITAL = [
   "rbg",
   "pain_score",
   "position",
+
   "status",
   "recorded_at",
+
+  "finalized_at",
+  "finalizedBy",
+  "verified_at",
+  "verifiedBy",
+  "voided_at",
+  "voidedBy",
+
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
 /* ============================================================
    👥 Role-Based Field Visibility Defaults (MASTER-ALIGNED)
 ============================================================ */
-// Mirrors department hierarchy exactly
+// Mirrors EKG RECORD constants lifecycle + audit behavior
 export const FIELD_DEFAULTS_VITAL = {
   superadmin: [
     "organization",
@@ -94,6 +117,12 @@ export const FIELD_DEFAULTS_VITAL = {
     "position",
     "status",
     "recorded_at",
+    "finalized_at",
+    "finalizedBy",
+    "verified_at",
+    "verifiedBy",
+    "voided_at",
+    "voidedBy",
     "createdBy",
     "created_at",
     "updatedBy",
@@ -123,34 +152,12 @@ export const FIELD_DEFAULTS_VITAL = {
     "position",
     "status",
     "recorded_at",
-    "createdBy",
-    "created_at",
-    "updatedBy",
-    "updated_at",
-    "deletedBy",
-    "deleted_at",
-    "actions",
-  ],
-
-  facility_head: [
-    "facility",
-    "patient",
-    "admission",
-    "consultation",
-    "triageRecord",
-    "nurse",
-    "bp",
-    "pulse",
-    "rr",
-    "temp",
-    "oxygen",
-    "weight",
-    "height",
-    "rbg",
-    "pain_score",
-    "position",
-    "status",
-    "recorded_at",
+    "finalized_at",
+    "finalizedBy",
+    "verified_at",
+    "verifiedBy",
+    "voided_at",
+    "voidedBy",
     "createdBy",
     "created_at",
     "updatedBy",
@@ -177,6 +184,12 @@ export const FIELD_DEFAULTS_VITAL = {
     "position",
     "status",
     "recorded_at",
+    "verified_at",
+    "verifiedBy",
+    "finalized_at",
+    "finalizedBy",
+    "voided_at",
+    "voidedBy",
     "createdBy",
     "created_at",
     "updatedBy",
@@ -184,7 +197,32 @@ export const FIELD_DEFAULTS_VITAL = {
     "actions",
   ],
 
+  facility_head: [
+    "facility",
+    "patient",
+    "admission",
+    "consultation",
+    "triageRecord",
+    "nurse",
+    "bp",
+    "pulse",
+    "rr",
+    "temp",
+    "oxygen",
+    "weight",
+    "height",
+    "rbg",
+    "pain_score",
+    "position",
+    "status",
+    "recorded_at",
+    "createdBy",
+    "created_at",
+    "actions",
+  ],
+
   staff: [
+    "facility",
     "patient",
     "consultation",
     "triageRecord",

@@ -1,10 +1,14 @@
-/* ============================================================
-   💓 EKG RECORD – Field Labels, Order & Visibility
-   ------------------------------------------------------------
-   Fully aligned with master pattern (Central Stock).
-   Includes consistent structure, naming, permissions, and UI logic.
-============================================================ */
+// 📁 ekgRecord-constants.js – Enterprise-Aligned Master Pattern
+// ============================================================================
+// 🔹 Pattern Source: registrationLog-constants.js (Enterprise Master)
+// 🔹 Structural Consistency: Field labels, order, role-based visibility
+// 🔹 100% ID retention (safe for linked HTML + JS modules)
+// 🔹 Includes standardized metadata + hierarchical visibility map
+// ============================================================================
 
+/* ============================================================
+   🏷️ Field Labels
+============================================================ */
 export const FIELD_LABELS_EKG_RECORD = {
   organization: "Organization",
   facility: "Facility",
@@ -38,16 +42,17 @@ export const FIELD_LABELS_EKG_RECORD = {
   voidedBy: "Voided By",
 
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
+
   actions: "Actions",
 };
 
 /* ============================================================
-   📋 FIELD ORDER (Universal Ordering)
+   📋 Field Order (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_EKG_RECORD = [
   "organization",
@@ -58,6 +63,7 @@ export const FIELD_ORDER_EKG_RECORD = [
   "billableItem",
   "invoice",
   "technician",
+
   "heart_rate",
   "pr_interval",
   "qrs_duration",
@@ -72,25 +78,108 @@ export const FIELD_ORDER_EKG_RECORD = [
   "source",
   "is_emergency",
   "status",
+
   "finalized_at",
   "finalizedBy",
   "verified_at",
   "verifiedBy",
   "voided_at",
   "voidedBy",
+
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
 /* ============================================================
-   👥 ROLE-BASED FIELD VISIBILITY DEFAULTS
+   👥 Role-Based Field Visibility Defaults (Enterprise-Aligned)
 ============================================================ */
+// 🧩 Superadmin / Org Owner: Full visibility including audit + delete metadata
+// 🧩 Admin / Manager: Operational + lifecycle visibility
+// 🧩 Facility Head: Scoped operational visibility
+// 🧩 Staff: Essential operational fields only
 export const FIELD_DEFAULTS_EKG_RECORD = {
+  superadmin: [
+    "organization",
+    "facility",
+    "patient",
+    "consultation",
+    "registrationLog",
+    "billableItem",
+    "invoice",
+    "technician",
+    "heart_rate",
+    "pr_interval",
+    "qrs_duration",
+    "qt_interval",
+    "axis",
+    "rhythm",
+    "interpretation",
+    "recommendation",
+    "note",
+    "recorded_date",
+    "file_path",
+    "source",
+    "is_emergency",
+    "status",
+    "finalized_at",
+    "finalizedBy",
+    "verified_at",
+    "verifiedBy",
+    "voided_at",
+    "voidedBy",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
+  org_owner: [
+    "organization",
+    "facility",
+    "patient",
+    "consultation",
+    "registrationLog",
+    "billableItem",
+    "invoice",
+    "technician",
+    "heart_rate",
+    "pr_interval",
+    "qrs_duration",
+    "qt_interval",
+    "axis",
+    "rhythm",
+    "interpretation",
+    "recommendation",
+    "note",
+    "recorded_date",
+    "file_path",
+    "source",
+    "is_emergency",
+    "status",
+    "finalized_at",
+    "finalizedBy",
+    "verified_at",
+    "verifiedBy",
+    "voided_at",
+    "voidedBy",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -161,6 +250,28 @@ export const FIELD_DEFAULTS_EKG_RECORD = {
     "actions",
   ],
 
+  facility_head: [
+    "facility",
+    "patient",
+    "consultation",
+    "technician",
+    "heart_rate",
+    "pr_interval",
+    "qrs_duration",
+    "qt_interval",
+    "axis",
+    "rhythm",
+    "interpretation",
+    "recommendation",
+    "note",
+    "recorded_date",
+    "is_emergency",
+    "status",
+    "createdBy",
+    "created_at",
+    "actions",
+  ],
+
   staff: [
     "facility",
     "patient",
@@ -174,3 +285,9 @@ export const FIELD_DEFAULTS_EKG_RECORD = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (For dynamic routing / UI context)
+============================================================ */
+export const MODULE_KEY_EKG_RECORD = "ekg_record";
+export const MODULE_LABEL_EKG_RECORD = "EKG Record";

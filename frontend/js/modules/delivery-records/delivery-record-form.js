@@ -1,7 +1,12 @@
-// 📦 delivery-record-form.js – Secure, Role-Aware Delivery Record Form (Enterprise-Aligned)
+// 📦 delivery-record-form.js – Secure & Role-Aware Delivery Record Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Master Pattern: registrationLog-form.js (1:1 org/facility handling)
-// 🔹 Delivery-specific: patient-triggered consultation reload, doctor/midwife, etc.
+// 🔹 Rule-driven validation (DELIVERY_RECORD_FORM_RULES)
+// 🔹 Role-aware org / facility handling (resolver-based)
+// 🔹 Suggestion inputs (patient / doctor / midwife)
+// 🔹 Patient-triggered consultation reload
+// 🔹 Add + Edit parity
+// 🔹 Controller-faithful payload (no silent mapping)
+// 🔹 FULL parity with ekg-record-form.js / registrationLog-form.js / centralstock-form.js
 // ============================================================================
 
 import {
@@ -9,10 +14,18 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -22,43 +35,71 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import {
+  resolveUserRole,
+  getOrganizationId,
+  getFacilityId,
+} from "../../utils/roleResolver.js";
+
+import { DELIVERY_RECORD_FORM_RULES } from "./delivery-record.form.rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 HELPERS
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const qs = (id) => document.getElementById(id);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
-  try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
+const normalizeUUID = (v) =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
 
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-
-function normalizeDate(val) {
+const normalizeDate = (val) => {
   if (!val) return null;
   const d = new Date(val);
-  if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/* ============================================================
+   🛡️ RULE VALIDATION (MASTER PARITY)
+============================================================ */
+function validateUsingRules(form) {
+  const errors = [];
+
+  for (const rule of DELIVERY_RECORD_FORM_RULES) {
+    if (typeof rule.when === "function" && !rule.when()) continue;
+
+    const el =
+      document.getElementById(rule.id) ||
+      form.querySelector(`[name="${rule.id}"]`);
+
+    if (!el) continue;
+
+    let value;
+    if (el.type === "checkbox") value = el.checked;
+    else if (el.type === "radio")
+      value = document.querySelector(`input[name="${el.name}"]:checked`);
+    else value = el.value;
+
+    if (
+      value === null ||
+      value === undefined ||
+      value === "" ||
+      value === false
+    ) {
+      errors.push({ field: rule.id, message: rule.message });
+    }
+  }
+
+  return errors;
 }
 
 /* ============================================================
-   🔁 Consultation Loader (Date + Status)
+   🔁 CONSULTATION LOADER (PATIENT-DRIVEN)
 ============================================================ */
-async function reloadConsultations(patientId, preselectId = null, preselectLabel = null) {
-  const select = document.getElementById("consultationSelect");
+async function reloadConsultations(patientId, preselectId = null, preLabel = null) {
+  const select = qs("consultationSelect");
   if (!select) return;
 
   setupSelectOptions(select, [], "id", "label", "-- Select Consultation --");
@@ -66,27 +107,24 @@ async function reloadConsultations(patientId, preselectId = null, preselectLabel
 
   try {
     const res = await authFetch(`/api/lite/consultations?patient_id=${patientId}`);
-    const data = await res.json();
-    let consultations = data?.data?.records || data?.data || [];
+    const json = await res.json().catch(() => ({}));
+    let rows = json?.data?.records || json?.data || [];
 
-    consultations = consultations.filter((c) =>
+    rows = rows.filter((c) =>
       ["open", "in_progress"].includes((c.status || "").toLowerCase())
     );
 
-    const options = consultations.map((c) => {
-      const rawDate = c.consultation_date || c.date;
-      const dateStr = rawDate
-        ? new Date(rawDate).toLocaleDateString(undefined, {
+    const options = rows.map((c) => {
+      const raw = c.consultation_date || c.date;
+      const dateStr = raw
+        ? new Date(raw).toLocaleDateString(undefined, {
             year: "numeric",
             month: "short",
             day: "numeric",
           })
         : "(no date)";
-      const statusStr = (c.status || "unknown").toLowerCase();
-      return {
-        id: c.id,
-        label: c.label || `${dateStr} — ${statusStr}`,
-      };
+      const status = (c.status || "unknown").toLowerCase();
+      return { id: c.id, label: c.label || `${dateStr} — ${status}` };
     });
 
     setupSelectOptions(select, options, "id", "label", "-- Select Consultation --");
@@ -94,316 +132,326 @@ async function reloadConsultations(patientId, preselectId = null, preselectLabel
     if (preselectId) {
       const match = options.find((o) => o.id === preselectId);
       if (match) select.value = preselectId;
-      else if (preselectLabel) {
+      else if (preLabel) {
         const opt = document.createElement("option");
         opt.value = preselectId;
-        opt.textContent = preselectLabel;
+        opt.textContent = preLabel;
         opt.selected = true;
         select.appendChild(opt);
       }
     }
   } catch (err) {
-    console.error("❌ Consultation load failed:", err);
+    console.error(err);
   }
 }
 
 /* ============================================================
-   🚀 Main Form Setup
+   🚀 MAIN SETUP
 ============================================================ */
 export async function setupDeliveryRecordFormSubmission({ form }) {
-  const token = initPageGuard(
+  initPageGuard(
     autoPagePermissionKey(["delivery_records:create", "delivery_records:edit"])
   );
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const deliveryId = getQueryParam("id") || sessionStorage.getItem("deliveryRecordEditId");
-  const isEdit = !!deliveryId;
+  const sessionId = sessionStorage.getItem("deliveryRecordEditId");
+  const payloadCache = sessionStorage.getItem("deliveryRecordEditPayload");
+  const queryId = new URLSearchParams(window.location.search).get("id");
+
+  const deliveryId = sessionId || queryId;
+  const isEdit = Boolean(deliveryId || payloadCache);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  const setFormTitle = (text, icon) => {
-    if (titleEl) titleEl.textContent = text;
-    if (submitBtn) submitBtn.innerHTML = `<i class="${icon} me-1"></i> ${text}`;
+  const submitBtn = form.querySelector("button[type=submit]");
+  const cancelBtn = qs("cancelBtn");
+  const clearBtn = qs("clearBtn");
+
+  const setUI = (edit) => {
+    if (titleEl)
+      titleEl.textContent = edit
+        ? "Update Delivery Record"
+        : "Add Delivery Record";
+    if (submitBtn)
+      submitBtn.innerHTML = edit
+        ? `<i class="ri-save-3-line me-1"></i> Update`
+        : `<i class="ri-add-line me-1"></i> Submit`;
   };
 
-  isEdit
-    ? setFormTitle("Update Delivery Record", "ri-save-3-line")
-    : setFormTitle("Add Delivery Record", "ri-add-line");
+  setUI(isEdit);
 
-  /* ------------------------- DOM References ------------------------- */
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
-  const departmentSelect = document.getElementById("departmentSelect");
-  const billableItemSelect = document.getElementById("billableItemSelect");
-  const consultationSelect = document.getElementById("consultationSelect");
+  /* ================= DOM ================= */
+  const orgSelect = qs("organizationSelect");
+  const facSelect = qs("facilitySelect");
+  const deptSelect = qs("departmentSelect");
+  const billableSelect = qs("billableItemSelect");
+  const consultationSelect = qs("consultationSelect");
 
-  const patientInput = document.getElementById("patientInput");
-  const patientHidden = document.getElementById("patientId");
-  const patientSuggestions = document.getElementById("patientSuggestions");
-  const doctorInput = document.getElementById("doctorInput");
-  const doctorHidden = document.getElementById("doctorId");
-  const doctorSuggestions = document.getElementById("doctorSuggestions");
-  const midwifeInput = document.getElementById("midwifeInput");
-  const midwifeHidden = document.getElementById("midwifeId");
-  const midwifeSuggestions = document.getElementById("midwifeSuggestions");
+  const patientInput = qs("patientInput");
+  const patientId = qs("patientId");
+  const patientSuggestions = qs("patientSuggestions");
 
-  const deliveryDate = document.getElementById("deliveryDate");
-  const deliveryType = document.getElementById("deliveryType");
-  const deliveryMode = document.getElementById("deliveryMode");
-  const babyCount = document.getElementById("babyCount");
-  const birthWeight = document.getElementById("birthWeight");
-  const birthLength = document.getElementById("birthLength");
-  const newbornWeight = document.getElementById("newbornWeight");
-  const newbornGender = document.getElementById("newbornGender");
-  const apgarScore = document.getElementById("apgarScore");
-  const complications = document.getElementById("complications");
-  const notes = document.getElementById("notes");
-  const isEmergency = document.getElementById("isEmergency");
+  const doctorInput = qs("doctorInput");
+  const doctorId = qs("doctorId");
+  const doctorSuggestions = qs("doctorSuggestions");
+
+  const midwifeInput = qs("midwifeInput");
+  const midwifeId = qs("midwifeId");
+  const midwifeSuggestions = qs("midwifeSuggestions");
+
+  /* ================= ROLE ================= */
+  const role = resolveUserRole();
+  const isSuper = role === "superadmin";
+  const isOrgAdmin = role === "organization_admin" || role === "admin";
+
+  const showOrg = () =>
+    orgSelect?.closest(".form-group")?.classList.remove("hidden");
+  const hideOrg = () =>
+    orgSelect?.closest(".form-group")?.classList.add("hidden");
+  const showFac = () =>
+    facSelect?.closest(".form-group")?.classList.remove("hidden");
+  const hideFac = () =>
+    facSelect?.closest(".form-group")?.classList.add("hidden");
 
   /* ============================================================
-     🔽 Prefill dropdowns + suggestion inputs
+     🌐 DROPDOWNS & SUGGESTIONS
   ============================================================ */
   try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
-        );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+    if (isSuper) {
+      showOrg();
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
     } else {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
+      hideOrg();
     }
 
-    const departments = await loadDepartmentsLite({}, true);
-    setupSelectOptions(departmentSelect, departments, "id", "name", "-- Select Department --");
+    if (isSuper || isOrgAdmin) {
+      showFac();
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite(
+          { organization_id: getOrganizationId() },
+          true
+        ),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+      if (getFacilityId()) facSelect.value = getFacilityId();
+    } else {
+      hideFac();
+    }
 
-    const items = await loadBillableItemsLite({ category: "delivery" }, true);
-    setupSelectOptions(billableItemSelect, items, "id", "name", "-- Select Billable Item --");
+    setupSelectOptions(
+      deptSelect,
+      await loadDepartmentsLite({}, true),
+      "id",
+      "name",
+      "-- Select Department --"
+    );
+
+    setupSelectOptions(
+      billableSelect,
+      await loadBillableItemsLite({ category: "delivery" }, true),
+      "id",
+      "name",
+      "-- Select Delivery Type --"
+    );
 
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
       "/api/lite/patients",
-      (selected) => {
-        patientHidden.value = selected?.id || "";
-        patientInput.value =
-          selected.full_name ||
-          `${selected.pat_no || ""} ${selected.full_name || ""}`.trim();
-        reloadConsultations(patientHidden.value);
+      (p) => {
+        patientId.value = p?.id || "";
+        patientInput.value = p?.label || p?.full_name || "";
+        reloadConsultations(patientId.value);
       },
-      "full_name"
+      "label"
     );
 
     setupSuggestionInputDynamic(
       doctorInput,
       doctorSuggestions,
       "/api/lite/employees",
-      (sel) => {
-        doctorHidden.value = sel?.id || "";
-        doctorInput.value = sel.full_name || `${sel.first_name || ""} ${sel.last_name || ""}`.trim();
-      },
-      "full_name"
+      (d) => {
+        doctorId.value = d?.id || "";
+        doctorInput.value = d?.full_name || "";
+      }
     );
 
     setupSuggestionInputDynamic(
       midwifeInput,
       midwifeSuggestions,
       "/api/lite/employees",
-      (sel) => {
-        midwifeHidden.value = sel?.id || "";
-        midwifeInput.value = sel.full_name || `${sel.first_name || ""} ${sel.last_name || ""}`.trim();
-      },
-      "full_name"
+      (m) => {
+        midwifeId.value = m?.id || "";
+        midwifeInput.value = m?.full_name || "";
+      }
     );
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     🧩 Prefill if editing
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
-  if (isEdit && deliveryId) {
+  if (isEdit) {
     try {
       showLoading();
-      const raw = sessionStorage.getItem("deliveryRecordEditPayload");
-      let entry = raw ? JSON.parse(raw) : null;
 
-      if (!entry) {
-        const res = await authFetch(`/api/delivery-records/${deliveryId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await res.json().catch(() => ({}));
-        entry = result?.data;
-      }
+      let entry =
+        JSON.parse(
+          sessionStorage.getItem("deliveryRecordEditPayload") || "null"
+        ) ||
+        (await (await authFetch(`/api/delivery-records/${deliveryId}`)).json())
+          .data;
 
-      if (!entry) throw new Error("❌ Delivery record not found");
+      if (!entry) throw new Error("Delivery record not found");
 
-      deliveryDate.value = normalizeDate(entry.delivery_date) || "";
-      deliveryType.value = entry.delivery_type || "";
-      deliveryMode.value = entry.delivery_mode || "";
-      babyCount.value = entry.baby_count || "";
-      birthWeight.value = entry.birth_weight || "";
-      birthLength.value = entry.birth_length || "";
-      newbornWeight.value = entry.newborn_weight || "";
-      newbornGender.value = entry.newborn_gender || "";
-      apgarScore.value = entry.apgar_score || "";
-      complications.value = entry.complications || "";
-      notes.value = entry.notes || "";
-      isEmergency.checked = !!entry.is_emergency;
+      patientId.value = entry.patient_id || "";
+      if (entry.patient)
+        patientInput.value = `${entry.patient.pat_no || ""} ${
+          entry.patient.full_name || ""
+        }`.trim();
 
-      if (entry.organization_id && orgSelect) {
-        orgSelect.value = entry.organization_id;
-        const facs = await loadFacilitiesLite(
-          { organization_id: entry.organization_id },
-          true
-        );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-      if (entry.facility_id) facSelect.value = entry.facility_id;
-      if (entry.department_id) departmentSelect.value = entry.department_id;
-      if (entry.billable_item_id) billableItemSelect.value = entry.billable_item_id;
+      doctorId.value = entry.doctor_id || "";
+      doctorInput.value = entry.doctor?.full_name || "";
 
-      if (entry.patient) {
-        patientHidden.value = entry.patient.id;
-        patientInput.value =
-          `${entry.patient.pat_no || ""} ${entry.patient.full_name || ""}`.trim();
+      midwifeId.value = entry.midwife_id || "";
+      midwifeInput.value = entry.midwife?.full_name || "";
 
-        let preLabel = null;
+      qs("deliveryDate").value = normalizeDate(entry.delivery_date);
+      qs("deliveryMode").value = entry.delivery_mode || "";
+      qs("babyCount").value = entry.baby_count ?? "";
+      qs("birthWeight").value = entry.birth_weight ?? "";
+      qs("birthLength").value = entry.birth_length ?? "";
+      qs("newbornWeight").value = entry.newborn_weight ?? "";
+      qs("newbornGender").value = entry.newborn_gender ?? "";
+      qs("apgarScore").value = entry.apgar_score ?? "";
+      qs("complications").value = entry.complications ?? "";
+      qs("notes").value = entry.notes ?? "";
+      qs("isEmergency").checked = !!entry.is_emergency;
+
+      if (isSuper && entry.organization_id) orgSelect.value = entry.organization_id;
+      if ((isSuper || isOrgAdmin) && entry.facility_id)
+        facSelect.value = entry.facility_id;
+
+      if (entry.department_id) deptSelect.value = entry.department_id;
+      if (entry.billable_item_id) billableSelect.value = entry.billable_item_id;
+
+      if (entry.patient_id) {
+        let label = null;
         if (entry.consultation) {
-          const rawDate = entry.consultation.consultation_date || entry.consultation.date;
-          const dateStr = rawDate
-            ? new Date(rawDate).toLocaleDateString(undefined, {
+          const d = entry.consultation.consultation_date;
+          const ds = d
+            ? new Date(d).toLocaleDateString(undefined, {
                 year: "numeric",
                 month: "short",
                 day: "numeric",
               })
             : "(no date)";
-          const statusStr = (entry.consultation.status || "unknown").toLowerCase();
-          preLabel = `${dateStr} — ${statusStr}`;
+          label = `${ds} — ${entry.consultation.status}`;
         }
-        await reloadConsultations(entry.patient.id, entry.consultation_id, preLabel);
+        await reloadConsultations(
+          entry.patient_id,
+          entry.consultation_id,
+          label
+        );
       }
 
-      if (entry.doctor) {
-        doctorHidden.value = entry.doctor.id;
-        doctorInput.value = entry.doctor.full_name || "";
-      }
-      if (entry.midwife) {
-        midwifeHidden.value = entry.midwife.id;
-        midwifeInput.value = entry.midwife.full_name || "";
-      }
-
-      setFormTitle("Update Delivery Record", "ri-save-3-line");
+      setUI(true);
     } catch (err) {
       console.error(err);
-      showToast(err.message || "❌ Failed to load record");
+      showToast("❌ Failed to load delivery record");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     💾 Submit Handler
+     🛡️ SUBMIT (MASTER VALIDATION PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const organizationId = orgSelect?.value || localStorage.getItem("organizationId");
-    const facilityId = facSelect?.value || localStorage.getItem("facilityId");
+    const ruleErrors = validateUsingRules(form);
+    if (ruleErrors.length) {
+      applyServerErrors(form, ruleErrors);
+      return showToast("❌ Fix highlighted fields");
+    }
 
     const payload = {
-      organization_id: normalizeUUID(organizationId),
-      facility_id: normalizeUUID(facilityId),
-      patient_id: normalizeUUID(patientHidden.value),
-      doctor_id: normalizeUUID(doctorHidden.value),
-      midwife_id: normalizeUUID(midwifeHidden.value),
-      department_id: normalizeUUID(departmentSelect?.value),
-      billable_item_id: normalizeUUID(billableItemSelect?.value),
+      organization_id: isSuper ? normalizeUUID(orgSelect.value) : null,
+      facility_id: normalizeUUID(facSelect.value),
+      patient_id: normalizeUUID(patientId.value),
+      doctor_id: normalizeUUID(doctorId.value),
+      midwife_id: normalizeUUID(midwifeId.value),
+      department_id: normalizeUUID(deptSelect.value),
+      billable_item_id: normalizeUUID(billableSelect.value),
       consultation_id: normalizeUUID(consultationSelect?.value),
-      delivery_date: normalizeDate(deliveryDate.value),
-      delivery_type: deliveryType.value || null,
-      delivery_mode: deliveryMode.value || null,
-      baby_count: parseInt(babyCount.value || 0, 10) || null,
-      birth_weight: birthWeight.value || null,
-      birth_length: birthLength.value || null,
-      newborn_weight: newbornWeight.value || null,
-      newborn_gender: newbornGender.value || null,
-      apgar_score: apgarScore.value || null,
-      complications: complications.value || null,
-      notes: notes.value || null,
-      is_emergency: !!isEmergency.checked,
+      delivery_date: normalizeDate(qs("deliveryDate").value),
+      delivery_mode: qs("deliveryMode").value || null,
+      baby_count: qs("babyCount").value || null,
+      birth_weight: qs("birthWeight").value || null,
+      birth_length: qs("birthLength").value || null,
+      newborn_weight: qs("newbornWeight").value || null,
+      newborn_gender: qs("newbornGender").value || null,
+      apgar_score: qs("apgarScore").value || null,
+      complications: qs("complications").value || null,
+      notes: qs("notes").value || null,
+      is_emergency: qs("isEmergency").checked,
     };
-
-    if (!payload.organization_id) return showToast("❌ Organization is required");
-    if (!payload.facility_id) return showToast("❌ Facility is required");
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.delivery_date) return showToast("❌ Delivery Date is required");
-    if (!payload.delivery_type) return showToast("❌ Delivery Type is required");
 
     try {
       showLoading();
-      const url = isEdit
-        ? `/api/delivery-records/${deliveryId}`
-        : `/api/delivery-records`;
-      const method = isEdit ? "PUT" : "POST";
+      const res = await authFetch(
+        isEdit
+          ? `/api/delivery-records/${deliveryId}`
+          : `/api/delivery-records`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
-      const res = await authFetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      if (!res.ok) throw new Error("Submission failed");
 
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+      showToast(isEdit ? "✅ Updated" : "✅ Created");
 
-      showToast(isEdit ? "✅ Delivery Record updated" : "✅ Delivery Record created");
-      sessionStorage.removeItem("deliveryRecordEditId");
-      sessionStorage.removeItem("deliveryRecordEditPayload");
+      sessionStorage.clear();
       window.location.href = "/delivery-records-list.html";
     } catch (err) {
       console.error(err);
-      showToast(err.message || "❌ Submission error");
+      showToast("❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
 
-  /* ============================================================
-     🚪 Clear / Cancel Buttons
-  ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("deliveryRecordEditId");
-    sessionStorage.removeItem("deliveryRecordEditPayload");
+  cancelBtn?.addEventListener("click", () => {
+    sessionStorage.clear();
     window.location.href = "/delivery-records-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
+  clearBtn?.addEventListener("click", () => {
     form.reset();
-    patientHidden.value = doctorHidden.value = midwifeHidden.value = "";
-    setupSelectOptions(consultationSelect, [], "id", "label", "-- Select Consultation --");
-    setFormTitle("Add Delivery Record", "ri-add-line");
+    patientId.value = doctorId.value = midwifeId.value = "";
+    setupSelectOptions(
+      consultationSelect,
+      [],
+      "id",
+      "label",
+      "-- Select Consultation --"
+    );
+    setUI(false);
   });
 }

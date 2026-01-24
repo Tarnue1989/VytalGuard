@@ -13,6 +13,7 @@ import {
   User,
   Organization,
   Facility,
+  InvoiceItem,
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
@@ -36,7 +37,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("ekgRecordController", DEBUG_OVERRIDE);
 
-const MODULE_KEY = "ekgRecord";
+const MODULE_KEY = "ekg_record";
 
 /* ============================================================
    🔖 STATUS MAP (ENUM-DRIVEN)
@@ -55,8 +56,12 @@ const EKS = {
    🔗 SHARED INCLUDES
 ============================================================ */
 const EKG_INCLUDES = [
-  { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-  { model: Employee.unscoped(), as: "technician", attributes: ["id", "first_name", "last_name"] },
+  { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name",
+    [sequelize.literal(`"patient"."first_name" || ' ' || "patient"."last_name"`), "label"],
+  ]},
+  { model: Employee.unscoped(), as: "technician", attributes: ["id", "first_name", "last_name",
+    [sequelize.literal(`"technician"."first_name" || ' ' || "technician"."last_name"`), "label"],
+  ]},
   { model: Consultation, as: "consultation", attributes: ["id", "consultation_date", "status"] },
   { model: RegistrationLog, as: "registrationLog", attributes: ["id", "registration_time", "log_status"] },
   { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
@@ -67,6 +72,7 @@ const EKG_INCLUDES = [
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
+
 
 /* ============================================================
    📋 JOI SCHEMA (MASTER-ALIGNED)
@@ -178,7 +184,10 @@ export const createEKGRecord = async (req, res) => {
 };
 
 /* ============================================================
-   📌 UPDATE
+   📌 UPDATE EKG RECORD (MASTER-ALIGNED + LOCKED STATES)
+   - Permission-gated
+   - Org / Facility resolved
+   - ❌ Blocks updates after FINALIZED / VOIDED
 ============================================================ */
 export const updateEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
@@ -206,6 +215,17 @@ export const updateEKGRecord = async (req, res) => {
     if (!record) {
       await t.rollback();
       return error(res, "EKG record not found", null, 404);
+    }
+
+    /* ================= LOCK FINAL STATES ================= */
+    if ([EKS.FINALIZED, EKS.VOIDED].includes(record.status)) {
+      await t.rollback();
+      return error(
+        res,
+        "Finalized or voided EKG records cannot be modified",
+        null,
+        400
+      );
     }
 
     const { orgId, facilityId } = resolveOrgFacility({
@@ -249,30 +269,47 @@ export const updateEKGRecord = async (req, res) => {
     return error(res, "Failed to update EKG record", err);
   }
 };
+
 /* ============================================================
-   📌 VOID EKG RECORD (any → voided, admin/superadmin only)
+   📌 VOID EKG RECORD (any → voided, MASTER-ALIGNED)
+   - Permission-gated via authzService
+   - Org / Facility scoped
+   - Status-guarded
+   - Billing rollback (transaction-safe)
 ============================================================ */
 export const voidEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "Only admin/superadmin can void EKG records", null, 403);
-    }
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "void",
+      res,
+    });
+    if (!allowed) return;
 
     const { id } = req.params;
     const { reason } = req.body;
 
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (req.user.facility_id) where.facility_id = req.user.facility_id;
+      if (req.user.facility_id) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const record = await EKGRecord.findOne({ where, transaction: t });
     if (!record) {
       await t.rollback();
       return error(res, "EKG record not found", null, 404);
+    }
+
+    /* ================= STATUS GUARD ================= */
+    if (record.status === EKS.VOIDED) {
+      await t.rollback();
+      return error(res, "EKG record is already voided", null, 400);
     }
 
     const oldStatus = record.status;
@@ -288,6 +325,7 @@ export const voidEKGRecord = async (req, res) => {
       { transaction: t }
     );
 
+    /* ================= BILLING ROLLBACK ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -307,7 +345,11 @@ export const voidEKGRecord = async (req, res) => {
       action: "void",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: EKS.VOIDED, reason: reason || null },
+      details: {
+        from: oldStatus,
+        to: EKS.VOIDED,
+        reason: reason || null,
+      },
     });
 
     return success(res, "EKG record voided", record);
@@ -316,6 +358,7 @@ export const voidEKGRecord = async (req, res) => {
     return error(res, "Failed to void EKG record", err);
   }
 };
+
 /* ============================================================
    📌 START EKG RECORD (pending → in_progress)
 ============================================================ */
@@ -370,13 +413,20 @@ export const startEKGRecord = async (req, res) => {
     return error(res, "Failed to start EKG record", err);
   }
 };
-
 /* ============================================================
    📌 COMPLETE EKG RECORD (in_progress → completed)
 ============================================================ */
 export const completeEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "complete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const record = await EKGRecord.findOne({ where: { id }, transaction: t });
@@ -400,16 +450,28 @@ export const completeEKGRecord = async (req, res) => {
       { transaction: t }
     );
 
-    await billingService.triggerAutoBilling({
-      module: MODULE_KEY,
-      entity: record,
-      user: {
-        ...req.user,
-        organization_id: record.organization_id,
-        facility_id: record.facility_id,
+    /* ================= BILLING (DUPLICATE-SAFE) ================= */
+    const existing = await InvoiceItem.findOne({
+      where: {
+        module: MODULE_KEY,
+        entity_id: record.id,
+        status: "applied",
       },
       transaction: t,
     });
+
+    if (!existing) {
+      await billingService.triggerAutoBilling({
+        module: MODULE_KEY,
+        entity: record,
+        user: {
+          ...req.user,
+          organization_id: record.organization_id,
+          facility_id: record.facility_id,
+        },
+        transaction: t,
+      });
+    }
 
     await t.commit();
 
@@ -435,6 +497,14 @@ export const completeEKGRecord = async (req, res) => {
 export const verifyEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "verify",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const record = await EKGRecord.findOne({ where: { id }, transaction: t });
@@ -460,16 +530,28 @@ export const verifyEKGRecord = async (req, res) => {
       { transaction: t }
     );
 
-    await billingService.triggerAutoBilling({
-      module: MODULE_KEY,
-      entity: record,
-      user: {
-        ...req.user,
-        organization_id: record.organization_id,
-        facility_id: record.facility_id,
+    /* ================= BILLING (DUPLICATE-SAFE) ================= */
+    const existing = await InvoiceItem.findOne({
+      where: {
+        module: MODULE_KEY,
+        entity_id: record.id,
+        status: "applied",
       },
       transaction: t,
     });
+
+    if (!existing) {
+      await billingService.triggerAutoBilling({
+        module: MODULE_KEY,
+        entity: record,
+        user: {
+          ...req.user,
+          organization_id: record.organization_id,
+          facility_id: record.facility_id,
+        },
+        transaction: t,
+      });
+    }
 
     await t.commit();
 
@@ -490,17 +572,30 @@ export const verifyEKGRecord = async (req, res) => {
 };
 
 /* ============================================================
-   📌 FINALIZE EKG RECORD (any → finalized)
+   📌 FINALIZE EKG RECORD (verified → finalized)
 ============================================================ */
 export const finalizeEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "finalize",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     const record = await EKGRecord.findOne({ where: { id }, transaction: t });
     if (!record) {
       await t.rollback();
       return error(res, "EKG record not found", null, 404);
+    }
+
+    if (record.status !== EKS.VERIFIED) {
+      await t.rollback();
+      return error(res, "Only verified EKGs can be finalized", null, 400);
     }
 
     const oldStatus = record.status;
@@ -534,19 +629,34 @@ export const finalizeEKGRecord = async (req, res) => {
 };
 
 /* ============================================================
-   📌 CANCEL EKG RECORD (pending/in_progress → cancelled)
+   📌 CANCEL EKG RECORD (pending/in_progress → cancelled, MASTER-ALIGNED)
+   - Permission-gated
+   - Org / Facility scoped
+   - Status-guarded (idempotent-safe)
+   - Billing rollback (transaction-safe)
 ============================================================ */
 export const cancelEKGRecord = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "cancel",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
     const { reason } = req.body;
 
     const where = { id };
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      if (role === "facility_head") {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const record = await EKGRecord.findOne({ where, transaction: t });
@@ -555,9 +665,20 @@ export const cancelEKGRecord = async (req, res) => {
       return error(res, "EKG record not found", null, 404);
     }
 
+    /* ================= STATUS GUARDS ================= */
+    if (record.status === EKS.CANCELLED) {
+      await t.rollback();
+      return error(res, "EKG record is already cancelled", null, 400);
+    }
+
     if (![EKS.PENDING, EKS.IN_PROGRESS].includes(record.status)) {
       await t.rollback();
-      return error(res, "Only pending or in-progress EKGs can be cancelled", null, 400);
+      return error(
+        res,
+        "Only pending or in-progress EKGs can be cancelled",
+        null,
+        400
+      );
     }
 
     const oldStatus = record.status;
@@ -572,6 +693,7 @@ export const cancelEKGRecord = async (req, res) => {
       { transaction: t }
     );
 
+    /* ================= BILLING ROLLBACK ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -591,7 +713,11 @@ export const cancelEKGRecord = async (req, res) => {
       action: "cancel",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: EKS.CANCELLED, reason: reason || null },
+      details: {
+        from: oldStatus,
+        to: EKS.CANCELLED,
+        reason: reason || null,
+      },
     });
 
     return success(res, "EKG record cancelled", record);
@@ -739,7 +865,7 @@ export const getAllEKGRecordsLite = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL EKG RECORDS (MASTER-ALIGNED)
+   📌 GET ALL EKG RECORDS (MASTER-ALIGNED + SUMMARY)
 ============================================================ */
 export const getAllEKGRecords = async (req, res) => {
   try {
@@ -757,9 +883,10 @@ export const getAllEKGRecords = async (req, res) => {
        👁️ FIELD VISIBILITY
     ======================================================== */
     const visibleFields =
-      FIELD_VISIBILITY_EKG_RECORD[role] || FIELD_VISIBILITY_EKG_RECORD.staff;
+      FIELD_VISIBILITY_EKG_RECORD[role] ||
+      FIELD_VISIBILITY_EKG_RECORD.staff;
 
-    const safeFields = visibleFields.filter(f => f !== "actions");
+    const safeFields = visibleFields.filter((f) => f !== "actions");
 
     /* ========================================================
        ⚙️ BASE QUERY OPTIONS
@@ -771,13 +898,16 @@ export const getAllEKGRecords = async (req, res) => {
       safeFields
     );
 
-    /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS (MASTER)
-    ======================================================== */
-    delete options.filters?.dateRange;
-    delete options.filters?.light;
-
     options.where = options.where || {};
+
+    /* ========================================================
+       🧹 STRIP UI-ONLY FILTERS (CRITICAL)
+    ======================================================== */
+    const { dateRange } = req.query || {};
+    if (dateRange) {
+      delete options.where.dateRange;
+    }
+    delete options.filters?.light;
 
     /* ========================================================
        🧭 ORG / FACILITY SCOPING
@@ -787,20 +917,29 @@ export const getAllEKGRecords = async (req, res) => {
       if (role === "facility_head") {
         options.where.facility_id = req.user.facility_id;
       }
+    } else {
+      if (req.query.organization_id) {
+        options.where.organization_id = req.query.organization_id;
+      }
+      if (req.query.facility_id) {
+        options.where.facility_id = req.query.facility_id;
+      }
     }
 
     /* ========================================================
-       📅 DATE RANGE FILTER (MASTER)
+       📅 DATE RANGE FILTER (MASTER PATTERN)
     ======================================================== */
-    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
-      options.where.recorded_date = {
-        [Op.between]: [dateRange.start, dateRange.end],
-      };
+      const range = normalizeDateRangeLocal(dateRange);
+      if (range) {
+        options.where.recorded_date = {
+          [Op.between]: [range.start, range.end],
+        };
+      }
     }
 
     /* ========================================================
-       🔍 SEARCH (GLOBAL, ADDITIVE)
+       🔍 GLOBAL SEARCH (ADDITIVE)
     ======================================================== */
     if (options.search) {
       options.where[Op.or] = [
@@ -825,7 +964,6 @@ export const getAllEKGRecords = async (req, res) => {
     if (req.query.technician_id) {
       options.where.technician_id = req.query.technician_id;
     }
-
     if (req.query.status) {
       const statuses = Array.isArray(req.query.status)
         ? req.query.status
@@ -845,17 +983,30 @@ export const getAllEKGRecords = async (req, res) => {
     });
 
     /* ========================================================
+       📊 SUMMARY (STATUS-BASED, PAGE-AWARE)
+    ======================================================== */
+    const summary = { total: count };
+    EKG_STATUS.forEach((status) => {
+      summary[status] = rows.filter((r) => r.status === status).length;
+    });
+
+    /* ========================================================
        🧾 AUDIT
     ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        pagination: options.pagination,
+      },
     });
 
     return success(res, "EKG records loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -866,7 +1017,6 @@ export const getAllEKGRecords = async (req, res) => {
     return error(res, "Failed to load EKG records", err);
   }
 };
-
 
 /* ============================================================
    📌 GET EKG RECORD BY ID (MASTER-ALIGNED)

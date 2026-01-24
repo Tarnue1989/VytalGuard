@@ -1,6 +1,6 @@
-// 📦 vital-main.js – Form-only loader for Vital (Enterprise Master Pattern)
+// 📦 vital-main.js – Form-only Loader for Vital (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🧭 Mirrors department-main.js structure exactly
+// 🧭 Mirrors ekg-record-main.js / registrationLog-main.js / department-main.js
 // 🔹 Auth guard + logout watcher
 // 🔹 Unified form visibility and reset logic
 // 🔹 Session-safe edit caching
@@ -8,19 +8,28 @@
 // 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
-import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
+import {
+  initPageGuard,
+  initLogoutWatcher,
+  autoPagePermissionKey,
+} from "../../utils/index.js";
+
 import { setupVitalFormSubmission } from "./vital-form.js";
+
 import {
   FIELD_LABELS_VITAL,
   FIELD_ORDER_VITAL,
   FIELD_DEFAULTS_VITAL,
 } from "./vital-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard + Shared State
+   🔐 Auth Guard + Shared State (MASTER PARITY)
 ============================================================ */
-const token = initPageGuard("vitals");
+const token = initPageGuard(
+  autoPagePermissionKey(["vitals:create", "vitals:edit"])
+);
 initLogoutWatcher();
 
 const sharedState = {
@@ -37,7 +46,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -47,8 +56,10 @@ function resetForm() {
   sessionStorage.removeItem("vitalEditId");
   sessionStorage.removeItem("vitalEditPayload");
 
-  // Clear inputs
+  // Clear visible inputs
   [
+    "patientInput",
+    "nurseInput",
     "bp",
     "pulse",
     "rr",
@@ -60,24 +71,35 @@ function resetForm() {
     "painScore",
     "position",
     "recordedAt",
-    "patientInput",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Dropdowns
+  // Clear dropdowns
   ["organizationSelect", "facilitySelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Hidden IDs
-  document.getElementById("patientId")?.value = "";
+  // Clear hidden IDs
+  ["patientId", "nurseId"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Reset UI labels
+  const titleEl = document.querySelector(".card-title");
+  if (titleEl) titleEl.textContent = "Add Vital";
+
+  const submitBtn = form?.querySelector("button[type=submit]");
+  if (submitBtn)
+    submitBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Vital`;
 }
 
 /* ============================================================
-   🧭 Form Show / Hide
+   🧭 Form Show / Hide (MASTER PARITY)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -92,7 +114,7 @@ function hideForm() {
   localStorage.setItem("vitalFormVisible", "false");
 }
 
-// 🔗 Expose globally
+// 🔗 Expose globally (actions / parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -118,17 +140,17 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
   return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Init Entrypoint
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initVitalModule() {
-  showForm(); // form-only mode (matches Department)
+  showForm(); // form-only mode
 
   if (form) {
     setupVitalFormSubmission({
@@ -142,7 +164,7 @@ export async function initVitalModule() {
 
   localStorage.setItem("vitalPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role (MASTER PARITY)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -151,10 +173,11 @@ export async function initVitalModule() {
   else role = "staff";
 
   setupFieldSelector({
-    module: "vitals",
+    module: "vital",
     fieldLabels: FIELD_LABELS_VITAL,
     fieldOrder: FIELD_ORDER_VITAL,
-    defaultFields: FIELD_DEFAULTS_VITAL[role],
+    defaultFields:
+      FIELD_DEFAULTS_VITAL[role] || FIELD_DEFAULTS_VITAL.staff,
   });
 }
 

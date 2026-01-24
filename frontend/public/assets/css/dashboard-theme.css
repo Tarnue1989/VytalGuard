@@ -119,9 +119,21 @@
 .module-tile:hover{border-color:#6366f1;background:#eef2ff}
 .module-icon{font-size:20px;color:#6366f1;margin-bottom:6px;line-height:1}
 .module-name{
-  font-size:12px;font-weight:600;color:#111827;line-height:1.2;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  font-size: .85rem;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.2;
+
+  /* ✅ allow wrapping */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+
+  /* 🔒 safety for long words */
+  word-break: break-word;
+  text-align: center;
 }
+
 .module-tile.has-children .module-icon{color:#9333ea}
 
 /* ===============================
@@ -147,11 +159,30 @@ html,body,.page-wrapper,.main-container,.app-container{
 /* 📦 MODULE TILES */
 .modules-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
 .module-tile{border:1px solid #e5e7eb;border-radius:10px;padding:14px 10px;text-align:center;background:#fff;cursor:pointer;transition:all .15s ease;min-height:120px;display:flex;flex-direction:column;justify-content:center}
-.module-tile:hover{background:#eef2ff;border-color:#6366f1;transform:translateY(-3px)}
+.module-tile:hover{
+  background: linear-gradient(
+    180deg,
+    #f5f7ff 0%,
+    #eef2ff 100%
+  );
+  border-color: #6366f1;
+  box-shadow: 0 6px 16px rgba(99,102,241,.15);
+  transform: translateY(-3px);
+}
 .module-icon i{font-size:2.8rem;color:#6366f1;margin-bottom:8px;line-height:1}
 .module-name{font-size:.85rem;font-weight:600;color:#111827;line-height:1.2}
 .module-helper{font-size:.7rem;color:#6b7280;margin-top:4px}
 .module-tile.has-children .module-icon i{color:#9333ea}
+/* ✨ MODULE TILE SOFT BACKGROUND */
+.module-tile{
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #f8fafc 100%
+  );
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
 
 /* 🧭 GRID BALANCE */
 .kpi-card{height:100%}
@@ -172,6 +203,30 @@ html,body,.page-wrapper,.main-container,.app-container{
 .kpi-card .card-body{padding:12px 14px}
 .kpi-badges{margin-bottom:2px}
 .kpi-link{margin-top:2px}
+/* =================================================
+🧩 MODULE CATEGORY BUTTON – TEXT VISIBILITY FIX
+================================================= */
+
+/* FORCE readable text on hover */
+#moduleCategories .btn-outline-primary:hover,
+#moduleCategories .btn-outline-primary:focus {
+  background-color: #2563eb !important; /* blue */
+  border-color: #2563eb !important;
+  color: #ffffff !important;           /* 🔥 FIX */
+}
+
+/* Active button (selected category) */
+#moduleCategories .btn-primary {
+  background-color: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+  color: #ffffff !important;
+}
+
+/* Badge must also stay readable */
+#moduleCategories .btn .badge {
+  background-color: rgba(255,255,255,.25) !important;
+  color: #ffffff !important;
+}
 
 
 /* LAYOUT */
@@ -207,17 +262,6 @@ html,body,.page-wrapper,.main-container,.app-container{
   width: 100%;
 }
 
-/* ===============================
-📊 Activity Analytics FIX
-=============================== */
-#dashboard-charts{max-height:360px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
-#dashboard-charts>div{max-width:100%}
-#dashboard-charts::-webkit-scrollbar{width:6px}
-#dashboard-charts::-webkit-scrollbar-thumb{background:#d0d5dd;border-radius:6px}
-.dashboard-section{min-height:unset}
-.dashboard-section .section-header{margin-bottom:.75rem}
-
-
 
 /* 📱 FORCE CARDS TO REACH SCREEN EDGES */
 @media(max-width:768px){
@@ -252,26 +296,6 @@ html,body,.page-wrapper,.main-container,.app-container{
   font-size:1.4rem;
   opacity:1
 }
-
-
-/* =========================================================
-📦 MODULES TAB – FORCE GRID LAYOUT (FINAL FIX)
-========================================================= */
-
-/* Target ONLY the Modules tab container */
-[data-dashboard-section="modules"] {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
-  align-items: stretch;
-}
-
-/* Ensure tiles stretch correctly */
-[data-dashboard-section="modules"] .module-tile {
-  width: 100%;
-  max-width: 100%;
-}
-
 
 
 /* ===============================
@@ -374,6 +398,20 @@ html,body,.page-wrapper,.main-container,.app-container{
 }
 
 
+/* DESKTOP */
+.modules-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:14px
+}
+
+/* MOBILE */
+@media (max-width:768px){
+  .modules-grid{
+    grid-template-columns:1fr;
+    gap:.75rem
+  }
+}
 
 
 
@@ -424,17 +462,6 @@ Purpose:
 }
 
 /* ===============================
-📦 MODULES TAB (MOBILE)
-(KEEP AS-IS, SINGLE COLUMN)
-=============================== */
-@media (max-width: 768px) {
-  [data-dashboard-section="modules"] {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-}
-
-/* ===============================
 📱 HARD WIDTH SAFETY
 =============================== */
 @media (max-width: 768px) {
@@ -478,26 +505,56 @@ Purpose:
     gap: 0.5rem !important;
   }
 }
+/* =========================================================
+📈 ACTIVITY ANALYTICS — FINAL SINGLE CARD (NO INNER SCROLL)
+========================================================= */
 
-/* ===============================
-📈 ACTIVITY ANALYTICS (MOBILE)
-=============================== */
+/* Desktop / Tablet: side-by-side */
+#dashboard-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding-right: 0 !important;
+}
+
+/* Charts */
+#dashboard-charts > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+
+/* Card padding tighten */
+.dashboard-section:has(#dashboard-charts) {
+  padding: 0.75rem !important;
+}
+
+/* 📱 Mobile: stack cleanly */
 @media (max-width: 768px) {
   #dashboard-charts {
-    max-height: none !important;
-    overflow: hidden !important;
-    padding-right: 0 !important;
-  }
-
-  #dashboard-charts > div {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  .dashboard-section:has(#dashboard-charts) {
-    padding: 0.75rem !important;
+    grid-template-columns: 1fr;
   }
 }
+
+/* ===============================
+📱 MOBILE — COLLAPSIBLE
+=============================== */
+@media (max-width: 768px) {
+
+  .dashboard-section.analytics-collapsed #dashboard-charts {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .dashboard-section.analytics-collapsed {
+    padding-bottom: 0.5rem;
+  }
+}
+
 
 /* ===============================
 🧩 KPI CARD COMPACT (MOBILE)
@@ -537,4 +594,194 @@ Purpose:
     margin-top: 0.75rem;
   }
 
+}
+
+/* ===============================
+🔍 MODULES SEARCH BAR (DESKTOP)
+=============================== */
+#moduleSearch {
+  max-width: 360px;      /* 300–420px is the sweet spot */
+  margin-left: auto;    /* 🔥 push to the right */
+}
+
+/* Layout support */
+[data-dashboard-section="modules"] .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* 📱 Mobile → full width */
+@media (max-width: 768px) {
+  #moduleSearch {
+    max-width: 100%;
+    margin-left: 0;
+  }
+}
+
+
+/* =========================================================
+   🧱 MODULES TAB – HARD ISOLATION FIX
+   ========================================================= */
+
+/* Modules container must never inherit dashboard grid */
+[data-dashboard-section="modules"] {
+  width: 100%;
+  padding: 0.75rem;
+  box-sizing: border-box;
+}
+
+/* Kill dashboard grid effects inside Modules */
+[data-dashboard-section="modules"] .dashboard-grid,
+[data-dashboard-section="modules"] .dashboard-main,
+[data-dashboard-section="modules"] .dashboard-side {
+  display: block !important;
+  grid-template-columns: none !important;
+  gap: 0 !important;
+}
+
+/* Module cards: full width, stacked */
+[data-dashboard-section="modules"] .module-section {
+  width: 100%;
+}
+
+[data-dashboard-section="modules"] .modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+/* ===== MOBILE ONLY ===== */
+@media (max-width: 768px) {
+
+  /* 🔥 Modules grid — 3 columns on mobile */
+  [data-dashboard-section="modules"] .modules-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.6rem;
+  }
+
+  /* Remove dashboard padding bleed */
+  .app-body.dashboard-modern {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Clean module cards */
+  [data-dashboard-section="modules"] .module-tile {
+    width: 100%;
+    border-radius: 12px;
+  }
+}
+
+/* =========================================================
+🔍 DASHBOARD SEARCH — KPI-ALIGNED WRAPPER (FINAL)
+========================================================= */
+
+.dashboard-search-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  padding: 0 1.25rem;          /* matches dashboard-section padding */
+  margin-bottom: 0.75rem;
+  box-sizing: border-box;
+}
+
+/* Search input itself */
+#dashboardSearch {
+  width: 320px;
+  max-width: 100%;
+}
+
+/* Tablet */
+@media (max-width: 992px) {
+  #dashboardSearch {
+    width: 280px;
+  }
+}
+
+/* Mobile → full width, aligned */
+@media (max-width: 768px) {
+  .dashboard-search-wrapper {
+    padding: 0 0.75rem;
+  }
+
+  #dashboardSearch {
+    width: 100%;
+  }
+}
+
+.dashboard-search-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+
+
+.kpi-details {
+  display: none;
+}
+
+.kpi-accordion-item.open .kpi-details {
+  display: block;
+}
+
+.kpi-accordion-item.open .kpi-chevron {
+  transform: rotate(180deg);
+}
+
+.kpi-chevron {
+  transition: transform 0.2s ease;
+}
+
+.kpi-summary {
+  cursor: pointer;
+}
+
+
+/* =========================================================
+   🧱 SIDE COLUMN – HARD RESET (FINAL FIX)
+   ========================================================= */
+
+/* Side column must NEVER behave like grid */
+.dashboard-side {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+/* Side cards must be full-width blocks */
+.dashboard-side .side-card {
+  display: block !important;
+  width: 100% !important;
+}
+
+/* Kill any inherited grid behavior */
+.dashboard-side * {
+  grid-template-columns: unset !important;
+  grid-column: unset !important;
+}
+
+/* Alerts: force single vertical flow */
+#dashboard-alerts {
+  display: block !important;
+}
+#dashboard-alerts .alert {
+  width: 100% !important;
+}
+
+/* Queues: full width cards */
+#dashboard-queues {
+  display: block !important;
+}
+#dashboard-queues .card {
+  width: 100% !important;
+}
+
+/* Calendar: ONLY 7 columns, nothing else */
+#dashboard-calendar {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  width: 100% !important;
 }

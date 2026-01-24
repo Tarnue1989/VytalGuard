@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Lab Result</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add Lab Result">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Lab Results</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Result</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Lab Result</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="labResultForm" enctype="multipart/form-data" novalidate>
+                  <div class="row gx-4">
+
+                    <!-- Organization -->
+                    <div class="col-lg-3 col-sm-6 form-group">
+                      <label for="organizationSelect" class="form-label">Organization</label>
+                      <select id="organizationSelect" name="organization_id" class="form-control">
+                        <option value="">-- Select Organization --</option>
+                      </select>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-lg-3 col-sm-6 form-group">
+                      <label for="facilitySelect" class="form-label">Facility</label>
+                      <select id="facilitySelect" name="facility_id" class="form-control">
+                        <option value="">-- Select Facility --</option>
+                      </select>
+                    </div>
+
+                    <!-- Patient -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="patientSearch">
+                          Patient <span class="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="patientSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search patient..."
+                          autocomplete="off"
+                        />
+                        <div id="patientSearchSuggestions" class="suggestions"></div>
+                        <input type="hidden" id="patientId" name="patient_id" />
+                      </div>
+                    </div>
+
+                    <!-- Pending Requests -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="labRequestSelect">
+                          Pending Requests <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-control" id="labRequestSelect" name="lab_request_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Lab Request Item -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="labRequestItemSelect">
+                          Lab Test Item <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-control" id="labRequestItemSelect" name="lab_request_item_id">
+                          <option value="">-- Select Test Item --</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Department -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3 form-group">
+                        <label class="form-label" for="departmentField">Department</label>
+                        <input type="text" class="form-control" id="departmentField" readonly />
+                        <input type="hidden" id="departmentIdHidden" name="department_id" />
+                      </div>
+                    </div>
+
+                    <!-- Doctor -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="doctorSearch">Doctor</label>
+                        <input type="text" class="form-control" id="doctorSearch" readonly />
+                        <input type="hidden" id="doctorId" name="doctor_id" />
+                      </div>
+                    </div>
+
+                    <!-- Consultation -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="consultationField">Consultation</label>
+                        <input type="text" class="form-control" id="consultationField" readonly />
+                        <input type="hidden" id="consultationId" name="consultation_id" />
+                      </div>
+                    </div>
+
+                    <!-- Registration Log -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="registrationLogField">Registration Log</label>
+                        <input type="text" class="form-control" id="registrationLogField" readonly />
+                        <input type="hidden" id="registrationLogId" name="registration_log_id" />
+                      </div>
+                    </div>
+
+                    <!-- Result Date -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="result_date">Result Date</label>
+                        <input type="date" class="form-control" id="result_date" name="result_date">
+                      </div>
+                    </div>
+
+                    <!-- Result -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="result">Result</label>
+                        <textarea class="form-control" id="result" name="result" rows="2"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="notes">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Doctor Notes -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="doctor_notes">Doctor Notes</label>
+                        <textarea class="form-control" id="doctor_notes" name="doctor_notes" rows="2" readonly></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Attachment -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="attachmentInput">Attachment</label>
+                        <input
+                          type="file"
+                          class="form-control"
+                          id="attachmentInput"
+                          name="attachment_url"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        />
+                        <div id="attachmentPreview" class="mt-2"></div>
+                        <button type="button" id="removeAttachmentBtn" class="btn btn-sm btn-danger mt-1 hidden">
+                          Remove
+                        </button>
+                        <input type="hidden" id="remove_attachment" name="remove_attachment" value="false">
+                      </div>
+                    </div>
+
+                    <!-- Add Result Button -->
+                    <div class="col-sm-12">
+                      <div class="d-flex justify-content-start mb-3">
+                        <button type="button" id="addResultBtn" class="btn btn-outline-primary">
+                          <i class="ri-add-line me-1"></i> Add Result
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Pills Container -->
+                    <div class="col-sm-12">
+                      <div id="resultPillsContainer" class="mb-3">
+                        <p class="text-muted">No lab results added yet.</p>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Submit All
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/lab-result/add-lab-result.js"></script>
+</body>
+</html>

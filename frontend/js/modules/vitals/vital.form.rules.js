@@ -1,10 +1,14 @@
+/* =============================================
+   Vital Form Rules (Controller-aligned | MASTER PARITY)
+============================================= */
+
 export const VITAL_FORM_RULES = [
-  /* Identity */
-  { id: "patientId", message: "Patient is required" },
+  // ================= Identity =================
+  { id: "patientInput", message: "Patient is required" },
   { id: "recordedAt", message: "Recorded date/time is required" },
   { id: "position", message: "Position is required", when: () => false },
 
-  /* Vitals */
+  // ================= Vitals =================
   { id: "bp", message: "Blood pressure is required", when: () => false },
   { id: "pulse", message: "Pulse is required", when: () => false },
   { id: "rr", message: "Respiratory rate is required", when: () => false },
@@ -15,7 +19,7 @@ export const VITAL_FORM_RULES = [
   { id: "rbg", message: "RBG is required", when: () => false },
   { id: "painScore", message: "Pain score is required", when: () => false },
 
-  /* Scope */
+  // ================= Scope =================
   {
     id: "organizationSelect",
     message: "Organization is required",
@@ -28,8 +32,10 @@ export const VITAL_FORM_RULES = [
     id: "facilitySelect",
     message: "Facility is required",
     when: () => {
-      const r = (localStorage.getItem("userRole") || "").toLowerCase();
-      return !r.includes("super") && !r.includes("org");
+      const role = (localStorage.getItem("userRole") || "").toLowerCase();
+      if (role.includes("super")) return false;
+      if (role.includes("org")) return false;
+      return true;
     },
   },
 ];

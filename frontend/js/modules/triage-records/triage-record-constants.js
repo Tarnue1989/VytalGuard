@@ -1,11 +1,14 @@
-// 📁 triageRecord-constants.js – Enterprise-Aligned Master Pattern (Upgraded)
+// 📁 triageRecord-constants.js – Enterprise-Aligned MASTER Parity
 // ============================================================================
 // 🔹 Pattern Source: vital-constants.js (Clinical Master Pattern)
-// 🔹 Maintains identical structure, naming, and field visibility logic
-// 🔹 Fully synchronized with enterprise permission and UI visibility rules
-// 🔹 All field IDs preserved — safe for existing HTML bindings
+// 🔹 Structural Consistency: labels, order, lifecycle + audit visibility
+// 🔹 100% field ID retention (safe for HTML + renderers + filters)
+// 🔹 Unified table/card/export behavior with Vital & EKG modules
 // ============================================================================
 
+/* ============================================================
+   🏷️ Field Labels
+============================================================ */
 export const FIELD_LABELS_TRIAGE_RECORD = {
   organization: "Organization",
   facility: "Facility",
@@ -14,8 +17,10 @@ export const FIELD_LABELS_TRIAGE_RECORD = {
   nurse: "Nurse",
   registrationLog: "Registration Log",
   triageType: "Triage Type",
+
   symptoms: "Symptoms",
   triage_notes: "Notes",
+
   bp: "Blood Pressure",
   pulse: "Pulse",
   rr: "Respiration Rate",
@@ -26,21 +31,25 @@ export const FIELD_LABELS_TRIAGE_RECORD = {
   rbg: "Random Blood Glucose",
   pain_score: "Pain Score",
   position: "Position",
+
   triage_status: "Status",
   recorded_at: "Recorded At",
+
   invoice: "Invoice",
+
   createdBy: "Created By",
   created_at: "Created At",
   updatedBy: "Updated By",
   updated_at: "Updated At",
   deletedBy: "Deleted By",
   deleted_at: "Deleted At",
+
   actions: "Actions",
 };
 
-// ============================================================================
-// 📋 Field Order (identical to Vital Master Pattern for unified table structure)
-// ============================================================================
+/* ============================================================
+   📋 Field Order (Enterprise-Consistent, Vital-Parity)
+============================================================ */
 export const FIELD_ORDER_TRIAGE_RECORD = [
   "organization",
   "facility",
@@ -49,8 +58,10 @@ export const FIELD_ORDER_TRIAGE_RECORD = [
   "nurse",
   "registrationLog",
   "triageType",
+
   "symptoms",
   "triage_notes",
+
   "bp",
   "pulse",
   "rr",
@@ -61,26 +72,58 @@ export const FIELD_ORDER_TRIAGE_RECORD = [
   "rbg",
   "pain_score",
   "position",
+
   "triage_status",
   "recorded_at",
+
   "invoice",
+
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
-// ============================================================================
-// 👥 Role-Based Field Visibility Defaults (Aligned with Vital Master Pattern)
-// ============================================================================
-// ✅ Admin → full organizational visibility
-// ✅ Manager → facility-level operational + audit info
-// ✅ Staff → clinical essentials only
-// ============================================================================
+/* ============================================================
+   👥 Role-Based Field Visibility Defaults (MASTER-ALIGNED)
+============================================================ */
 export const FIELD_DEFAULTS_TRIAGE_RECORD = {
+  superadmin: [
+    "organization",
+    "facility",
+    "patient",
+    "doctor",
+    "nurse",
+    "registrationLog",
+    "triageType",
+    "symptoms",
+    "triage_notes",
+    "bp",
+    "pulse",
+    "rr",
+    "temp",
+    "oxygen",
+    "weight",
+    "height",
+    "rbg",
+    "pain_score",
+    "position",
+    "triage_status",
+    "recorded_at",
+    "invoice",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -142,6 +185,32 @@ export const FIELD_DEFAULTS_TRIAGE_RECORD = {
     "actions",
   ],
 
+  facility_head: [
+    "facility",
+    "patient",
+    "doctor",
+    "nurse",
+    "registrationLog",
+    "triageType",
+    "symptoms",
+    "triage_notes",
+    "bp",
+    "pulse",
+    "rr",
+    "temp",
+    "oxygen",
+    "weight",
+    "height",
+    "rbg",
+    "pain_score",
+    "position",
+    "triage_status",
+    "recorded_at",
+    "createdBy",
+    "created_at",
+    "actions",
+  ],
+
   staff: [
     "patient",
     "doctor",
@@ -163,3 +232,9 @@ export const FIELD_DEFAULTS_TRIAGE_RECORD = {
     "actions",
   ],
 };
+
+/* ============================================================
+   ⚙️ Module Metadata (Enterprise Standard)
+============================================================ */
+export const MODULE_KEY_TRIAGE_RECORD = "triage_record";
+export const MODULE_LABEL_TRIAGE_RECORD = "Triage Record";

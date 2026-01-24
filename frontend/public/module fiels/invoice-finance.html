@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Invoice Finance</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Invoice Finance">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Hero Header -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Financial</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Invoice Finance
+          </li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+
+            <div class="card">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title">Invoice Finance</h5>
+              </div>
+
+              <div class="card-body">
+                <!-- 🔹 Invoice Header Info -->
+                <div id="invoiceHeader" class="mb-3">
+                  <h6>Invoice: <span id="invoiceNumber"></span></h6>
+                  <p>
+                    Patient: <strong id="patientName"></strong> |
+                    Status: <strong id="invoiceStatus"></strong> |
+                    Total: <strong id="invoiceTotal"></strong> |
+                    Balance: <strong id="invoiceBalance"></strong>
+                  </p>
+                </div>
+
+                <!-- 🔹 Tabs -->
+                <ul class="nav nav-tabs" id="financeTabs" role="tablist">
+                  <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#payments">Payments</a></li>
+                  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#deposits">Deposits</a></li>
+                  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#refunds">Refunds</a></li>
+                  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#waivers">Waivers</a></li>
+                  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#reversals">Reversals</a></li>
+                </ul>
+
+                <div class="tab-content mt-3">
+                  <!-- Payments -->
+                  <div class="tab-pane fade show active" id="payments">
+                    <div class="d-flex justify-content-between mb-2">
+                      <h6>Payments</h6>
+                      <button id="addPaymentBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Payment</button>
+                    </div>
+                    <div id="paymentList" class="table-responsive"></div>
+                  </div>
+
+                  <!-- Deposits -->
+                  <div class="tab-pane fade" id="deposits">
+                    <div class="d-flex justify-content-between mb-2">
+                      <h6>Deposits</h6>
+                      <button id="addDepositBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Deposit</button>
+                    </div>
+                    <div id="depositList" class="table-responsive"></div>
+                  </div>
+
+                  <!-- Refunds -->
+                  <div class="tab-pane fade" id="refunds">
+                    <div class="d-flex justify-content-between mb-2">
+                      <h6>Refunds</h6>
+                      <button id="addRefundBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Refund</button>
+                    </div>
+                    <div id="refundList" class="table-responsive"></div>
+                  </div>
+
+                  <!-- Waivers -->
+                  <div class="tab-pane fade" id="waivers">
+                    <div class="d-flex justify-content-between mb-2">
+                      <h6>Waivers</h6>
+                      <button id="addWaiverBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Apply Waiver</button>
+                    </div>
+                    <div id="waiverList" class="table-responsive"></div>
+                  </div>
+
+                  <!-- Reversals -->
+                  <div class="tab-pane fade" id="reversals">
+                    <div class="d-flex justify-content-between mb-2">
+                      <h6>Reversals</h6>
+                    </div>
+                    <div id="reversalList" class="table-responsive"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔹 Financial Modals (same format you use) -->
+  <div id="paymentModal" class="modal hidden">…</div>
+  <div id="depositModal" class="modal hidden">…</div>
+  <div id="refundModal" class="modal hidden">…</div>
+  <div id="waiverModal" class="modal hidden">…</div>
+  <div id="reverseModal" class="modal hidden">…</div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+
+    <!-- Finance modules -->
+    <script type="module" src="js/modules/financial/payments/payments.js"></script>
+    <script type="module" src="js/modules/financial/deposits/deposits.js"></script>
+    <script type="module" src="js/modules/financial/refunds/refunds.js"></script>
+    <script type="module" src="js/modules/financial/waiver/waivers.js"></script>
+
+</body>
+</html>

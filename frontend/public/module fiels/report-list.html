@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VytalGuard - Enterprise Reports</title>
+
+  <meta name="description" content="VytalGuard HMS - Enterprise Reports" />
+  <link rel="shortcut icon" href="assets/images/favicon.svg" />
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css" />
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css" />
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css" />
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css" />
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css" />
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Analytics</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Reports</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title mb-0">Enterprise Reports</h5>
+              </div>
+
+              <div class="card-body">
+
+                <!-- ============================================================ -->
+                <!-- 🔍 FILTER SECTION -->
+                <!-- ============================================================ -->
+                <div class="card panel-card mb-3">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-filter me-1"></i> Filters
+                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                      </button>
+                    </div>
+
+                    <!-- ✅ Export Buttons -->
+                    <div class="view-actions d-flex gap-2">
+                      <button id="exportExcelBtn" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-file-excel me-1"></i> Excel
+                      </button>
+                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                        <i class="fas fa-file-pdf me-1"></i> PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 🔻 Collapsible Filters -->
+                  <div id="filterCollapse" class="card-body filter-body hidden">
+                    <div class="section-label mb-2"><strong>Filter Reports</strong></div>
+
+                    <div class="row gx-3 gy-2 filter-grid compact">
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper form-group">
+                          <label class="form-label" for="filterOrganizationSelect">Organization</label>
+                          <select id="filterOrganizationSelect" class="form-select">
+                            <option value="">Select Organization</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper form-group">
+                          <label class="form-label" for="filterFacilitySelect">Facility</label>
+                          <select id="filterFacilitySelect" class="form-select">
+                            <option value="">Select Facility</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Report Type (Module) -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterModuleSelect">Report Type (Module)</label>
+                          <select id="filterModuleSelect" class="form-select">
+                            <option value="">-- Select Module --</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Group Field -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterGroupField">Group Field</label>
+                          <input type="text" id="filterGroupField" class="form-control" placeholder="e.g., status, gender, method..." />
+                        </div>
+                      </div>
+
+                      <!-- Date Range -->
+                      <div class="col-xxl-2 col-lg-3 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterDateRange">Date Range</label>
+                          <select id="filterDateRange" class="form-select">
+                            <option value="">All</option>
+                            <option value="today">Today</option>
+                            <option value="this_week">This Week</option>
+                            <option value="this_month">This Month</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- From -->
+                      <div class="col-xxl-2 col-lg-3 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterCreatedFrom">From</label>
+                          <input type="date" id="filterCreatedFrom" class="form-control" />
+                        </div>
+                      </div>
+
+                      <!-- To -->
+                      <div class="col-xxl-2 col-lg-3 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterCreatedTo">To</label>
+                          <input type="date" id="filterCreatedTo" class="form-control" />
+                        </div>
+                      </div>
+
+                      <!-- Action Buttons -->
+                      <div class="col-12 d-flex gap-2 filter-actions mt-2">
+                        <button id="filterBtn" class="btn btn-primary btn-sm">
+                          <i class="fas fa-chart-bar me-1"></i> Generate Report
+                        </button>
+                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                          <i class="fas fa-times me-1"></i> Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ============================================================ -->
+                <!-- 📊 RESULTS -->
+                <!-- ============================================================ -->
+                <div id="reportSummary" class="report-summary mb-3"></div>
+
+                <div class="table-responsive table-container active">
+                  <table class="table m-0 align-middle data-table print-table">
+                    <thead id="reportTableHead"></thead>
+                    <tbody id="reportTableBody"></tbody>
+                  </table>
+                </div>
+
+                <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- Modules -->
+  <script type="module" src="/js/logout.js"></script>
+  <script type="module" src="/js/authSession.js"></script>
+  <script type="module" src="/js/modules/reports/report-filter-main.js"></script>
+</body>
+</html>

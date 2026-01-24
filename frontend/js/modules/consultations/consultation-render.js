@@ -1,22 +1,60 @@
-// 📁 consultation-render.js – Enterprise-Aligned Master Pattern (Permission-Driven + Role-Aware)
+// 📁 consultation-render.js – Entity Card System (CONSULTATION | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 Master Pattern: triage-record-render.js / appointment-render.js
-// 🔹 Full enterprise consistency (permissions, UI logic, tooltips, exports)
-// 🔹 Integrates STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 Displays patient number + full name properly
+// 🧭 FULL MASTER PARITY WITH department-render.js
+// 🔹 Table = flat | Card = RICH + structured
+// 🔹 Card includes diagnosis, notes, prescriptions, department, registration
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section
+// 🔹 Permission-driven actions
+// 🔹 Export-safe
 // ============================================================================
 
 import { FIELD_LABELS_CONSULTATION } from "./consultation-constants.js";
+
 import { formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons (centralized)
+   🔃 SORTABLE FIELDS
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "doctor_id",
+  "department_id",
+  "consultation_date",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("consultationSortBy") || "";
+let sortDir = localStorage.getItem("consultationSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+  localStorage.setItem("consultationSortBy", sortBy);
+  localStorage.setItem("consultationSortDir", sortDir);
+  window.setConsultationSort?.(sortBy, sortDir);
+  window.loadConsultationPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTIONS
 ============================================================ */
 function getConsultationActionButtons(entry, user) {
   return buildActionButtons({
-    module: "consultation", // maps to STATUS_ACTION_MATRIX.consultation
+    module: "consultation",
     status: (entry.status || "").toLowerCase(),
     entryId: entry.id,
     user,
@@ -25,141 +63,236 @@ function getConsultationActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 TABLE HEAD
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    th.dataset.key = field;
+
+    const label =
       FIELD_LABELS_CONSULTATION[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field)
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadConsultationPage?.(1),
+  });
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || "—";
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ");
 }
 
-function renderPatient(entry) {
-  const p = entry.patient;
-  if (!p) return "—";
-  const patNo = p.pat_no || "—";
-  const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
-  return `${patNo} - ${name || "Unnamed"}`;
+function renderPatient(e) {
+  if (!e.patient) return "—";
+  const p = e.patient;
+  return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ")}`;
 }
 
+function renderRegistration(entry) {
+  const r = entry.registrationLog;
+  if (!r) return "—";
+  return `${(r.log_status || "").toUpperCase()} · ${
+    r.registration_time ? formatDate(r.registration_time) : "—"
+  }`;
+}
+
+/* ============================================================
+   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        open: "bg-info",
-        in_progress: "bg-warning text-dark",
-        completed: "bg-primary",
-        verified: "bg-success",
-        cancelled: "bg-danger",
-        voided: "bg-dark text-light",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "open"
+          ? "bg-info"
+          : s === "in_progress"
+          ? "bg-warning text-dark"
+          : s === "completed"
+          ? "bg-primary"
+          : s === "verified"
+          ? "bg-success"
+          : s === "cancelled"
+          ? "bg-danger"
+          : s === "voided"
+          ? "bg-dark text-light"
+          : "bg-secondary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
+    /* ===== ASSOCIATIONS ===== */
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "patient":
+    case "patient_id":
       return renderPatient(entry);
+
     case "doctor":
+    case "doctor_id":
       return renderUserName(entry.doctor);
+
     case "department":
+    case "department_id":
       return entry.department?.name || "—";
+
+    case "consultationType":
+    case "consultation_type_id":
+      return entry.consultationType?.name || "—";
+
+    case "registrationLog":
+    case "registration_log_id":
+      return renderRegistration(entry);
+
     case "appointment":
       return entry.appointment
-        ? `${entry.appointment.appointment_code || ""} (${entry.appointment.status || "—"})`
+        ? formatDate(entry.appointment.appointment_date)
         : "—";
-    case "registrationLog":
-      return entry.registrationLog
-        ? `${entry.registrationLog.registration_time ? formatDate(entry.registrationLog.registration_time) : ""} (${entry.registrationLog.log_status || "—"})`
-        : "—";
-    case "parentConsultation":
-      return entry.parentConsultation
-        ? `${entry.parentConsultation.id || ""} (${entry.parentConsultation.status || "—"})`
-        : "—";
-    case "consultationType":
-      return entry.consultationType?.name || "—";
-    case "invoice":
-      return entry.invoice
-        ? `${entry.invoice.invoice_number || ""} (${entry.invoice.status || "—"})`
-        : "—";
-    case "createdBy":
-      return renderUserName(entry.createdBy);
-    case "updatedBy":
-      return renderUserName(entry.updatedBy);
-    case "deletedBy":
-      return renderUserName(entry.deletedBy);
 
+    case "parentConsultation":
+    case "parent_consultation_id":
+      return entry.parentConsultation
+        ? formatDate(entry.parentConsultation.consultation_date)
+        : "—";
+
+    /* ===== DATES ===== */
     case "consultation_date":
     case "created_at":
     case "updated_at":
-    case "deleted_at":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    /* ===== FALLBACK (NEVER LEAK OBJECTS) ===== */
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — RICH
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const patientLabel = renderPatient(entry);
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_CONSULTATION[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getConsultationActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const row = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${safe(value)}</span>
+    </div>
+  `;
+
+  const status = (entry.status || "").toLowerCase();
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-header bg-light fw-semibold">
-        ${patientLabel}
+    <div class="entity-card consultation-card">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient(entry)}</div>
+          <div class="entity-primary">${safe(entry.consultationType?.name)}</div>
+        </div>
+        ${has("status") ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>` : ""}
       </div>
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
+        ${entry.doctor ? `<div>👨‍⚕️ ${renderUserName(entry.doctor)}</div>` : ""}
+        ${entry.department ? `<div>🏬 ${entry.department.name}</div>` : ""}
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Consultation Date", formatDate(entry.consultation_date))}
+        ${row("Registration", renderRegistration(entry))}
+        ${row("Diagnosis", entry.diagnosis)}
+        ${row("Consultation Notes", entry.consultation_notes)}
+        ${row("Prescribed Medications", entry.prescribed_medications)}
+        ${row("Status", status.toUpperCase())}
+      </div>
+
+      <details class="entity-notes">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDate(entry.updated_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getConsultationActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("consultationTableBody");
@@ -170,32 +303,24 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No consultations found.</td></tr>`;
-
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No consultations found.</td></tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getConsultationActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getConsultationActionButtons(e, user)}</td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -204,13 +329,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No consultations found.</p>`;
-
+      : `<p class="text-center text-muted">No consultations found.</p>`;
     initTooltips(cardContainer);
   }
 
@@ -218,30 +339,26 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT
 ============================================================ */
 let exportHandlersBound = false;
-
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
   exportHandlersBound = true;
 
   const title = "Consultations Report";
-
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
-
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
-
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
+    exportData({ type: "csv", data: entries, title })
+  );
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
+    exportData({ type: "xlsx", data: entries, title })
+  );
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #consultationList.active",
       orientation: "landscape",
-    });
-  });
+    })
+  );
 }

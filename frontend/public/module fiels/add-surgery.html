@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Surgery</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Surgery Record">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">Surgeries</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Surgery</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Surgery</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="surgeryForm">
+                  <div class="row gx-3 gy-3">
+
+                    <!-- Patient -->
+                    <div class="col-md-4 position-relative">
+                      <label class="form-label" for="patientInput">Patient</label>
+                      <input type="text" class="form-control suggestion-input" id="patientInput"
+                            placeholder="Search patient..." autocomplete="off" />
+                      <input type="hidden" id="patientId" name="patient_id" />
+                      <div id="patientSuggestions" class="suggestions"></div>
+                    </div>
+
+
+                    <!-- Consultation -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="consultationSelect">Consultation</label>
+                      <select class="form-control" id="consultationSelect" name="consultation_id">
+                        <option value="">-- Select Consultation --</option>
+                      </select>
+                    </div>
+
+                    <!-- Surgeon -->
+                    <div class="col-md-3 position-relative">
+                      <label class="form-label" for="surgeonInput">Surgeon</label>
+                      <input type="text" class="form-control suggestion-input" id="surgeonInput"
+                            placeholder="Search surgeon..." autocomplete="off" />
+                      <input type="hidden" id="surgeonId" name="surgeon_id" />
+                      <div id="surgeonSuggestions" class="suggestions"></div>
+                    </div>
+
+                    <!-- Department -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="departmentSelect">Department</label>
+                      <select class="form-control" id="departmentSelect" name="department_id"></select>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="organizationSelect">Organization</label>
+                      <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="facilitySelect">Facility</label>
+                      <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                    </div>
+
+                    <!-- Billable Item (Surgery Type) -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="billableItemSelect">Surgery Type</label>
+                      <select class="form-control" id="billableItemSelect" name="billable_item_id"></select>
+                    </div>
+
+                    <!-- Scheduled Date -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="scheduledDate">Scheduled Date</label>
+                      <input type="date" class="form-control" id="scheduledDate" name="scheduled_date">
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="col-md-6">
+                      <label class="form-label" for="notes">Notes</label>
+                      <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                    </div>
+
+                    <!-- Extra Info -->
+                    <div class="col-md-3">
+                      <label class="form-label" for="durationMinutes">Duration (minutes)</label>
+                      <input type="number" class="form-control" id="durationMinutes" name="duration_minutes">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label" for="anesthesiaType">Anesthesia Type</label>
+                      <select class="form-control" id="anesthesiaType" name="anesthesia_type">
+                        <option value="">-- Select Anesthesia Type --</option>
+                        <option value="general">General</option>
+                        <option value="regional">Regional</option>
+                        <option value="local">Local</option>
+                        <option value="sedation">Sedation / Monitored</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label class="form-label" for="complications">Complications</label>
+                      <textarea class="form-control" id="complications" name="complications" rows="2"></textarea>
+                    </div>
+
+                    <!-- Flags -->
+                    <div class="col-md-3 form-check mt-4">
+                      <input class="form-check-input" type="checkbox" id="isEmergency" name="is_emergency">
+                      <label class="form-check-label" for="isEmergency">Emergency?</label>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Save Surgery
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/surgeries/add-surgery.js"></script>
+</body>
+</html>

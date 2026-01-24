@@ -1,77 +1,102 @@
-// 📦 ekg-record-filter-main.js – Filters + Table/Card (no form)
+// 📦 ekg-record-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// ============================================================================
+// 🔹 FULL PARITY WITH registrationLog-filter-main.js
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single field, NEVER DB column)
+// 🔹 Org / Facility fully wired
+// 🔹 EKG status fully wired
+// 🔹 DOM-safe suggestion inputs
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
+
+import { authFetch } from "../../authSession.js";
 
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
-  loadEmployeesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./ekg-record-render.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./ekg-record-render.js";
+
 import { setupActionHandlers } from "./ekg-record-actions.js";
+
 import {
   FIELD_ORDER_EKG_RECORD,
   FIELD_DEFAULTS_EKG_RECORD,
 } from "./ekg-record-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
+import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth → Automatically detect correct permission ("ekg_records:view")
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🧠 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map(p =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🌐 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("ekgRecordView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
 
-// 🛟 No-form stubs (for cross-module consistency)
-window.showForm = () => {};
-window.resetForm = () => {};
-
 /* ============================================================
-   📋 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
-  moduleKey: "ekg_record",
+  moduleKey: "ekg_records",
   userRole,
   defaultFields: FIELD_DEFAULTS_EKG_RECORD,
   allowedFields: FIELD_ORDER_EKG_RECORD,
 });
 
 /* ============================================================
-   🧩 Field Selector
+   🧩 FIELD SELECTOR
 ============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -79,90 +104,115 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🎛️ Filter DOM Refs
+   🔎 FILTER DOM
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterTechnician = document.getElementById("filterTechnician");
-const filterTechnicianHidden = document.getElementById("filterTechnicianId");
-const filterTechnicianSuggestions = document.getElementById("filterTechnicianSuggestions");
-const filterConsultation = document.getElementById("filterConsultation");
-const filterRegistrationLog = document.getElementById("filterRegistrationLog");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
 
-// ⬇️ Export buttons
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch = qs("globalSearch");
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus = qs("filterStatus");
+const dateRange = qs("dateRange");
+
+const filterPatient = qs("filterPatient");
+const filterPatientId = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterTechnician = qs("filterTechnician");
+const filterTechnicianId = qs("filterTechnicianId");
+const filterTechnicianSuggestions = qs("filterTechnicianSuggestions");
 
 /* ============================================================
-   🌐 View & Paging State
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("ekgRecordView") || "table";
+window.setEKGRecordSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadEKGRecordPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔎 Filters Builder
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "ekg_records",
+  loadEntries,
+  Number(localStorage.getItem("ekgRecordPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    technician_id: filterTechnicianHidden?.value || "",
-    consultation_id: filterConsultation?.value || "",
-    registration_log_id: filterRegistrationLog?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    patient_id: filterPatientId?.value,
+    technician_id: filterTechnicianId?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load EKG Records
+   📦 LOAD DATA
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
-    const filters = getFilters();
+    showLoading();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
+
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_EKG_RECORD.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
-
-    const res = await fetch(`/api/ekg-records?page=${page}&limit=10&${q}`, {
+    const res = await authFetch(`/api/ekg-records?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    let result = {};
-    try {
-      result = await res.json();
-    } catch {
-      console.warn("⚠️ Response not JSON");
-    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
-
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || 1;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "EKG RECORDS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -175,111 +225,78 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load EKG records");
-  }
-}
-
-/* ============================================================
-   🧭 View Toggle
-============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
-  viewMode = "table";
-  localStorage.setItem("ekgRecordView", "table");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
-
-document.getElementById("cardViewBtn").onclick = () => {
-  viewMode = "card";
-  localStorage.setItem("ekgRecordView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
-
-/* ============================================================
-   🔍 Filter Actions
-============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  try {
-    showLoading();
-    await loadEntries(1);
   } finally {
     hideLoading();
   }
+}
+
+/* ============================================================
+   🧭 VIEW TOGGLE
+============================================================ */
+qs("tableViewBtn").onclick = () => {
+  viewMode = "table";
+  localStorage.setItem("centralStockView", "table");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("centralStockView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+/* ============================================================
+   🔄 RESET FILTERS (FULL + SAFE)
+============================================================ */
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
-    "filterPatient",
-    "filterTechnician",
-    "filterConsultation",
-    "filterRegistrationLog",
-    "filterStatus",
-    "filterCreatedFrom",
-    "filterCreatedTo",
-  ].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    dateRange,
+  ].forEach(el => el && (el.value = ""));
 
-  if (filterPatientHidden) filterPatientHidden.value = "";
-  if (filterTechnicianHidden) filterTechnicianHidden.value = "";
-
-  if (userRole.includes("super")) {
-    if (filterOrg) filterOrg.value = "";
-    if (filterFacility) filterFacility.value = "";
-  } else {
-    const scopedOrgId = localStorage.getItem("organizationId");
-    const scopedFacId = localStorage.getItem("facilityId");
-    if (filterOrg) filterOrg.value = scopedOrgId || "";
-    if (filterFacility) filterFacility.value = scopedFacId || "";
-  }
+  if (filterPatient) filterPatient.value = "";
+  if (filterPatientId) filterPatientId.value = "";
+  if (filterTechnician) filterTechnician.value = "";
+  if (filterTechnicianId) filterTechnicianId.value = "";
 
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   📤 Export
+   📤 EXPORT
 ============================================================ */
-if (exportCSVBtn) {
-  exportCSVBtn.onclick = () => {
-    exportToExcel(
-      entries,
-      `ekg_records_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
-  };
-}
+qs("exportExcelBtn")?.addEventListener("click", () => {
+  const mapped = mapDataForExport(entries, visibleFields);
+  exportToExcel(
+    mapped,
+    `ekg_records_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
+});
 
-if (exportPDFBtn) {
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#ekgRecordList";
-    exportToPDF("EKG Record List", target, "portrait", true);
-  };
-}
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  const target =
+    viewMode === "table" ? ".table-container" : "#ekgRecordList";
+  exportToPDF("EKG Records", target, "portrait", true);
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initEKGRecordModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible = localStorage.getItem("ekgRecordFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -288,93 +305,75 @@ export async function initEKGRecordModule() {
     "ekgRecordFilterVisible"
   );
 
-  /* ------------------ Suggestion Inputs ------------------ */
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      filterPatient.value =
-        selected?.label ||
-        (selected?.pat_no && selected?.full_name
-          ? `${selected.pat_no} - ${selected.full_name}`
-          : selected?.full_name || selected?.pat_no || "");
-    },
-    "label",
-    { minChars: 1 }
-  );
+  /* ========= PATIENT SUGGESTION ========= */
+  if (filterPatient && filterPatientSuggestions && filterPatientId) {
+    setupSuggestionInputDynamic(
+      filterPatient,
+      filterPatientSuggestions,
+      "/api/lite/patients",
+      (selected) => {
+        filterPatientId.value = selected?.id || "";
+        filterPatient.value = selected?.label || "";
+        loadEntries(1);
+      },
+      "label"
+    );
 
-  setupSuggestionInputDynamic(
-    filterTechnician,
-    filterTechnicianSuggestions,
-    "/api/lite/employees",
-    (selected) => {
-      filterTechnicianHidden.value = selected?.id || "";
-      filterTechnician.value =
-        selected?.full_name ||
-        `${selected?.first_name || ""} ${selected?.last_name || ""}`.trim();
-    },
-    "full_name",
-    { minChars: 1 }
-  );
-
-  /* ------------------ Preload Dropdowns ------------------ */
-  try {
-    const orgs = await loadOrganizationsLite();
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      let facilities = await loadFacilitiesLite();
-      facilities.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facilities, "id", "name");
-
-      filterOrg?.addEventListener("change", async () => {
-        const selectedOrgId = filterOrg.value;
-        let facs = selectedOrgId
-          ? await loadFacilitiesLite({ organization_id: selectedOrgId })
-          : await loadFacilitiesLite();
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-      if (filterOrg) {
-        const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-        setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-        filterOrg.disabled = true;
-        filterOrg.value = scopedOrgId || "";
+    filterPatient.addEventListener("input", () => {
+      if (!filterPatient.value.trim()) {
+        filterPatientId.value = "";
+        loadEntries(1);
       }
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(filterFacility, facilities, "id", "name", "-- All Facilities --");
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-  } catch (err) {
-    console.error("❌ preload org/facility failed:", err);
+    });
+  }
+
+  /* ========= TECHNICIAN SUGGESTION ========= */
+  if (filterTechnician && filterTechnicianSuggestions && filterTechnicianId) {
+    setupSuggestionInputDynamic(
+      filterTechnician,
+      filterTechnicianSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterTechnicianId.value = selected?.id || "";
+        filterTechnician.value = selected?.full_name || "";
+        loadEntries(1);
+      }
+    );
+
+    filterTechnician.addEventListener("input", () => {
+      if (!filterTechnician.value.trim()) {
+        filterTechnicianId.value = "";
+        loadEntries(1);
+      }
+    });
+  }
+
+  /* ========= ORG / FACILITY ========= */
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
+
+    const reloadFacilities = async (orgId = null) => {
+      if (!filterFacility) return;
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
+
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   ❌ No-op Sync
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {}
-
-/* ============================================================
-   🏁 Boot
-============================================================ */
-function boot() {
-  initEKGRecordModule().catch((err) => {
-    console.error("initEKGRecordModule failed:", err);
-  });
-}
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
-  boot();
-}
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initEKGRecordModule)
+  : initEKGRecordModule();

@@ -1,4 +1,12 @@
-// 📁 consultation-actions.js – Full Permission-Driven Action Handlers for Consultations
+// 📁 consultation-actions.js – Enterprise Master–Aligned Action Handlers (Consultations)
+// ============================================================================
+// 🧭 Pattern Source: department-actions.js (Enterprise Master)
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / delete / start / complete / verify / cancel / void
+// 🔹 Safe fallback fetch + global helpers
+// 🔹 100% API preservation (NO endpoint changes)
+// ============================================================================
+
 import {
   showToast,
   showConfirm,
@@ -10,8 +18,7 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./consultation-render.js";
 
 /**
- * Unified, permission-driven action handler
- * Mirrors centralstock-actions.js (superadmin-aware, normalized permissions)
+ * Unified permission-aware action handler for Consultation module
  */
 export function setupActionHandlers({
   entries,
@@ -20,19 +27,21 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions }
+  user, // { role, permissions, roleNames }
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("consultationTableBody");
   const cardContainer = document.getElementById("consultationList");
 
-  // cache latest entries
+  // 🗂️ Cache latest entries
   window.latestConsultationEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
-  /* ---------------------- Normalize permissions ---------------------- */
+  /* ============================================================
+     🔑 Normalize Permissions (MASTER PATTERN)
+  ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -45,23 +54,27 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
 
-  // ✅ Super Admin bypass
+  // 🧠 Superadmin bypass (MASTER PATTERN)
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Unified permission checker
-  const hasPerm = (key) => {
-    const normalizedKey = key.trim().toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
-  /* ---------------------- Handler dispatcher ---------------------- */
+  /* ============================================================
+     🎯 Main Dispatcher
+  ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
@@ -72,7 +85,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // fallback fetch if missing
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -87,30 +100,27 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Consultation data missing");
+
     const cls = btn.classList;
 
-    // --- Basic view ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("consultations:view"))
-        return showToast("⛔ You don't have permission to view");
+        return showToast("⛔ You don't have permission to view consultations");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("consultations:edit"))
-        return showToast("⛔ You don't have permission to edit");
+        return showToast("⛔ You don't have permission to edit consultations");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("consultations:delete"))
-        return showToast("⛔ You don't have permission to delete");
+        return showToast("⛔ You don't have permission to delete consultations");
       return await handleDelete(id, entry);
     }
 
-    // --- Lifecycle ---
     if (cls.contains("start-btn")) {
       if (!hasPerm("consultations:start"))
         return showToast("⛔ No permission to start consultation");
@@ -150,7 +160,10 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Handlers ---------------------- */
+  /* ============================================================
+     ⚙️ Action Handlers
+  ============================================================ */
+
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Consultation Info", html);
@@ -159,21 +172,29 @@ export function setupActionHandlers({
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("consultationEditId", entry.id);
-    sessionStorage.setItem("consultationEditPayload", JSON.stringify(entry));
-    window.location.href = `add-consultation.html`;
+    sessionStorage.setItem(
+      "consultationEditPayload",
+      JSON.stringify(entry)
+    );
+    window.location.href = "add-consultation.html";
   }
 
   async function handleDelete(id, entry) {
-    const confirmed = await showConfirm("Delete this consultation?");
+    const confirmed = await showConfirm(
+      `Delete consultation for patient "${entry?.patient?.first_name || ""}"?`
+    );
     if (!confirmed) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/consultations/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/consultations/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "❌ Failed to delete consultation");
+      if (!res.ok)
+        throw new Error(data.message || "❌ Failed to delete consultation");
 
-      showToast(`✅ Consultation deleted successfully`);
+      showToast("✅ Consultation deleted successfully");
       window.latestConsultationEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -194,7 +215,10 @@ export function setupActionHandlers({
         method: "PATCH",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || `❌ Failed to ${action} consultation`);
+      if (!res.ok)
+        throw new Error(
+          data.message || `❌ Failed to ${action} consultation`
+        );
 
       showToast(`✅ Consultation ${action} successful`);
       window.latestConsultationEntries = [];
@@ -207,42 +231,51 @@ export function setupActionHandlers({
     }
   }
 
-  /* ---------------------- Global helpers ---------------------- */
+  /* ============================================================
+     🌍 Global Helpers (MASTER + Backward Compatible)
+  ============================================================ */
   const findEntry = (id) =>
     (window.latestConsultationEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  // 🔹 Master-style helpers
+  window.viewConsultation = (id) => {
     if (!hasPerm("consultations:view"))
-      return showToast("⛔ No permission to view consultation");
+      return showToast("⛔ No permission to view consultations");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Consultation not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editConsultation = (id) => {
     if (!hasPerm("consultations:edit"))
-      return showToast("⛔ No permission to edit consultation");
+      return showToast("⛔ No permission to edit consultations");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Consultation not found for editing");
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteConsultation = async (id) => {
     if (!hasPerm("consultations:delete"))
-      return showToast("⛔ No permission to delete consultation");
+      return showToast("⛔ No permission to delete consultations");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
 
-  // lifecycle globals
   ["start", "complete", "verify", "cancel", "void"].forEach((action) => {
-    window[`${action}Entry`] = async (id) => {
+    window[`${action}Consultation`] = async (id) => {
       if (!hasPerm(`consultations:${action}`))
         return showToast(`⛔ No permission to ${action} consultation`);
-      const entry = findEntry(id);
       await handleLifecycle(id, action, `Proceed to ${action} this consultation?`);
     };
   });
+
+  // 🔹 Backward compatibility (existing bindings)
+  window.viewEntry = window.viewConsultation;
+  window.editEntry = window.editConsultation;
+  window.deleteEntry = window.deleteConsultation;
+  window.startEntry = window.startConsultation;
+  window.completeEntry = window.completeConsultation;
+  window.verifyEntry = window.verifyConsultation;
+  window.cancelEntry = window.cancelConsultation;
+  window.voidEntry = window.voidConsultation;
 }

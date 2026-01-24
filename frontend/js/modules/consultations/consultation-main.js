@@ -1,29 +1,35 @@
-// 📦 consultation-main.js – Form-only loader for Consultation (Master Pattern)
+// 📦 consultation-main.js – Form-only loader for Consultation (Enterprise Master Pattern)
+// ============================================================================
+// 🧭 FULL MASTER PARITY WITH department-main.js / patient-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
+// ============================================================================
 
 import {
   initPageGuard,
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
 import { setupConsultationFormSubmission } from "./consultation-form.js";
+
 import {
   FIELD_LABELS_CONSULTATION,
   FIELD_ORDER_CONSULTATION,
   FIELD_DEFAULTS_CONSULTATION,
 } from "./consultation-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-
-// Automatically resolves correct permission ("consultations:create" / "consultations:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -38,17 +44,17 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
-  // Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("consultationEditId");
   sessionStorage.removeItem("consultationEditPayload");
 
-  // Clear text fields
+  // Clear text inputs
   [
     "patientInput",
     "doctorInput",
@@ -71,12 +77,13 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Clear appointment dropdown
+  // Reset appointment dropdown
   const apptSelect = document.getElementById("appointmentSelect");
-  if (apptSelect)
+  if (apptSelect) {
     apptSelect.innerHTML = `<option value="">— Select Appointment —</option>`;
+  }
 
-  // Reset hidden IDs
+  // Clear hidden IDs
   ["patientId", "doctorId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -88,7 +95,7 @@ function resetForm() {
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -103,7 +110,7 @@ function hideForm() {
   localStorage.setItem("consultationFormVisible", "false");
 }
 
-// Expose globally for reuse by other handlers (view/edit actions)
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -113,7 +120,7 @@ window.resetForm = resetForm;
 if (cancelBtn) {
   cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/consultations-list.html"; // ✅ plural redirect
+    window.location.href = "/consultations-list.html";
   };
 }
 
@@ -121,36 +128,35 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // Ensure stale edit state is purged
     sessionStorage.removeItem("consultationEditId");
     sessionStorage.removeItem("consultationEditPayload");
-
-    // Reset & open clean form
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🧠 Loader (no-op)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles loading
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initConsultationModule() {
-  showForm(); // auto-open form on standalone page
+  showForm(); // form-only mode (MASTER parity)
 
-  setupConsultationFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupConsultationFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("consultationPanelVisible", "false");
 
@@ -162,9 +168,8 @@ export async function initConsultationModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🧩 Initialize Field Selector (role-based)
   setupFieldSelector({
-    module: "consultation",
+    module: "consultations",
     fieldLabels: FIELD_LABELS_CONSULTATION,
     fieldOrder: FIELD_ORDER_CONSULTATION,
     defaultFields: FIELD_DEFAULTS_CONSULTATION[role],
@@ -172,8 +177,8 @@ export async function initConsultationModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper
+   🔁 Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for advanced reactive integration
+  // reserved for future reactive syncing
 }

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VytalGuard - Add Role Permission</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add Role Permission" />
+  <link rel="shortcut icon" href="assets/images/favicon.svg" />
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css" />
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css" />
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css" />
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Role Permissions</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Role Permission</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Add Role Permission</h5>
+              </div>
+
+<!-- ✅ Wrap form in formContainer (used in main.js) -->
+<div class="card-body" id="formContainer">
+  <form id="rolePermissionForm" autocomplete="off">
+    <div class="row gx-4 gy-3">
+      <!-- Organization -->
+      <div class="col-lg-3 col-sm-6">
+        <div class="mb-3 form-group">
+          <label class="form-label" for="organizationSelect">Organization</label>
+          <select class="form-control" id="organizationSelect" name="organization_id"></select>
+        </div>
+      </div>
+
+      <!-- Facility -->
+      <div class="col-lg-3 col-sm-6">
+        <div class="mb-3 form-group">
+          <label class="form-label" for="facilitySelect">Facility</label>
+          <select class="form-control" id="facilitySelect" name="facility_id"></select>
+        </div>
+      </div>
+      <!-- Role -->
+      <div class="col-lg-3 col-sm-6">
+        <div class="mb-3 form-group">
+          <label class="form-label" for="roleSelect">
+            Role <span class="text-danger">*</span>
+          </label>
+          <select class="form-control" id="roleSelect" name="role_id" required>
+            <option value="">-- Select Role --</option>
+          </select>
+        </div>
+      </div>
+      <!-- Permission Module -->
+      <div class="col-lg-3 col-sm-6">
+        <div class="mb-3 form-group">
+          <label class="form-label" for="permissionModuleSelect">
+            Module <span class="text-danger">*</span>
+          </label>
+          <select
+            class="form-control"
+            id="permissionModuleSelect"
+            name="permission_module"
+          >
+            <option value="">-- Select Module --</option>
+            <!-- populated dynamically -->
+          </select>
+        </div>
+      </div>
+
+      <!-- Permission -->
+      <div class="col-lg-3 col-sm-6">
+        <div class="field-wrapper">
+          <label for="permissionSearch" class="form-label">
+            Permission <span class="text-danger">*</span>
+          </label>
+          <input
+            type="text"
+            id="permissionSearch"
+            class="form-control suggestion-input"
+            placeholder="Search permission..."
+            autocomplete="off"
+          />
+          <div id="permissionSearchSuggestions" class="suggestions"></div>
+          <input type="hidden" id="permission_id" name="permission_id" />
+        </div>
+      </div>
+      <!-- Bulk Permission Actions -->
+      <div class="col-sm-12 d-flex gap-2 mb-2">
+        <!-- Add all permissions in selected module -->
+        <button
+          type="button"
+          id="addAllModulePermissionsBtn"
+          class="btn btn-sm btn-outline-primary"
+        >
+          <i class="ri-folder-add-line me-1"></i>
+          Add all in module
+        </button>
+
+        <!-- Grant FULL access (SuperAdmin only; JS will hide if not allowed) -->
+        <button
+          type="button"
+          id="addAllPermissionsBtn"
+          class="btn btn-sm btn-outline-danger"
+        >
+          <i class="ri-shield-check-line me-1"></i>
+          Grant Full Access
+        </button>
+      </div>
+
+      <!-- Pills Container -->
+      <div class="col-sm-12">
+        <div id="permissionPillsContainer" class="d-flex flex-wrap align-items-start mb-3">
+          <p class="text-muted">No permissions added yet.</p>
+        </div>
+      </div>
+
+
+      <!-- Action Buttons -->
+      <div class="col-sm-12">
+        <div class="d-flex gap-2 justify-content-end mt-3">
+          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+          </button>
+          <button type="reset" id="clearBtn" class="btn btn-warning">
+            <i class="ri-refresh-line me-1"></i> Clear
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <i class="ri-save-3-line me-1"></i> Save Role Permission
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </form>
+</div>
+<!-- /Form -->
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- ✅ Corrected JS Module path -->
+  <script type="module" src="js/modules/role-permissions/add-role-permissions.js"></script>
+</body>
+</html>
