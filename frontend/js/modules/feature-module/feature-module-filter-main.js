@@ -15,6 +15,7 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey
 } from "../../utils/index.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
 import { authFetch } from "../../authSession.js";
@@ -49,7 +50,7 @@ const USER_PREF_COLUMN_ORDER_KEY =
 /* ============================================================
    🔐 Auth + Permissions
 ============================================================ */
-const token = initPageGuard("feature_modules");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const roleRaw = localStorage.getItem("userRole") || "";

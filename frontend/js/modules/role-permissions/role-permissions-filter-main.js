@@ -8,6 +8,8 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
+
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -37,7 +39,7 @@ import { initPaginationControl } from "../../utils/pagination-control.js";
 /* ============================================================
    🔐 Auth
 ============================================================ */
-const token = initPageGuard("role_permissions:view");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 /* ============================================================

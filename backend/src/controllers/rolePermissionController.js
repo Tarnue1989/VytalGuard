@@ -20,7 +20,7 @@ import { validatePaginationStrict } from "../utils/query-utils.js";
 /* ============================================================
    🧩 MODULE CONFIG
    ============================================================ */
-const MODULE_KEY = "rolepermissions";
+const MODULE_KEY = "role_permissions";
 
 const ROLE_PERMISSION_INCLUDES = [
   { model: Role, as: "role", attributes: ["id", "name"], required: false },

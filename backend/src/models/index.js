@@ -110,20 +110,21 @@ if (!databaseUrl) {
   throw new Error("❌ DATABASE_URL is not defined");
 }
 
-const isLocal =
-  databaseUrl.includes("localhost") ||
-  databaseUrl.includes("127.0.0.1");
+// 🔐 ENV-AWARE SSL (authoritative)
+const isProduction = process.env.NODE_ENV === "production";
 
 const sequelize = new Sequelize(databaseUrl, {
   dialect: "postgres",
   logging: false,
-  dialectOptions: isLocal
-    ? {} // ❌ NO SSL for local Postgres
-    : {
+  dialectOptions: isProduction
+    ? {
         ssl: {
           require: true,
-          rejectUnauthorized: false, // ✅ required by Render
+          rejectUnauthorized: false, // Render / managed PG
         },
+      }
+    : {
+        ssl: false, // LOCAL Postgres — no SSL
       },
 });
 

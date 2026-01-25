@@ -24,7 +24,7 @@ import { auditService } from "../services/auditService.js";
 /* ============================================================
    🔐 MODULE
 ============================================================ */
-const MODULE_KEY = "permission";
+const MODULE_KEY = "permissions";
 
 /* ============================================================
    🔧 DEBUG
