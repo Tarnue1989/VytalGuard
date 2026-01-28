@@ -1,66 +1,52 @@
-// 📦 deposits.js – Enterprise Entry Point (Master Pattern Aligned)
+// 📦 deposits.js – Entry Point (Enterprise-Aligned Master Pattern)
 // ============================================================================
-// 🔹 Mirrors appointments.js for unified structure, lifecycle, and safety
-// 🔹 Handles both form + list initialization seamlessly
+// 🧭 Master Pattern: consultation.js / department.js / role.js
+// 🔹 Unified initialization entry for the Deposit module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters + table + pagination)
+// 🧭 Main module init (handles filter, table, card, pagination, summary, export)
 import { initDepositModule } from "./deposit-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
-import { setupActionHandlers } from "./deposit-actions.js";
+// ⚙️ Lifecycle + action handlers (view, edit, delete, apply, verify, cancel, etc.)
+import "./deposit-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_DEPOSIT,
   FIELD_ORDER_DEPOSIT,
   FIELD_DEFAULTS_DEPOSIT,
 } from "./deposit-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Module Boot
+   🚀 DOM-Ready Bootstrap
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("depositForm");
-    const hasList = document.getElementById("depositTableBody");
-
-    // ✅ Initialize if form or list exists
-    if (hasForm || hasList) await initDepositModule();
-
-    // ✅ If list page → setup action handlers dynamically
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
-
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_DEPOSIT[userRole] || FIELD_DEFAULTS_DEPOSIT.staff;
-
-      setupActionHandlers({
-        entries: window.latestDepositEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
+    // 🧩 Initialize only if the deposit form or list container exists
+    if (
+      document.getElementById("depositForm") ||
+      document.getElementById("depositList") ||
+      document.getElementById("depositTableBody")
+    ) {
+      await initDepositModule();
     }
+
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("depositTableBody")) {
+    //   await initDepositListModule();
+    // }
+
   } catch (err) {
-    console.error("❌ Failed to initialize deposit module", err);
+    console.error("❌ Failed to initialize Deposit module", err);
     hideLoading();
-    showToast("❌ Failed to load deposit module");
+    showToast("❌ Failed to load Deposit module");
   }
 });

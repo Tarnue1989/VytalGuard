@@ -1,12 +1,13 @@
 // 📁 backend/src/controllers/depositController.js
 // ============================================================================
-// 💰 Deposit Controller – Enterprise Master Pattern (Central Parity)
+// 💰 Deposit Controller – MASTER-ALIGNED (Consultation Parity)
 // ----------------------------------------------------------------------------
-// 🔹 Unified pagination, filtering, summary, and audit behavior
-// 🔹 Ledger-first via financialService
-// 🔹 Role-safe tenant resolution (no hardcoding)
-// 🔹 Detail lifecycle + aggregate summary
+// 🔹 Strict pagination (MASTER)
+// 🔹 UI-only dateRange stripping
+// 🔹 Global search + status handling parity
+// 🔹 Audit-safe query handling
 // ============================================================================
+
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -21,6 +22,7 @@ import {
 
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 import { validate } from "../utils/validation.js";
@@ -37,7 +39,6 @@ import { FIELD_VISIBILITY_DEPOSIT } from "../constants/fieldVisibility.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
-import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
 /* ============================================================
    🔐 MODULE
@@ -47,24 +48,24 @@ const MODULE_KEY = "deposits";
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
-const DEBUG_OVERRIDE = false; // 👈 flip only when needed
+const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("depositController", DEBUG_OVERRIDE);
 
 /* ============================================================
-   🔖 STATUS MAP (ENUM-SAFE)
+   🔖 STATUS MAP (ENUM-SAFE, MASTER STYLE)
 ============================================================ */
 const DS = {
   PENDING: DEPOSIT_STATUS[0],
   CLEARED: DEPOSIT_STATUS[1],
   APPLIED: DEPOSIT_STATUS[2],
   CANCELLED: DEPOSIT_STATUS[3],
-  REVERSED: DEPOSIT_STATUS[4] || "reversed",
-  VOIDED: DEPOSIT_STATUS[5] || "voided",
-  VERIFIED: DEPOSIT_STATUS[6] || "verified",
+  REVERSED: DEPOSIT_STATUS[4],
+  VOIDED: DEPOSIT_STATUS[5],
+  VERIFIED: DEPOSIT_STATUS[6],
 };
 
 /* ============================================================
-   🔗 SHARED INCLUDES
+   🔗 SHARED INCLUDES (MASTER PARITY)
 ============================================================ */
 const DEPOSIT_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
@@ -77,24 +78,20 @@ const DEPOSIT_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA
+   📋 ROLE-AWARE JOI SCHEMA (MASTER-SAFE, TENANT-RESOLVED)
 ============================================================ */
 function buildDepositSchema(userRole, mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
-    applied_invoice_id: Joi.string().uuid().allow(null),
+    applied_invoice_id: Joi.string().uuid().allow(null, ""),
     amount: Joi.number().positive().required(),
     method: Joi.string().valid(...PAYMENT_METHODS).required(),
     transaction_ref: Joi.string().allow(null, ""),
     notes: Joi.string().allow(null, ""),
     reason: Joi.string().allow(null, ""),
 
-    // 🔒 service-controlled
+    // lifecycle controlled by service
     status: Joi.forbidden(),
-
-    // 🔐 tenant fields resolved by util
-    organization_id: Joi.forbidden(),
-    facility_id: Joi.forbidden(),
   };
 
   if (mode === "update") {
@@ -102,14 +99,206 @@ function buildDepositSchema(userRole, mode = "create") {
     base.reason = Joi.string().min(5).required();
   }
 
+  // ✅ SUPER ADMIN MAY PASS TENANT
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().optional();
+    base.facility_id = Joi.string().uuid().allow(null).optional();
+  } else {
+    // 🔒 everyone else forbidden
+    base.organization_id = Joi.forbidden();
+    base.facility_id = Joi.forbidden();
+  }
+
   return Joi.object(base);
 }
 
+
 /* ============================================================
-   📌 GET ALL DEPOSITS (MASTER + DETAIL SUMMARY)
+   📌 CREATE DEPOSIT (LEDGER-FIRST – MASTER PARITY)
+============================================================ */
+export const createDeposit = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
+
+    const role =
+      (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+    const { value, errors } = validate(
+      buildDepositSchema(role, "create"),
+      req.body
+    );
+
+    if (errors) {
+      await t.rollback();
+      return error(res, "Validation failed", errors, 400);
+    }
+
+    /* ========================================================
+       🧭 TENANT RESOLUTION (MASTER)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
+
+    /* ========================================================
+       💰 LEDGER-FIRST APPLY
+    ======================================================== */
+    const { deposit, invoice } = await financialService.applyDeposit({
+      ...value,
+      organization_id: orgId,
+      facility_id: facilityId,
+      user: req.user,
+      t,
+    });
+
+    await t.commit();
+
+    const full = await Deposit.findOne({
+      where: { id: deposit.id },
+      include: DEPOSIT_INCLUDES,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      entityId: deposit.id,
+      entity: full,
+    });
+
+    return success(res, "✅ Deposit created", {
+      deposit: full,
+      invoice,
+    });
+  } catch (err) {
+    await t.rollback();
+    debug.error("createDeposit → FAILED", err);
+    return error(res, "❌ Failed to create deposit", err);
+  }
+};
+
+/* ============================================================
+   📌 UPDATE DEPOSIT (LEDGER-SAFE – MASTER PARITY)
+============================================================ */
+export const updateDeposit = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const role =
+      (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+    const { value, errors } = validate(
+      buildDepositSchema(role, "update"),
+      req.body
+    );
+
+    if (errors) {
+      await t.rollback();
+      return error(res, "Validation failed", errors, 400);
+    }
+
+    const record = await Deposit.findByPk(req.params.id, {
+      transaction: t,
+    });
+
+    if (!record) {
+      await t.rollback();
+      return error(res, "❌ Deposit not found", null, 404);
+    }
+
+    // 🔒 Only pending deposits are editable
+    if (record.status !== DS.PENDING) {
+      await t.rollback();
+      return error(res, "❌ Only pending deposits can be updated", null, 400);
+    }
+
+    // 🔒 Reason required if amount changes
+    if (
+      value.amount &&
+      parseFloat(value.amount) !== parseFloat(record.amount) &&
+      !value.reason
+    ) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Reason required when changing deposit amount",
+        null,
+        400
+      );
+    }
+
+    /* ========================================================
+       🧭 TENANT RESOLUTION (MASTER)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
+    await record.update(
+      {
+        ...value,
+        organization_id: orgId,
+        facility_id: facilityId,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    const full = await Deposit.findOne({
+      where: { id: record.id },
+      include: DEPOSIT_INCLUDES,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "update",
+      entityId: record.id,
+      entity: full,
+    });
+
+    return success(res, "✅ Deposit updated", full);
+  } catch (err) {
+    await t.rollback();
+    debug.error("updateDeposit → FAILED", err);
+    return error(res, "❌ Failed to update deposit", err);
+  }
+};
+
+
+/* ============================================================
+   📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -118,34 +307,48 @@ export const getAllDeposits = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role =
-      (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    /* ========================================================
+       🔎 STRICT PAGINATION (MASTER)
+    ======================================================== */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
+    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_DEPOSIT[role] || FIELD_VISIBILITY_DEPOSIT.staff;
 
-    const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-
     /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS
+       🧹 STRIP UI-ONLY PARAMS (MASTER)
     ======================================================== */
-    delete options.filters?.dateRange;
+    const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
 
+    const options = buildQueryOptions(
+      req,
+      "created_at",
+      "DESC",
+      visibleFields
+    );
     options.where = { [Op.and]: [] };
 
     /* ========================================================
-       📅 DATE RANGE (MASTER)
+       📅 DATE RANGE (created_at)
     ======================================================== */
-    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
-      options.where[Op.and].push({
-        created_at: {
-          [Op.between]: [dateRange.start, dateRange.end],
-        },
-      });
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
+      }
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE (CENTRAL PARITY)
+       🔐 TENANT SCOPE (MASTER)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
@@ -171,7 +374,7 @@ export const getAllDeposits = async (req, res) => {
     }
 
     /* ========================================================
-       🎯 ADDITIONAL FILTERS
+       🎯 FILTERS (EXACT MATCH)
     ======================================================== */
     if (req.query.patient_id) {
       options.where[Op.and].push({
@@ -198,59 +401,80 @@ export const getAllDeposits = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 SEARCH
+       🔍 GLOBAL SEARCH (SAFE)
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
           { notes: { [Op.iLike]: `%${options.search}%` } },
-          { status: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
     /* ========================================================
-       🗂️ QUERY
+       🗂️ MAIN QUERY
     ======================================================== */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
     });
 
     /* ========================================================
-       🧠 DETAIL SUMMARY (CENTRAL STYLE)
+       🔢 SUMMARY (FULL DATASET – PAGINATION SAFE)
     ======================================================== */
-    const summary = await buildDynamicSummary({
-      model: Deposit,
-      baseWhere: options.where,
-      statusEnums: Object.values(DS),
-      includeGender: true,
-      genderJoin: { model: Patient, as: "patient" },
+    const summary = { total: count };
+
+    const statusCounts = await Deposit.findAll({
+      where: options.where,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
     });
 
+    Object.values(DS).forEach((status) => {
+      const found = statusCounts.find((s) => s.status === status);
+      summary[status] = found ? Number(found.get("count")) : 0;
+    });
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: safeQuery,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE (MASTER CONTRACT)
+    ======================================================== */
     return success(res, "✅ Deposits loaded", {
       records: rows,
       summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
     });
   } catch (err) {
     debug.error("getAllDeposits → FAILED", err);
+    if (err.statusCode === 400) {
+      return error(res, err.message, null, 400);
+    }
     return error(res, "❌ Failed to load deposits", err);
   }
 };
@@ -303,167 +527,6 @@ export const getDepositById = async (req, res) => {
   } catch (err) {
     debug.error("getDepositById → FAILED", err);
     return error(res, "❌ Failed to load deposit", err);
-  }
-};
-
-/* ============================================================
-   📌 CREATE DEPOSIT (LEDGER FIRST – PARITY)
-============================================================ */
-export const createDeposit = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "create",
-      res,
-    });
-    if (!allowed) return;
-
-    const role =
-      (req.user?.roleNames?.[0] || "staff").toLowerCase();
-
-    const { value, errors } = validate(
-      buildDepositSchema(role, "create"),
-      req.body
-    );
-
-    if (errors) {
-      await t.rollback();
-      return error(res, "Validation failed", errors, 400);
-    }
-
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
-
-    const { deposit, invoice } = await financialService.applyDeposit({
-      ...value,
-      organization_id: orgId,
-      facility_id: facilityId,
-      user: req.user,
-      t,
-    });
-
-    await t.commit();
-
-    const full = await Deposit.findOne({
-      where: { id: deposit.id },
-      include: DEPOSIT_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "create",
-      entityId: deposit.id,
-      entity: full,
-    });
-
-    return success(res, "✅ Deposit created", {
-      deposit: full,
-      invoice,
-    });
-  } catch (err) {
-    await t.rollback();
-    debug.error("createDeposit → FAILED", err);
-    return error(res, "❌ Failed to create deposit", err);
-  }
-};
-
-/* ============================================================
-   📌 UPDATE DEPOSIT (LEDGER SAFE – PARITY)
-============================================================ */
-export const updateDeposit = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const role =
-      (req.user?.roleNames?.[0] || "staff").toLowerCase();
-
-    const { value, errors } = validate(
-      buildDepositSchema(role, "update"),
-      req.body
-    );
-
-    if (errors) {
-      await t.rollback();
-      return error(res, "Validation failed", errors, 400);
-    }
-
-    const record = await Deposit.findByPk(req.params.id, {
-      transaction: t,
-    });
-
-    if (!record) {
-      await t.rollback();
-      return error(res, "❌ Deposit not found", null, 404);
-    }
-
-    if (record.status !== DS.PENDING) {
-      await t.rollback();
-      return error(res, "❌ Only pending deposits can be updated", null, 400);
-    }
-
-    if (
-      value.amount &&
-      parseFloat(value.amount) !== parseFloat(record.amount) &&
-      !value.reason
-    ) {
-      await t.rollback();
-      return error(
-        res,
-        "❌ Reason required when changing deposit amount",
-        null,
-        400
-      );
-    }
-
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
-
-    await record.update(
-      {
-        ...value,
-        organization_id: orgId,
-        facility_id: facilityId,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
-
-    await t.commit();
-
-    const full = await Deposit.findOne({
-      where: { id: record.id },
-      include: DEPOSIT_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      entityId: record.id,
-      entity: full,
-    });
-
-    return success(res, "✅ Deposit updated", full);
-  } catch (err) {
-    await t.rollback();
-    debug.error("updateDeposit → FAILED", err);
-    return error(res, "❌ Failed to update deposit", err);
   }
 };
 

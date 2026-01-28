@@ -1,7 +1,17 @@
 // 📁 frontend/js/modules/deposits/deposit-receipt.js
-import { printReceipt } from "../../utils/receipt-utils.js";
-import { getOrgInfo } from "../shared/org-config.js";
+// ============================================================================
+// 🧾 Deposit Receipt Printer (Enterprise Final)
+// 🔹 Audit-first user resolution
+// 🔹 Auth-user fallback
+// 🔹 Silent + print-safe
+// 🔹 Footer + branding handled ONLY by receipt-utils
+// ============================================================================
 
+import { printReceipt } from "../../utils/receipt-utils.js";
+
+/* --------------------------------------------------
+   Utilities
+-------------------------------------------------- */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -13,9 +23,33 @@ function formatDate(dateStr) {
   });
 }
 
+function resolvePrintedBy(deposit) {
+  if (deposit?.createdBy?.first_name || deposit?.createdBy?.last_name) {
+    return [deposit.createdBy.first_name, deposit.createdBy.last_name]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const authUser =
+    JSON.parse(localStorage.getItem("auth_user") || "null") ||
+    JSON.parse(localStorage.getItem("currentUser") || "null");
+
+  if (!authUser) return "System";
+
+  if (authUser.first_name || authUser.last_name) {
+    return [authUser.first_name, authUser.last_name]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return authUser.name || "System";
+}
+
+/* --------------------------------------------------
+   Receipt Printer
+-------------------------------------------------- */
 export function printDepositReceipt(deposit) {
-  const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = resolvePrintedBy(deposit);
   const printedAt = new Date().toLocaleString();
 
   const appliedInvoice = deposit.appliedInvoice
@@ -27,48 +61,37 @@ export function printDepositReceipt(deposit) {
     : "—";
 
   const bodyHTML = `
-    <!-- Facility -->
-    <div class="facility-info mb-3">
+    <div class="facility-info">
       <p><strong>Facility:</strong> ${deposit.facility?.name || "—"}</p>
     </div>
 
-    <!-- Deposit Meta -->
     <div class="invoice-meta">
       <div><strong>Deposit ID:</strong> ${deposit.deposit_ref || deposit.id || "—"}</div>
-      <div><strong>Patient:</strong> ${deposit.patient?.pat_no || ""} - 
+      <div><strong>Patient:</strong> ${deposit.patient?.pat_no || "—"} -
         ${deposit.patient?.first_name || ""} ${deposit.patient?.last_name || ""}</div>
       <div><strong>Applied Invoice:</strong> ${appliedInvoice}</div>
       <div><strong>Method:</strong> ${deposit.method || "—"}</div>
       <div><strong>Reference:</strong> ${deposit.transaction_ref || "—"}</div>
       <div><strong>Status:</strong> ${deposit.status || "—"}</div>
       <div><strong>Date:</strong> ${formatDate(deposit.created_at)}</div>
-      <div><strong>Received By:</strong> ${
-        deposit.createdBy
-          ? `${deposit.createdBy.first_name} ${deposit.createdBy.last_name}`
-          : "—"
-      }</div>
-      <div style="grid-column: 1 / -1;"><strong>Notes:</strong> ${deposit.notes || "—"}</div>
-    </div>
-
-    <!-- Amount Summary -->
-    <h5 class="border-bottom pb-1 mt-3">Amount Summary</h5>
-    <div class="invoice-meta">
-      <div><strong>Deposit Amount:</strong> $${Number(deposit.amount || 0).toFixed(2)}</div>
-      <div><strong>Applied to Invoices:</strong> $${Number(deposit.applied_amount || 0).toFixed(2)}</div>
-      <div><strong>Remaining Balance:</strong> 
-        <span class="fw-bold">$${Number(deposit.remaining_balance || 0).toFixed(2)}</span>
+      <div><strong>Received By:</strong> ${printedBy}</div>
+      <div style="grid-column: 1 / -1;">
+        <strong>Notes:</strong> ${deposit.notes || "—"}
       </div>
     </div>
 
-    <!-- Print Info -->
-    <div class="mt-3 border-top pt-2 small text-muted">
-      Printed by: <strong>${printedBy}</strong><br/>
-      Printed at: ${printedAt}
+    <h5>Amount Summary</h5>
+    <div class="invoice-meta">
+      <div><strong>Deposit Amount:</strong> $${Number(deposit.amount || 0).toFixed(2)}</div>
+      <div><strong>Applied to Invoices:</strong> $${Number(deposit.applied_amount || 0).toFixed(2)}</div>
+      <div><strong>Remaining Balance:</strong>
+        <strong>$${Number(deposit.remaining_balance || 0).toFixed(2)}</strong>
+      </div>
     </div>
 
-    <!-- Footer -->
-    <div id="receiptFooter" class="mt-3">
-      <p class="mb-0">Deposit successfully recorded.</p>
+    <div class="print-meta">
+      Printed by: <strong>${printedBy}</strong><br/>
+      Printed at: ${printedAt}
     </div>
   `;
 

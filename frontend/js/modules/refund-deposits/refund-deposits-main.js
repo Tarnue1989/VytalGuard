@@ -1,14 +1,17 @@
-// 📦 refund-deposits-main.js – Enterprise Master Pattern Aligned
+// 📦 refund-deposits-main.js – Form-only loader for Deposit Refunds (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors refund-main.js for deposit refunds
-// 🔹 Unified form lifecycle, RBAC consistency, and edit-mode support
-// 🔹 Uses refundable balance from deposit model
+// 🧭 FULL MASTER PARITY WITH deposit-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
 } from "../../utils/index.js";
 
 import { setupRefundDepositFormSubmission } from "./refund-deposits-form.js";
@@ -22,36 +25,35 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 Auth Guard + Shared State
 ============================================================ */
 const token = initPageGuard(
   autoPagePermissionKey(["refund-deposits:create", "refund-deposits:edit"])
 );
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State + DOM Refs
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("refundDepositForm");
 const formContainer = document.getElementById("refundDepositFormContainer");
-
 const desktopAddBtn = document.getElementById("desktopAddRefundDepositBtn");
 const cancelBtn = document.getElementById("cancelRefundDepositBtn");
 const clearBtn = document.getElementById("clearRefundDepositBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
 
   if (form) form.reset();
 
-  // Clear cached edit mode
+  // Clear cached edit state
   sessionStorage.removeItem("refundDepositEditId");
   sessionStorage.removeItem("refundDepositEditPayload");
 
@@ -61,37 +63,33 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Clear hidden inputs
+  // Clear dropdowns
+  ["organizationSelect", "facilitySelect", "methodSelect"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Clear hidden IDs
   ["patientId", "depositId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🔥 HARD RESET dropdown DATA (important)
+  // HARD reset deposit dropdown data
   const depositInput = document.getElementById("depositInput");
   if (depositInput) {
-    depositInput.innerHTML = "";       // remove all options
-    depositInput.disabled = true;      // lock until patient selected
+    depositInput.innerHTML = "";
+    depositInput.disabled = true;
   }
-
-  const methodSelect = document.getElementById("methodSelect");
-  if (methodSelect) {
-    methodSelect.value = "";
-  }
-
-  const orgSelect = document.getElementById("organizationSelect");
-  if (orgSelect) orgSelect.value = "";
-
-  const facSelect = document.getElementById("facilitySelect");
-  if (facSelect) facSelect.value = "";
 
   // Reset max constraint
   const amt = document.getElementById("refund_amount");
   if (amt) amt.removeAttribute("max");
-
-  console.info("🧹 [Deposit Refund] FULL form reset (values + data)");
 }
 
+/* ============================================================
+   🧭 Form Show / Hide
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -105,6 +103,7 @@ function hideForm() {
   localStorage.setItem("refundDepositFormVisible", "false");
 }
 
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -113,22 +112,17 @@ window.resetForm = resetForm;
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Deposit Refund] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/refund-deposits-list.html";
   };
 }
 
 if (clearBtn) {
-  clearBtn.onclick = () => {
-    console.log("🧹 Clear Deposit Refund Form");
-    resetForm();
-  };
+  clearBtn.onclick = resetForm;
 }
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Deposit Refund] Switching to Add mode");
     sessionStorage.removeItem("refundDepositEditId");
     sessionStorage.removeItem("refundDepositEditPayload");
     resetForm();
@@ -137,22 +131,31 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   🚀 Module Init
+   📦 Loader Placeholder (FORM-ONLY MODE)
+============================================================ */
+async function loadEntries() {
+  return; // handled by list page
+}
+
+/* ============================================================
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initRefundDepositModule() {
-  showForm(); // Always open form
+  showForm(); // form-only mode (MASTER parity)
 
-  setupRefundDepositFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries: () => {},
-  });
+  if (form) {
+    setupRefundDepositFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("refundDepositPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -160,7 +163,6 @@ export async function initRefundDepositModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // Field selector for visibility control
   setupFieldSelector({
     module: "refund_deposit",
     fieldLabels: FIELD_LABELS_REFUND_DEPOSIT,
@@ -169,11 +171,11 @@ export async function initRefundDepositModule() {
       FIELD_DEFAULTS_REFUND_DEPOSIT[role] ||
       FIELD_DEFAULTS_REFUND_DEPOSIT.staff,
   });
-
-  console.info(`✅ [Deposit Refund] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   Placeholder
+   🔁 Sync Stub
 ============================================================ */
-export function syncRefsToState() {}
+export function syncRefsToState() {
+  // reserved for future reactive syncing
+}

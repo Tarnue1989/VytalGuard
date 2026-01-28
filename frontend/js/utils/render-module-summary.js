@@ -37,46 +37,63 @@ export function renderModuleSummary(
     return "";
   };
 
-  /* ================= VALUE FORMATTER ================= */
-  const fmt = (k, v) => {
-    if (v === null || v === undefined) return "—";
+/* ================= VALUE FORMATTER ================= */
+const fmt = (k, v) => {
+  if (v === null || v === undefined) return "—";
 
-    /* ----------------------------------------------------
-       ✅ OBJECT VALUES (currency maps, status maps, etc.)
-       - Example: { USD: 19 }
-       - Renders as: USD: 19
-    ---------------------------------------------------- */
-    if (typeof v === "object" && !Array.isArray(v)) {
-      return formatSummaryObject(v, {
-        separator: " / ",
-        emptyValue: "—",
-        transformKey: (x) => String(x).replace(/_/g, " ").toUpperCase(),
-      });
-    }
+  /* ----------------------------------------------------
+     ✅ OBJECT VALUES
+  ---------------------------------------------------- */
+  if (typeof v === "object" && !Array.isArray(v)) {
+    return formatSummaryObject(v, {
+      separator: " / ",
+      emptyValue: "—",
+      transformKey: (x) => String(x).replace(/_/g, " ").toUpperCase(),
+    });
+  }
 
-    const lower = String(k).toLowerCase();
+  const lower = String(k).toLowerCase();
 
-    const isCurrencyValue =
-      /amount|balance|value|sum|applied|remaining|price|cost|avg|min|max/.test(
-        lower
-      );
+  /* ----------------------------------------------------
+     ✅ COUNT KEYS (TAKE PRIORITY)
+     - status buckets
+     - totals
+  ---------------------------------------------------- */
+  const isCount =
+    lower === "total" ||
+    lower.endsWith("_count") ||
+    [
+      "pending",
+      "cleared",
+      "applied",
+      "cancelled",
+      "reversed",
+      "voided",
+      "verified",
+      "failed",
+      "approved",
+    ].includes(lower);
 
-    const isCount =
-      /_count$|^count$|total$|total_count$/.test(lower);
+  if (isCount && !isNaN(v)) {
+    return Number(v).toLocaleString();
+  }
 
-    if (isCurrencyValue && !isNaN(v)) {
-      return `$${Number(v).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
+  /* ----------------------------------------------------
+     💰 CURRENCY KEYS (ONLY TRUE AMOUNTS)
+  ---------------------------------------------------- */
+  const isCurrencyValue =
+    /amount|balance|sum|price|cost|avg|min|max/.test(lower);
 
-    if (isCount && !isNaN(v)) {
-      return Number(v).toLocaleString();
-    }
+  if (isCurrencyValue && !isNaN(v)) {
+    return `$${Number(v).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
 
-    return v;
-  };
+  return v;
+};
+
 
   /* ================= LABEL FORMATTER ================= */
   const labelize = (k) => {

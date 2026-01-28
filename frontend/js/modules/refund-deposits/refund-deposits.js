@@ -1,82 +1,52 @@
-// 📦 refundDeposits.js – Enterprise Master Pattern Aligned
+// 📦 refund-deposits.js – Entry Point (Enterprise-Aligned MASTER Pattern)
 // ============================================================================
-// 🔹 Mirrors deposits.js for unified lifecycle & module boot
-// 🔹 Handles BOTH: list page + add/edit form page
-// 🔹 Works ONLY for DEPOSIT REFUNDS (refundDeposit module)
+// 🧭 Master Pattern: deposits.js / consultation.js / department.js
+// 🔹 Unified initialization entry for the Refund Deposit module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (filter + pagination + table render)
+// 🧭 Main module init (handles filter, table, card, pagination, summary, export)
 import { initRefundDepositModule } from "./refund-deposits-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, void, restore)
-import { setupRefundDepositActionHandlers } from "./refund-deposits-actions.js";
+// ⚙️ Lifecycle + action handlers (view, edit, delete, approve, process, reverse, void, restore)
+import "./refund-deposits-actions.js";
 
-// 🧩 Constants (used for UI configs)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_REFUND_DEPOSIT,
   FIELD_ORDER_REFUND_DEPOSIT,
   FIELD_DEFAULTS_REFUND_DEPOSIT,
 } from "./refund-deposits-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
-
 /* ============================================================
-   🚀 MODULE BOOTSTRAP
+   🚀 DOM-Ready Bootstrap
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("refundDepositForm");
-    const hasList = document.getElementById("refundDepositTableBody");
-
-    // ------------------------------------------------------------
-    // INIT MODULE (filters + list + table headers + pagination)
-    // ------------------------------------------------------------
-    if (hasForm || hasList) {
+    // 🧩 Initialize only if the refund-deposit form or list container exists
+    if (
+      document.getElementById("refundDepositForm") ||
+      document.getElementById("refundDepositList") ||
+      document.getElementById("refundDepositTableBody")
+    ) {
       await initRefundDepositModule();
     }
 
-    // ------------------------------------------------------------
-    // LIST PAGE: Attach Action Buttons (Edit, View, Void, etc.)
-    // ------------------------------------------------------------
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("refundDepositTableBody")) {
+    //   await initRefundDepositListModule();
+    // }
 
-      const user = {
-        role: userRole,
-        permissions: perms.map((p) =>
-          typeof p === "string" ? p : p.key?.toLowerCase()
-        ),
-      };
-
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-
-      const loadEntries = async () => {}; // placeholder, overridden by module
-      const visibleFields =
-        FIELD_DEFAULTS_REFUND_DEPOSIT[userRole] ||
-        FIELD_DEFAULTS_REFUND_DEPOSIT.staff;
-
-      setupRefundDepositActionHandlers({
-        entries: window.latestRefundDepositEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
-    }
   } catch (err) {
-    console.error("❌ Failed to initialize refund-deposit module", err);
+    console.error("❌ Failed to initialize Refund Deposit module", err);
     hideLoading();
-    showToast("❌ Failed to load refund deposit module");
+    showToast("❌ Failed to load Refund Deposit module");
   }
 });

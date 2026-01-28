@@ -1,8 +1,11 @@
-// 📁 deposit-form.js – Enterprise Master Pattern Aligned (Add/Edit Deposit)
+// 📁 deposit-form.js – Secure & Role-Aware Deposit Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors appointment-form.js for unified enterprise behavior
-// 🔹 Adds permission-driven org/facility visibility & cascade logic
-// 🔹 Preserves all existing DOM IDs, API calls, and event wiring
+// 🔹 FULL parity with consultation-form.js MASTER
+// 🔹 Rule-driven validation (DEPOSIT_FORM_RULES)
+// 🔹 Role-aware org/fac handling (super / org / facility)
+// 🔹 Clean payload normalization (UUID | number | null)
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
+// 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
 // ============================================================================
 
 import {
@@ -10,10 +13,18 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
+  initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -21,8 +32,11 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { DEPOSIT_FORM_RULES } from "./deposit.form.rules.js";
+
 /* ============================================================
-   🧩 Helpers
+   🧩 Helpers (MASTER)
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
@@ -41,80 +55,58 @@ function normalizeMessage(result, fallback) {
 }
 
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
 
-function validateDepositForm(payload, isEdit, userRole) {
-  const errors = [];
-
-  if (!payload.patient_id) errors.push("Patient is required");
-  if (!payload.amount || payload.amount <= 0) errors.push("Valid amount is required");
-  if (!payload.method) errors.push("Method is required");
-  if (!payload.transaction_ref) errors.push("Transaction Ref is required");
-
-  if (isEdit && (!payload.reason || payload.reason.trim().length < 5)) {
-    errors.push("Reason (min 5 chars) is required when editing");
-  }
-
-  if (userRole.includes("super")) {
-    if (!payload.organization_id) errors.push("Organization is required");
-    if (!payload.facility_id) errors.push("Facility is required");
-  } else if (userRole.includes("org_owner")) {
-    if (!payload.facility_id) errors.push("Facility is required");
-  }
-
-  return errors;
+function normalizeNumber(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
 }
 
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
 export async function setupDepositFormSubmission({ form }) {
-  const sessionId = sessionStorage.getItem("depositEditId");
-  const queryId = getQueryParam("id");
-  const depositId = sessionId || queryId;
-  const isEdit = !!depositId;
+  initPageGuard(autoPagePermissionKey());
+  initLogoutWatcher();
+  enableLiveValidation(form);
 
-  // 🔐 Auth Guard
-  const token = initPageGuard(autoPagePermissionKey(["deposits:create", "deposits:edit"]));
-
-  // 🧾 Debug Snapshot
-  console.groupCollapsed("📋 [setupDepositFormSubmission] State Snapshot");
-  console.log("depositId:", depositId);
-  console.log("isEdit:", isEdit);
-  console.groupEnd();
+  const depositId =
+    sessionStorage.getItem("depositEditId") || getQueryParam("id");
+  const isEdit = Boolean(depositId);
 
   /* ============================================================
-     🎨 UI Mode Setup
+     🎨 UI Mode
   ============================================================ */
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const clearBtn = document.getElementById("clearBtn");
   const reasonGroup = document.getElementById("reasonGroup");
 
-  const setAddModeUI = () => {
-    if (titleEl) titleEl.textContent = "Add Deposit";
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent = mode === "edit" ? "Edit Deposit" : "Add Deposit";
     if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Deposit`;
-    if (reasonGroup) reasonGroup.classList.add("hidden");
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Deposit`
+          : `<i class="ri-add-line me-1"></i> Add Deposit`;
+    if (reasonGroup)
+      reasonGroup.classList.toggle("hidden", mode !== "edit");
   };
-
-  const setEditModeUI = () => {
-    if (titleEl) titleEl.textContent = "Edit Deposit";
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Deposit`;
-    if (reasonGroup) reasonGroup.classList.remove("hidden");
-  };
-
-  isEdit ? setEditModeUI() : setAddModeUI();
+  setUI(isEdit ? "edit" : "add");
 
   /* ============================================================
      📋 DOM Refs
   ============================================================ */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
+
   const patientInput = document.getElementById("patientInput");
   const patientHidden = document.getElementById("patientId");
   const patientSuggestions = document.getElementById("patientSuggestions");
+
   const appliedInvoiceHidden = document.getElementById("appliedInvoiceId");
   const amountInput = document.getElementById("amount");
   const methodSelect = document.getElementById("methodSelect");
@@ -123,41 +115,56 @@ export async function setupDepositFormSubmission({ form }) {
   const reasonInput = document.getElementById("reason");
 
   /* ============================================================
-     🔽 Prefill Dropdowns + Suggestions
+     👥 Role
+  ============================================================ */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+  const isOrgAdmin = userRole === "organization_admin";
+
+  /* ============================================================
+     🌐 Dropdowns & Suggestions (MASTER)
   ============================================================ */
   try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-    if (userRole.includes("super")) {
-      // 🏢 Superadmin → Org + Facility cascade
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
         );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      };
 
       await reloadFacilities();
-
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      // 🧑‍💼 Admin → Only facility
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+    } else if (isOrgAdmin) {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facilities = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facilities, "id", "name", "-- Select Facility --");
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     } else {
-      // 👷 Staff → Auto-hidden org/facility
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // ✅ Patient suggestion input
     setupSuggestionInputDynamic(
       patientInput,
       patientSuggestions,
@@ -166,66 +173,59 @@ export async function setupDepositFormSubmission({ form }) {
         patientHidden.value = selected?.id || "";
         patientInput.value =
           selected?.label ||
-          (selected?.pat_no && selected?.full_name
-            ? `${selected.pat_no} - ${selected.full_name}`
-            : selected?.full_name || selected?.pat_no || "");
+          `${selected?.pat_no || ""} ${selected?.full_name || ""}`.trim();
       },
       "label"
     );
   } catch (err) {
-    console.error("❌ Dropdown load failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     🧩 Prefill If Editing
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
-  if (isEdit) {
+  if (isEdit && depositId) {
     try {
       showLoading();
+
       let entry = null;
-      const raw = sessionStorage.getItem("depositEditPayload");
-      if (raw) entry = JSON.parse(raw);
+      const cached = sessionStorage.getItem("depositEditPayload");
+      if (cached) entry = JSON.parse(cached);
 
       if (!entry) {
-        const res = await authFetch(`/api/deposits/${depositId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await authFetch(`/api/deposits/${depositId}`);
         const result = await res.json().catch(() => ({}));
-        entry = result?.data;
-        if (!res.ok || !entry)
+        if (!res.ok)
           throw new Error(
-            normalizeMessage(result, `❌ Failed to load deposit (${res.status})`)
+            normalizeMessage(result, "Failed to load deposit")
           );
+        entry = result?.data;
       }
 
-      // 🧾 Populate Fields
-      if (entry.patient) {
-        patientHidden.value = entry.patient.id;
-        patientInput.value =
-          entry.patient.label ||
-          `${entry.patient.pat_no || ""} - ${entry.patient.full_name || ""}`.trim();
-      }
+      if (!entry) return;
+
+      patientHidden.value = entry.patient_id || "";
+      patientInput.value = entry.patient
+        ? `${entry.patient.pat_no || ""} ${entry.patient.full_name || ""}`.trim()
+        : "";
+
       appliedInvoiceHidden.value = entry.applied_invoice_id || "";
-      amountInput.value = entry.amount || "";
+      amountInput.value = entry.amount ?? "";
       methodSelect.value = entry.method || "";
       transactionRefInput.value = entry.transaction_ref || "";
       notesInput.value = entry.notes || "";
       reasonInput.value = entry.reason || "";
 
-      if (entry.organization_id && orgSelect) {
-        orgSelect.value = entry.organization_id;
-        const facs = await loadFacilitiesLite(
-          { organization_id: entry.organization_id },
-          true
-        );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      if (isSuper) {
+        if (orgSelect && entry.organization_id)
+          orgSelect.value = entry.organization_id;
+        if (facSelect && entry.facility_id)
+          facSelect.value = entry.facility_id;
       }
-      if (entry.facility_id) facSelect.value = entry.facility_id;
 
-      setEditModeUI();
+      setUI("edit");
     } catch (err) {
-      console.error("❌ Prefill error:", err);
       showToast(err.message || "❌ Could not load deposit");
     } finally {
       hideLoading();
@@ -233,71 +233,78 @@ export async function setupDepositFormSubmission({ form }) {
   }
 
   /* ============================================================
-     💾 Submit Handler
+     🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+    const errors = [];
 
-    const payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      applied_invoice_id: normalizeUUID(appliedInvoiceHidden?.value || null),
-      amount: parseFloat(amountInput?.value || 0) || null,
-      method: methodSelect?.value || null,
-      transaction_ref: transactionRefInput?.value || null,
-      notes: notesInput?.value || null,
-      reason: reasonInput?.value || null,
-      organization_id: normalizeUUID(
-        orgSelect?.value || localStorage.getItem("organizationId")
-      ),
-      facility_id: normalizeUUID(
-        facSelect?.value || localStorage.getItem("facilityId")
-      ),
-    };
+    for (const rule of DEPOSIT_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
 
-    console.groupCollapsed("🧾 [Deposit Submit Payload]");
-    console.log(payload);
-    console.groupEnd();
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
 
-    const errors = validateDepositForm(payload, isEdit, userRole);
-    if (errors.length > 0) {
-      showToast("❌ " + errors.join("\n"));
+      if (!el) continue;
+      if (el.closest(".hidden")) continue;
+
+      if (!el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
       return;
     }
 
-    const url = isEdit ? `/api/deposits/${depositId}` : `/api/deposits`;
-    const method = isEdit ? "PUT" : "POST";
+    const payload = {
+      patient_id: normalizeUUID(patientHidden.value),
+      applied_invoice_id: normalizeUUID(appliedInvoiceHidden?.value),
+      amount: normalizeNumber(amountInput.value),
+      method: methodSelect.value || null,
+      transaction_ref: transactionRefInput.value || null,
+      notes: notesInput.value || null,
+      reason: reasonInput.value || null,
+    };
+
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
 
     try {
       showLoading();
+
+      const url = isEdit
+        ? `/api/deposits/${depositId}`
+        : `/api/deposits`;
+      const method = isEdit ? "PUT" : "POST";
+
       const res = await authFetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const result = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      if (isEdit) {
-        showToast("✅ Deposit updated successfully");
-        sessionStorage.removeItem("depositEditId");
-        sessionStorage.removeItem("depositEditPayload");
-        window.location.href = "/deposits-list.html";
-      } else {
-        showToast("✅ Deposit created successfully");
-        form.reset();
-        appliedInvoiceHidden.value = "";
-        setAddModeUI();
+      if (!res.ok) {
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
       }
+
+      showToast(isEdit ? "✅ Deposit updated" : "✅ Deposit created");
+
+      sessionStorage.removeItem("depositEditId");
+      sessionStorage.removeItem("depositEditPayload");
+
+      window.location.href = "/deposits-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -305,19 +312,17 @@ export async function setupDepositFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Clear / Cancel Buttons
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("depositEditId");
-    sessionStorage.removeItem("depositEditPayload");
-    form.reset();
-    appliedInvoiceHidden.value = "";
-    setAddModeUI();
+  cancelBtn?.addEventListener("click", () => {
+    sessionStorage.clear();
+    window.location.href = "/deposits-list.html";
   });
 
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("depositEditId");
-    sessionStorage.removeItem("depositEditPayload");
-    window.location.href = "/deposits-list.html";
+  clearBtn?.addEventListener("click", () => {
+    clearFormErrors(form);
+    form.reset();
+    appliedInvoiceHidden.value = "";
+    setUI("add");
   });
 }
