@@ -14,8 +14,14 @@ import {
   showLoading,
   hideLoading,
 } from "../../utils/index.js";
+
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./refund-deposits-render.js";
+
+/* ============================================================
+   🛡️ EVENT BIND GUARD (CRITICAL FIX)
+============================================================ */
+let refundDepositHandlersBound = false;
 
 /**
  * Unified permission-aware action handler for Refund Deposit module
@@ -27,14 +33,16 @@ export function setupRefundDepositActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // { role, roleNames, permissions }
+  user,
 }) {
+  if (refundDepositHandlersBound) return;
+  refundDepositHandlersBound = true;
+
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("refundDepositTableBody");
   const cardContainer = document.getElementById("refundDepositList");
   const modalBody = document.getElementById("viewModalBody");
 
-  // 🗂️ Cache latest entries (MASTER PATTERN)
   window.latestRefundDepositEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
@@ -62,7 +70,6 @@ export function setupRefundDepositActionHandlers({
     )
   );
 
-  // 🧠 Superadmin bypass (role OR roleNames)
   const isSuperAdmin =
     (user?.role &&
       user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
@@ -87,7 +94,6 @@ export function setupRefundDepositActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🩹 Fallback fetch (MASTER SAFETY)
     if (!entry) {
       try {
         showLoading();
@@ -126,7 +132,6 @@ export function setupRefundDepositActionHandlers({
       return await handleDelete(id);
     }
 
-    // 🔄 Lifecycle map (MASTER STYLE)
     const lifecycleMap = {
       "review-btn": "review",
       "approve-btn": "approve",
@@ -143,8 +148,8 @@ export function setupRefundDepositActionHandlers({
         if (!hasPerm(`refund-deposits:${action}`))
           return showToast(`⛔ No permission to ${action} refund deposits`);
 
-        if (action === "reject" || action === "cancel" || action === "void") {
-          return await handleReasonedLifecycle(entry, action);
+        if (["reject", "cancel", "void"].includes(action)) {
+          return openReasonModal(entry, action);
         }
 
         return await handleLifecycle(id, action);
@@ -171,9 +176,7 @@ export function setupRefundDepositActionHandlers({
   }
 
   async function handleDelete(id) {
-    const confirmed = await showConfirm(
-      "Delete this deposit refund?"
-    );
+    const confirmed = await showConfirm("Delete this deposit refund?");
     if (!confirmed) return;
 
     try {
@@ -183,9 +186,7 @@ export function setupRefundDepositActionHandlers({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(
-          data.message || "❌ Failed to delete deposit refund"
-        );
+        throw new Error(data.message || "❌ Failed to delete deposit refund");
 
       showToast("✅ Deposit refund deleted successfully");
       window.latestRefundDepositEntries = [];
@@ -225,34 +226,81 @@ export function setupRefundDepositActionHandlers({
     }
   }
 
-  async function handleReasonedLifecycle(entry, action) {
-    const reason = prompt(`Enter reason to ${action}:`);
-    if (!reason) return;
+  /* ============================================================
+    🚫 REJECT / CANCEL / VOID — MODAL ONLY (FIX)
+  ============================================================ */
+  function openReasonModal(entry, action) {
+    openViewModal(
+      `${action.toUpperCase()} Deposit Refund`,
+      `
+        <div class="mb-3">
+          <label class="form-label">Reason</label>
+          <textarea
+            id="refundReasonInput"
+            class="form-control"
+            rows="3"
+            placeholder="Enter reason..."></textarea>
+        </div>
 
-    try {
-      showLoading();
-      const res = await authFetch(
-        `/api/refund-deposits/${entry.id}/${action}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason }),
+        <div class="alert alert-danger small">
+          This action cannot be undone.
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button class="btn btn-outline-secondary" id="cancelReasonBtn">
+            Cancel
+          </button>
+          <button class="btn btn-danger" id="confirmReasonBtn">
+            ${action.toUpperCase()}
+          </button>
+        </div>
+      `
+    );
+
+    // Cancel → just close modal
+    document
+      .getElementById("cancelReasonBtn")
+      ?.addEventListener("click", () => {
+        document.getElementById("viewModal")?.classList.add("hidden");
+      });
+
+    // Confirm → validate reason, call API, close modal
+    document
+      .getElementById("confirmReasonBtn")
+      ?.addEventListener("click", async () => {
+        const reason = document
+          .getElementById("refundReasonInput")
+          ?.value?.trim();
+
+        if (!reason) return showToast("❌ Reason is required");
+
+        try {
+          showLoading();
+          const res = await authFetch(
+            `/api/refund-deposits/${entry.id}/${action}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reason }),
+            }
+          );
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok)
+            throw new Error(
+              data.message || `❌ Failed to ${action} deposit refund`
+            );
+
+          document.getElementById("viewModal")?.classList.add("hidden");
+          showToast(`✅ Deposit refund ${action} successful`);
+          window.latestRefundDepositEntries = [];
+          await loadEntries(currentPage || 1);
+        } catch (err) {
+          showToast(err.message || `❌ Failed to ${action} deposit refund`);
+        } finally {
+          hideLoading();
         }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(
-          data.message || `❌ Failed to ${action} deposit refund`
-        );
-
-      showToast(`✅ Deposit refund ${action} successful`);
-      window.latestRefundDepositEntries = [];
-      await loadEntries(currentPage || 1);
-    } catch (err) {
-      showToast(err.message || `❌ Failed to ${action} deposit refund`);
-    } finally {
-      hideLoading();
-    }
+      });
   }
 
   /* ============================================================
@@ -286,23 +334,27 @@ export function setupRefundDepositActionHandlers({
     await handleDelete(id);
   };
 
-  ["review", "approve", "process", "reject", "cancel", "reverse", "void", "restore"].forEach(
-    (action) => {
-      window[`${action}RefundDeposit`] = async (id) => {
-        if (!hasPerm(`refund-deposits:${action}`))
-          return showToast(
-            `⛔ No permission to ${action} refund deposits`
-          );
-        const entry = findEntry(id);
-        if (!entry) return;
-        if (["reject", "cancel", "void"].includes(action))
-          return await handleReasonedLifecycle(entry, action);
-        await handleLifecycle(id, action);
-      };
-    }
-  );
+  [
+    "review",
+    "approve",
+    "process",
+    "reject",
+    "cancel",
+    "reverse",
+    "void",
+    "restore",
+  ].forEach((action) => {
+    window[`${action}RefundDeposit`] = async (id) => {
+      if (!hasPerm(`refund-deposits:${action}`))
+        return showToast(`⛔ No permission to ${action} refund deposits`);
+      const entry = findEntry(id);
+      if (!entry) return;
+      if (["reject", "cancel", "void"].includes(action))
+        return openReasonModal(entry, action);
+      await handleLifecycle(id, action);
+    };
+  });
 
-  // 🔹 Backward compatibility
   window.viewEntry = window.viewRefundDeposit;
   window.editEntry = window.editRefundDeposit;
   window.deleteEntry = window.deleteRefundDeposit;

@@ -1,17 +1,54 @@
 // 📦 refund-deposits-render.js – Entity Card System (REFUND DEPOSIT | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH deposit-render.js
-// 🔹 Table = flat | Card = RICH + structured (ALL fields supported)
+// 🧭 FULL MASTER PARITY WITH refund-render.js
+// 🔹 Table = flat | Card = RICH + structured
 // 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
 // 🔹 Status-action-matrix driven actions
-// 🔹 Full lifecycle + audit visibility
+// 🔹 Full lifecycle + audit visibility (DATE + TIME)
 // 🔹 Export-safe (no object leaks)
+// 🔹 ALL existing refund-deposit logic & DOM IDs preserved
 // ============================================================================
 
 import { FIELD_LABELS_REFUND_DEPOSIT } from "./refund-deposits-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
+
+/* ============================================================
+   🔃 SORTABLE FIELDS (MASTER PARITY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "deposit_id",
+  "refund_amount",
+  "method",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("refundDepositSortBy") || "";
+let sortDir = localStorage.getItem("refundDepositSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("refundDepositSortBy", sortBy);
+  localStorage.setItem("refundDepositSortDir", sortDir);
+
+  window.setRefundDepositSort?.(sortBy, sortDir);
+  window.loadRefundDepositPage?.(1);
+}
 
 /* ============================================================
    🎛️ ACTIONS
@@ -28,7 +65,7 @@ function getRefundDepositActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 TABLE HEAD (FIELD-SELECTOR SAFE)
+   🧱 TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -52,18 +89,47 @@ export function renderDynamicTableHead(visibleFields) {
       return;
     }
 
-    th.innerHTML = `<span>${label}</span>`;
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+      }
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadRefundDepositPage?.(1),
+  });
 }
 
 /* ============================================================
    🔠 HELPERS
 ============================================================ */
-const safe = (v) =>
-  v !== null && v !== undefined && v !== "" ? v : "—";
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
 function renderUserName(u) {
   if (!u) return "—";
@@ -89,19 +155,16 @@ function renderDeposit(entry) {
   if (!d) return "—";
   if (typeof d === "string") return d;
 
-  const ref = d.transaction_ref || "—";
+  const ref = d.transaction_ref || d.id || "—";
   const amt = Number(d.amount || 0).toFixed(2);
   const bal = Number(d.remaining_balance ?? d.balance ?? 0).toFixed(2);
   const method = (d.method || "").toUpperCase();
 
-  return `
-    ${ref}
-    <br><small>$${amt} | Bal: $${bal} | ${method}</small>
-  `;
+  return `${ref}<br><small>$${amt} | Bal: $${bal} | ${method}</small>`;
 }
 
 /* ============================================================
-   🧩 VALUE RENDERER (OBJECT-SAFE)
+   🧩 VALUE RENDERER (DATE + TIME SAFE)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -109,12 +172,12 @@ function renderValue(entry, field) {
       const s = (entry.status || "").toLowerCase();
       const map = {
         pending: "bg-warning text-dark",
-        reviewed: "bg-info text-dark",
+        review: "bg-info text-dark",
         approved: "bg-primary",
         processed: "bg-success",
-        reversed: "bg-danger text-white",
         rejected: "bg-danger text-white",
         cancelled: "bg-secondary",
+        reversed: "bg-danger text-white",
         voided: "bg-dark text-light",
         restored: "bg-secondary",
       };
@@ -122,21 +185,28 @@ function renderValue(entry, field) {
     }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "patient":
+    case "patient_id":
       return renderPatient(entry);
+
     case "deposit":
+    case "deposit_id":
       return renderDeposit(entry);
 
     case "refund_amount":
       return `$${Number(entry.refund_amount || 0).toFixed(2)}`;
+
     case "method":
     case "reason":
       return safe(entry[field]);
 
-    // --- USERS ---
     case "createdBy":
     case "updatedBy":
     case "deletedBy":
@@ -150,7 +220,6 @@ function renderValue(entry, field) {
     case "cancelledBy":
       return renderUserName(entry[field]);
 
-    // --- DATES ---
     case "created_at":
     case "updated_at":
     case "deleted_at":
@@ -162,42 +231,37 @@ function renderValue(entry, field) {
     case "reviewed_at":
     case "rejected_at":
     case "cancelled_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default: {
       const v = entry[field];
-      if (v == null) return "—";
-      if (typeof v === "object") return "—";
+      if (v == null || typeof v === "object") return "—";
       return v;
     }
   }
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH (ALL FIELDS LIKE TABLE)
+   🗂️ CARD RENDERER — RICH
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
-  const row = (label, value) => {
-    if (value === undefined || value === null || value === "") return "";
-    return `
-      <div class="entity-field">
-        <span class="entity-label">${label}</span>
-        <span class="entity-value">${value}</span>
-      </div>
-    `;
-  };
+  const row = (label, value) =>
+    value
+      ? `<div class="entity-field">
+           <span class="entity-label">${label}</span>
+           <span class="entity-value">${value}</span>
+         </div>`
+      : "";
 
   return `
     <div class="entity-card refund-deposit-card">
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">
-            $${Number(entry.refund_amount || 0).toFixed(2)}
-          </div>
+          <div class="entity-primary">$${Number(entry.refund_amount || 0).toFixed(2)}</div>
         </div>
         ${
           has("status")
@@ -226,12 +290,11 @@ export function renderCard(entry, visibleFields, user) {
                 "deleted_at",
               ].includes(f)
           )
-          .map(
-            (f) =>
-              row(
-                FIELD_LABELS_REFUND_DEPOSIT[f] || f,
-                renderValue(entry, f)
-              )
+          .map((f) =>
+            row(
+              FIELD_LABELS_REFUND_DEPOSIT[f] || f,
+              renderValue(entry, f)
+            )
           )
           .join("")}
       </div>
@@ -240,9 +303,9 @@ export function renderCard(entry, visibleFields, user) {
         <summary>Audit</summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Created At", formatDateTime(entry.created_at))}
           ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDate(entry.updated_at))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
         </div>
       </details>
 

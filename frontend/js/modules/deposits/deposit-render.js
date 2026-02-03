@@ -226,6 +226,8 @@ export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
     return `
@@ -236,16 +238,31 @@ export function renderCard(entry, visibleFields, user) {
     `;
   };
 
+  // UI-only derived clarity helpers (NO backend mutation)
+  const refundedAmount = Number(entry.refund_amount || 0);
+  const hasRefund = refundedAmount > 0;
+
+  const lifecycleHint =
+    status === "applied" && hasRefund
+      ? "Applied → Refunded"
+      : status === "applied"
+      ? "Applied"
+      : status === "voided"
+      ? "Voided"
+      : "";
+
   return `
     <div class="entity-card deposit-card">
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">$${Number(entry.amount || 0).toFixed(2)}</div>
+          <div class="entity-primary">${money(entry.amount)}</div>
         </div>
         ${
           has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
             : ""
         }
       </div>
@@ -258,13 +275,26 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-body">
-        ${row("Amount", `$${Number(entry.amount || 0).toFixed(2)}`)}
-        ${row("Applied Amount", `$${Number(entry.applied_amount || 0).toFixed(2)}`)}
-        ${row(
-          "Remaining Balance",
-          `$${Number(entry.remaining_balance || 0).toFixed(2)}`
-        )}
+        ${row("Amount", money(entry.amount))}
+        ${row("Applied Amount", money(entry.applied_amount))}
+
+        <!-- 🔁 UI clarity rename -->
+        ${row("Available Balance", money(entry.remaining_balance))}
+
+        <!-- 💸 Refund visibility (ONLY when exists) -->
+        ${hasRefund ? row("Refunded Amount", money(refundedAmount)) : ""}
+
         ${row("Status", status.toUpperCase())}
+
+        <!-- 🧠 Lifecycle hint (UI only) -->
+        ${
+          lifecycleHint
+            ? row(
+                "Lifecycle",
+                `<span class="text-muted">${lifecycleHint}</span>`
+              )
+            : ""
+        }
 
         ${row("Reason", entry.reason)}
         ${row("Notes", entry.notes)}
@@ -290,6 +320,7 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 
 /* ============================================================
    📋 LIST RENDERER

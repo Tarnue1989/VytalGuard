@@ -1,29 +1,38 @@
 /* =============================================
-   Deposit Refund Form Rules (Controller-aligned)
-   MASTER PARITY (Deposit / Central Stock Pattern)
+   Discount Form Rules (Controller-aligned)
+   ENTERPRISE MASTER PARITY
 ============================================= */
 
-export const REFUND_DEPOSIT_FORM_RULES = [
+export const DISCOUNT_FORM_RULES = [
   // ================= Identity =================
   {
-    id: "patientInput",
-    message: "Patient is required",
+    id: "invoiceInput",
+    message: "Invoice is required",
   },
   {
-    id: "depositInput",
-    message: "Deposit is required",
+    id: "invoiceId",
+    message: "Invoice is required",
+  },
+
+  // ================= Discount Details =================
+  {
+    id: "typeSelect",
+    message: "Discount type is required",
   },
   {
-    id: "refund_amount",
-    message: "Refund amount is required",
-  },
-  {
-    id: "methodSelect",
-    message: "Refund method is required",
+    id: "value",
+    message: "Discount value is required",
   },
   {
     id: "reason",
     message: "Reason is required",
+  },
+
+  // ================= Invoice Item (optional) =================
+  {
+    id: "invoiceItemId",
+    message: "Invoice item selection is invalid",
+    when: () => false, // optional – whole invoice allowed
   },
 
   // ================= Scope =================

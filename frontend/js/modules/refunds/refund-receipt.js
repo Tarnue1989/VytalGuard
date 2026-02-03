@@ -1,16 +1,19 @@
-// 📁 frontend/js/modules/refunds/refund-receipt.js
+// 📁 frontend/js/modules/refunds/refund-receipt.js – Enterprise FINAL (MASTER–ALIGNED)
 // ============================================================================
-// 🔹 Mirrors deposit-receipt.js for unified receipt style and enterprise standard
-// 🔹 Includes org/facility info, formatted meta fields, and amount summary
-// 🔹 Fully compatible with printReceipt + org-config utilities
+// 🧾 Refund Receipt Printer (Enterprise Final)
+// 🔹 FULL parity with refundDeposit-receipt.js MASTER
+// 🔹 Audit-first user resolution
+// 🔹 Auth-user fallback
+// 🔹 Silent + print-safe
+// 🔹 Footer + branding handled ONLY by receipt-utils
+// 🔹 NO org-config, NO inline footer, NO UI bleed
 // ============================================================================
 
 import { printReceipt } from "../../utils/receipt-utils.js";
-import { getOrgInfo } from "../shared/org-config.js";
 
-/* ============================================================
-   🗓️ Date Formatter
-============================================================ */
+/* --------------------------------------------------
+   Utilities
+-------------------------------------------------- */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -22,81 +25,102 @@ function formatDate(dateStr) {
   });
 }
 
-/* ============================================================
-   🧾 Print Refund Receipt
-============================================================ */
+function resolvePrintedBy(refund) {
+  if (
+    refund?.createdBy?.first_name ||
+    refund?.createdBy?.last_name
+  ) {
+    return [
+      refund.createdBy.first_name,
+      refund.createdBy.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const authUser =
+    JSON.parse(localStorage.getItem("auth_user") || "null") ||
+    JSON.parse(localStorage.getItem("currentUser") || "null");
+
+  if (!authUser) return "System";
+
+  if (authUser.first_name || authUser.last_name) {
+    return [
+      authUser.first_name,
+      authUser.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return authUser.name || "System";
+}
+
+/* --------------------------------------------------
+   Receipt Printer
+-------------------------------------------------- */
 export function printRefundReceipt(refund) {
-  const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = resolvePrintedBy(refund);
   const printedAt = new Date().toLocaleString();
 
-  const linkedInvoice = refund.invoice
-    ? `${refund.invoice.invoice_number} (Amt: $${Number(
-        refund.invoice.total_amount ?? 0
-      ).toFixed(2)})`
-    : refund.invoice_id
-    ? `Invoice ID: ${refund.invoice_id}`
+  const refundRef =
+    refund.refund_ref ||
+    refund.refund_no ||
+    refund.id ||
+    "—";
+
+  const patient = refund.patient
+    ? `${refund.patient.pat_no || "—"} - ${
+        refund.patient.first_name || ""
+      } ${refund.patient.last_name || ""}`.trim()
     : "—";
 
-  const linkedPayment = refund.payment
-    ? `${refund.payment.label || refund.payment.id} ($${Number(
-        refund.payment.amount ?? 0
-      ).toFixed(2)})`
-    : "—";
+  const linkedInvoice =
+    refund.invoice?.invoice_number ||
+    refund.invoice_id ||
+    "—";
+
+  const linkedPayment =
+    refund.payment?.transaction_ref ||
+    refund.payment?.id ||
+    "—";
+
+  const refundAmount = Number(refund.amount ?? 0);
 
   const bodyHTML = `
-    <!-- 🏥 Facility / Org Info -->
-    <div class="facility-info mb-3">
-      <p><strong>Facility:</strong> ${refund.facility?.name || orgInfo?.facilityName || "—"}</p>
-      <p><strong>Organization:</strong> ${refund.organization?.name || orgInfo?.orgName || "—"}</p>
+    <div class="facility-info">
+      <p><strong>Facility:</strong> ${refund.facility?.name || "—"}</p>
     </div>
 
-    <!-- 🧾 Refund Meta -->
     <div class="invoice-meta">
-      <div><strong>Refund ID:</strong> ${refund.refund_ref || refund.id || "—"}</div>
-      <div><strong>Patient:</strong> ${
-        refund.patient?.pat_no || ""
-      } - ${refund.patient?.first_name || ""} ${refund.patient?.last_name || ""}</div>
-      <div><strong>Linked Invoice:</strong> ${linkedInvoice}</div>
-      <div><strong>Linked Payment:</strong> ${linkedPayment}</div>
+      <div><strong>Refund ID:</strong> ${refundRef}</div>
+      <div><strong>Patient:</strong> ${patient}</div>
+      <div><strong>Invoice:</strong> ${linkedInvoice}</div>
+      <div><strong>Payment:</strong> ${linkedPayment}</div>
       <div><strong>Method:</strong> ${refund.method || "—"}</div>
       <div><strong>Status:</strong> ${refund.status || "—"}</div>
       <div><strong>Reason:</strong> ${refund.reason || "—"}</div>
       <div><strong>Date:</strong> ${formatDate(refund.created_at)}</div>
-      <div><strong>Processed By:</strong> ${
-        refund.processedBy
-          ? `${refund.processedBy.first_name} ${refund.processedBy.last_name}`
-          : refund.createdBy
-          ? `${refund.createdBy.first_name} ${refund.createdBy.last_name}`
-          : "—"
-      }</div>
+      <div><strong>Processed By:</strong> ${printedBy}</div>
     </div>
 
-    <!-- 💵 Amount Summary -->
-    <h5 class="border-bottom pb-1 mt-3">Amount Summary</h5>
+    <h5>Amount Summary</h5>
     <div class="invoice-meta">
-      <div><strong>Refund Amount:</strong> $${Number(refund.amount || 0).toFixed(2)}</div>
-      <div><strong>Original Payment:</strong> $${Number(
-        refund.payment?.amount || 0
-      ).toFixed(2)}</div>
-      <div><strong>Remaining Balance:</strong> 
-        <span class="fw-bold">$${Number(
-          refund.payment?.refundable_balance || 0
-        ).toFixed(2)}</span>
+      <div>
+        <strong>Refund Amount:</strong>
+        <strong>$${refundAmount.toFixed(2)}</strong>
       </div>
     </div>
 
-    <!-- 🖨️ Print Info -->
-    <div class="mt-3 border-top pt-2 small text-muted">
+    <div class="print-meta">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-
-    <!-- ✅ Footer -->
-    <div id="receiptFooter" class="mt-3">
-      <p class="mb-0">Refund transaction recorded successfully.</p>
-    </div>
   `;
 
-  printReceipt("Refund Receipt", bodyHTML, refund.organization_id);
+  printReceipt(
+    "Refund Receipt",
+    bodyHTML,
+    refund.organization_id
+  );
 }

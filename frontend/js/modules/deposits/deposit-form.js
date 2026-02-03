@@ -2,7 +2,7 @@
 // ============================================================================
 // 🔹 FULL parity with consultation-form.js MASTER
 // 🔹 Rule-driven validation (DEPOSIT_FORM_RULES)
-// 🔹 Role-aware org/fac handling (super / org / facility)
+// 🔹 Role-aware org/fac handling (SUPER ONLY)
 // 🔹 Clean payload normalization (UUID | number | null)
 // 🔹 Controller-faithful (no HTML validation, no silent rules)
 // 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
@@ -119,7 +119,6 @@ export async function setupDepositFormSubmission({ form }) {
   ============================================================ */
   const userRole = resolveUserRole();
   const isSuper = userRole === "superadmin";
-  const isOrgAdmin = userRole === "organization_admin";
 
   /* ============================================================
      🌐 Dropdowns & Suggestions (MASTER)
@@ -151,16 +150,8 @@ export async function setupDepositFormSubmission({ form }) {
       orgSelect?.addEventListener("change", () =>
         reloadFacilities(orgSelect.value || null)
       );
-    } else if (isOrgAdmin) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      setupSelectOptions(
-        facSelect,
-        await loadFacilitiesLite({}, true),
-        "id",
-        "name",
-        "-- Select Facility --"
-      );
     } else {
+      // 🔒 Org Admin / Facility / Staff
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
@@ -272,6 +263,7 @@ export async function setupDepositFormSubmission({ form }) {
       reason: reasonInput.value || null,
     };
 
+    // ✅ SUPER ADMIN ONLY may declare tenancy
     if (isSuper) {
       payload.organization_id = normalizeUUID(orgSelect?.value);
       payload.facility_id = normalizeUUID(facSelect?.value);

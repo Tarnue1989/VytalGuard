@@ -5,6 +5,7 @@
 // 🔹 Single + Bulk replace (controller-faithful)
 // 🔹 No silent coercion
 // 🔹 Safe reset + preview lifecycle
+// 🔹 Roles load ONLY after organization selection
 // ============================================================================
 
 import {
@@ -78,10 +79,9 @@ window.__featureAccessBulkMode = false;
 /* ============================================================
    🔽 Dropdowns
 ============================================================ */
-async function populateDropdowns() {
-  const [modules, roles, facilities, organizations] = await Promise.all([
+async function populateBaseDropdowns() {
+  const [modules, facilities, organizations] = await Promise.all([
     loadFeatureModulesLite(true),
-    loadRolesLite({}, true),
     loadFacilitiesLite({}, true),
     loadOrganizationsLite({}, true),
   ]);
@@ -94,14 +94,6 @@ async function populateDropdowns() {
     "id",
     "name",
     "-- Select Organization --"
-  );
-
-  setupSelectOptions(
-    document.getElementById("role_id"),
-    roles,
-    "id",
-    "name",
-    "-- Select Role --"
   );
 
   setupSelectOptions(
@@ -119,6 +111,55 @@ async function populateDropdowns() {
     "name",
     "-- All Facilities (Org-wide) --"
   );
+
+  // ⛔ roles intentionally NOT loaded here
+  setupSelectOptions(
+    document.getElementById("role_id"),
+    [],
+    "id",
+    "name",
+    "-- Select Organization First --"
+  );
+}
+
+/* ============================================================
+   🔁 Load Roles by Organization (STRICT)
+============================================================ */
+async function loadRolesForOrganization(orgId) {
+  const roleSelect = document.getElementById("role_id");
+  roleSelect.disabled = true;
+
+  setupSelectOptions(
+    roleSelect,
+    [],
+    "id",
+    "name",
+    "-- Loading roles... --"
+  );
+
+  if (!orgId) {
+    setupSelectOptions(
+      roleSelect,
+      [],
+      "id",
+      "name",
+      "-- Select Organization First --"
+    );
+    roleSelect.disabled = false;
+    return;
+  }
+
+  const roles = await loadRolesLite({ organization_id: orgId }, true);
+
+  setupSelectOptions(
+    roleSelect,
+    roles || [],
+    "id",
+    "name",
+    "-- Select Role --"
+  );
+
+  roleSelect.disabled = false;
 }
 
 /* ============================================================
@@ -193,11 +234,20 @@ export async function setupFeatureAccessFormSubmission({ form }) {
   initLogoutWatcher();
   enableLiveValidation(form);
 
-  await populateDropdowns();
+  await populateBaseDropdowns();
 
+  const orgSelect = document.getElementById("organization_id");
+  const roleSelect = document.getElementById("role_id");
   const addAllBtn = document.getElementById("addAllModulesBtn");
   const fullAccessBtn = document.getElementById("grantFullAccessBtn");
   const moduleSelect = document.getElementById("module_id");
+
+  /* ================= ORG → ROLE CHAIN ================= */
+
+  orgSelect.addEventListener("change", async () => {
+    roleSelect.value = "";
+    await loadRolesForOrganization(orgSelect.value);
+  });
 
   /* ================= BULK ACTIONS ================= */
 

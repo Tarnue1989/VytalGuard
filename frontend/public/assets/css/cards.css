@@ -375,6 +375,67 @@
   padding:6px 8px;
   border-radius:8px;
 }
+/* ================= PAYMENT STATUS ================= */
+
+.payment-card .entity-status.pending{background:#f59e0b;color:#111}
+.payment-card .entity-status.completed{background:#198754;color:#fff}
+.payment-card .entity-status.verified{background:#0dcaf0;color:#111}
+.payment-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.payment-card .entity-status.voided{background:#dc3545;color:#fff}
+.payment-card .entity-status.failed{background:#dc3545;color:#fff}
+
+/* ================= PAYMENT BODY TUNING ================= */
+
+.payment-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ================= DEPOSIT STATUS ================= */
+
+.deposit-card .entity-status.pending{background:#f59e0b;color:#111}
+.deposit-card .entity-status.cleared{background:#198754;color:#fff}
+.deposit-card .entity-status.applied{background:#0dcaf0;color:#111}
+.deposit-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.deposit-card .entity-status.reversed{background:#6f42c1;color:#fff}
+.deposit-card .entity-status.voided{background:#dc3545;color:#fff}
+.deposit-card .entity-status.verified{background:#0d6efd;color:#fff}
+
+/* ================= DEPOSIT BODY TUNING ================= */
+
+.deposit-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ===================== DISCOUNT STATUS ===================== */
+
+.discount-card .entity-status.draft{background:#f59e0b;color:#111}
+.discount-card .entity-status.active{background:#0d6efd;color:#fff}
+.discount-card .entity-status.inactive{background:#6c757d;color:#fff}
+.discount-card .entity-status.finalized{background:#118827;color:#fff}
+.discount-card .entity-status.voided{background:#dc3545;color:#fff}
+
+/* ===================== DISCOUNT BODY TUNING ===================== */
+
+.discount-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ==================== DISCOUNT WAIVER STATUS ==================== */
+.discount-waiver-card .entity-status.pending{background:#f59e0b;color:#111}
+.discount-waiver-card .entity-status.approved{background:#0d6efd;color:#fff}
+.discount-waiver-card .entity-status.applied{background:#0dcaf0;color:#111}
+.discount-waiver-card .entity-status.rejected{background:#dc3545;color:#fff}
+.discount-waiver-card .entity-status.voided{background:#dc3545;color:#fff}
+.discount-waiver-card .entity-status.finalized{background:#111827;color:#fff}
+
+/* ==================== DISCOUNT WAIVER BODY TUNING ==================== */
+.discount-waiver-card .entity-field{background:#f9fafb;padding:6px 8px;border-radius:8px}
 
 /* ============================================================
    ULTRASOUND RECORD STATUS

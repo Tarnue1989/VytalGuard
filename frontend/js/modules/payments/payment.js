@@ -1,74 +1,53 @@
-// 📦 payments.js – Enterprise Entry Point (Master Pattern Aligned)
+// 📦 payments.js – Entry Point (Enterprise-Aligned MASTER Pattern)
 // ============================================================================
-// 🔹 Mirrors deposits.js for unified lifecycle, permissions, and safety
-// 🔹 Handles both form + list initialization seamlessly
+// 🧭 Master Pattern: deposits.js / consultation.js / department.js
+// 🔹 Unified initialization entry for the Payment module
+// 🔹 Handles safe boot, imports, constants, and error-guarded startup
+// 🔹 NO direct action wiring here (handled internally by filter module)
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters + table + pagination)
+// 🧭 Main module init (filters, table, card, pagination, summary, export)
 import { initPaymentModule } from "./payment-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
-import { setupActionHandlers } from "./payment-actions.js";
+// ⚙️ Lifecycle + action handlers (side-effect import, MASTER pattern)
+import "./payment-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (kept for parity + future dynamic usage)
 import {
   FIELD_LABELS_PAYMENT,
   FIELD_ORDER_PAYMENT,
   FIELD_DEFAULTS_PAYMENT,
 } from "./payment-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Module Boot
+   🚀 DOM-Ready Bootstrap
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("paymentForm");
-    const hasList = document.getElementById("paymentTableBody");
-
-    // ✅ Initialize if form or list exists
-    if (hasForm || hasList) await initPaymentModule();
-
-    // ✅ If list page → setup action handlers dynamically
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      let perms = [];
-      try {
-        const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-        perms = Array.isArray(rawPerms)
-          ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-          : [];
-      } catch {
-        perms = [];
-      }
-
-      const user = { role: userRole, permissions: perms };
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_PAYMENT[userRole] || FIELD_DEFAULTS_PAYMENT.staff;
-
-      setupActionHandlers({
-        entries: window.latestPaymentEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
+    // 🧩 Initialize only if payment form or list container exists
+    if (
+      document.getElementById("paymentForm") ||
+      document.getElementById("paymentList") ||
+      document.getElementById("paymentTableBody")
+    ) {
+      await initPaymentModule();
     }
+
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("paymentTableBody")) {
+    //   await initPaymentListModule();
+    // }
+
   } catch (err) {
-    console.error("❌ Failed to initialize payment module", err);
+    console.error("❌ Failed to initialize Payment module", err);
     hideLoading();
-    showToast("❌ Failed to load payment module");
+    showToast("❌ Failed to load Payment module");
   }
 });

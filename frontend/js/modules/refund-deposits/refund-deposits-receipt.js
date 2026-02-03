@@ -1,7 +1,7 @@
-// 📁 refundDeposit-receipt.js – Enterprise FINAL (Deposit Receipt Parity)
+// 📁 refundDeposit-receipt.js – Enterprise FINAL (MASTER–ALIGNED)
 // ============================================================================
 // 🧾 Deposit Refund Receipt Printer (Enterprise Final)
-// 🔹 FULL parity with deposit-receipt.js
+// 🔹 FULL parity with refund-receipt.js MASTER
 // 🔹 Audit-first user resolution
 // 🔹 Auth-user fallback
 // 🔹 Silent + print-safe

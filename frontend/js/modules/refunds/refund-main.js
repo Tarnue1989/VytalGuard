@@ -1,13 +1,17 @@
-// 📦 refund-main.js – Enterprise Master Pattern Aligned
+// 📦 refund-main.js – Enterprise MASTER–ALIGNED (Form-Only Loader)
 // ============================================================================
-// 🔹 Mirrors deposit-main.js for unified form lifecycle & RBAC consistency
-// 🔹 Updated to work with new refundable_balance behavior
+// 🧭 FULL MASTER PARITY WITH refund-deposits-main.js / deposit-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility + reset lifecycle
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 Refund-specific wiring (NO API changes, NO ID changes)
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
 } from "../../utils/index.js";
 
 import { setupRefundFormSubmission } from "./refund-form.js";
@@ -21,18 +25,23 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 Auth Guard + Session
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey(["refunds:create", "refunds:edit"]));
+const token = initPageGuard(
+  autoPagePermissionKey(["refunds:create", "refunds:edit"])
+);
 initLogoutWatcher();
 
 /* ============================================================
-   🌐 Shared State + DOM Refs
+   🧠 Shared State
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs (ID-SAFE)
+============================================================ */
 const form = document.getElementById("refundForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -40,47 +49,45 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
 
-  if (form) {
-    form.reset();
-  }
+  if (form) form.reset();
 
-  // 🔥 Always remove stale cached edit payload
+  // Clear cached edit state
   sessionStorage.removeItem("refundEditId");
   sessionStorage.removeItem("refundEditPayload");
 
-  // Clear text inputs
+  // Clear visible inputs
   ["patientInput", "amount", "reason"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Clear hidden inputs
+  // Clear hidden IDs
   ["patientId", "invoiceId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
   // Clear dropdowns
-  ["organizationSelect", "facilitySelect", "methodSelect", "paymentSelect"]
-    .forEach((id) => {
+  ["organizationSelect", "facilitySelect", "methodSelect", "paymentSelect"].forEach(
+    (id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
-    });
+    }
+  );
 
-  // 🔥 Remove max constraint from amount after reset
-  const amountField = document.getElementById("amount");
-  if (amountField) {
-    amountField.removeAttribute("max");
-  }
-
-  console.info("🧹 [Refund] Form reset complete (safe for refundable_balance)");
+  // Reset max constraint (refund balance safety)
+  const amt = document.getElementById("amount");
+  if (amt) amt.removeAttribute("max");
 }
 
+/* ============================================================
+   🧭 Form Visibility (MASTER)
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -94,6 +101,7 @@ function hideForm() {
   localStorage.setItem("refundFormVisible", "false");
 }
 
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -102,47 +110,50 @@ window.resetForm = resetForm;
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Refund] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/refunds-list.html";
   };
 }
 
 if (clearBtn) {
-  clearBtn.onclick = () => {
-    console.log("🧹 Clear Refund Form");
-    resetForm();
-  };
+  clearBtn.onclick = resetForm;
 }
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Refund] Switching to Add mode");
     sessionStorage.removeItem("refundEditId");
     sessionStorage.removeItem("refundEditPayload");
-
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🚀 Module Init
+   📦 Loader Placeholder (FORM-ONLY MODE)
+============================================================ */
+async function loadEntries() {
+  return; // handled by list page
+}
+
+/* ============================================================
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initRefundModule() {
-  showForm(); // Auto-open form
+  showForm(); // form-only mode (MASTER parity)
 
-  setupRefundFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries: () => {},
-  });
+  if (form) {
+    setupRefundFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("refundPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -150,18 +161,18 @@ export async function initRefundModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // Field selector
   setupFieldSelector({
     module: "refund",
     fieldLabels: FIELD_LABELS_REFUND,
     fieldOrder: FIELD_ORDER_REFUND,
-    defaultFields: FIELD_DEFAULTS_REFUND[role] || FIELD_DEFAULTS_REFUND.staff,
+    defaultFields:
+      FIELD_DEFAULTS_REFUND[role] || FIELD_DEFAULTS_REFUND.staff,
   });
-
-  console.info(`✅ [Refund] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   Placeholder
+   🔁 Sync Stub
 ============================================================ */
-export function syncRefsToState() {}
+export function syncRefsToState() {
+  // reserved for future reactive syncing
+}

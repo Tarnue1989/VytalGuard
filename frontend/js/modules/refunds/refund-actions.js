@@ -1,9 +1,10 @@
-// 📦 refund-actions.js – Enterprise Master Pattern (v2.4 Modal Void Reason)
+// 📦 refund-actions.js – Enterprise MASTER–ALIGNED (Refund Module)
 // ============================================================================
-// 🔹 Mirrors deposit-actions.js & discount-actions.js for unified flow
-// 🔹 Adds modal-based void reason (no browser prompt)
-// 🔹 Handles lifecycle: approve, reject, process, cancel, reverse, void, restore
-// 🔹 Includes full permission checks, superadmin bypass, and live refresh
+// 🔹 Parity Source: refund-deposits-actions.js (Enterprise MASTER)
+// 🔹 Permission-driven + superadmin-aware (role + roleNames)
+// 🔹 Unified lifecycle dispatcher (view / edit / delete / approve / process / reject / cancel / reverse / void / restore)
+// 🔹 Safe fallback fetch (MASTER safety)
+// 🔹 100% API preservation (NO endpoint changes)
 // ============================================================================
 
 import {
@@ -16,10 +17,10 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./refund-render.js";
 
-/* ============================================================
-   ⚙️ Unified Action Handler – Refund Module
-============================================================ */
-export function setupActionHandlers({
+/**
+ * Unified permission-aware action handler for Refund module
+ */
+export function setupRefundActionHandlers({
   entries,
   token,
   currentPage,
@@ -33,16 +34,17 @@ export function setupActionHandlers({
   const cardContainer = document.getElementById("refundList");
   const modalBody = document.getElementById("viewModalBody");
 
-  // 🗂️ Cache latest entries
+  // 🗂️ Cache latest entries (MASTER PATTERN)
   window.latestRefundEntries = entries;
-  [tableBody, cardContainer, modalBody].forEach((el) =>
-    el?.addEventListener("click", handleActions)
-  );
+
+  if (tableBody) tableBody.addEventListener("click", handleActions);
+  if (cardContainer) cardContainer.addEventListener("click", handleActions);
+  if (modalBody) modalBody.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Permission Normalization
+     🔑 Normalize Permissions (MASTER PATTERN)
   ============================================================ */
-  const normalizePermissions = (perms) => {
+  function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
       try {
@@ -52,69 +54,79 @@ export function setupActionHandlers({
       }
     }
     return Array.isArray(perms) ? perms : [];
-  };
+  }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
+
   const isSuperAdmin =
-    (user?.role || "").toLowerCase().replace(/\s+/g, "") === "superadmin";
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (Array.isArray(user?.roleNames) &&
+      user.roleNames.some(
+        (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
+      ));
+
   const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(key.trim().toLowerCase());
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     🎛️ Main Action Dispatcher
+     🎯 Main Dispatcher (MASTER)
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
-    if (!btn?.dataset.id) return;
-    const id = btn.dataset.id;
+    if (!btn || !btn.dataset.id) return;
 
+    const id = btn.dataset.id;
     let entry =
       (window.latestRefundEntries || entries || []).find(
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🔄 fallback fetch
+    // 🩹 Fallback fetch (MASTER SAFETY)
     if (!entry) {
       try {
         showLoading();
         const res = await authFetch(`/api/refunds/${id}`);
         const data = await res.json().catch(() => ({}));
         entry = data?.data;
+      } catch {
+        return showToast("❌ Refund not found");
       } finally {
         hideLoading();
       }
     }
 
-    if (!entry) return showToast("❌ Refund not found");
+    if (!entry) return showToast("❌ Refund data missing");
+
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("refunds:view"))
         return showToast("⛔ No permission to view refunds");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("refunds:edit") && !hasPerm("refunds:create"))
         return showToast("⛔ No permission to edit refunds");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("refunds:delete"))
         return showToast("⛔ No permission to delete refunds");
       return await handleDelete(id);
     }
 
-    // --- Lifecycle Actions ---
     const lifecycleMap = {
       "approve-btn": "approve",
+      "process-btn": "process",
       "reject-btn": "reject",
       "cancel-btn": "cancel",
-      "process-btn": "process",
       "reverse-btn": "reverse",
       "void-btn": "void",
       "restore-btn": "restore",
@@ -122,20 +134,23 @@ export function setupActionHandlers({
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
-        if (!hasPerm(`refunds:${action}`) && !hasPerm("refunds:edit"))
+        if (!hasPerm(`refunds:${action}`))
           return showToast(`⛔ No permission to ${action} refunds`);
-        if (action === "void") return await handleVoid(entry);
-        return await handleLifecycle(id, entry, action);
+
+        if (["reject", "cancel", "void"].includes(action)) {
+          return openReasonModal(entry, action);
+        }
+
+        return await handleLifecycle(id, action);
       }
     }
   }
 
   /* ============================================================
-     🧩 Core Action Handlers
+     ⚙️ Action Handlers
   ============================================================ */
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
-    openViewModal("Refund Info", html);
+    openViewModal("Refund Info", renderCard(entry, visibleFields, user));
   }
 
   function handleEdit(entry) {
@@ -146,16 +161,18 @@ export function setupActionHandlers({
   }
 
   async function handleDelete(id) {
-    const confirmed = await showConfirm("🗑️ Delete this refund?");
+    const confirmed = await showConfirm("Delete this refund?");
     if (!confirmed) return;
+
     try {
       showLoading();
       const res = await authFetch(`/api/refunds/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete refund");
+      if (!res.ok) throw new Error(data.message);
+
       showToast("✅ Refund deleted successfully");
-      await loadEntries(1);
+      window.latestRefundEntries = [];
+      await loadEntries(currentPage || 1);
     } catch (err) {
       showToast(err.message || "❌ Failed to delete refund");
     } finally {
@@ -163,26 +180,21 @@ export function setupActionHandlers({
     }
   }
 
-  /* ============================================================
-     🔄 Lifecycle Handler (approve/reject/process/cancel/reverse/restore)
-  ============================================================ */
-  async function handleLifecycle(id, entry, action) {
-    const confirmMsg =
-      action === "restore"
-        ? "♻️ Restore this refund?"
-        : `Proceed to ${action} this refund?`;
-    const confirmed = await showConfirm(confirmMsg);
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(`Proceed to ${action} this refund?`);
     if (!confirmed) return;
 
-    const url = `/api/refunds/${id}/${action}`;
     try {
       showLoading();
-      const res = await authFetch(url, { method: "PATCH" });
+      const res = await authFetch(`/api/refunds/${id}/${action}`, {
+        method: "PATCH",
+      });
       const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message);
 
-      if (!res.ok) throw new Error(data.message || `❌ Failed to ${action}`);
       showToast(`✅ Refund ${action} successful`);
-      await loadEntries(1);
+      window.latestRefundEntries = [];
+      await loadEntries(currentPage || 1);
     } catch (err) {
       showToast(err.message || `❌ Failed to ${action} refund`);
     } finally {
@@ -191,74 +203,119 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🚫 Void Handler (Modal-Based)
+     🚫 REJECT / CANCEL / VOID — MODAL ONLY (FIX)
   ============================================================ */
-  async function handleVoid(entry) {
-    const id = entry.id;
-    const status = (entry?.status || "").toLowerCase();
-    if (status === "voided") return showToast("❌ Already voided");
+  function openReasonModal(entry, action) {
+    openViewModal(
+      `${action.toUpperCase()} Refund`,
+      `
+        <div class="mb-3">
+          <label class="form-label">Reason</label>
+          <textarea
+            id="refundReasonInput"
+            class="form-control"
+            rows="3"
+            placeholder="Enter reason..."></textarea>
+        </div>
 
-    const modal = document.getElementById("refundVoidModal");
-    const reasonInput = document.getElementById("refundVoidReasonInput");
-    const confirmBtn = document.getElementById("confirmRefundVoidBtn");
+        <div class="alert alert-danger small">
+          This action cannot be undone.
+        </div>
 
-    reasonInput.value = "";
-    modal.classList.remove("hidden");
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button class="btn btn-outline-secondary" id="cancelReasonBtn">
+            Cancel
+          </button>
+          <button class="btn btn-danger" id="confirmReasonBtn">
+            ${action.toUpperCase()}
+          </button>
+        </div>
+      `
+    );
 
-    confirmBtn.onclick = async () => {
-      const reason = reasonInput.value.trim();
-      if (!reason) return showToast("❌ Reason is required to void refund");
+    document
+      .getElementById("cancelReasonBtn")
+      ?.addEventListener("click", () => {
+        document.getElementById("viewModal")?.classList.add("hidden");
+      });
 
-      const confirmed = await showConfirm("⚠️ Confirm voiding this refund?");
-      if (!confirmed) return;
+    document
+      .getElementById("confirmReasonBtn")
+      ?.addEventListener("click", async () => {
+        const reason = document
+          .getElementById("refundReasonInput")
+          ?.value?.trim();
 
-      try {
-        showLoading();
-        const res = await authFetch(`/api/refunds/${id}/void`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok)
-          throw new Error(data.message || "❌ Failed to void refund");
+        if (!reason) return showToast("❌ Reason is required");
 
-        showToast("✅ Refund voided successfully");
-        modal.classList.add("hidden");
-        await loadEntries(1);
-      } catch (err) {
-        showToast(err.message || "❌ Failed to void refund");
-      } finally {
-        hideLoading();
-      }
-    };
+        try {
+          showLoading();
+          const res = await authFetch(
+            `/api/refunds/${entry.id}/${action}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reason }),
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.message);
+
+          document.getElementById("viewModal")?.classList.add("hidden");
+          showToast(`✅ Refund ${action} successful`);
+          window.latestRefundEntries = [];
+          await loadEntries(currentPage || 1);
+        } catch (err) {
+          showToast(err.message || `❌ Failed to ${action} refund`);
+        } finally {
+          hideLoading();
+        }
+      });
   }
 
   /* ============================================================
-     🌐 Global Helpers
+     🌍 Global Helpers (MASTER + Backward Compatible)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestRefundEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  ["approve", "reject", "cancel", "process", "reverse", "void", "restore"].forEach(
+  window.viewRefund = (id) => {
+    if (!hasPerm("refunds:view"))
+      return showToast("⛔ No permission to view refunds");
+    const entry = findEntry(id);
+    if (entry) handleView(entry);
+  };
+
+  window.editRefund = (id) => {
+    if (!hasPerm("refunds:edit") && !hasPerm("refunds:create"))
+      return showToast("⛔ No permission to edit refunds");
+    const entry = findEntry(id);
+    if (entry) handleEdit(entry);
+  };
+
+  window.deleteRefund = async (id) => {
+    if (!hasPerm("refunds:delete"))
+      return showToast("⛔ No permission to delete refunds");
+    await handleDelete(id);
+  };
+
+  ["approve", "process", "reject", "cancel", "reverse", "void", "restore"].forEach(
     (action) => {
       window[`${action}Refund`] = async (id) => {
-        if (!hasPerm(`refunds:${action}`) && !hasPerm("refunds:edit"))
+        if (!hasPerm(`refunds:${action}`))
           return showToast(`⛔ No permission to ${action} refunds`);
         const entry = findEntry(id);
-        if (action === "void") return await handleVoid(entry);
-        await handleLifecycle(id, entry, action);
+        if (!entry) return;
+        if (["reject", "cancel", "void"].includes(action))
+          return openReasonModal(entry, action);
+        await handleLifecycle(id, action);
       };
     }
   );
 
-  // 🔹 Universal modal close
-  document.querySelectorAll("[data-close]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.close;
-      document.getElementById(id)?.classList.add("hidden");
-    });
-  });
+  window.viewEntry = window.viewRefund;
+  window.editEntry = window.editRefund;
+  window.deleteEntry = window.deleteRefund;
 }

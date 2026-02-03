@@ -1,66 +1,54 @@
-// 📦 refunds.js – Enterprise Master Pattern Aligned
+// 📦 refunds.js – Enterprise MASTER–ALIGNED Entry Point
 // ============================================================================
-// 🔹 Mirrors deposits.js for unified entry lifecycle & structure
-// 🔹 Handles both form + list initialization seamlessly (Refund module)
+// 🧭 MASTER Parity: refund-deposits.js / deposits.js / consultation.js
+// 🔹 Unified initialization entry for the Refund module
+// 🔹 Safe boot guard (form OR list)
+// 🔹 NO duplicate action wiring
+// 🔹 ALL logic delegated to filter-main + actions modules
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters + table + pagination)
+// 🧭 Main module init (filters, table, card, pagination, summary, export)
 import { initRefundModule } from "./refund-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, verify, void, etc.)
-import { setupActionHandlers } from "./refund-actions.js";
+// ⚙️ Lifecycle + action handlers (side-effect import, MASTER pattern)
+import "./refund-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exportable context for field selector / UI builders)
 import {
   FIELD_LABELS_REFUND,
   FIELD_ORDER_REFUND,
   FIELD_DEFAULTS_REFUND,
 } from "./refund-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Module Boot
+   🚀 DOM-Ready Bootstrap (MASTER GUARD)
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("refundForm");
-    const hasList = document.getElementById("refundTableBody");
-
-    // ✅ Initialize if form or list exists
-    if (hasForm || hasList) await initRefundModule();
-
-    // ✅ If list page → setup action handlers dynamically
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
-
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_REFUND[userRole] || FIELD_DEFAULTS_REFUND.staff;
-
-      setupActionHandlers({
-        entries: window.latestRefundEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
+    // 🧩 Initialize only if refund form or list container exists
+    if (
+      document.getElementById("refundForm") ||
+      document.getElementById("refundList") ||
+      document.getElementById("refundTableBody")
+    ) {
+      await initRefundModule();
     }
+
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("refundTableBody")) {
+    //   await initRefundListModule();
+    // }
+
   } catch (err) {
-    console.error("❌ Failed to initialize refund module", err);
+    console.error("❌ Failed to initialize Refund module", err);
     hideLoading();
-    showToast("❌ Failed to load refund module");
+    showToast("❌ Failed to load Refund module");
   }
 });

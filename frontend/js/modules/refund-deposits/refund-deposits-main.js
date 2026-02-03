@@ -14,7 +14,7 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
-import { setupRefundDepositFormSubmission } from "./refund-deposits-form.js";
+import { setupRefundDepositFormSubmission } from "./refundDeposit-form.js";
 
 import {
   FIELD_LABELS_REFUND_DEPOSIT,

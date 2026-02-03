@@ -1,4 +1,4 @@
-// 📦 add-refundDeposit.js – Deposit Refund Form Page Controller (Enterprise Master Pattern)
+// 📦 add-refundDeposit.js – Deposit Refund Form Page Controller (Enterprise MASTER PARITY)
 // ============================================================================
 // 🧭 FULL MASTER PARITY WITH add-deposit.js / add-refund.js
 // 🔹 Auth guard + logout watcher
@@ -73,7 +73,7 @@ function resetForm() {
 
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Refund`;
+    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Deposit Refund`;
 }
 
 /* ============================================================

@@ -133,7 +133,7 @@ export function setupActionHandlers({
       "reverse-btn": "reverse",
       "apply-btn": "apply",
       "verify-btn": "verify",
-      "void-btn": "void",
+      "void-btn": "voided",
       "restore-btn": "restore",
     };
 
@@ -363,7 +363,7 @@ export function setupActionHandlers({
     await handleDelete(id);
   };
 
-  ["toggle-status", "cancel", "reverse", "apply", "verify", "void", "restore"].forEach(
+  ["toggle-status", "cancel", "reverse", "apply", "verify", "voided", "restore"].forEach(
     (action) => {
       window[`${action}Deposit`] = async (id) => {
         if (!hasPerm(`deposits:${action}`) && !hasPerm("deposits:edit"))

@@ -91,16 +91,22 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 💰 REFUND DEPOSIT (DEPOSIT REFUNDS) ======================== */
-  refund_deposit: {
-    pending:   ["edit", "review", "approve", "reject", "cancel", "void", "delete"],
-    review:    ["approve", "reject", "cancel", "void"],
-    approved:  ["process", "void"],
-    processed: ["reverse"],
-    reversed:  ["restore"],
-    rejected:  ["restore"],
-    cancelled: ["restore"],
-    voided:    ["restore"],
-  },
+    refund_deposit: {
+      pending:   ["review", "edit", "cancel", "void"],
+      review:    ["approve", "reject", "cancel", "void"],
+      approved:  ["process", "void"],
+      processed: ["reverse"],
+
+      // ❌ NO restore here
+      rejected:  [],
+      cancelled: [],
+
+      // ✅ restore allowed
+      reversed:  ["restore"],
+      voided:    ["restore"],
+    },
+
+
 
   /* ======================== 🩹 SURGERY ======================== */
   surgery:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},

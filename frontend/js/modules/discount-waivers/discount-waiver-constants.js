@@ -1,12 +1,13 @@
-// 📦 discount-waiver-constants.js – Enterprise Master Pattern Aligned
+// 📦 discount-waiver-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors discount-constants.js / deposit-constants.js for unified structure
-// 🔹 Keeps all original field IDs intact for HTML + JS compatibility
-// 🔹 Supports dynamic table rendering, exports, and role-based visibility
+// 🔹 Pattern Source: deposit-constants.js / discount-constants.js
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
 // ============================================================================
 
 /* ============================================================
-   🏷️ FIELD LABELS
+   🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_DISCOUNT_WAIVER = {
   organization: "Organization",
@@ -15,44 +16,41 @@ export const FIELD_LABELS_DISCOUNT_WAIVER = {
   invoice: "Invoice",
   patient: "Patient",
 
-  type: "Waiver Type", // percentage | fixed
+  type: "Waiver Type",
   reason: "Reason",
   percentage: "Percentage",
   amount: "Amount",
   applied_total: "Applied Total",
 
-  status: "Status", // pending | approved | rejected | voided | reversed
+  status: "Status",
 
-  // 🛡️ Audit / actors
   approvedBy: "Approved By",
   rejectedBy: "Rejected By",
   voidedBy: "Voided By",
 
-  // 🕑 Key timestamps
   approved_at: "Approved At",
   rejected_at: "Rejected At",
   voided_at: "Voided At",
 
-  // 🕑 Standard timestamps
-  created_at: "Created At",
-  updated_at: "Updated At",
-  deleted_at: "Deleted At",
-
   createdBy: "Created By",
+  created_at: "Created At",
   updatedBy: "Updated By",
+  updated_at: "Updated At",
   deletedBy: "Deleted By",
+  deleted_at: "Deleted At",
 
   actions: "Actions",
 };
 
 /* ============================================================
-   🧩 FIELD ORDER
+   📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_DISCOUNT_WAIVER = [
   "organization",
   "facility",
   "invoice",
   "patient",
+
   "type",
   "reason",
   "percentage",
@@ -78,11 +76,35 @@ export const FIELD_ORDER_DISCOUNT_WAIVER = [
 ];
 
 /* ============================================================
-   👥 ROLE-BASED FIELD DEFAULTS
-   Matches enterprise master RBAC visibility (admin → manager → staff)
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
 export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
-  // 🧑‍💼 Admin: full visibility
+  superadmin: [
+    "organization",
+    "facility",
+    "invoice",
+    "patient",
+    "type",
+    "reason",
+    "percentage",
+    "amount",
+    "applied_total",
+    "status",
+    "approvedBy",
+    "approved_at",
+    "rejectedBy",
+    "rejected_at",
+    "voidedBy",
+    "voided_at",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -109,7 +131,6 @@ export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
     "actions",
   ],
 
-  // 👔 Manager: scoped (no organization/delete fields)
   manager: [
     "facility",
     "invoice",
@@ -129,7 +150,6 @@ export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
     "actions",
   ],
 
-  // 👷 Staff: minimal operational view
   staff: [
     "invoice",
     "patient",
@@ -144,8 +164,7 @@ export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
 };
 
 /* ============================================================
-   🧠 FIELD GROUPS (Optional Extension)
-   Enables dynamic section toggling & report grouping
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
 ============================================================ */
 export const FIELD_GROUPS_DISCOUNT_WAIVER = {
   org_scope: ["organization", "facility"],
@@ -179,11 +198,19 @@ export const FIELD_GROUPS_DISCOUNT_WAIVER = {
 };
 
 /* ============================================================
-   ⚙️ EXPORT (for external import)
+   ⚙️ MODULE METADATA (Enterprise UI Context)
+============================================================ */
+export const MODULE_KEY_DISCOUNT_WAIVER = "discountWaiver";
+export const MODULE_LABEL_DISCOUNT_WAIVER = "Discount Waiver";
+
+/* ============================================================
+   📦 EXPORT (Unified)
 ============================================================ */
 export default {
   FIELD_LABELS_DISCOUNT_WAIVER,
   FIELD_ORDER_DISCOUNT_WAIVER,
   FIELD_DEFAULTS_DISCOUNT_WAIVER,
   FIELD_GROUPS_DISCOUNT_WAIVER,
+  MODULE_KEY_DISCOUNT_WAIVER,
+  MODULE_LABEL_DISCOUNT_WAIVER,
 };

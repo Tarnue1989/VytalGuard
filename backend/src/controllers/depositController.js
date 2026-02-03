@@ -478,6 +478,147 @@ export const getAllDeposits = async (req, res) => {
     return error(res, "❌ Failed to load deposits", err);
   }
 };
+/* ============================================================
+   📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY, REFUND-SAFE)
+============================================================ */
+export const getAllDepositsLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { q, patient_id } = req.query;
+    const where = { [Op.and]: [] };
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+    }
+
+    /* ========================================================
+       🎯 REFUND SAFETY FILTERS (NEW)
+    ======================================================== */
+    where[Op.and].push({
+      remaining_balance: { [Op.gt]: 0 },
+    });
+
+    where[Op.and].push({
+      status: {
+        [Op.in]: [
+          DEPOSIT_STATUS[1], // CLEARED
+          DEPOSIT_STATUS[2], // APPLIED
+          DEPOSIT_STATUS[6], // VERIFIED (if used)
+        ],
+      },
+    });
+
+    if (patient_id) {
+      where[Op.and].push({ patient_id });
+    }
+
+    if (q) {
+      where[Op.and].push({
+        [Op.or]: [
+          { transaction_ref: { [Op.iLike]: `%${q}%` } },
+          { method: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
+    }
+
+    /* ========================================================
+       🗂️ QUERY
+    ======================================================== */
+    const deposits = await Deposit.findAll({
+      where,
+      attributes: [
+        "id",
+        "amount",
+        "applied_amount",
+        "remaining_balance",
+        "method",
+        "transaction_ref",
+        "status",
+        "created_at",
+      ],
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
+        {
+          model: Invoice,
+          as: "appliedInvoice",
+          attributes: ["id", "invoice_number"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    /* ========================================================
+      📦 LITE RECORDS (DATA ONLY – MASTER SAFE)
+    ======================================================== */
+    const records = deposits.map((d) => ({
+      id: d.id,
+      label: d.transaction_ref || d.id, // ✅ IDENTIFIER ONLY
+      amount: d.amount,
+      remaining_balance: d.remaining_balance,
+      method: d.method,
+      status: d.status,
+      patient: d.patient
+        ? `${d.patient.pat_no} - ${d.patient.first_name} ${d.patient.last_name}`
+        : "",
+      invoice: d.appliedInvoice
+        ? d.appliedInvoice.invoice_number
+        : "",
+      created_at: d.created_at,
+    }));
+
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: {
+        count: records.length,
+        patient_id: patient_id || null,
+        query: q || null,
+      },
+    });
+
+    return success(res, "Deposits loaded (lite)", {
+      records,
+    });
+  } catch (err) {
+    return error(res, "❌ Failed to load deposits (lite)", err);
+  }
+};
 
 /* ============================================================
    📌 GET DEPOSIT BY ID (MASTER PARITY)
@@ -773,122 +914,6 @@ export const deleteDeposit = async (req, res) => {
   }
 };
 
-/* ============================================================
-   📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY)
-============================================================ */
-export const getAllDepositsLite = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { q, patient_id } = req.query;
-    const where = { [Op.and]: [] };
-
-    /* ========================================================
-       🔐 TENANT SCOPE
-    ======================================================== */
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: req.user.organization_id,
-      });
-
-      if (isFacilityHead(req.user)) {
-        where[Op.and].push({
-          facility_id: req.user.facility_id,
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
-        where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      }
-    }
-
-    if (patient_id) {
-      where[Op.and].push({ patient_id });
-    }
-
-    if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { transaction_ref: { [Op.iLike]: `%${q}%` } },
-          { method: { [Op.iLike]: `%${q}%` } },
-        ],
-      });
-    }
-
-    const deposits = await Deposit.findAll({
-      where,
-      attributes: [
-        "id",
-        "amount",
-        "applied_amount",
-        "remaining_balance",
-        "method",
-        "transaction_ref",
-        "status",
-        "created_at",
-      ],
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "pat_no", "first_name", "last_name"],
-        },
-        {
-          model: Invoice,
-          as: "appliedInvoice",
-          attributes: ["id", "invoice_number"],
-        },
-      ],
-      order: [["created_at", "DESC"]],
-      limit: 20,
-    });
-
-    const records = deposits.map((d) => ({
-      id: d.id,
-      label: `${d.transaction_ref || d.id} - ${d.amount}`,
-      amount: d.amount,
-      remaining_balance: d.remaining_balance,
-      method: d.method,
-      patient: d.patient
-        ? `${d.patient.pat_no} - ${d.patient.first_name} ${d.patient.last_name}`
-        : "",
-      invoice: d.appliedInvoice
-        ? d.appliedInvoice.invoice_number
-        : "",
-      created_at: d.created_at,
-    }));
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: {
-        count: records.length,
-        patient_id: patient_id || null,
-        query: q || null,
-      },
-    });
-
-    return success(res, "Deposits loaded (lite)", {
-      records,
-    });
-  } catch (err) {
-    return error(res, "❌ Failed to load deposits (lite)", err);
-  }
-};
 
 /* ============================================================
    📌 CANCEL DEPOSIT (PENDING ONLY – PARITY)
@@ -980,7 +1005,7 @@ export const voidDeposit = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
-      action: "void",
+      action: "voided",
       res,
     });
     if (!allowed) return;
@@ -997,7 +1022,7 @@ export const voidDeposit = async (req, res) => {
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
-      action: "void",
+      action: "voided",
       entityId: id,
       entity: deposit,
       details: { reason },

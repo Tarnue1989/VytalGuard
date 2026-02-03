@@ -28,13 +28,14 @@ export function validate(schema, payload, labelMap = {}) {
 
   if (error) {
     return {
-      value: null,
+      value: {}, // 🔒 NEVER null
       errors: normalizeJoiErrors(error, labelMap),
     };
   }
 
-  return { value, errors: null };
+  return { value: value || {}, errors: null };
 }
+
 
 /* ============================================================
    Express middleware

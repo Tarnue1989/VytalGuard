@@ -83,23 +83,23 @@
 
                       <!-- Deposit -->
                       <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="mb-3">
+                        <div class="mb-3 form-group">
                           <label class="form-label" for="depositInput">
                             Deposit <span class="text-danger">*</span>
                           </label>
-                          <input
-                            type="hidden"
-                            id="depositId"
-                            name="deposit_id"
-                          />
+
                           <select
                             id="depositInput"
                             class="form-control"
                           >
                             <option value="">— Select Deposit —</option>
                           </select>
+
+                          <!-- REQUIRED hidden field (JS writes here) -->
+                          <input type="hidden" id="depositId" name="deposit_id" />
                         </div>
                       </div>
+
 
                       <!-- Refund Amount -->
                       <div class="col-xxl-4 col-lg-6 col-sm-12">
@@ -171,7 +171,6 @@
                             id="organizationSelect"
                             name="organization_id"
                           >
-                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
@@ -188,7 +187,6 @@
                             id="facilitySelect"
                             name="facility_id"
                           >
-                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
@@ -198,7 +196,7 @@
                         <div class="d-flex gap-2 justify-content-end">
                           <button
                             type="button"
-                            id="cancelRefundDepositBtn"
+                            id="cancelBtn"
                             class="btn btn-outline-secondary"
                           >
                             <i class="ri-arrow-go-back-line me-1"></i>
@@ -206,7 +204,7 @@
                           </button>
                           <button
                             type="reset"
-                            id="clearRefundDepositBtn"
+                            id="clearBtn"
                             class="btn btn-warning"
                           >
                             <i class="ri-refresh-line me-1"></i>

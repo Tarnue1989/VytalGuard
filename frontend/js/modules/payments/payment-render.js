@@ -1,18 +1,56 @@
-// 📦 payment-render.js – Enterprise Master Pattern Aligned
+// 📦 payment-render.js – Entity Card System (PAYMENT | ENTERPRISE FINAL)
 // ============================================================================
-// 🔹 Mirrors deposit-render.js for unified structure & enterprise behavior
-// 🔹 Supports role-based visibility, tooltips, exports, and STATUS_ACTION_MATRIX
-// 🔹 Preserves all payment-specific logic and DOM IDs
+// 🧭 FULL MASTER PARITY WITH deposit-render.js
+// 🔹 Table = flat | Card = RICH + structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
 // ============================================================================
 
 import { FIELD_LABELS_PAYMENT } from "./payment-constants.js";
+
 import { formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
-/* ============================================================================
-   🎛️ Action Buttons (centralized + permission-driven)
-============================================================================ */
+/* ============================================================
+   🔃 SORTABLE FIELDS (MASTER PARITY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "invoice_id",
+  "amount",
+  "method",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("paymentSortBy") || "";
+let sortDir = localStorage.getItem("paymentSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+  localStorage.setItem("paymentSortBy", sortBy);
+  localStorage.setItem("paymentSortDir", sortDir);
+  window.setPaymentSort?.(sortBy, sortDir);
+  window.loadPaymentPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTIONS
+============================================================ */
 function getPaymentActionButtons(entry, user) {
   return buildActionButtons({
     module: "payment",
@@ -24,80 +62,143 @@ function getPaymentActionButtons(entry, user) {
   });
 }
 
-/* ============================================================================
-   🧱 Dynamic Table Head Renderer
-============================================================================ */
+/* ============================================================
+   🧱 TABLE HEAD
+============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
+
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_PAYMENT[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+    th.dataset.key = field;
+
+    const label =
+      FIELD_LABELS_PAYMENT[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field)
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
+
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadPaymentPage?.(1),
+  });
 }
 
-/* ============================================================================
-   🔠 Field Render Helpers
-============================================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || "—";
+/* ============================================================
+   🔠 HELPERS
+============================================================ */
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return [u.first_name, u.middle_name, u.last_name]
+    .filter(Boolean)
+    .join(" ") || u.full_name || "—";
 }
 
 function renderPatient(entry) {
+  if (!entry.patient) return "—";
   const p = entry.patient;
-  if (!p) return "—";
-  const patNo = p.pat_no || "—";
-  const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
-  return `${patNo} - ${name || "Unnamed"}`;
+  return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ")}`;
 }
 
+/* ============================================================
+   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        pending: "bg-warning text-dark",
-        completed: "bg-success",
-        reversed: "bg-dark text-light",
-        cancelled: "bg-danger",
-        failed: "bg-secondary",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-primary"}">${label}</span>`
-        : "—";
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "pending"
+          ? "bg-warning text-dark"
+          : s === "completed"
+          ? "bg-success"
+          : s === "cancelled"
+          ? "bg-danger"
+          : s === "reversed"
+          ? "bg-dark text-light"
+          : s === "failed"
+          ? "bg-secondary"
+          : "bg-primary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
     case "is_deposit":
       return entry.is_deposit
-        ? `<span class="badge bg-info">Deposit</span>`
-        : `<span class="badge bg-success">Regular</span>`;
+        ? `<span class="badge bg-info">DEPOSIT</span>`
+        : `<span class="badge bg-success">REGULAR</span>`;
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "patient":
+    case "patient_id":
       return renderPatient(entry);
+
     case "invoice":
+    case "invoice_id":
       return entry.invoice
-        ? `${entry.invoice.invoice_number} (Bal: $${Number(entry.invoice.balance).toFixed(2)})`
+        ? `${entry.invoice.invoice_number} (Bal: $${Number(
+            entry.invoice.balance ?? 0
+          ).toFixed(2)})`
         : "—";
+
     case "amount":
-      return entry.amount != null ? `$${Number(entry.amount).toFixed(2)}` : "—";
+      return entry.amount != null
+        ? `$${Number(entry.amount).toFixed(2)}`
+        : "—";
+
     case "method":
-      return entry.method || "—";
     case "transaction_ref":
-      return entry.transaction_ref || "—";
     case "reason":
-      return entry.reason || "—";
+      return safe(entry[field]);
 
     case "createdBy":
       return renderUserName(entry.createdBy);
@@ -111,75 +212,114 @@ function renderValue(entry, field) {
     case "deleted_at":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
-/* ============================================================================
-   🗂️ Card Renderer
-============================================================================ */
+/* ============================================================
+   🗂️ CARD RENDERER — RICH (MASTER)
+============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `<p><strong>${FIELD_LABELS_PAYMENT[f] || f}:</strong> ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
-  const footer = visibleFields.includes("actions")
-    ? `<div class="card-footer text-end">
-         <div class="table-actions">
-           ${getPaymentActionButtons(entry, user)}
-         </div>
-       </div>`
-    : "";
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === "") return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
+  };
 
-  return `<div class="record-card card shadow-sm h-100">
-            <div class="card-body">${details}</div>
-            ${footer}
-          </div>`;
+  return `
+    <div class="entity-card payment-card">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient(entry)}</div>
+          <div class="entity-primary">$${Number(entry.amount || 0).toFixed(2)}</div>
+        </div>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            : ""
+        }
+      </div>
+
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
+        ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
+        ${entry.transaction_ref ? `<div>🔗 ${entry.transaction_ref}</div>` : ""}
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Amount", `$${Number(entry.amount || 0).toFixed(2)}`)}
+        ${row("Invoice", renderValue(entry, "invoice"))}
+        ${row("Status", status.toUpperCase())}
+        ${row("Reason", entry.reason)}
+      </div>
+
+      <details class="entity-notes">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDate(entry.updated_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getPaymentActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
-/* ============================================================================
-   📋 Main List Renderer
-============================================================================ */
+/* ============================================================
+   📋 LIST RENDERER
+============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("paymentTableBody");
   const cardContainer = document.getElementById("paymentList");
   const tableContainer = document.querySelector(".table-container");
   if (!tableBody || !cardContainer || !tableContainer) return;
 
-  // 🔄 Sync view toggle
-  document.getElementById("tableViewBtn")?.classList.toggle("active", viewMode === "table");
-  document.getElementById("cardViewBtn")?.classList.toggle("active", viewMode === "card");
-
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No payments found.</td></tr>`;
-
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No payments found.</td></tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getPaymentActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getPaymentActionButtons(
+                e,
+                user
+              )}</td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -190,16 +330,16 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     cardContainer.classList.add("active");
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No payments found.</p>`;
+      : `<p class="text-center text-muted">No payments found.</p>`;
     initTooltips(cardContainer);
   }
 
   setupExportHandlers(entries);
 }
 
-/* ============================================================================
-   📤 Export Handlers
-============================================================================ */
+/* ============================================================
+   📤 EXPORT
+============================================================ */
 let exportHandlersBound = false;
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
@@ -216,17 +356,23 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #paymentList.active",
       orientation: "landscape",
     })
   );
 }
 
-/* ============================================================================
-   🧾 Detail Modal Renderer
-============================================================================ */
+/* ============================================================
+   🧾 DETAIL MODAL RENDERER
+============================================================ */
 export function renderPaymentDetail(entry, user) {
-  const summary = `
+  return `
+    <div class="d-flex justify-content-end mb-3">
+      <button class="btn btn-sm btn-outline-secondary print-btn" data-id="${entry.id}">
+        <i class="fas fa-print"></i> Print Payment
+      </button>
+    </div>
+
     <div class="row g-3">
       <div class="col-md-6"><strong>Payment ID:</strong> ${entry.id || "—"}</div>
       <div class="col-md-6"><strong>Status:</strong> ${renderValue(entry, "status")}</div>
@@ -234,33 +380,27 @@ export function renderPaymentDetail(entry, user) {
       <div class="col-md-6"><strong>Invoice:</strong> ${renderValue(entry, "invoice")}</div>
       <div class="col-md-6"><strong>Organization:</strong> ${renderValue(entry, "organization")}</div>
       <div class="col-md-6"><strong>Facility:</strong> ${renderValue(entry, "facility")}</div>
-      <div class="col-md-6"><strong>Method:</strong> ${entry.method || "—"}</div>
-      <div class="col-md-6"><strong>Reference:</strong> ${entry.transaction_ref || "—"}</div>
+      <div class="col-md-6"><strong>Method:</strong> ${safe(entry.method)}</div>
+      <div class="col-md-6"><strong>Reference:</strong> ${safe(entry.transaction_ref)}</div>
       <div class="col-md-6"><strong>Received By:</strong> ${renderUserName(entry.createdBy)}</div>
       <div class="col-md-6"><strong>Date:</strong> ${renderValue(entry, "created_at")}</div>
-      <div class="col-md-12"><strong>Notes:</strong> ${entry.reason || "—"}</div>
-    </div>`;
+      <div class="col-md-12"><strong>Reason:</strong> ${safe(entry.reason)}</div>
+    </div>
 
-  const financial = `
-    <hr>
+    <hr/>
+
     <div class="row g-3">
       <div class="col-12"><h6 class="text-primary">Financial Summary</h6></div>
       <div class="col-md-4"><strong>Payment Amount:</strong> $${Number(entry.amount || 0).toFixed(2)}</div>
       ${
         entry.invoice
-          ? `<div class="col-md-4"><strong>Invoice Total:</strong> $${Number(entry.invoice.total || 0).toFixed(2)}</div>
-             <div class="col-md-4"><strong>Invoice Paid:</strong> $${Number(entry.invoice.total_paid || 0).toFixed(2)}</div>
-             <div class="col-md-4"><strong>Invoice Balance:</strong> $${Number(entry.invoice.balance || 0).toFixed(2)}</div>`
+          ? `
+            <div class="col-md-4"><strong>Invoice Total:</strong> $${Number(entry.invoice.total || 0).toFixed(2)}</div>
+            <div class="col-md-4"><strong>Invoice Paid:</strong> $${Number(entry.invoice.total_paid || 0).toFixed(2)}</div>
+            <div class="col-md-4"><strong>Invoice Balance:</strong> $${Number(entry.invoice.balance || 0).toFixed(2)}</div>
+          `
           : ""
       }
-    </div>`;
-
-  return `
-    <div class="d-flex justify-content-end mb-3">
-      <button class="btn btn-sm btn-outline-secondary print-btn" data-id="${entry.id}">
-        <i class="fas fa-print"></i> Print Payment
-      </button>
     </div>
-    ${summary}
-    ${financial}`;
+  `;
 }

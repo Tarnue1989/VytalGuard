@@ -81,7 +81,7 @@ export const PLAN_MODULE_STATUS = ['active', 'inactive'];
 export const INVOICE_STATUS = ['draft', 'issued', 'unpaid', 'partial', 'paid', 'cancelled', 'voided'];
 export const PAYMENT_STATUS = ['pending', 'completed', 'failed', 'cancelled', 'reversed', 'voided', 'verified'];
 export const REFUND_STATUS = ['pending', 'approved', 'rejected', 
-  'processed', 'cancelled', "reversed",];
+  'processed', 'cancelled', "reversed", 'voided',];
 // ============================================================
 // 🔹 Deposit Refund Lifecycle (Enterprise-Grade)
 // ============================================================

@@ -117,13 +117,32 @@ function setSession({ accessToken, user }) {
     if (user.organization_id) {
       localStorage.setItem("organizationId", user.organization_id);
     }
-    if (Array.isArray(user.facilityLinks)) {
-      const facilities = user.facilityLinks.map(f => f.facility_id).filter(Boolean);
+
+    // ✅ Preferred: facility_ids from login payload
+    if (Array.isArray(user.facility_ids) && user.facility_ids.length) {
+      localStorage.setItem("facilityIds", JSON.stringify(user.facility_ids));
+      localStorage.setItem("facilityId", user.facility_ids[0]);
+
+      // 🔥 THIS WAS MISSING
+      localStorage.setItem("activeFacilityId", user.facility_ids[0]);
+    }
+
+    // 🔁 Fallback: legacy facilityLinks
+    else if (Array.isArray(user.facilityLinks)) {
+      const facilities = user.facilityLinks
+        .map(f => f.facility_id)
+        .filter(Boolean);
+
       if (facilities.length) {
         localStorage.setItem("facilityIds", JSON.stringify(facilities));
-        localStorage.setItem("facilityId", facilities[0]); // default = first facility
+        localStorage.setItem("facilityId", facilities[0]);
+
+        // 🔥 ALSO SET HERE
+        localStorage.setItem("activeFacilityId", facilities[0]);
       }
     }
+
+
 
     // 🔑 Persist permissions if provided
     if (user.permissions) {
@@ -156,6 +175,7 @@ function clearSession() {
   localStorage.removeItem("organizationId");
   localStorage.removeItem("facilityId");
   localStorage.removeItem("facilityIds"); // 🧹 clear multi-facility info
+  localStorage.removeItem("activeFacilityId");
   localStorage.removeItem("permissions");
   localStorage.removeItem("userName");    // 🧹 clear printed-by name
 
@@ -333,7 +353,9 @@ async function restoreSession() {
   let token = getAccessToken();
   let user  = getUser();
 
+  // ------------------------------------------------------------
   // Helper: load user from /me with a given token
+  // ------------------------------------------------------------
   async function fetchUserWith(tokenToUse) {
     try {
       const res = await fetch(ME_ENDPOINT, {
@@ -341,24 +363,28 @@ async function restoreSession() {
         credentials: "include",
         headers: { Authorization: `Bearer ${tokenToUse}` },
       });
+
       if (res.ok) {
         const fetched = await res.json();
         console.log("📥 [restoreSession] /me response:", fetched);
 
-        // ✅ Normalize and persist permissions, roles, etc.
+        // ✅ Persist permissions if returned
         if (fetched?.permissions) {
           localStorage.setItem("permissions", JSON.stringify(fetched.permissions));
         } else if (fetched?.data?.permissions) {
           localStorage.setItem("permissions", JSON.stringify(fetched.data.permissions));
         }
 
-        // ✅ Normalize role if backend sends roles[]
+        // ✅ Normalize role
         const role =
           fetched?.roles?.[0]?.normalized ||
           fetched?.roles?.[0]?.name ||
           fetched?.role ||
           "";
-        if (role) localStorage.setItem("userRole", role.toLowerCase().trim());
+
+        if (role) {
+          localStorage.setItem("userRole", role.toLowerCase().trim());
+        }
 
         return fetched;
       }
@@ -370,16 +396,36 @@ async function restoreSession() {
     return null;
   }
 
-  // Helper: set timers and persist via setSession (this also saves userRole)
+  // ------------------------------------------------------------
+  // Helper: finalize + rehydrate runtime session state
+  // ------------------------------------------------------------
   function finalizeSession(activeToken, activeUser) {
+    // Persist base session (token, user, org, facilityIds, etc.)
     setSession({ accessToken: activeToken, user: activeUser });
 
-    // 🛠️ Debug log snapshot after finalize
+    // 🔥 CRITICAL FIX:
+    // Rehydrate activeFacilityId after reload / refresh
+    const facilities =
+      activeUser?.facility_ids ||
+      activeUser?.facilityLinks?.map(f => f.facility_id).filter(Boolean) ||
+      [];
+
+    if (facilities.length) {
+      localStorage.setItem("activeFacilityId", facilities[0]);
+    }
+
+    console.log("🧠 [restoreSession] activeFacilityId =", 
+      localStorage.getItem("activeFacilityId")
+    );
+
+    // 🛠️ Debug snapshot
     console.log("💾 [restoreSession] Final session snapshot:", {
       token: activeToken ? activeToken.substring(0, 12) + "...(hidden)" : null,
       user: activeUser,
       storedRole: localStorage.getItem("userRole"),
       storedOrg: localStorage.getItem("organizationId"),
+      storedFacilityId: localStorage.getItem("facilityId"),
+      storedActiveFacilityId: localStorage.getItem("activeFacilityId"),
       storedFacilities: JSON.parse(localStorage.getItem("facilityIds") || "[]"),
       storedPermissions: JSON.parse(localStorage.getItem("permissions") || "[]"),
     });
@@ -389,60 +435,75 @@ async function restoreSession() {
     return true;
   }
 
+  // ------------------------------------------------------------
+  // No token → no session
+  // ------------------------------------------------------------
   if (!token) return false;
 
   const expiry = getTokenExpiry(token);
 
-  // 🔹 Token valid → ensure we have user, then persist via setSession
+  // ------------------------------------------------------------
+  // 🔹 Token still valid
+  // ------------------------------------------------------------
   if (expiry && expiry > Date.now()) {
     if (!user) {
       const fetchedUser = await fetchUserWith(token);
       if (fetchedUser) user = fetchedUser;
     }
-    if (!user) return false; // still no user; fail closed
+
+    if (!user) return false; // fail closed
     return finalizeSession(token, user);
   }
 
-  // 🔄 Token expired (or missing exp) → try refresh via cookie session
+  // ------------------------------------------------------------
+  // 🔄 Token expired → attempt refresh
+  // ------------------------------------------------------------
   try {
     const r = await fetch(REFRESH_ENDPOINT, {
       method: "POST",
       credentials: "include",
     });
+
     if (r.ok) {
       const data = await r.json();
       token = data.accessToken || token;
 
       console.log("🔄 [restoreSession] Refresh response:", data);
 
-      // prefer server-provided user, else fetch, else keep existing
       let activeUser = data.user || user;
       if (!activeUser) {
         const fetchedUser = await fetchUserWith(token);
         if (fetchedUser) activeUser = fetchedUser;
       }
-      if (!activeUser) return false;
 
+      if (!activeUser) return false;
       return finalizeSession(token, activeUser);
     }
   } catch (e) {
     console.error("❌ Token refresh failed:", e);
   }
 
-  // ❌ Could not refresh
+  // ------------------------------------------------------------
+  // ❌ Could not restore session
+  // ------------------------------------------------------------
   return false;
 }
 
 
-// -------------------- Auth Fetch Wrapper --------------------
-// -------------------- Auth Fetch Wrapper (Final – FormData Safe) --------------------
+// -------------------- Auth Fetch Wrapper (Final – Ledger-Aware, FormData Safe) --------------------
 const DEBUG_AUTH_FETCH = true;
+
+// 🔑 Ledger-based source-of-truth keys
+const LEDGER_SOURCE_KEYS = [
+  "payment_id",
+  "deposit_id",
+  "invoice_id",
+  "ledger_id",
+  "transaction_id",
+];
 
 async function authFetch(url, options = {}) {
   const token = getAccessToken();
-  const orgId = localStorage.getItem("organizationId");
-  const facilityId =
-    localStorage.getItem("activeFacilityId") || localStorage.getItem("facilityId");
   const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
   const makeRequest = async (bearer) => {
@@ -453,7 +514,7 @@ async function authFetch(url, options = {}) {
 
     const isFormData = options.body instanceof FormData;
 
-    // ✅ Skip Content-Type for FormData (browser adds boundary)
+    // ✅ Skip Content-Type for FormData (browser sets boundary)
     if (!isFormData) {
       headers["Content-Type"] =
         options.headers?.["Content-Type"] || "application/json";
@@ -465,28 +526,61 @@ async function authFetch(url, options = {}) {
       credentials: "include",
     };
 
-  if (!isFormData && finalOptions.body) {
-    try {
-      const parsed =
-        typeof finalOptions.body === "string"
-          ? JSON.parse(finalOptions.body)
-          : finalOptions.body;
+    /* ============================================================
+       🔐 TENANT SCOPING (LEDGER-FIRST, MASTER RULE)
+    ============================================================ */
+    if (!isFormData && finalOptions.body) {
+      try {
+        const parsed =
+          typeof finalOptions.body === "string"
+            ? JSON.parse(finalOptions.body)
+            : finalOptions.body;
 
-      const scoped = applyRequestScope(parsed);
+        let scoped = { ...parsed };
 
-      finalOptions.body = JSON.stringify(scoped);
+        // 🔍 Detect ledger-derived request
+        const isLedgerDerived = LEDGER_SOURCE_KEYS.some(
+          (key) => scoped[key]
+        );
 
-      if (DEBUG_AUTH_FETCH) {
-        console.log("🔎 [authFetch] Scoped Payload →", { url, scoped });
+        if (isLedgerDerived) {
+          // 🔒 Ledger is source of truth → NEVER accept tenant from frontend
+          delete scoped.organization_id;
+          delete scoped.facility_id;
+          delete scoped.patient_id;
+        } else if (userRole === "superadmin") {
+          // 🧭 Explicit tenant-scoped actions only (non-ledger)
+          scoped = applyRequestScope(scoped);
+        } else {
+          // 🚫 Safety net for org admin / staff
+          delete scoped.organization_id;
+          delete scoped.facility_id;
+        }
+
+        finalOptions.body = JSON.stringify(scoped);
+
+        if (DEBUG_AUTH_FETCH) {
+          console.log("🔎 [authFetch] Final Payload →", {
+            url,
+            isLedgerDerived,
+            scoped,
+          });
+        }
+      } catch (e) {
+        console.warn("⚠️ [authFetch] Could not process JSON payload", e);
       }
-    } catch (e) {
-      console.warn("⚠️ Could not process JSON payload", e);
     }
-  } else if (isFormData && DEBUG_AUTH_FETCH) {
-      // 🧩 Debug print FormData keys (to verify submission)
+
+    /* ============================================================
+       🧩 FORMDATA DEBUG (SAFE)
+    ============================================================ */
+    if (isFormData && DEBUG_AUTH_FETCH) {
       console.groupCollapsed("📦 [authFetch] Sending FormData →", url);
       for (const [key, val] of finalOptions.body.entries()) {
-        console.log(key, val instanceof File ? `[File: ${val.name}]` : val);
+        console.log(
+          key,
+          val instanceof File ? `[File: ${val.name}]` : val
+        );
       }
       console.groupEnd();
     }
@@ -496,6 +590,7 @@ async function authFetch(url, options = {}) {
 
   return makeRequest(token);
 }
+
 
 
 // -------------------- Convenience Helpers --------------------

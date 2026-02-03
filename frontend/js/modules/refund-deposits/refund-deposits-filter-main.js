@@ -1,12 +1,14 @@
-// 📦 refund-deposits-filter-main.js – Enterprise MASTER–ALIGNED (Deposit Parity)
+// 📦 refund-deposits-filter-main.js – ENTERPRISE MASTER–ALIGNED (Refund ← Deposit Parity)
 // ============================================================================
-// 🔹 FULLY mirrors deposit-filter-main.js MASTER pattern
-// 🔹 Auto search, auto filters, sorting, pagination
-// 🔹 UI-only dateRange (single input, NEVER DB column)
-// 🔹 Org / Facility fully wired (role-aware)
-// 🔹 Refund Deposit Status fully wired
-// 🔹 Summary + export aligned
-// 🔹 ALL existing Refund Deposit API calls PRESERVED
+// 🔹 FULL parity with refund-filter-main.js MASTER
+// 🔹 Auto search + auto filters
+// 🔹 Sorting + pagination parity
+// 🔹 UI-only dateRange (MASTER)
+// 🔹 View toggle + summary + export
+// 🔹 Role-aware org / facility handling (MASTER)
+// 🔹 Suggestion inputs (patient → deposit)
+// 🔹 NO new fields, NO new API params
+// 🔹 ALL EXISTING DOM + API CALLS PRESERVED
 // ============================================================================
 
 import {
@@ -14,10 +16,10 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
+  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
-  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -29,7 +31,12 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-import { renderFieldSelector } from "../../utils/ui-utils.js";
+import {
+  renderFieldSelector,
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
 import {
@@ -68,7 +75,6 @@ const permissions = (() => {
     return [];
   }
 })();
-
 const user = { role: userRole, permissions };
 
 /* ============================================================
@@ -107,7 +113,7 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 FILTER DOM (MASTER STRUCTURE)
+   🔎 FILTER DOM
 ============================================================ */
 const qs = (id) => document.getElementById(id);
 
@@ -115,6 +121,7 @@ const globalSearch   = qs("globalSearch");
 const filterOrg      = qs("filterOrganizationSelect");
 const filterFacility = qs("filterFacilitySelect");
 const filterStatus   = qs("filterStatus");
+const filterMethod   = qs("filterMethodSelect");
 const dateRange      = qs("dateRange");
 
 const filterPatient            = qs("filterPatient");
@@ -124,8 +131,6 @@ const filterPatientSuggestions = qs("filterPatientSuggestions");
 const filterDeposit            = qs("filterDeposit");
 const filterDepositHidden      = qs("filterDepositId");
 const filterDepositSuggestions = qs("filterDepositSuggestions");
-
-const filterMethod = qs("filterMethodSelect");
 
 /* ============================================================
    🔃 SORT BRIDGE (MASTER)
@@ -163,7 +168,7 @@ setupAutoFilters({
 });
 
 /* ============================================================
-   📋 FILTER BUILDER (MASTER SAFE)
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
@@ -179,7 +184,7 @@ function getFilters() {
 }
 
 /* ============================================================
-   📦 LOAD REFUND DEPOSITS (MASTER SAFE)
+   📦 LOAD REFUND DEPOSITS
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -219,6 +224,15 @@ async function loadEntries(page = 1) {
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
+    /* ========================================================
+       🧾 SUMMARY DATE NORMALIZATION (MASTER)
+    ======================================================== */
+    if (data.summary?.metrics) {
+      const m = data.summary.metrics;
+      if (m.last_approved_at)  m.last_approved_at  = formatDateTime(m.last_approved_at);
+      if (m.last_processed_at) m.last_processed_at = formatDateTime(m.last_processed_at);
+    }
+
     data.summary &&
       renderModuleSummary(data.summary, "moduleSummary", {
         moduleLabel: "REFUND DEPOSITS",
@@ -242,6 +256,8 @@ async function loadEntries(page = 1) {
       data.pagination?.pageCount || 1,
       loadEntries
     );
+
+    initTooltips();
   } catch (err) {
     console.error(err);
     showToast("❌ Failed to load refund deposits");
@@ -253,24 +269,24 @@ async function loadEntries(page = 1) {
 /* ============================================================
    🧭 VIEW TOGGLE
 ============================================================ */
-qs("tableViewBtn").onclick = () => {
+qs("tableViewBtn")?.addEventListener("click", () => {
   viewMode = "table";
   localStorage.setItem("refundDepositView", "table");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
+});
 
-qs("cardViewBtn").onclick = () => {
+qs("cardViewBtn")?.addEventListener("click", () => {
   viewMode = "card";
   localStorage.setItem("refundDepositView", "card");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-};
+});
 
 /* ============================================================
-   🔄 RESET FILTERS (MASTER)
+   🔄 RESET FILTERS
 ============================================================ */
-qs("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
     globalSearch,
     filterOrg,
@@ -285,10 +301,10 @@ qs("resetFilterBtn").onclick = () => {
   filterPatientHidden.value = "";
   filterDepositHidden.value = "";
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   ⬇️ EXPORT (MASTER)
+   ⬇️ EXPORT
 ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
@@ -343,7 +359,7 @@ export async function initRefundDepositModule() {
     "label"
   );
 
-  if (userRole.includes("super") || userRole.includes("admin")) {
+  if (userRole.includes("super")) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
     setupSelectOptions(filterOrg, orgs, "id", "name");
@@ -359,6 +375,11 @@ export async function initRefundDepositModule() {
 
     await reloadFacilities();
     filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else if (userRole.includes("admin")) {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    const facs = await loadFacilitiesLite({}, true);
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
   } else {
     filterOrg?.closest(".form-group")?.classList.add("hidden");
     filterFacility?.closest(".form-group")?.classList.add("hidden");

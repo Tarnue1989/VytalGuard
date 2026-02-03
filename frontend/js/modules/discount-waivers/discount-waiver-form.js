@@ -1,8 +1,11 @@
-// 📁 discount-waiver-form.js – Enterprise Master Pattern Aligned (Add/Edit Discount Waiver)
+// 📁 discount-waiver-form.js – Secure & Role-Aware Discount Waiver Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors discount-form.js for unified enterprise behavior
-// 🔹 Adds permission-driven org/facility visibility & cascade logic
-// 🔹 Preserves all existing DOM IDs, API calls, and event wiring
+// 🔹 FULL parity with deposit-form.js MASTER
+// 🔹 Rule-driven validation (DISCOUNT_WAIVER_FORM_RULES)
+// 🔹 Role-aware org/fac handling (SUPER ONLY)
+// 🔹 Clean payload normalization (UUID | number | null)
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
+// 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
 // ============================================================================
 
 import {
@@ -10,16 +13,27 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
+  initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
+
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { DISCOUNT_WAIVER_FORM_RULES } from "./discount-waiver.form.rules.js";
 
 /* ============================================================
    🧩 Helpers
@@ -41,78 +55,58 @@ function normalizeMessage(result, fallback) {
 }
 
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
 
-function validateWaiverForm(payload, isEdit, userRole, ctx = {}) {
-  const errors = [];
-
-  if (!payload.invoice_id) errors.push("Invoice is required");
-  if (!payload.patient_id) errors.push("Patient is required (auto-filled from invoice)");
-  if (!payload.type) errors.push("Waiver type is required");
-  if (!payload.reason || payload.reason.trim().length < (isEdit ? 5 : 3))
-    errors.push(isEdit ? "Reason (min 5 chars) required when editing" : "Reason is required");
-
-  const role = userRole.toLowerCase();
-  if (role.includes("super")) {
-    if (!payload.organization_id) errors.push("Organization is required");
-    if (!payload.facility_id) errors.push("Facility is required");
-  } else if (role.includes("org_owner")) {
-    if (!payload.facility_id) errors.push("Facility is required");
-  }
-
-  if (payload.type === "percentage") {
-    if (payload.percentage == null || payload.percentage <= 0)
-      errors.push("Valid percentage is required");
-    if (payload.percentage > 100)
-      errors.push("Percentage waiver cannot exceed 100%");
-  }
-
-  if (payload.type === "fixed") {
-    if (payload.amount == null || payload.amount <= 0)
-      errors.push("Valid fixed amount is required");
-    if (ctx.maxAllowed != null && payload.amount > ctx.maxAllowed)
-      errors.push(`Waiver cannot exceed ${ctx.maxAllowed.toFixed(2)}`);
-  }
-
-  return errors;
+function normalizeNumber(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
 }
 
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
 export async function setupDiscountWaiverFormSubmission({ form }) {
-  const sessionId = sessionStorage.getItem("discountWaiverEditId");
-  const queryId = getQueryParam("id");
-  const waiverId = sessionId || queryId;
-  const isEdit = !!waiverId;
+  initPageGuard(
+    autoPagePermissionKey(["discount-waivers:create", "discount-waivers:edit"])
+  );
+  initLogoutWatcher();
+  enableLiveValidation(form);
 
-  // 🔐 Permission Guard
-  const token = initPageGuard(autoPagePermissionKey(["discount-waivers:create", "discount-waivers:edit"]));
+  const waiverId =
+    sessionStorage.getItem("discountWaiverEditId") || getQueryParam("id");
+  const isEdit = Boolean(waiverId);
 
   /* ============================================================
-     🎨 UI Mode Setup
+     🎨 UI Mode
   ============================================================ */
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  const setAddModeUI = () => {
-    if (titleEl) titleEl.textContent = "Add Discount Waiver";
-    if (submitBtn) submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Waiver`;
+  const submitBtn = form.querySelector("button[type=submit]");
+
+  const setUI = (mode = "add") => {
+    if (titleEl) {
+      titleEl.textContent =
+        mode === "edit" ? "Edit Discount Waiver" : "Add Discount Waiver";
+    }
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Waiver`
+          : `<i class="ri-add-line me-1"></i> Add Waiver`;
+    }
   };
-  const setEditModeUI = () => {
-    if (titleEl) titleEl.textContent = "Edit Discount Waiver";
-    if (submitBtn) submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Waiver`;
-  };
-  isEdit ? setEditModeUI() : setAddModeUI();
+  setUI(isEdit ? "edit" : "add");
 
   /* ============================================================
      📋 DOM Refs
   ============================================================ */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
+
   const invoiceInput = document.getElementById("invoiceInput");
   const invoiceHidden = document.getElementById("invoiceId");
   const invoiceSuggestions = document.getElementById("invoiceSuggestions");
+
   const patientHidden = document.getElementById("patientId");
 
   const typeSelect = document.getElementById("typeSelect");
@@ -124,181 +118,257 @@ export async function setupDiscountWaiverFormSubmission({ form }) {
   const percentageGroup = document.getElementById("percentageGroup");
   const amountGroup = document.getElementById("amountGroup");
 
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  /* ============================================================
+     👥 Role
+  ============================================================ */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+
   let maxAllowed = null;
+  let isSelectingInvoice = false; // 🔐 selection lock
 
   /* ============================================================
      🔄 Toggle Fields
   ============================================================ */
   function toggleWaiverFields() {
     const type = typeSelect.value;
-    percentageGroup.style.display = type === "percentage" ? "block" : "none";
-    amountGroup.style.display = type === "fixed" ? "block" : "none";
+
+    percentageGroup?.classList.toggle("hidden", type !== "percentage");
+    amountGroup?.classList.toggle("hidden", type !== "fixed");
+
     if (type === "percentage") amountInput.value = "";
     if (type === "fixed") percentageInput.value = "";
   }
 
+  typeSelect.addEventListener("change", toggleWaiverFields);
+  toggleWaiverFields();
+
   /* ============================================================
-     🔽 Prefill Dropdowns + Suggestions
+     🌐 Dropdowns & Invoice Suggestions
   ============================================================ */
   try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+    if (isSuper) {
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+      };
+
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => await reloadFacilities(orgSelect.value || null));
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
-      const facilities = await loadFacilitiesLite({}, true);
-      if (facilities.length && facSelect) {
-        setupSelectOptions(facSelect, facilities, "id", "name", "-- Select Facility --");
-        facSelect.value = localStorage.getItem("facilityId") || "";
-      }
     }
 
     setupSuggestionInputDynamic(
       invoiceInput,
       invoiceSuggestions,
       "/api/lite/invoices",
-      async (selected) => {
-        invoiceHidden.value = selected?.id || "";
-        if (selected) {
-          invoiceInput.value =
-            selected.label ||
-            `${selected.invoice_number || ""} · ${selected.patient?.code || ""} - ${
-              selected.patient?.full_name || ""
-            } · Balance ${selected.balance || ""}`;
-          maxAllowed = selected.balance ? parseFloat(selected.balance) : null;
-          patientHidden.value = selected.patient?.id || "";
-        } else {
-          invoiceHidden.value = "";
-          patientHidden.value = "";
-          maxAllowed = null;
-        }
+      (selected) => {
+        const record = selected?.raw || selected;
+        if (!record?.id || !record?.patient?.id) return;
+
+        isSelectingInvoice = true;
+
+        invoiceHidden.value = record.id;
+        patientHidden.value = record.patient.id;
+
+        maxAllowed = record.balance
+          ? normalizeNumber(record.balance)
+          : null;
+
+        invoiceInput.value = selected.label;
+
+        // release lock after browser settles events
+        setTimeout(() => {
+          isSelectingInvoice = false;
+        }, 0);
       },
       "label"
     );
 
-    /* ============================================================
-       🧩 Prefill If Editing
-    ============================================================ */
-    if (isEdit) {
-      try {
-        showLoading();
-        let entry = sessionStorage.getItem("discountWaiverEditPayload");
-        entry = entry ? JSON.parse(entry) : null;
+    // ❗ invalidate ONLY on real typing, never on selection
+    invoiceInput.addEventListener("input", (e) => {
+      if (isSelectingInvoice) return;
+      if (!e.isTrusted) return;
 
-        if (!entry) {
-          const res = await authFetch(`/api/discount-waivers/${waiverId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const result = await res.json().catch(() => ({}));
-          entry = result?.data;
-          if (!res.ok || !entry)
-            throw new Error(normalizeMessage(result, `❌ Failed to load waiver`));
-        }
-
-        // 🧾 Populate fields
-        if (entry.invoice) {
-          invoiceHidden.value = entry.invoice.id;
-          invoiceInput.value = `${entry.invoice.invoice_number} · ${
-            entry.invoice.patient?.code || ""
-          } - ${entry.invoice.patient?.full_name || ""}`;
-        }
-        if (entry.patient) {
-          patientHidden.value = entry.patient?.id || "";
-        }
-
-        typeSelect.value = entry.type || "";
-        percentageInput.value = entry.percentage ?? "";
-        amountInput.value = entry.amount ?? "";
-        appliedTotalInput.value = entry.applied_total ?? "";
-        reasonInput.value = entry.reason || "";
-        if (entry.organization_id && orgSelect) orgSelect.value = entry.organization_id;
-        if (entry.facility_id && facSelect) facSelect.value = entry.facility_id;
-        setEditModeUI();
-      } catch (err) {
-        console.error("❌ Prefill error:", err);
-        showToast(err.message || "❌ Could not load waiver");
-      } finally {
-        hideLoading();
-      }
-    }
-
-    toggleWaiverFields();
-    typeSelect.addEventListener("change", toggleWaiverFields);
+      invoiceHidden.value = "";
+      patientHidden.value = "";
+      maxAllowed = null;
+    });
   } catch (err) {
-    console.error("❌ Dropdown load failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     💾 Submit Handler
+     ✏️ Prefill (Edit Mode)
+  ============================================================ */
+  if (isEdit && waiverId) {
+    try {
+      showLoading();
+
+      let entry = null;
+      const cached = sessionStorage.getItem("discountWaiverEditPayload");
+      if (cached) entry = JSON.parse(cached);
+
+      if (!entry) {
+        const res = await authFetch(`/api/discount-waivers/${waiverId}`);
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            normalizeMessage(result, "Failed to load discount waiver")
+          );
+        }
+        entry = result?.data;
+      }
+
+      if (!entry) return;
+
+      if (entry.invoice) {
+        invoiceHidden.value = entry.invoice.id;
+        invoiceInput.value = `${entry.invoice.invoice_number} ${
+          entry.invoice.patient?.full_name || ""
+        }`.trim();
+      }
+
+      patientHidden.value = entry.patient?.id || "";
+
+      typeSelect.value = entry.type || "";
+      percentageInput.value = entry.percentage ?? "";
+      amountInput.value = entry.amount ?? "";
+      appliedTotalInput.value = entry.applied_total ?? "";
+      reasonInput.value = entry.reason || "";
+
+      if (isSuper) {
+        if (entry.organization_id) orgSelect.value = entry.organization_id;
+        if (entry.facility_id) facSelect.value = entry.facility_id;
+      }
+
+      toggleWaiverFields();
+      setUI("edit");
+    } catch (err) {
+      showToast(err.message || "❌ Could not load discount waiver");
+    } finally {
+      hideLoading();
+    }
+  }
+
+  /* ============================================================
+     🛡️ Submit
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const type = typeSelect?.value || null;
-    const payload = {
-      invoice_id: normalizeUUID(invoiceHidden.value),
-      patient_id: normalizeUUID(patientHidden.value),
-      type,
-      reason: reasonInput?.value || null,
-      organization_id: normalizeUUID(orgSelect?.value || localStorage.getItem("organizationId")),
-      facility_id: normalizeUUID(facSelect?.value || localStorage.getItem("facilityId")),
-    };
-
-    if (type === "percentage")
-      payload.percentage = percentageInput?.value ? parseFloat(percentageInput.value) : null;
-    if (type === "fixed")
-      payload.amount = amountInput?.value ? parseFloat(amountInput.value) : null;
-
-    const errors = validateWaiverForm(payload, isEdit, userRole, { maxAllowed });
-    if (errors.length > 0) {
-      showToast("❌ " + errors.join("\n"));
+    if (!invoiceHidden.value || !patientHidden.value) {
+      showToast("❌ Please select an invoice from the list");
       return;
     }
 
-    const url = isEdit ? `/api/discount-waivers/${waiverId}` : `/api/discount-waivers`;
-    const method = isEdit ? "PUT" : "POST";
+    const errors = [];
+
+    for (const rule of DISCOUNT_WAIVER_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when({ isEdit })) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || el.closest(".hidden")) continue;
+
+      if (!el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    const payload = {
+      invoice_id: normalizeUUID(invoiceHidden.value),
+      patient_id: normalizeUUID(patientHidden.value),
+      type: typeSelect.value || null,
+      reason: reasonInput.value || null,
+    };
+
+    if (typeSelect.value === "percentage") {
+      payload.percentage = normalizeNumber(percentageInput.value);
+    }
+
+    if (typeSelect.value === "fixed") {
+      payload.amount = normalizeNumber(amountInput.value);
+    }
+
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
 
     try {
       showLoading();
+
+      const url = isEdit
+        ? `/api/discount-waivers/${waiverId}`
+        : `/api/discount-waivers`;
+
       const res = await authFetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const result = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      if (isEdit) {
-        showToast("✅ Waiver updated successfully");
-        sessionStorage.removeItem("discountWaiverEditId");
-        sessionStorage.removeItem("discountWaiverEditPayload");
-        window.location.href = "/discount-waivers-list.html";
-      } else {
-        showToast("✅ Waiver created successfully");
-        form.reset();
-        invoiceHidden.value = "";
-        patientHidden.value = "";
-        setAddModeUI();
-        toggleWaiverFields();
+      if (!res.ok) {
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
       }
+
+    showToast(isEdit ? "✅ Waiver updated" : "✅ Waiver created");
+
+    // always clear edit state
+    sessionStorage.removeItem("discountWaiverEditId");
+    sessionStorage.removeItem("discountWaiverEditPayload");
+
+    if (isEdit) {
+      // ✅ EDIT → go back to list
+      window.location.href = "/discount-waivers-list.html";
+    } else {
+      // ✅ CREATE → stay on form, reset safely
+      clearFormErrors(form);
+      form.reset();
+
+      invoiceHidden.value = "";
+      patientHidden.value = "";
+      maxAllowed = null;
+
+      setUI("add");
+      toggleWaiverFields();
+    }
+
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -306,21 +376,20 @@ export async function setupDiscountWaiverFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Clear / Cancel Buttons
+     ⏮️ Cancel / Clear
   ============================================================ */
+  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+    sessionStorage.clear();
+    window.location.href = "/discount-waivers-list.html";
+  });
+
   document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("discountWaiverEditId");
-    sessionStorage.removeItem("discountWaiverEditPayload");
+    clearFormErrors(form);
     form.reset();
     invoiceHidden.value = "";
     patientHidden.value = "";
-    setAddModeUI();
+    maxAllowed = null;
+    setUI("add");
     toggleWaiverFields();
-  });
-
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("discountWaiverEditId");
-    sessionStorage.removeItem("discountWaiverEditPayload");
-    window.location.href = "/discount-waivers-list.html";
   });
 }

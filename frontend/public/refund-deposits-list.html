@@ -98,7 +98,8 @@
                     <div class="col-xxl-3 col-lg-4 col-sm-6">
                       <div class="field-wrapper">
                         <label class="form-label" for="filterPatient">Patient</label>
-                        <input type="text" id="filterPatient"
+                        <input type="text"
+                               id="filterPatient"
                                class="form-control suggestion-input"
                                placeholder="Search patient..."
                                autocomplete="off">
@@ -107,11 +108,12 @@
                       </div>
                     </div>
 
-                    <!-- Deposit -->
+                    <!-- Deposit (MASTER-MAPPED from Payment) -->
                     <div class="col-xxl-3 col-lg-4 col-sm-6">
                       <div class="field-wrapper">
                         <label class="form-label" for="filterDeposit">Deposit</label>
-                        <input type="text" id="filterDeposit"
+                        <input type="text"
+                               id="filterDeposit"
                                class="form-control suggestion-input"
                                placeholder="Search deposit..."
                                autocomplete="off">
@@ -133,7 +135,7 @@
                       </select>
                     </div>
 
-                    <!-- Status (MASTER ADDED) -->
+                    <!-- Status -->
                     <div class="col-xxl-3 col-lg-4 col-sm-6">
                       <label class="form-label" for="filterStatus">Status</label>
                       <select id="filterStatus" class="form-select">
@@ -162,7 +164,7 @@
                       <select id="filterFacilitySelect" class="form-select"></select>
                     </div>
 
-                    <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
+                    <!-- Date Range -->
                     <div class="col-md-3">
                       <div class="field-wrapper">
                         <label class="form-label" for="dateRange">Date Range</label>
@@ -194,7 +196,6 @@
               <!-- ============================================================ -->
               <div class="d-flex mb-2 view-toggle compact align-items-center gap-2 flex-wrap">
 
-                <!-- Field Selector -->
                 <div class="dropdown relative-wrapper export-ignore">
                   <button class="btn btn-outline-primary btn-sm dropdown-toggle"
                           id="fieldSelectorBtn"
@@ -206,7 +207,6 @@
                        style="min-width:240px;"></div>
                 </div>
 
-                <!-- View Toggle -->
                 <div class="btn-group">
                   <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                     <i class="fas fa-th me-1"></i> Card View
@@ -231,7 +231,7 @@
                 <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
               </div>
 
-              <!-- 📊 Summary -->
+              <!-- Summary -->
               <hr class="my-2">
               <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
               <div class="module-summary">
@@ -273,16 +273,13 @@
     <i class="fas fa-spinner fa-spin"></i> Loading...
   </div>
 </div>
-
-<!-- View Modal -->
-<div id="viewModal" class="modal hidden">
+<div id="viewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
   <div class="modal-content">
     <div class="modal-header">
       <h2 id="viewModalTitle">Details</h2>
-      <button class="close-btn" data-close="viewModal">&times;</button>
+      <button id="closeViewModal" class="close-btn" aria-label="Close">&times;</button>
     </div>
-    <div class="modal-body" id="viewModalBody"></div>
-  </div>
+    <div class="modal-body" id="viewDetailsBody"></div>  </div>
 </div>
 
 <!-- JS -->
@@ -295,12 +292,21 @@
 <script src="assets/vendor/daterange/custom-daterange.js"></script>
 <script src="assets/vendor/datatables/dataTables.min.js"></script>
 <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+<script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script src="assets/js/custom.js"></script>
 
 <script type="module" src="/js/logout.js"></script>
 <script type="module" src="/js/authSession.js"></script>
+
+<!-- Module JS (API CALLS PRESERVED) -->
 <script type="module" src="/js/modules/refund-deposits/refund-deposits-filter-main.js"></script>
 <script type="module" src="/js/modules/refund-deposits/refund-deposits-render.js"></script>
 <script type="module" src="/js/modules/refund-deposits/refund-deposits-actions.js"></script>
+<script type="module" src="/js/modules/shared/list-export.js"></script>
 
 </body>
 </html>
