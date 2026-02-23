@@ -1,8 +1,8 @@
-// 📦 patient-form.js – Secure & Role-Aware Patient Form (Enterprise Master Pattern)
+// 📦 patient-form.js – Secure & Role-Aware Patient Form (ENTERPRISE MASTER)
 // ============================================================================
 // 🔹 Rule-driven validation (PATIENT_FORM_RULES)
-// 🔹 Role-aware org/fac handling
-// 🔹 Emergency JSONB hydration (edit)
+// 🔹 Role-aware org/fac handling (NO hidden facility for staff)
+// 🔹 Emergency JSONB hydration + submit
 // 🔹 Safe file upload + removal flags
 // 🔹 Controller-faithful (no silent validation)
 // ============================================================================
@@ -31,7 +31,6 @@ import {
 } from "../../utils/data-loaders.js";
 
 import { setupFilePreview } from "../../utils/file-preview.js";
-
 import { PATIENT_FORM_RULES } from "./patient.form.rules.js";
 
 /* ============================================================
@@ -75,6 +74,7 @@ export async function setupPatientFormSubmission({ form }) {
 
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
+  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
   const setFormTitle = (txt, icon) => {
     if (titleEl) titleEl.textContent = txt;
@@ -82,24 +82,19 @@ export async function setupPatientFormSubmission({ form }) {
       submitBtn.innerHTML = `<i class="${icon} me-1"></i> ${txt}`;
   };
 
-  setFormTitle(
-    isEdit ? "Update Patient" : "Add Patient",
-    "ri-save-3-line"
-  );
+  setFormTitle(isEdit ? "Update Patient" : "Add Patient", "ri-save-3-line");
 
   /* ---------------- DOM Refs ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
   /* ============================================================
-     🔐 ROLE-AWARE DROPDOWNS (EMPLOYEE PARITY)
+     🔐 ROLE-AWARE ORG / FAC (MASTER-ALIGNED)
+     ✔ Facility is NEVER hidden
   ============================================================ */
   try {
     const hideOrg = () =>
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-    const hideFac = () =>
-      facSelect?.closest(".form-group")?.classList.add("hidden");
 
     if (userRole.includes("super")) {
       setupSelectOptions(
@@ -137,12 +132,19 @@ export async function setupPatientFormSubmission({ form }) {
         "-- Select Facility --"
       );
     } else {
+      // STAFF / DOCTOR / NURSE
       hideOrg();
-      hideFac();
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
     }
   } catch (err) {
     console.error(err);
-    showToast("❌ Failed to load dropdown data");
+    showToast("❌ Failed to load organization/facility data");
   }
 
   /* ============================================================
@@ -156,7 +158,7 @@ export async function setupPatientFormSubmission({ form }) {
   );
 
   /* ============================================================
-     ✏️ PREFILL (EDIT MODE)
+    ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit) {
     try {
@@ -174,7 +176,7 @@ export async function setupPatientFormSubmission({ form }) {
 
       if (!entry) throw new Error("Patient not found");
 
-      /* -------- Simple fields -------- */
+      /* ---------------- BASIC FIELDS ---------------- */
       [
         "first_name",
         "middle_name",
@@ -195,36 +197,50 @@ export async function setupPatientFormSubmission({ form }) {
         if (el) el.value = entry[id] || "";
       });
 
-      /* -------- Date -------- */
       const dobEl = document.getElementById("date_of_birth");
       if (dobEl) dobEl.value = normalizeDate(entry.date_of_birth);
 
-      /* -------- Emergency JSONB -------- */
+      /* ---------------- ORG / FAC PREFILL (FIX) ---------------- */
+      if (entry.organization_id && orgSelect) {
+        orgSelect.value = entry.organization_id;
+
+        // Super admin: reload facilities BEFORE setting facility
+        if (userRole.includes("super")) {
+          const facilities = await loadFacilitiesLite(
+            { organization_id: entry.organization_id },
+            true
+          );
+
+          setupSelectOptions(
+            facSelect,
+            facilities,
+            "id",
+            "name",
+            "-- Select Facility --"
+          );
+        }
+      }
+
+      if (entry.facility_id && facSelect) {
+        facSelect.value = entry.facility_id;
+      }
+
+      /* ---------------- EMERGENCY JSONB ---------------- */
       const ecName = document.getElementById("emergency_contact_name");
       const ecPhone = document.getElementById("emergency_contact_phone");
 
-      if (
-        Array.isArray(entry.emergency_contacts) &&
-        entry.emergency_contacts.length
-      ) {
+      if (Array.isArray(entry.emergency_contacts) && entry.emergency_contacts[0]) {
         ecName.value = entry.emergency_contacts[0]?.name || "";
         ecPhone.value = entry.emergency_contacts[0]?.phone || "";
-      } else {
-        ecName.value = "";
-        ecPhone.value = "";
       }
 
-      /* -------- Photo preview -------- */
+      /* ---------------- PHOTO ---------------- */
       if (entry.photo_path) {
         document.getElementById("photoPreview").innerHTML =
           `<img src="${entry.photo_path}" class="preview-img" />`;
-        document
-          .getElementById("removePhotoBtn")
-          ?.classList.remove("hidden");
+        document.getElementById("removePhotoBtn")?.classList.remove("hidden");
         document.getElementById("remove_photo").value = "false";
       }
-
-      setFormTitle("Update Patient", "ri-save-3-line");
     } catch (err) {
       console.error(err);
       showToast(err.message || "❌ Failed to load patient");
@@ -234,7 +250,7 @@ export async function setupPatientFormSubmission({ form }) {
   }
 
   /* ============================================================
-     🛡️ SUBMIT — RULE-DRIVEN (EMPLOYEE PARITY)
+     🛡️ SUBMIT — RULE-DRIVEN (MASTER)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -242,7 +258,6 @@ export async function setupPatientFormSubmission({ form }) {
 
     const errors = [];
 
-    // ✅ RULE-DRIVEN VALIDATION
     for (const rule of PATIENT_FORM_RULES) {
       if (typeof rule.when === "function" && !rule.when()) continue;
 
@@ -251,10 +266,7 @@ export async function setupPatientFormSubmission({ form }) {
         form.querySelector(`[name="${rule.id}"]`);
 
       if (!el || !el.value || el.value.toString().trim() === "") {
-        errors.push({
-          field: rule.id,
-          message: rule.message,
-        });
+        errors.push({ field: rule.id, message: rule.message });
       }
     }
 
@@ -268,13 +280,26 @@ export async function setupPatientFormSubmission({ form }) {
     const url = isEdit ? `/api/patients/${patId}` : `/api/patients`;
     const formData = new FormData(form);
 
-    // 🔐 Tenant control (frontend scope only)
-    if (!userRole.includes("super")) formData.delete("organization_id");
-    if (!userRole.includes("super") && !userRole.includes("admin")) {
-      formData.delete("facility_id");
+    // Emergency JSONB packaging
+    const ecName = formData.get("emergency_contact_name");
+    const ecPhone = formData.get("emergency_contact_phone");
+
+    formData.delete("emergency_contact_name");
+    formData.delete("emergency_contact_phone");
+
+    if (ecName || ecPhone) {
+      formData.append(
+        "emergency_contacts",
+        JSON.stringify([{ name: ecName || "", phone: ecPhone || "" }])
+      );
     }
 
-    // 🔐 Ensure flags always exist
+    // Tenant scope safety
+    if (!userRole.includes("super")) formData.delete("organization_id");
+    if (!userRole.includes("super") && !userRole.includes("admin")) {
+      formData.delete("organization_id");
+    }
+
     if (!formData.has("remove_photo"))
       formData.append("remove_photo", "false");
     if (!formData.has("remove_qr_code"))
@@ -287,9 +312,7 @@ export async function setupPatientFormSubmission({ form }) {
 
       if (!res.ok) {
         applyServerErrors(form, result?.errors);
-        throw new Error(
-          normalizeMessage(result, "Submission failed")
-        );
+        throw new Error(normalizeMessage(result, "Submission failed"));
       }
 
       showToast(isEdit ? "✅ Patient updated" : "✅ Patient created");

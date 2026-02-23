@@ -166,30 +166,58 @@ export async function setupPaymentFormSubmission({ form }) {
         patientHidden.value = selected?.id || "";
         patientInput.value = selected?.label || "";
 
+        // 🧼 Reset invoice state
         invoiceSelect.innerHTML = "";
+        invoiceSelect.disabled = false;
         selectedInvoiceBalance = null;
+        amountInput.removeAttribute("max");
 
-        if (selected?.id) {
-          const res = await authFetch(
-            `/api/lite/invoices?patient_id=${selected.id}`
-          );
-          const data = await res.json().catch(() => ({}));
-          const invoices = data?.data?.records || [];
+        if (!selected?.id) return;
 
-          const opts = invoices.map((inv) => ({
-            id: inv.id,
-            label: `${inv.invoice_number} (Bal: ${inv.balance})`,
-            balance: inv.balance,
-          }));
+        const res = await authFetch(
+          `/api/lite/invoices?patient_id=${selected.id}`
+        );
+        const data = await res.json().catch(() => ({}));
+        const invoices = data?.data?.records || [];
 
+        // 🚫 NO PAYABLE INVOICES
+        if (!invoices.length) {
           setupSelectOptions(
             invoiceSelect,
-            opts,
+            [
+              {
+                id: "",
+                label: "No outstanding invoices for this patient",
+                disabled: true,
+              },
+            ],
             "id",
-            "label",
-            "-- Select Invoice --"
+            "label"
           );
+
+          invoiceSelect.disabled = true;
+
+          showToast(
+            "ℹ️ This patient has no invoices with outstanding balance",
+            "info"
+          );
+          return;
         }
+
+        // ✅ PAYABLE INVOICES
+        const opts = invoices.map((inv) => ({
+          id: inv.id,
+          label: `${inv.invoice_number} (Bal: ${inv.balance})`,
+          balance: inv.balance,
+        }));
+
+        setupSelectOptions(
+          invoiceSelect,
+          opts,
+          "id",
+          "label",
+          "-- Select Invoice --"
+        );
       },
       "label"
     );

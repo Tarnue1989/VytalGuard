@@ -49,6 +49,8 @@ export const USER_FACILITY_STATUS = ['active', 'inactive'];
 export const REGISTRATION_LOG_STATUS = ['draft', 'pending', 'active', 'completed', 'cancelled', 'voided'];
 export const REGISTRATION_METHODS = ['walk_in', 'appointment', 'referral', 'transfer'];
 export const REGISTRATION_CATEGORIES = ['general', 'insured', 'vip', 'staff', 'charity'];
+// 🔹 Patient Lifecycle (USED BY Patient MODEL)
+export const PATIENT_STATUS = ['active', 'cancelled'];
 
 // ============================================================
 // 🔹 Encounter Lifecycles

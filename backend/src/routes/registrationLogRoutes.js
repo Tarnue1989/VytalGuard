@@ -6,7 +6,6 @@ import {
   createRegistrationLog,
   updateRegistrationLog,
   deleteRegistrationLog,
-  toggleRegistrationLogStatus,
   submitRegistrationLog,
   activateRegistrationLog,
   completeRegistrationLog,
@@ -14,7 +13,6 @@ import {
   voidRegistrationLog,
 } from "../controllers/registrationLogController.js";
 import { verifyAuth } from "../middleware/verifyAuth.js";
-
 
 const router = Router();
 
@@ -24,30 +22,27 @@ const UUIDv4 =
 
 /* ============================================================
    📌 REGISTRATION LOG ROUTES
-   ============================================================ */
+============================================================ */
 
 // 🔍 List & Lookup
-router.get("/", verifyAuth,  getAllRegistrationLogs);
-router.get(`/:id(${UUIDv4})`, verifyAuth,  getRegistrationLogById);
+router.get("/", verifyAuth, getAllRegistrationLogs);
+router.get(`/:id(${UUIDv4})`, verifyAuth, getRegistrationLogById);
 
 // ➕ Create / ✏️ Update / 🗑️ Delete
-router.post("/", verifyAuth,  createRegistrationLog);
-router.put(`/:id(${UUIDv4})`, verifyAuth,  updateRegistrationLog);
-router.delete(`/:id(${UUIDv4})`, verifyAuth,  deleteRegistrationLog);
-
-// 🔄 Toggle status (active ↔ cancelled)
-router.patch(`/:id(${UUIDv4})/toggle-status`, verifyAuth,  toggleRegistrationLogStatus);
+router.post("/", verifyAuth, createRegistrationLog);
+router.put(`/:id(${UUIDv4})`, verifyAuth, updateRegistrationLog);
+router.delete(`/:id(${UUIDv4})`, verifyAuth, deleteRegistrationLog);
 
 /* ============================================================
-   📌 LIFECYCLE ROUTES
-   ============================================================ */
-router.patch(`/:id(${UUIDv4})/submit`, verifyAuth,  submitRegistrationLog);
-router.patch(`/:id(${UUIDv4})/activate`, verifyAuth,  activateRegistrationLog);
-router.patch(`/:id(${UUIDv4})/complete`, verifyAuth,  completeRegistrationLog);
-router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth,  cancelRegistrationLog);
-router.patch(`/:id(${UUIDv4})/void`, verifyAuth,  voidRegistrationLog);
+   📌 LIFECYCLE ROUTES (MASTER)
+============================================================ */
+router.patch(`/:id(${UUIDv4})/submit`, verifyAuth, submitRegistrationLog);
+router.patch(`/:id(${UUIDv4})/activate`, verifyAuth, activateRegistrationLog);
+router.patch(`/:id(${UUIDv4})/complete`, verifyAuth, completeRegistrationLog);
+router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth, cancelRegistrationLog);
+router.patch(`/:id(${UUIDv4})/void`, verifyAuth, voidRegistrationLog);
 
 /* ============================================================
    ✅ EXPORT
-   ============================================================ */
+============================================================ */
 export default router;

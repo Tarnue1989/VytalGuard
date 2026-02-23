@@ -1,4 +1,3 @@
-// 📁 backend/src/models/AutoBillingRule.js
 import { DataTypes, Model } from "sequelize";
 import {
   AUTO_BILLING_CHARGE_MODE,
@@ -18,7 +17,7 @@ export default (sequelize) => {
         foreignKey: "facility_id",
       });
 
-      // 🔗 Feature & Billable links
+      // 🔗 Feature & Billable links (AUTHORITATIVE)
       AutoBillingRule.belongsTo(models.FeatureModule, {
         as: "featureModule",
         foreignKey: "trigger_feature_module_id",
@@ -59,18 +58,12 @@ export default (sequelize) => {
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
       /* ============================================================
-         ⚙️ Billing Configuration
+         ⚙️ Billing Configuration (FK-DRIVEN)
       ============================================================ */
       trigger_feature_module_id: {
         type: DataTypes.UUID,
-        allowNull: true, // optional for legacy/manual rules
+        allowNull: false, // ✅ MUST MATCH DB
         comment: "Foreign key → FeatureModule.id",
-      },
-
-      trigger_module: {
-        type: DataTypes.STRING(100),
-        allowNull: false,
-        comment: "Readable key, kebab-case (e.g. 'lab-results', 'consultations')",
       },
 
       billable_item_id: {
@@ -82,7 +75,6 @@ export default (sequelize) => {
       auto_generate: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Whether to auto-apply this rule when trigger fires",
       },
 
       charge_mode: {
@@ -103,7 +95,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...AUTO_BILLING_RULE_STATUS),
         allowNull: false,
-        defaultValue: AUTO_BILLING_RULE_STATUS[0], // "active"
+        defaultValue: AUTO_BILLING_RULE_STATUS[0],
       },
 
       /* ============================================================
@@ -143,7 +135,6 @@ export default (sequelize) => {
         { fields: ["facility_id"] },
         { fields: ["billable_item_id"] },
         { fields: ["trigger_feature_module_id"] },
-        { fields: ["trigger_module"] },
         { fields: ["status"] },
       ],
     }

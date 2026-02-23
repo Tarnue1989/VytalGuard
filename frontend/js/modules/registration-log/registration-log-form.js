@@ -1,8 +1,8 @@
 // 📦 registrationLog-form.js – Secure & Role-Aware Registration Log Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
 // 🔹 Rule-driven validation (REGISTRATION_LOG_FORM_RULES)
-// 🔹 Role-aware org/fac handling (super / org / facility)
-// 🔹 Suggestion inputs (patient / registrar) — patient parity
+// 🔹 SUPERADMIN-only org/fac (HIDDEN for all other roles)
+// 🔹 Suggestion inputs (patient / registrar)
 // 🔹 Add + Edit parity (sessionStorage + query fallback)
 // 🔹 Clean payload normalization (UUID | null)
 // 🔹 Controller-faithful (no HTML validation, no silent rules)
@@ -33,12 +33,7 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-import {
-  resolveUserRole,
-  getOrganizationId,
-  getFacilityId,
-} from "../../utils/roleResolver.js";
-
+import { resolveUserRole } from "../../utils/roleResolver.js";
 import { REGISTRATION_LOG_FORM_RULES } from "./registration-log.form.rules.js";
 
 /* ============================================================
@@ -74,11 +69,11 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   initLogoutWatcher();
   enableLiveValidation(form);
 
-  const sessionId = sessionStorage.getItem("registrationLogEditId");
-  const queryId = getQueryParam("id");
-  const logId = sessionId || queryId;
+  const logId =
+    sessionStorage.getItem("registrationLogEditId") || getQueryParam("id");
   const isEdit = Boolean(logId);
 
+  /* ================= UI ================= */
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
@@ -96,7 +91,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   };
   setUI(isEdit ? "edit" : "add");
 
-  /* ---------------- DOM Refs ---------------- */
+  /* ================= DOM ================= */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const typeSelect = document.getElementById("registrationTypeSelect");
@@ -109,22 +104,16 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   const registrarHidden = document.getElementById("registrarId");
   const registrarSuggestions = document.getElementById("registrarSuggestions");
 
-  /* ---------------- Role ---------------- */
+  /* ================= Role ================= */
   const userRole = resolveUserRole();
   const isSuper = userRole === "superadmin";
-  const isOrgAdmin =
-    userRole === "organization_admin" || userRole === "admin";
 
   /* ============================================================
-     🌐 Dropdowns & Suggestions (ROLE-AWARE)
+     🌐 Dropdowns & Suggestions (MASTER)
   ============================================================ */
   try {
-    const hideOrg = () =>
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-    const hideFac = () =>
-      facSelect?.closest(".form-group")?.classList.add("hidden");
-
     if (isSuper) {
+      // SUPERADMIN ONLY — org & facility visible
       setupSelectOptions(
         orgSelect,
         await loadOrganizationsLite(),
@@ -137,7 +126,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
         setupSelectOptions(
           facSelect,
           await loadFacilitiesLite(
-            { organization_id: orgId ?? getOrganizationId() },
+            orgId ? { organization_id: orgId } : {},
             true
           ),
           "id",
@@ -150,25 +139,13 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       orgSelect?.addEventListener("change", () =>
         reloadFacilities(orgSelect.value || null)
       );
-    } else if (isOrgAdmin) {
-      hideOrg();
-      setupSelectOptions(
-        facSelect,
-        await loadFacilitiesLite(
-          { organization_id: getOrganizationId() },
-          true
-        ),
-        "id",
-        "name",
-        "-- Select Facility --"
-      );
-      if (getFacilityId()) facSelect.value = getFacilityId();
     } else {
-      hideOrg();
-      hideFac();
+      // 🔒 ALL OTHER ROLES — HIDDEN
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
+      facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // Registration Type (Billable Items → registration)
+    // Registration Type
     setupSelectOptions(
       typeSelect,
       await loadBillableItemsLite({ category: "registration" }, true),
@@ -206,7 +183,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   }
 
   /* ============================================================
-    ✏️ PREFILL (EDIT MODE)
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit && logId) {
     try {
@@ -219,29 +196,25 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       if (!entry) {
         const res = await authFetch(`/api/registration-logs/${logId}`);
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
+        if (!res.ok)
           throw new Error(
             normalizeMessage(json, "Failed to load registration log")
           );
-        }
         entry = json?.data;
       }
 
       if (!entry) throw new Error("Registration Log not found");
 
-      /* ---------- Patient ---------- */
       patientHidden.value = entry.patient_id || "";
       patientInput.value = entry.patient
         ? `${entry.patient.pat_no} - ${entry.patient.first_name} ${entry.patient.last_name}`.trim()
         : "";
 
-      /* ---------- Registrar ---------- */
       registrarHidden.value = entry.registrar_id || "";
       registrarInput.value = entry.registrar
         ? `${entry.registrar.first_name} ${entry.registrar.last_name}`.trim()
         : "";
 
-      /* ---------- Core Fields ---------- */
       [
         ["registrationMethod", entry.registration_method],
         ["patientCategory", entry.patient_category],
@@ -253,15 +226,11 @@ export async function setupRegistrationLogFormSubmission({ form }) {
         if (el) el.value = val ?? "";
       });
 
-      /* ---------- Emergency ---------- */
       const emergencyEl = document.getElementById("isEmergency");
       if (emergencyEl) emergencyEl.checked = !!entry.is_emergency;
 
-      /* ---------- Organization / Facility ---------- */
       if (isSuper && entry.organization_id) {
-        orgSelect?.closest(".form-group")?.classList.remove("hidden");
         orgSelect.value = entry.organization_id;
-
         setupSelectOptions(
           facSelect,
           await loadFacilitiesLite(
@@ -272,21 +241,14 @@ export async function setupRegistrationLogFormSubmission({ form }) {
           "name",
           "-- Select Facility --"
         );
+        facSelect.value = entry.facility_id || "";
       }
 
-      if ((isOrgAdmin || isSuper) && entry.facility_id) {
-        facSelect?.closest(".form-group")?.classList.remove("hidden");
-        facSelect.value = entry.facility_id;
-      }
-
-      /* ---------- Registration Type ---------- */
-      if (entry.registration_type_id) {
+      if (entry.registration_type_id)
         typeSelect.value = entry.registration_type_id;
-      }
 
       setUI("edit");
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Could not load registration log");
     } finally {
       hideLoading();
@@ -294,7 +256,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   }
 
   /* ============================================================
-    🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
+     🛡️ SUBMIT — MASTER PARITY
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -323,8 +285,6 @@ export async function setupRegistrationLogFormSubmission({ form }) {
     }
 
     const payload = {
-      organization_id: isSuper ? normalizeUUID(orgSelect?.value) : null,
-      facility_id: normalizeUUID(facSelect?.value),
       patient_id: normalizeUUID(patientHidden.value),
       registrar_id: normalizeUUID(registrarHidden.value),
       registration_type_id: normalizeUUID(typeSelect?.value),
@@ -341,26 +301,31 @@ export async function setupRegistrationLogFormSubmission({ form }) {
         document.getElementById("isEmergency").checked,
     };
 
+    // 🔒 SUPERADMIN ONLY
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
+
     try {
       showLoading();
 
-      const url = isEdit
-        ? `/api/registration-logs/${logId}`
-        : `/api/registration-logs`;
-      const method = isEdit ? "PUT" : "POST";
-
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await authFetch(
+        isEdit
+          ? `/api/registration-logs/${logId}`
+          : `/api/registration-logs`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const result = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(
           normalizeMessage(result, `❌ Server error (${res.status})`)
         );
-      }
 
       showToast(
         isEdit
@@ -368,29 +333,16 @@ export async function setupRegistrationLogFormSubmission({ form }) {
           : "✅ Registration Log created"
       );
 
-      if (isEdit) {
-        // EDIT → return to list
-        sessionStorage.clear();
-        window.location.href = "/registration-logs-list.html";
-      } else {
-        // CREATE → stay on form for next entry
-        sessionStorage.removeItem("registrationLogEditId");
-        sessionStorage.removeItem("registrationLogEditPayload");
-        clearFormErrors(form);
-        form.reset();
-        setUI("add");
-      }
+      sessionStorage.clear();
+      window.location.href = "/registration-logs-list.html";
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
   };
 
-  /* ============================================================
-     ⏮️ CANCEL / CLEAR
-  ============================================================ */
+  /* ================= Cancel / Clear ================= */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.clear();
     window.location.href = "/registration-logs-list.html";

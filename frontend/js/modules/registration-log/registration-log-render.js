@@ -14,7 +14,7 @@
 import { FIELD_LABELS_REGISTRATION_LOG } from "./registration-log-constants.js";
 
 import {
-  formatDateTime,
+  formatDateTime, // ⏱️ ALL registration log dates are DATE + TIME
   initTooltips,
 } from "../../utils/ui-utils.js";
 
@@ -97,7 +97,9 @@ export function renderDynamicTableHead(visibleFields) {
 
       let icon = "ri-arrow-up-down-line";
       if (sortBy === field) {
-        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+        icon = sortDir === "asc"
+          ? "ri-arrow-up-line"
+          : "ri-arrow-down-line";
       }
 
       th.innerHTML = `
@@ -227,7 +229,6 @@ export function renderCard(entry, visibleFields, user) {
 
   const status = (entry.log_status || "").toLowerCase();
 
-  /* ================= HEADER ================= */
   const header = `
     <div class="entity-card-header">
       <div>
@@ -248,7 +249,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
-  /* ================= CONTEXT ================= */
   const contextItems = [];
 
   if (has("organization"))
@@ -261,9 +261,7 @@ export function renderCard(entry, visibleFields, user) {
     contextItems.push(`👤 ${safe(renderUserName(entry.registrar))}`);
 
   if (has("registration_time"))
-    contextItems.push(
-      `🕒 ${formatDateTime(entry.registration_time)}`
-    );
+    contextItems.push(`🕒 ${formatDateTime(entry.registration_time)}`);
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
@@ -271,7 +269,6 @@ export function renderCard(entry, visibleFields, user) {
        </div>`
     : "";
 
-  /* ================= BODY (FULL DETAILS) ================= */
   const body = `
     <div class="entity-card-body">
       <div>
@@ -288,30 +285,21 @@ export function renderCard(entry, visibleFields, user) {
 
       <div>
         ${has("registration_type")
-          ? fieldRow(
-              "Registration Type",
-              entry.registrationType?.name
-            )
+          ? fieldRow("Registration Type", entry.registrationType?.name)
           : ""}
         ${has("is_emergency")
-          ? fieldRow(
-              "Emergency",
-              entry.is_emergency ? "Yes" : "No"
-            )
+          ? fieldRow("Emergency", entry.is_emergency ? "Yes" : "No")
           : ""}
         ${has("invoice")
           ? fieldRow(
               "Invoice",
-              entry.invoice
-                ? `${entry.invoice.invoice_number}`
-                : "—"
+              entry.invoice ? `${entry.invoice.invoice_number}` : "—"
             )
           : ""}
       </div>
     </div>
   `;
 
-  /* ================= AUDIT ================= */
   const audit =
     has("created_at") || has("updated_at") || has("deleted_at")
       ? `
@@ -320,42 +308,24 @@ export function renderCard(entry, visibleFields, user) {
           <div class="entity-card-body">
             <div>
               ${has("createdBy")
-                ? fieldRow(
-                    "Created By",
-                    renderUserName(entry.createdBy)
-                  )
+                ? fieldRow("Created By", renderUserName(entry.createdBy))
                 : ""}
               ${has("created_at")
-                ? fieldRow(
-                    "Created At",
-                    formatDateTime(entry.created_at)
-                  )
+                ? fieldRow("Created At", formatDateTime(entry.created_at))
                 : ""}
             </div>
             <div>
               ${has("updatedBy")
-                ? fieldRow(
-                    "Updated By",
-                    renderUserName(entry.updatedBy)
-                  )
+                ? fieldRow("Updated By", renderUserName(entry.updatedBy))
                 : ""}
               ${has("updated_at")
-                ? fieldRow(
-                    "Updated At",
-                    formatDateTime(entry.updated_at)
-                  )
+                ? fieldRow("Updated At", formatDateTime(entry.updated_at))
                 : ""}
               ${has("deletedBy") && entry.deletedBy
-                ? fieldRow(
-                    "Deleted By",
-                    renderUserName(entry.deletedBy)
-                  )
+                ? fieldRow("Deleted By", renderUserName(entry.deletedBy))
                 : ""}
               ${has("deleted_at") && entry.deleted_at
-                ? fieldRow(
-                    "Deleted At",
-                    formatDateTime(entry.deleted_at)
-                  )
+                ? fieldRow("Deleted At", formatDateTime(entry.deleted_at))
                 : ""}
             </div>
           </div>
@@ -363,14 +333,12 @@ export function renderCard(entry, visibleFields, user) {
       `
       : "";
 
-  /* ================= ACTIONS ================= */
   const actions = has("actions")
     ? `<div class="entity-card-footer export-ignore">
          ${getRegistrationLogActionButtons(entry, user)}
        </div>`
     : "";
 
-  /* ================= FINAL ================= */
   return `
     <div class="entity-card registration-log-card">
       ${header}

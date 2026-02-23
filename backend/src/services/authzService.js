@@ -5,15 +5,12 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (THIS FILE ONLY)
-   true  = debug ON for authz
-   false = debug OFF for authz
 ============================================================ */
 const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("authz", DEBUG_OVERRIDE);
 
 /* ============================================================
    🧭 ACTION MAP
-   Maps common CRUD actions to permission suffixes
 ============================================================ */
 const ACTION_MAP = {
   read: "view",
@@ -25,13 +22,15 @@ const ACTION_MAP = {
 };
 
 /* ============================================================
-   🔧 Helper — getRolePermissions
-   (SYSTEM-SAFE, DB-TRUTH BASED)
+   🛡️ SAFE STRING UTILS (CRITICAL FIX)
 ============================================================ */
-export async function getRolePermissions(
-  roleIds = [],
-  { user } = {}
-) {
+const safeString = (v) => (typeof v === "string" ? v : "");
+const safeTrim = (v) => safeString(v).trim();
+
+/* ============================================================
+   🔧 Helper — getRolePermissions
+============================================================ */
+export async function getRolePermissions(roleIds = [], { user } = {}) {
   if (!roleIds.length) return [];
 
   const roles = await Role.scope("active").findAll({
@@ -53,11 +52,9 @@ export async function getRolePermissions(
     )
   );
 
-  // 🚫 HARD FILTER — system roles only allowed for superadmin
+  // 🚫 System roles only usable by superadmin
   const allowedRoles = roles.filter((role) => {
-    if (role.role_type === "system") {
-      return isSuperAdmin;
-    }
+    if (role.role_type === "system") return isSuperAdmin;
     return true;
   });
 
@@ -73,9 +70,9 @@ export const authzService = {
   /**
    * Check if a user has permission for module + action
    */
-  async checkPermission({ user, module, action, res }) {
+  async checkPermission({ user, module, module_key, action, res }) {
     /* ============================================================
-       🧪 DEBUG — USER CONTEXT AT AUTHZ ENTRY
+       🧪 DEBUG — USER CONTEXT
     ============================================================ */
     debug.log("AUTHZ ENTRY → user context", {
       userId: user?.id,
@@ -98,7 +95,7 @@ export const authzService = {
     }
 
     /* ============================================================
-       🔹 Determine SYSTEM USER (DB truth)
+       🔹 SYSTEM USER CHECK
     ============================================================ */
     const isSystemUser = Boolean(
       user.roles?.some(
@@ -113,21 +110,22 @@ export const authzService = {
       isSystemUser,
     });
 
-    // 🛡️ SYSTEM ROLE BYPASS (AUDIT-CRITICAL → ALWAYS LOG)
+    // 🛡️ System-role bypass
     if (isSystemUser) {
       logger.info(
-        `🛡️ [authzService] System-role bypass for user=${user.id} (${module}:${action})`
+        `🛡️ [authzService] System-role bypass for user=${user.id}`
       );
       return true;
     }
 
     /* ============================================================
-       🔹 Normalize action and module
+       🔹 NORMALIZATION (FIXED)
+       Accepts BOTH module and module_key safely
     ============================================================ */
+    const rawModule = safeTrim(module || module_key);
     const normalizedAction = ACTION_MAP[action] || action;
 
-    let normalizedModule = module
-      .trim()
+    let normalizedModule = rawModule
       .toLowerCase()
       .replace(/-/g, "_")
       .replace(/\s+/g, "_");
@@ -140,14 +138,14 @@ export const authzService = {
     const altKey = permissionKey.replace(/_/g, "-");
 
     debug.log("PERMISSION KEY RESOLUTION", {
-      module,
+      rawModule,
       normalizedModule,
       normalizedAction,
       permissionKey,
     });
 
     /* ============================================================
-       🔹 Gather permissions (CUSTOM ROLES ONLY)
+       🔹 COLLECT PERMISSIONS
     ============================================================ */
     let userPermissions = new Set(user.permissions || []);
 
@@ -176,7 +174,7 @@ export const authzService = {
     });
 
     /* ============================================================
-       🔹 Permission evaluation
+       🔹 PERMISSION CHECK
     ============================================================ */
     const isAllowed =
       userPermissions.includes("*") ||
@@ -185,15 +183,14 @@ export const authzService = {
 
     if (!isAllowed) {
       await accessViolationService.logViolation({
-        module,
+        module: normalizedModule,
         action: normalizedAction,
         user,
         reason: `Permission denied. Needed ${permissionKey}`,
       });
 
-      // 🚨 SECURITY LOG — ALWAYS ON
       logger.warn(
-        `🚫 [authzService] DENIED user=${user.id} (${module}:${action}) → ${permissionKey}`
+        `🚫 [authzService] DENIED user=${user.id} → ${permissionKey}`
       );
 
       if (res) {
@@ -204,7 +201,6 @@ export const authzService = {
       return false;
     }
 
-    // ✅ SECURITY / AUDIT LOG — ALWAYS ON
     logger.info(
       `✅ [authzService] ALLOWED user=${user.id} → ${permissionKey}`
     );

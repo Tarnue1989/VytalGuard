@@ -1,10 +1,10 @@
-// 📁 patient-actions.js – Enterprise Master Pattern (Upgraded)
+// 📁 patient-actions.js – Enterprise MASTER–ALIGNED Action Handlers (Patient)
 // ============================================================================
-// 🧭 Permission-Driven Action Handler (Superadmin-Aware)
-// 🔹 Mirrors employee-actions.js pattern
-// 🔹 Full role + permission normalization
-// 🔹 Unified lifecycle for view, edit, toggle-status, delete
-// 🔹 Keeps all IDs and link references intact
+// 🧭 Pattern Source: consultation-actions.js (Enterprise MASTER)
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / toggle-status / delete
+// 🔹 Safe fallback fetch + global helpers
+// 🔹 100% API preservation (NO endpoint changes)
 // ============================================================================
 
 import {
@@ -27,7 +27,7 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions }
+  user, // { role, permissions, roleNames }
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("patientTableBody");
@@ -40,7 +40,7 @@ export function setupActionHandlers({
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔑 Normalize Permissions
+     🔑 Normalize Permissions (MASTER PATTERN)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -56,11 +56,11 @@ export function setupActionHandlers({
 
   const userPerms = new Set(
     normalizePermissions(user?.permissions || []).map((p) =>
-      p.toLowerCase().trim()
+      String(p).toLowerCase().trim()
     )
   );
 
-  // 🧠 Superadmin bypass
+  // 🧠 Superadmin bypass (MASTER PATTERN)
   const isSuperAdmin =
     (user?.role &&
       user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
@@ -69,7 +69,6 @@ export function setupActionHandlers({
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  // ✅ Permission checker
   const hasPerm = (key) =>
     isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
@@ -86,7 +85,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🩹 Fallback fetch if not cached
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -106,25 +105,25 @@ export function setupActionHandlers({
 
     if (cls.contains("view-btn")) {
       if (!hasPerm("patients:view"))
-        return showToast("⛔ You don't have permission to view");
+        return showToast("⛔ You don't have permission to view patients");
       return handleView(entry);
     }
 
     if (cls.contains("edit-btn")) {
       if (!hasPerm("patients:edit"))
-        return showToast("⛔ You don't have permission to edit");
+        return showToast("⛔ You don't have permission to edit patients");
       return handleEdit(entry);
     }
 
-    if (cls.contains("toggle-btn")) {
-      if (!hasPerm("patients:toggle-status"))
-        return showToast("⛔ You don't have permission to change status");
+    if (cls.contains("toggle-status-btn")) {
+      if (!hasPerm("patients:toggle_status"))
+        return showToast("⛔ No permission to change patient status");
       return await handleToggleStatus(id, entry);
     }
 
     if (cls.contains("delete-btn")) {
       if (!hasPerm("patients:delete"))
-        return showToast("⛔ You don't have permission to delete");
+        return showToast("⛔ You don't have permission to delete patients");
       return await handleDelete(id, entry);
     }
   }
@@ -133,13 +132,11 @@ export function setupActionHandlers({
      ⚙️ Action Handlers
   ============================================================ */
 
-  // 🔍 View Patient
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Patient Info", html);
   }
 
-  // ✏️ Edit Patient
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("patientEditId", entry.id);
@@ -147,12 +144,14 @@ export function setupActionHandlers({
     window.location.href = "add-patient.html";
   }
 
-  // 🔄 Toggle Registration Status
   async function handleToggleStatus(id, entry) {
-    const isActive =
-      (entry.registration_status || "").toLowerCase() === "active";
+    const currentStatus = String(entry?.registration_status || "").toUpperCase();
+    const isActive = currentStatus === "ACTIVE";
+
     const confirmed = await showConfirm(
-      isActive ? "Deactivate this patient?" : "Activate this patient?"
+      isActive
+        ? "Deactivate this patient?"
+        : "Activate this patient?"
     );
     if (!confirmed) return;
 
@@ -163,25 +162,22 @@ export function setupActionHandlers({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to toggle patient status");
+        throw new Error(
+          data.message || "❌ Failed to toggle patient status"
+        );
 
-      const newStatus =
-        (data?.data?.registration_status ||
-          (isActive ? "inactive" : "active")).toLowerCase();
+      const newStatus = String(
+        data?.data?.registration_status || ""
+      ).toUpperCase();
 
       const patName =
         entry?.full_name ||
         `${entry?.first_name || ""} ${entry?.last_name || ""}`.trim() ||
-        data?.data?.full_name ||
         "Patient";
 
-      if (newStatus === "active") {
-        showToast(`✅ Patient "${patName}" has been activated`);
-      } else if (newStatus === "inactive") {
-        showToast(`✅ Patient "${patName}" has been deactivated`);
-      } else {
-        showToast(`✅ Patient "${patName}" status updated to ${newStatus}`);
-      }
+      showToast(
+        `✅ Patient "${patName}" status changed to ${newStatus || "UPDATED"}`
+      );
 
       window.latestPatientEntries = [];
       await loadEntries(currentPage);
@@ -193,14 +189,15 @@ export function setupActionHandlers({
     }
   }
 
-  // 🗑️ Delete Patient
   async function handleDelete(id, entry) {
     const confirmed = await showConfirm("Delete this patient?");
     if (!confirmed) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/patients/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/patients/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete patient");
@@ -208,11 +205,9 @@ export function setupActionHandlers({
       const patName =
         entry?.full_name ||
         `${entry?.first_name || ""} ${entry?.last_name || ""}`.trim() ||
-        data?.data?.full_name ||
         "Patient";
 
       showToast(`✅ Patient "${patName}" deleted successfully`);
-
       window.latestPatientEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -224,7 +219,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🌍 Global Helpers (for inline triggers)
+     🌍 Global Helpers (MASTER + Backward Compatible)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestPatientEntries || entries || []).find(
@@ -236,7 +231,6 @@ export function setupActionHandlers({
       return showToast("⛔ No permission to view patient");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Patient not found for viewing");
   };
 
   window.editPatient = (id) => {
@@ -244,20 +238,24 @@ export function setupActionHandlers({
       return showToast("⛔ No permission to edit patient");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Patient not found for editing");
   };
 
   window.togglePatientStatus = async (id) => {
-    if (!hasPerm("patients:toggle-status"))
-      return showToast("⛔ No permission to toggle status");
+    if (!hasPerm("patients:toggle_status"))
+      return showToast("⛔ No permission to toggle patient status");
     const entry = findEntry(id);
-    await handleToggleStatus(id, entry);
+    if (entry) await handleToggleStatus(id, entry);
   };
 
   window.deletePatient = async (id) => {
     if (!hasPerm("patients:delete"))
       return showToast("⛔ No permission to delete patient");
     const entry = findEntry(id);
-    await handleDelete(id, entry);
+    if (entry) await handleDelete(id, entry);
   };
+
+  // 🔹 Backward compatibility aliases
+  window.viewEntry = window.viewPatient;
+  window.editEntry = window.editPatient;
+  window.deleteEntry = window.deletePatient;
 }

@@ -136,13 +136,14 @@ const PAYMENT_INCLUDES = [
 function buildPaymentSchema(userRole, mode = "create") {
   const base = {
     invoice_id: Joi.string().uuid().required(),
-    patient_id: Joi.string().uuid().required(),
+    patient_id: Joi.forbidden(), // ✅ FIX
     amount: Joi.number().positive().required(),
     method: Joi.string().valid(...PAYMENT_METHODS).required(),
     transaction_ref: Joi.string().allow(null, ""),
-    is_deposit: Joi.boolean().forbidden(), // 🔒 payments ≠ deposits
-    status: Joi.forbidden(),               // lifecycle is service-controlled
+    is_deposit: Joi.boolean().forbidden(),
+    status: Joi.forbidden(),
   };
+
 
   if (mode === "update") {
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
@@ -190,11 +191,12 @@ export const createPayment = async (req, res) => {
     /* ========================================================
        🧭 TENANT RESOLUTION (MASTER)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
+
 
     if (!orgId) {
       await t.rollback();

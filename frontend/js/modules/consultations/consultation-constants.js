@@ -1,13 +1,13 @@
-// 📁 consultation-constants.js – Enterprise-Aligned Master Pattern
+// 📁 consultation-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity)
 // ============================================================================
-// 🔹 Pattern Source: department-constants.js / role-fields.js (Enterprise Master)
-// 🔹 Structural Consistency: Field labels, order, role-based visibility
-// 🔹 100% ID retention (safe for linked HTML + JS modules)
-// 🔹 Includes standardized metadata + hierarchical visibility map
+// 🔹 Pattern Source: deposit-constants.js (Enterprise MASTER)
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
 // ============================================================================
 
 /* ============================================================
-   🏷️ Field Labels
+   🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_CONSULTATION = {
   organization: "Organization",
@@ -35,7 +35,7 @@ export const FIELD_LABELS_CONSULTATION = {
 };
 
 /* ============================================================
-   📋 Field Order (Enterprise-Consistent)
+   📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_CONSULTATION = [
   "organization",
@@ -63,11 +63,11 @@ export const FIELD_ORDER_CONSULTATION = [
 ];
 
 /* ============================================================
-   👥 Role-Based Field Visibility Defaults (Enterprise-Aligned)
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
-// 🧩 Superadmin/Admin: Full metadata visibility
-// 🧩 Manager/Facility Head: Scoped operational visibility
-// 🧩 Staff: Essential operational fields only
+// 🧩 Superadmin/Admin: full clinical + audit visibility
+// 🧩 Manager/Facility Head: scoped operational visibility
+// 🧩 Staff: essential operational fields only
 export const FIELD_DEFAULTS_CONSULTATION = {
   superadmin: [
     "organization",
@@ -172,7 +172,39 @@ export const FIELD_DEFAULTS_CONSULTATION = {
 };
 
 /* ============================================================
-   ⚙️ Module Metadata (For dynamic routing / UI context)
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
+============================================================ */
+export const FIELD_GROUPS_CONSULTATION = {
+  org_scope: ["organization", "facility"],
+  patient_info: ["patient", "appointment", "registrationLog", "parentConsultation"],
+  clinical: [
+    "doctor",
+    "department",
+    "consultationType",
+    "consultation_date",
+    "diagnosis",
+    "consultation_notes",
+    "prescribed_medications",
+  ],
+  billing: ["invoice"],
+  meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
+  system: ["deletedBy", "deleted_at", "actions"],
+};
+
+/* ============================================================
+   ⚙️ MODULE METADATA (Enterprise UI Context)
 ============================================================ */
 export const MODULE_KEY_CONSULTATION = "consultation";
 export const MODULE_LABEL_CONSULTATION = "Consultation";
+
+/* ============================================================
+   📦 EXPORT (Unified)
+============================================================ */
+export default {
+  FIELD_LABELS_CONSULTATION,
+  FIELD_ORDER_CONSULTATION,
+  FIELD_DEFAULTS_CONSULTATION,
+  FIELD_GROUPS_CONSULTATION,
+  MODULE_KEY_CONSULTATION,
+  MODULE_LABEL_CONSULTATION,
+};

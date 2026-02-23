@@ -1,4 +1,5 @@
 // 📁 backend/src/services/auditService.js
+
 import { SystemAuditLog } from "../models/index.js";
 import { logger } from "../utils/logger.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
@@ -19,7 +20,8 @@ export const auditService = {
    * Log a user action to system_audit_logs
    */
   async logAction({
-    module,
+    module,        // preferred
+    module_key,    // backward compatible
     action,
     entityId,
     user,
@@ -31,10 +33,19 @@ export const auditService = {
       if (!user?.id) {
         // 🚨 AUDIT WARNING — ALWAYS LOG
         logger.warn(
-          `[auditService] Missing user context for module=${module}, action=${action}`
+          `[auditService] Missing user context for action=${action}`
         );
         return null;
       }
+
+      // 🔐 Resolve module name safely (NEVER NULL)
+      const resolvedModule =
+        module ||
+        module_key ||
+        details?.module ||
+        details?.module_key ||
+        entity?.constructor?.getTableName?.() ||
+        "system";
 
       const orgId =
         entity?.organization_id ||
@@ -47,7 +58,7 @@ export const auditService = {
         DEFAULT_UUID;
 
       debug.log("AUDIT LOG ACTION → resolved scope", {
-        module,
+        module: resolvedModule,
         action,
         entityId,
         orgId,
@@ -56,8 +67,8 @@ export const auditService = {
 
       const log = await SystemAuditLog.create(
         {
-          table_name: module,
-          record_id: entityId,
+          table_name: resolvedModule,
+          record_id: entityId || null,
           action,
           organization_id: orgId,
           facility_id: facilityId,
@@ -69,7 +80,7 @@ export const auditService = {
 
       // ✅ AUDIT SUCCESS — ALWAYS LOG
       logger.info(
-        `[auditService] Logged action=${action} on module=${module} by user=${user.id}`
+        `[auditService] Logged action=${action} on module=${resolvedModule} by user=${user.id}`
       );
 
       return log;
@@ -113,7 +124,7 @@ export const auditService = {
 
       const log = await SystemAuditLog.create(
         {
-          table_name: module,
+          table_name: module || "system",
           record_id: null,
           action: severity,
           organization_id: orgId,

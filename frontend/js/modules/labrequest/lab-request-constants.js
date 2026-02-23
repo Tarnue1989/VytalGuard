@@ -1,8 +1,14 @@
-// 📁 lab-request-constants.js
-// ============================================================
-// 🧭 Enterprise-Aligned Master Pattern (Central Stock Style)
-// ============================================================
+// 📁 lab-request-constants.js – Enterprise MASTER–ALIGNED (Consultation Parity)
+// ============================================================================
+// 🔹 Pattern Source: consultation-constants.js (Enterprise MASTER)
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
+// ============================================================================
 
+/* ============================================================
+   🏷️ FIELD LABELS (Enterprise Standard)
+============================================================ */
 export const FIELD_LABELS_LAB_REQUEST = {
   // 🏢 Core Relations
   organization: "Organization",
@@ -25,27 +31,26 @@ export const FIELD_LABELS_LAB_REQUEST = {
   billableItem: "Billable Item",
 
   // 🕓 Lifecycle / Audit Trail
-  voided_at: "Voided At",
-  voidedBy: "Voided By",
   cancelled_at: "Cancelled At",
   cancelledBy: "Cancelled By",
+  voided_at: "Voided At",
+  voidedBy: "Voided By",
 
   // 🧠 System Audit
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
   // ⚙️ System Actions
   actions: "Actions",
 };
 
-// ============================================================
-// 🧱 Field Order (Dynamic Table + Export Alignment)
-// ============================================================
-
+/* ============================================================
+   📋 FIELD ORDER (Enterprise-Consistent)
+============================================================ */
 export const FIELD_ORDER_LAB_REQUEST = [
   // 🏢 Core Relations
   "organization",
@@ -85,15 +90,15 @@ export const FIELD_ORDER_LAB_REQUEST = [
   "actions",
 ];
 
-// ============================================================
-// 🔐 Role-Based Field Defaults (Permission-Driven Visibility)
-// ============================================================
-
+/* ============================================================
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
+============================================================ */
+// 🧩 Superadmin/Admin: full operational + audit visibility
+// 🧩 Manager/Facility Head: scoped operational visibility
+// 🧩 Staff: essential operational fields only
 export const FIELD_DEFAULTS_LAB_REQUEST = {
-  // 👑 SuperAdmin — full field access
   superadmin: FIELD_ORDER_LAB_REQUEST,
 
-  // 🧭 Admin — full operational + audit visibility
   admin: [
     "organization",
     "facility",
@@ -120,7 +125,26 @@ export const FIELD_DEFAULTS_LAB_REQUEST = {
     "actions",
   ],
 
-  // 🏥 Manager — facility-scoped operational visibility
+  facility_head: [
+    "facility",
+    "patient",
+    "doctor",
+    "department",
+    "consultation",
+    "items",
+    "request_date",
+    "notes",
+    "is_emergency",
+    "status",
+    "cancelled_at",
+    "cancelledBy",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "actions",
+  ],
+
   manager: [
     "facility",
     "patient",
@@ -141,7 +165,6 @@ export const FIELD_DEFAULTS_LAB_REQUEST = {
     "actions",
   ],
 
-  // 👨‍⚕️ Staff — simplified request visibility
   staff: [
     "facility",
     "patient",
@@ -153,4 +176,42 @@ export const FIELD_DEFAULTS_LAB_REQUEST = {
     "status",
     "actions",
   ],
+};
+
+/* ============================================================
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
+============================================================ */
+export const FIELD_GROUPS_LAB_REQUEST = {
+  org_scope: ["organization", "facility"],
+  patient_info: ["patient", "consultation", "registrationLog"],
+  clinical: [
+    "doctor",
+    "department",
+    "items",
+    "request_date",
+    "notes",
+    "is_emergency",
+  ],
+  billing: ["invoice", "billableItem"],
+  lifecycle: ["cancelled_at", "cancelledBy", "voided_at", "voidedBy"],
+  meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
+  system: ["deletedBy", "deleted_at", "actions"],
+};
+
+/* ============================================================
+   ⚙️ MODULE METADATA (Enterprise UI Context)
+============================================================ */
+export const MODULE_KEY_LAB_REQUEST = "lab-request";
+export const MODULE_LABEL_LAB_REQUEST = "Lab Request";
+
+/* ============================================================
+   📦 EXPORT (Unified)
+============================================================ */
+export default {
+  FIELD_LABELS_LAB_REQUEST,
+  FIELD_ORDER_LAB_REQUEST,
+  FIELD_DEFAULTS_LAB_REQUEST,
+  FIELD_GROUPS_LAB_REQUEST,
+  MODULE_KEY_LAB_REQUEST,
+  MODULE_LABEL_LAB_REQUEST,
 };

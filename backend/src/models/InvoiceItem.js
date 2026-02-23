@@ -5,27 +5,66 @@ export default (sequelize) => {
   class InvoiceItem extends Model {
     static associate(models) {
       // 🔹 Parent Invoice
-      InvoiceItem.belongsTo(models.Invoice, { as: "invoice", foreignKey: "invoice_id" });
+      InvoiceItem.belongsTo(models.Invoice, {
+        as: "invoice",
+        foreignKey: "invoice_id",
+      });
 
       // 🔹 Billable Item
-      InvoiceItem.belongsTo(models.BillableItem, { as: "billableItem", foreignKey: "billable_item_id" });
+      InvoiceItem.belongsTo(models.BillableItem, {
+        as: "billableItem",
+        foreignKey: "billable_item_id",
+      });
 
-      // 🔹 Applied Discount/Tax
-      InvoiceItem.belongsTo(models.Discount, { as: "discount", foreignKey: "discount_id" });
-      InvoiceItem.belongsTo(models.Tax, { as: "tax", foreignKey: "tax_id" });
+      // 🔹 Feature Module (FK-driven, REQUIRED)
+      InvoiceItem.belongsTo(models.FeatureModule, {
+        as: "featureModule",
+        foreignKey: "feature_module_id",
+      });
+
+      // 🔹 Applied Discount / Tax
+      InvoiceItem.belongsTo(models.Discount, {
+        as: "discount",
+        foreignKey: "discount_id",
+      });
+      InvoiceItem.belongsTo(models.Tax, {
+        as: "tax",
+        foreignKey: "tax_id",
+      });
 
       // 🔹 Policies (audit / applied rules)
-      InvoiceItem.belongsTo(models.DiscountPolicy, { as: "discountPolicy", foreignKey: "discount_policy_id" });
-      InvoiceItem.belongsTo(models.TaxPolicy, { as: "taxPolicy", foreignKey: "tax_policy_id" });
+      InvoiceItem.belongsTo(models.DiscountPolicy, {
+        as: "discountPolicy",
+        foreignKey: "discount_policy_id",
+      });
+      InvoiceItem.belongsTo(models.TaxPolicy, {
+        as: "taxPolicy",
+        foreignKey: "tax_policy_id",
+      });
 
       // 🔹 Org / Facility scope
-      InvoiceItem.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
-      InvoiceItem.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
+      InvoiceItem.belongsTo(models.Organization, {
+        as: "organization",
+        foreignKey: "organization_id",
+      });
+      InvoiceItem.belongsTo(models.Facility, {
+        as: "facility",
+        foreignKey: "facility_id",
+      });
 
       // 🔹 Audit
-      InvoiceItem.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
-      InvoiceItem.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
-      InvoiceItem.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
+      InvoiceItem.belongsTo(models.User, {
+        as: "createdBy",
+        foreignKey: "created_by_id",
+      });
+      InvoiceItem.belongsTo(models.User, {
+        as: "updatedBy",
+        foreignKey: "updated_by_id",
+      });
+      InvoiceItem.belongsTo(models.User, {
+        as: "deletedBy",
+        foreignKey: "deleted_by_id",
+      });
 
       // 🔁 Reverse link: LabRequestItem → InvoiceItem
       InvoiceItem.hasMany(models.LabRequestItem, {
@@ -47,11 +86,14 @@ export default (sequelize) => {
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       billable_item_id: { type: DataTypes.UUID, allowNull: false },
 
+      // 🔗 Feature module (REQUIRED — replaces legacy module string)
+      feature_module_id: { type: DataTypes.UUID, allowNull: false },
+
       // 🔗 Tenant scope
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
-      // 🔗 Applied Discount/Tax
+      // 🔗 Applied Discount / Tax
       discount_id: { type: DataTypes.UUID, allowNull: true },
       tax_id: { type: DataTypes.UUID, allowNull: true },
 
@@ -71,9 +113,9 @@ export default (sequelize) => {
       net_amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
       note: { type: DataTypes.TEXT },
 
-      // 🔑 Tracking (for auto-billing + rollback)
-      module: { type: DataTypes.STRING, allowNull: true }, // e.g. "registration_log"
+      // 🔑 Entity tracking (auto-billing / rollback)
       entity_id: { type: DataTypes.UUID, allowNull: true },
+
       status: {
         type: DataTypes.ENUM("applied", "voided"),
         allowNull: false,
@@ -85,7 +127,7 @@ export default (sequelize) => {
       updated_by_id: { type: DataTypes.UUID, allowNull: true },
       deleted_by_id: { type: DataTypes.UUID, allowNull: true },
 
-      // 🔹 Virtual subtotal (raw line value before discount/tax)
+      // 🔹 Virtual subtotal
       subtotal: {
         type: DataTypes.VIRTUAL,
         get() {
@@ -95,7 +137,7 @@ export default (sequelize) => {
         },
       },
 
-      // 🔹 Virtual total (final after discount & tax)
+      // 🔹 Virtual total
       total: {
         type: DataTypes.VIRTUAL,
         get() {
@@ -130,12 +172,12 @@ export default (sequelize) => {
         { fields: ["facility_id"] },
         { fields: ["invoice_id"] },
         { fields: ["billable_item_id"] },
+        { fields: ["feature_module_id"] },
         { fields: ["discount_id"] },
         { fields: ["tax_id"] },
         { fields: ["discount_policy_id"] },
         { fields: ["tax_policy_id"] },
         { fields: ["created_by_id"] },
-        { fields: ["module"] },
         { fields: ["entity_id"] },
         { fields: ["status"] },
       ],
@@ -154,8 +196,8 @@ export default (sequelize) => {
     });
     if (!invoice) throw new Error("Invalid invoice_id for invoice item");
 
-    item.organization_id = item.organization_id || invoice.organization_id;
-    item.facility_id = item.facility_id || invoice.facility_id;
+    item.organization_id ||= invoice.organization_id;
+    item.facility_id ||= invoice.facility_id;
 
     if (options.user) {
       item.created_by_id = options.user.id;
@@ -181,7 +223,9 @@ export default (sequelize) => {
     const invoice = await Invoice.findByPk(item.invoice_id, {
       transaction: options?.transaction,
     });
-    if (invoice?.is_locked) throw new Error("Cannot modify items of a locked invoice");
+    if (invoice?.is_locked) {
+      throw new Error("Cannot modify items of a locked invoice");
+    }
 
     if (options.user) {
       item.updated_by_id = options.user.id;

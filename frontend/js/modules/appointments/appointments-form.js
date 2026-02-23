@@ -1,11 +1,11 @@
-// 📁 appointment-form.js – Add/Edit Appointment (ENTERPRISE MASTER-ALIGNED)
+// 📁 appointment-form.js – Secure & Role-Aware Appointment Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🧭 Mirrors feature-access-form.js lifecycle + discipline
-// 🔹 Rule-driven validation (no silent coercion)
-// 🔹 Live validation + red fields
-// 🔹 Superadmin-aware org/facility handling
-// 🔹 Safe add/edit flow with payload parity
-// 🔹 Controller-faithful submission
+// 🔹 FULL parity with consultation-form.js MASTER
+// 🔹 Rule-driven validation (APPOINTMENT_FORM_RULES)
+// 🔹 Role-aware org/fac handling (SUPER / ORG ADMIN / FACILITY)
+// 🔹 Clean payload normalization (UUID | null | datetime)
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
+// 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
 // ============================================================================
 
 import {
@@ -17,6 +17,12 @@ import {
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
 
 import {
@@ -27,19 +33,15 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-import {
-  enableLiveValidation,
-  clearFormErrors,
-  applyServerErrors,
-} from "../../utils/form-ux.js";
-
+import { resolveUserRole } from "../../utils/roleResolver.js";
 import { APPOINTMENT_FORM_RULES } from "./appointment.form.rules.js";
 
 /* ============================================================
-   🧩 Helpers (MASTER parity)
+   🧩 Helpers (MASTER)
 ============================================================ */
-const qp = k => new URLSearchParams(location.search).get(k);
-const uuid = v => (v && v.toString().trim() !== "" ? v : null);
+function getQueryParam(key) {
+  return new URLSearchParams(window.location.search).get(key);
+}
 
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
@@ -52,71 +54,99 @@ function normalizeMessage(result, fallback) {
   }
 }
 
+function normalizeUUID(val) {
+  return typeof val === "string" && val.trim() !== "" ? val : null;
+}
+
+function normalizeDateTime(val) {
+  if (!val) return null;
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function buildPersonName(obj) {
+  if (!obj) return "";
+  return [obj.first_name, obj.middle_name, obj.last_name]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
 export async function setupAppointmentFormSubmission({ form }) {
-  const id =
-    sessionStorage.getItem("appointmentEditId") || qp("id");
-  const isEdit = Boolean(id);
-
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
-
   enableLiveValidation(form);
 
-  /* ================= UI ================= */
-  const titleEl = document.querySelector(".card-title");
-  const submitBtn = form.querySelector("button[type=submit]");
-
-  const setTitle = (text, icon) => {
-    if (titleEl) titleEl.textContent = text;
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="${icon} me-1"></i>${text}`;
-  };
-
-  setTitle(
-    isEdit ? "Edit Appointment" : "Add Appointment",
-    "ri-save-3-line"
-  );
-
-  /* ================= DOM ================= */
-  const orgSel = document.getElementById("organizationSelect");
-  const facSel = document.getElementById("facilitySelect");
-  const deptSel = document.getElementById("departmentSelect");
-
-  const patientIn = document.getElementById("patientInput");
-  const patientId = document.getElementById("patientId");
-  const patientSug = document.getElementById("patientSuggestions");
-
-  const doctorIn = document.getElementById("doctorInput");
-  const doctorId = document.getElementById("doctorId");
-  const doctorSug = document.getElementById("doctorSuggestions");
-
-  const dateEl = document.getElementById("dateTime");
-  const notesEl = document.getElementById("notes");
-
-  const role = (localStorage.getItem("userRole") || "").toLowerCase();
+  const apptId =
+    sessionStorage.getItem("appointmentEditId") || getQueryParam("id");
+  const isEdit = Boolean(apptId);
 
   /* ============================================================
-     🔽 Dropdowns & Suggestions
+     🎨 UI Mode
+  ============================================================ */
+  const titleEl = document.querySelector(".card-title");
+  const submitBtn = form.querySelector("button[type=submit]");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const clearBtn = document.getElementById("clearBtn");
+
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Appointment" : "Add Appointment";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Appointment`
+          : `<i class="ri-add-line me-1"></i> Add Appointment`;
+  };
+
+  setUI(isEdit ? "edit" : "add");
+
+  /* ============================================================
+     📋 DOM Refs
+  ============================================================ */
+  const orgSelect = document.getElementById("organizationSelect");
+  const facSelect = document.getElementById("facilitySelect");
+  const deptSelect = document.getElementById("departmentSelect");
+
+  const patientInput = document.getElementById("patientInput");
+  const patientHidden = document.getElementById("patientId");
+  const patientSuggestions = document.getElementById("patientSuggestions");
+
+  const doctorInput = document.getElementById("doctorInput");
+  const doctorHidden = document.getElementById("doctorId");
+  const doctorSuggestions = document.getElementById("doctorSuggestions");
+  const doctorFieldGroup = doctorInput?.closest(".form-group");
+
+  const dateInput = document.getElementById("dateTime");
+  const notesInput = document.getElementById("notes");
+
+  /* ============================================================
+     👥 Role
+  ============================================================ */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+
+  /* ============================================================
+    🌐 Dropdowns & Suggestions (MASTER – VERIFIED)
   ============================================================ */
   try {
-    const hide = el =>
-      el?.closest(".form-group")?.classList.add("hidden");
-
-    if (role.includes("super")) {
+    /* ================= ORGANIZATION / FACILITY ================= */
+    if (isSuper) {
       setupSelectOptions(
-        orgSel,
+        orgSelect,
         await loadOrganizationsLite(),
         "id",
         "name",
         "-- Select Organization --"
       );
 
-      const loadFacilities = async (orgId = null) =>
+      const reloadFacilities = async (orgId = null) => {
         setupSelectOptions(
-          facSel,
+          facSelect,
           await loadFacilitiesLite(
             orgId ? { organization_id: orgId } : {},
             true
@@ -125,127 +155,141 @@ export async function setupAppointmentFormSubmission({ form }) {
           "name",
           "-- Select Facility --"
         );
+      };
 
-      await loadFacilities();
-      orgSel?.addEventListener("change", () =>
-        loadFacilities(orgSel.value || null)
-      );
-    } else if (role.includes("admin")) {
-      hide(orgSel);
-      setupSelectOptions(
-        facSel,
-        await loadFacilitiesLite({}, true),
-        "id",
-        "name",
-        "-- Select Facility --"
+      await reloadFacilities();
+
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
       );
     } else {
-      hide(orgSel);
-      hide(facSel);
+      // 🔒 Non-super users: org/fac fixed by backend scope
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
+      facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
+    /* ================= DEPARTMENT ================= */
     setupSelectOptions(
-      deptSel,
+      deptSelect,
       await loadDepartmentsLite({}, true),
       "id",
       "name",
       "-- Select Department --"
     );
 
+    /* ================= PATIENT SUGGESTION ================= */
     setupSuggestionInputDynamic(
-      patientIn,
-      patientSug,
+      patientInput,
+      patientSuggestions,
       "/api/lite/patients",
-      s => {
-        patientId.value = s?.id || "";
-        patientIn.value = s?.label || "";
+      (selected) => {
+        patientHidden.value = selected?.id || "";
+        patientInput.value =
+          selected?.label ||
+          `${selected?.pat_no || ""} ${buildPersonName(selected)}`.trim();
       },
       "label"
     );
 
+    // Clear patient ID if user edits text
+    patientInput.addEventListener("input", () => {
+      patientHidden.value = "";
+    });
+
+    /* ================= DOCTOR SUGGESTION (ALL ROLES) ================= */
+    // ✅ Doctor search MUST be enabled for all roles
+    doctorFieldGroup?.classList.remove("hidden");
+
     setupSuggestionInputDynamic(
-      doctorIn,
-      doctorSug,
+      doctorInput,
+      doctorSuggestions,
       "/api/lite/employees",
-      s => {
-        doctorId.value = s?.id || "";
-        doctorIn.value =
-          s?.full_name ||
-          `${s?.first_name || ""} ${s?.last_name || ""}`.trim();
+      (selected) => {
+        doctorHidden.value = selected?.id || "";
+        doctorInput.value =
+          selected?.full_name || buildPersonName(selected);
       },
       "full_name"
     );
+
+    // Clear doctor ID if user edits text
+    doctorInput.addEventListener("input", () => {
+      doctorHidden.value = "";
+    });
+
   } catch (err) {
     console.error(err);
-    showToast("❌ Failed to load form data");
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     ✏️ Prefill (EDIT MODE)
+    ✏️ PREFILL (EDIT MODE) — MASTER FIXED
   ============================================================ */
-  if (isEdit) {
+  if (isEdit && apptId) {
     try {
       showLoading();
 
-      let entry = JSON.parse(
-        sessionStorage.getItem("appointmentEditPayload") || "null"
-      );
+      let entry = null;
+      const cached = sessionStorage.getItem("appointmentEditPayload");
+      if (cached) entry = JSON.parse(cached);
 
       if (!entry) {
-        const res = await authFetch(`/api/appointments/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await res.json();
-        if (!res.ok)
+        const res = await authFetch(`/api/appointments/${apptId}`);
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
           throw new Error(
-            normalizeMessage(json, "Failed to load appointment")
+            normalizeMessage(result, "Failed to load appointment")
           );
-        entry = json?.data;
+        }
+        entry = result?.data;
       }
 
-      patientId.value = entry.patient_id || "";
-      doctorId.value = entry.doctor_id || "";
-      dateEl.value = entry.date_time?.split("Z")[0] || "";
-      notesEl.value = entry.notes || "";
+      if (!entry) return;
 
-      if (entry.patient)
-        patientIn.value =
-          `${entry.patient.pat_no || ""} ${entry.patient.full_name || ""}`.trim();
+      /* ---------------- Patient ---------------- */
+      patientHidden.value = entry.patient_id || "";
+      patientInput.value = entry.patient
+        ? `${entry.patient.pat_no || ""} ${buildPersonName(entry.patient)}`.trim()
+        : "";
 
-      if (entry.doctor)
-        doctorIn.value =
-          entry.doctor.full_name ||
-          `${entry.doctor.first_name || ""} ${entry.doctor.last_name || ""}`.trim();
-
-      if (entry.organization_id && orgSel) {
-        orgSel.value = entry.organization_id;
-
-        await setupSelectOptions(
-          facSel,
-          await loadFacilitiesLite(
-            { organization_id: entry.organization_id },
-            true
-          ),
-          "id",
-          "name",
-          "-- Select Facility --"
-        );
+      /* ---------------- Doctor (REQUIRED FOR ALL ROLES) ---------------- */
+      if (entry.doctor) {
+        doctorHidden.value = entry.doctor.id || "";
+        doctorInput.value = buildPersonName(entry.doctor);
+      } else {
+        doctorHidden.value = "";
+        doctorInput.value = "";
       }
 
-      facSel && (facSel.value = entry.facility_id || "");
-      deptSel && (deptSel.value = entry.department_id || "");
+      /* ---------------- Org / Facility (SUPER ONLY) ---------------- */
+      if (isSuper) {
+        if (orgSelect && entry.organization_id) {
+          orgSelect.value = entry.organization_id;
+        }
+        if (facSelect && entry.facility_id) {
+          facSelect.value = entry.facility_id;
+        }
+      }
+
+      /* ---------------- Other Fields ---------------- */
+      deptSelect.value = entry.department_id || "";
+      dateInput.value = entry.date_time
+        ? entry.date_time.replace("Z", "")
+        : "";
+      notesInput.value = entry.notes || "";
+
+      setUI("edit");
     } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Failed to load appointment");
+      showToast(err.message || "❌ Could not load appointment");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     📤 Submit (RULE-DRIVEN)
+     🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
-  form.onsubmit = async e => {
+  form.onsubmit = async (e) => {
     e.preventDefault();
     clearFormErrors(form);
 
@@ -258,7 +302,10 @@ export async function setupAppointmentFormSubmission({ form }) {
         document.getElementById(rule.id) ||
         form.querySelector(`[name="${rule.id}"]`);
 
-      if (!el || el.value === null || el.value.toString().trim() === "") {
+      if (!el) continue;
+      if (el.closest(".hidden")) continue;
+
+      if (!el.value || el.value.toString().trim() === "") {
         errors.push({ field: rule.id, message: rule.message });
       }
     }
@@ -270,68 +317,75 @@ export async function setupAppointmentFormSubmission({ form }) {
     }
 
     const payload = {
-      organization_id: uuid(
-        orgSel?.value || localStorage.getItem("organizationId")
-      ),
-      facility_id: uuid(
-        facSel?.value || localStorage.getItem("facilityId")
-      ),
-      patient_id: uuid(patientId.value),
-      doctor_id: uuid(doctorId.value),
-      department_id: uuid(deptSel?.value),
-      date_time: dateEl.value || null,
-      notes: notesEl.value || null,
+      patient_id: normalizeUUID(patientHidden.value),
+
+      // ✅ REQUIRED FOR ALL ROLES
+      doctor_id: normalizeUUID(doctorHidden.value),
+
+      department_id: normalizeUUID(deptSelect.value),
+      date_time: normalizeDateTime(dateInput.value),
+      notes: notesInput.value || null,
     };
+
+    // 🔒 SUPERADMIN-ONLY SCOPE OVERRIDES
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
 
     try {
       showLoading();
 
-      const res = await authFetch(
-        isEdit ? `/api/appointments/${id}` : `/api/appointments`,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        }
-      );
+      const url = isEdit
+        ? `/api/appointments/${apptId}`
+        : `/api/appointments`;
+      const method = isEdit ? "PUT" : "POST";
 
-      const json = await res.json();
-      if (!res.ok)
+      const res = await authFetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
         throw new Error(
-          normalizeMessage(json, "Appointment submission failed")
+          normalizeMessage(result, `❌ Server error (${res.status})`)
         );
+      }
 
       showToast(
-        isEdit
-          ? "✅ Appointment updated successfully"
-          : "✅ Appointment created successfully"
+        isEdit ? "✅ Appointment updated" : "✅ Appointment created"
       );
 
-      sessionStorage.clear();
-      window.location.href = "/appointments-list.html";
+      sessionStorage.removeItem("appointmentEditId");
+      sessionStorage.removeItem("appointmentEditPayload");
+
+      if (isEdit) {
+        window.location.href = "/appointments-list.html";
+      } else {
+        clearFormErrors(form);
+        form.reset();
+        setUI("add");
+      }
     } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Submission failed");
+      showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
   };
 
   /* ============================================================
-     🚫 Cancel / Reset
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+  cancelBtn?.addEventListener("click", () => {
     sessionStorage.clear();
     window.location.href = "/appointments-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.clear();
+  clearBtn?.addEventListener("click", () => {
     clearFormErrors(form);
     form.reset();
-    setTitle("Add Appointment", "ri-save-3-line");
+    setUI("add");
   });
 }

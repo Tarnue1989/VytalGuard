@@ -1,25 +1,43 @@
 import { Op } from "sequelize";
 import { BillingTrigger } from "../models/index.js";
 
+/**
+ * shouldTriggerBillingDB
+ * ------------------------------------------------------------
+ * Determines whether billing is allowed for a feature module
+ * based on entity status and tenant overrides.
+ *
+ * 🔒 FK-driven (feature_module_id ONLY)
+ * 🔒 Facility → Org → System precedence
+ */
 export async function shouldTriggerBillingDB({
-  module,
+  feature_module_id,
   status,
   organization_id,
   facility_id,
 }) {
+  if (!feature_module_id) {
+    throw new Error(
+      "shouldTriggerBillingDB requires feature_module_id. String modules are not supported."
+    );
+  }
+
+  if (!status) return false;
+
   const trigger = await BillingTrigger.findOne({
     where: {
-      module_key: module.toLowerCase(),
+      feature_module_id,
       trigger_status: status.toLowerCase(),
       is_active: true,
+
       [Op.or]: [
-        // Facility override
+        // 1️⃣ Facility override
         { organization_id, facility_id },
 
-        // Org override
+        // 2️⃣ Org-level override
         { organization_id, facility_id: null },
 
-        // System default
+        // 3️⃣ System default
         { organization_id: null, facility_id: null },
       ],
     },
@@ -29,5 +47,5 @@ export async function shouldTriggerBillingDB({
     ],
   });
 
-  return !!trigger;
+  return Boolean(trigger);
 }

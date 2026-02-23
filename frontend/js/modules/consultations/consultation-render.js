@@ -1,26 +1,30 @@
 // 📁 consultation-render.js – Entity Card System (CONSULTATION | ENTERPRISE FINAL)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH department-render.js
+// 🧭 FULL MASTER PARITY WITH deposit-render.js
 // 🔹 Table = flat | Card = RICH + structured
-// 🔹 Card includes diagnosis, notes, prescriptions, department, registration
 // 🔹 Field-selector safe
 // 🔹 Backend sorting bridge
 // 🔹 Column resize + drag enabled
-// 🔹 Full audit section
+// 🔹 Full audit section (created / updated / deleted)
 // 🔹 Permission-driven actions
-// 🔹 Export-safe
+// 🔹 Export-safe (no object leaks)
 // ============================================================================
 
 import { FIELD_LABELS_CONSULTATION } from "./consultation-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import {
+  formatDate,        // DATE ONLY (consultation_date)
+  formatDateTime,    // DATE + TIME (registration + audit)
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🔃 SORTABLE FIELDS
+   🔃 SORTABLE FIELDS (MASTER PARITY)
 ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "organization_id",
@@ -43,19 +47,22 @@ function toggleSort(field) {
     sortBy = field;
     sortDir = "asc";
   }
+
   localStorage.setItem("consultationSortBy", sortBy);
   localStorage.setItem("consultationSortDir", sortDir);
+
   window.setConsultationSort?.(sortBy, sortDir);
   window.loadConsultationPage?.(1);
 }
 
 /* ============================================================
-   🎛️ ACTIONS
+   🎛️ ACTIONS (MASTER)
 ============================================================ */
 function getConsultationActionButtons(entry, user) {
   return buildActionButtons({
     module: "consultation",
     status: (entry.status || "").toLowerCase(),
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "consultations",
@@ -89,8 +96,11 @@ export function renderDynamicTableHead(visibleFields) {
 
     if (SORTABLE_FIELDS.has(field)) {
       let icon = "ri-arrow-up-down-line";
-      if (sortBy === field)
-        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc"
+          ? "ri-arrow-up-line"
+          : "ri-arrow-down-line";
+      }
 
       th.classList.add("sortable");
       th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
@@ -130,12 +140,16 @@ const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
 function renderUserName(u) {
   if (!u) return "—";
-  return [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ");
+  return (
+    [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ") ||
+    u.full_name ||
+    "—"
+  );
 }
 
-function renderPatient(e) {
-  if (!e.patient) return "—";
-  const p = e.patient;
+function renderPatient(entry) {
+  if (!entry.patient) return "—";
+  const p = entry.patient;
   return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
     .filter(Boolean)
     .join(" ")}`;
@@ -144,13 +158,16 @@ function renderPatient(e) {
 function renderRegistration(entry) {
   const r = entry.registrationLog;
   if (!r) return "—";
+
   return `${(r.log_status || "").toUpperCase()} · ${
-    r.registration_time ? formatDate(r.registration_time) : "—"
+    r.registration_time
+      ? formatDateTime(r.registration_time)
+      : "—"
   }`;
 }
 
 /* ============================================================
-   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
+   🧩 TABLE VALUE RENDERER (OBJECT SAFE)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -173,7 +190,6 @@ function renderValue(entry, field) {
       return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
-    /* ===== ASSOCIATIONS ===== */
     case "organization":
     case "organization_id":
       return entry.organization?.name || "—";
@@ -199,27 +215,27 @@ function renderValue(entry, field) {
       return entry.consultationType?.name || "—";
 
     case "registrationLog":
-    case "registration_log_id":
       return renderRegistration(entry);
 
-    case "appointment":
-      return entry.appointment
-        ? formatDate(entry.appointment.appointment_date)
-        : "—";
+    case "createdBy":
+      return renderUserName(entry.createdBy);
+    case "updatedBy":
+      return renderUserName(entry.updatedBy);
+    case "deletedBy":
+      return renderUserName(entry.deletedBy);
 
-    case "parentConsultation":
-    case "parent_consultation_id":
-      return entry.parentConsultation
-        ? formatDate(entry.parentConsultation.consultation_date)
-        : "—";
-
-    /* ===== DATES ===== */
     case "consultation_date":
+      return entry.consultation_date
+        ? formatDate(entry.consultation_date)
+        : "—";
+
     case "created_at":
     case "updated_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+    case "deleted_at":
+      return entry[field]
+        ? formatDateTime(entry[field])
+        : "—";
 
-    /* ===== FALLBACK (NEVER LEAK OBJECTS) ===== */
     default: {
       const v = entry[field];
       if (v === null || v === undefined || v === "") return "—";
@@ -230,19 +246,30 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH
+   🗂️ CARD RENDERER — RICH (MASTER)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
-
-  const row = (label, value) => `
-    <div class="entity-field">
-      <span class="entity-label">${label}</span>
-      <span class="entity-value">${safe(value)}</span>
-    </div>
-  `;
-
   const status = (entry.status || "").toLowerCase();
+
+  const row = (label, value) =>
+    value === undefined || value === null || value === ""
+      ? ""
+      : `
+        <div class="entity-field">
+          <span class="entity-label">${label}</span>
+          <span class="entity-value">${safe(value)}</span>
+        </div>
+      `;
+
+  const lifecycleHint =
+    status === "verified"
+      ? "Completed → Verified"
+      : status === "completed"
+      ? "In Progress → Completed"
+      : status === "voided"
+      ? "Voided"
+      : "";
 
   return `
     <div class="entity-card consultation-card">
@@ -251,7 +278,11 @@ export function renderCard(entry, visibleFields, user) {
           <div class="entity-secondary">${renderPatient(entry)}</div>
           <div class="entity-primary">${safe(entry.consultationType?.name)}</div>
         </div>
-        ${has("status") ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>` : ""}
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            : ""
+        }
       </div>
 
       <div class="entity-card-context">
@@ -265,18 +296,25 @@ export function renderCard(entry, visibleFields, user) {
         ${row("Consultation Date", formatDate(entry.consultation_date))}
         ${row("Registration", renderRegistration(entry))}
         ${row("Diagnosis", entry.diagnosis)}
-        ${row("Consultation Notes", entry.consultation_notes)}
-        ${row("Prescribed Medications", entry.prescribed_medications)}
+        ${row("Notes", entry.consultation_notes)}
+        ${row("Prescriptions", entry.prescribed_medications)}
         ${row("Status", status.toUpperCase())}
+        ${
+          lifecycleHint
+            ? row("Lifecycle", `<span class="text-muted">${lifecycleHint}</span>`)
+            : ""
+        }
       </div>
 
       <details class="entity-notes">
         <summary>Audit</summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Created At", formatDateTime(entry.created_at))}
           ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDate(entry.updated_at))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${row("Deleted By", renderUserName(entry.deletedBy))}
+          ${row("Deleted At", formatDateTime(entry.deleted_at))}
         </div>
       </details>
 
@@ -309,7 +347,12 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No consultations found.</td></tr>`;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-center text-muted">
+            No consultations found.
+          </td>
+        </tr>`;
       return;
     }
 
@@ -318,7 +361,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getConsultationActionButtons(e, user)}</td>`
+            ? `<td class="actions-cell export-ignore">
+                 ${getConsultationActionButtons(e, user)}
+               </td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -339,7 +384,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT (MASTER)
 ============================================================ */
 let exportHandlersBound = false;
 function setupExportHandlers(entries) {
@@ -347,6 +392,7 @@ function setupExportHandlers(entries) {
   exportHandlersBound = true;
 
   const title = "Consultations Report";
+
   document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
     exportData({ type: "csv", data: entries, title })
   );

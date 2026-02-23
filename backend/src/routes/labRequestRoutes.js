@@ -1,12 +1,29 @@
 // 📁 backend/src/routes/labRequestRoutes.js
+// ============================================================================
+// 🧪 Lab Request Routes — ENTERPRISE MASTER–ALIGNED
+// ----------------------------------------------------------------------------
+// 🔹 Explicit lifecycle routes (NO toggle-status)
+// 🔹 Bulk + single supported via controller logic
+// 🔹 Lite + Full list routes included
+// 🔹 UUID-safe
+// ============================================================================
+
 import { Router } from "express";
+import { verifyAuth } from "../middleware/verifyAuth.js";
+
 import {
+  // 📋 READ
   getAllLabRequests,
   getLabRequestById,
+  getAllLabRequestsLite,
+  getAllLabRequestItemsLite,
+
+  // ✏️ WRITE
   createLabRequests,
   updateLabRequest,
   deleteLabRequests,
-  toggleLabRequestStatus,
+
+  // 🔄 LIFECYCLE
   submitLabRequests,
   activateLabRequests,
   completeLabRequests,
@@ -14,42 +31,65 @@ import {
   voidLabRequests,
   verifyLabRequests,
 } from "../controllers/labRequestController.js";
-import { verifyAuth } from "../middleware/verifyAuth.js";
-
 
 const router = Router();
 
-// 🆔 UUID regex for safe :id routes
+/* ============================================================
+   🆔 UUID v4 REGEX (SAFE ROUTES)
+============================================================ */
 const UUIDv4 =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}";
 
 /* ============================================================
-   📌 LAB REQUEST ROUTES
-   ============================================================ */
+   📋 READ ROUTES
+============================================================ */
 
-// 🔍 List & Single
-router.get("/", verifyAuth,  getAllLabRequests);
-router.get(`/:id(${UUIDv4})`, verifyAuth,  getLabRequestById);
+// 🔍 Full list (filters + pagination)
+router.get("/", verifyAuth, getAllLabRequests);
 
-// ➕ Create / ✏️ Update / 🗑️ Delete
-router.post("/", verifyAuth,  createLabRequests);
-router.put(`/:id(${UUIDv4})`, verifyAuth,  updateLabRequest);
-router.delete(`/:id(${UUIDv4})`, verifyAuth,  deleteLabRequests);
+// 🔎 Single record
+router.get(`/:id(${UUIDv4})`, verifyAuth, getLabRequestById);
 
-// 🔄 Toggle status
-router.patch(`/:id(${UUIDv4})/toggle-status`, verifyAuth,  toggleLabRequestStatus);
+// 🔹 Lite lists
+router.get("/lite/all", verifyAuth, getAllLabRequestsLite);
+router.get("/lite/items", verifyAuth, getAllLabRequestItemsLite);
 
 /* ============================================================
-   📌 LIFECYCLE ROUTES
-   ============================================================ */
-router.patch(`/:id(${UUIDv4})/submit`, verifyAuth,  submitLabRequests);
-router.patch(`/:id(${UUIDv4})/activate`, verifyAuth,  activateLabRequests);
-router.patch(`/:id(${UUIDv4})/complete`, verifyAuth,  completeLabRequests);
-router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth,  cancelLabRequests);
-router.patch(`/:id(${UUIDv4})/void`, verifyAuth,  voidLabRequests);
-router.patch(`/:id(${UUIDv4})/verify`, verifyAuth,  verifyLabRequests);
+   ✏️ WRITE ROUTES
+============================================================ */
+
+// ➕ Create (single or bulk)
+router.post("/", verifyAuth, createLabRequests);
+
+// ✏️ Update
+router.put(`/:id(${UUIDv4})`, verifyAuth, updateLabRequest);
+
+// 🗑️ Delete (soft delete, single or bulk)
+router.delete(`/:id(${UUIDv4})`, verifyAuth, deleteLabRequests);
+
+/* ============================================================
+   🔄 LIFECYCLE ROUTES (EXPLICIT — MASTER)
+============================================================ */
+
+// 📝 Draft → Pending
+router.patch(`/:id(${UUIDv4})/submit`, verifyAuth, submitLabRequests);
+
+// ⏳ Pending → In Progress
+router.patch(`/:id(${UUIDv4})/activate`, verifyAuth, activateLabRequests);
+
+// ✅ In Progress → Completed
+router.patch(`/:id(${UUIDv4})/complete`, verifyAuth, completeLabRequests);
+
+// ❌ Pending / In Progress → Cancelled
+router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth, cancelLabRequests);
+
+// 🚫 Any → Voided (Admin only)
+router.patch(`/:id(${UUIDv4})/void`, verifyAuth, voidLabRequests);
+
+// ✔ Completed → Verified (Admin only)
+router.patch(`/:id(${UUIDv4})/verify`, verifyAuth, verifyLabRequests);
 
 /* ============================================================
    ✅ EXPORT
-   ============================================================ */
+============================================================ */
 export default router;

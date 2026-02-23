@@ -1,6 +1,6 @@
 // 📦 consultation-main.js – Form-only loader for Consultation (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH department-main.js / patient-main.js
+// 🧭 FULL MASTER PARITY WITH deposit-main.js / department-main.js
 // 🔹 Auth guard + logout watcher
 // 🔹 Unified form visibility and reset logic
 // 🔹 Session-safe edit caching

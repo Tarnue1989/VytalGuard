@@ -1,35 +1,35 @@
-// 📦 appointment-main.js – Form-only loader for Appointment (MASTER-ALIGNED)
+// 📦 appointment-main.js – Form-only loader for Appointment (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🧭 Mirrors feature-access-main.js EXACTLY (structure + lifecycle)
+// 🧭 FULL MASTER PARITY WITH consultation-main.js / deposit-main.js
 // 🔹 Auth guard + logout watcher
 // 🔹 Unified form visibility and reset logic
 // 🔹 Session-safe edit caching
-// 🔹 Preserves all existing DOM IDs and appointment form behavior
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
 } from "../../utils/index.js";
-import { setupAppointmentFormSubmission } from "./appointments-form.js";
+
+import { setupAppointmentFormSubmission } from "./appointment-form.js";
+
 import {
   FIELD_LABELS_APPOINTMENT,
   FIELD_ORDER_APPOINTMENT,
   FIELD_DEFAULTS_APPOINTMENT,
 } from "./appointments-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 AUTH GUARD + SESSION
+   🔐 AUTH GUARD + SHARED STATE
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
-
 initLogoutWatcher();
 
-/* ============================================================
-   🧠 SHARED STATE
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -44,7 +44,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 RESET FORM (MASTER-SAFE)
+   🧹 RESET FORM HELPER (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -55,28 +55,39 @@ function resetForm() {
   sessionStorage.removeItem("appointmentEditId");
   sessionStorage.removeItem("appointmentEditPayload");
 
-  // Explicitly clear text + hidden fields
+  // Clear text inputs
   [
-    "notes",
     "patientInput",
     "doctorInput",
-    "patientId",
-    "doctorId",
-    "dateTime",
+    "notes",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Explicitly clear selects
-  ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
+  // Clear hidden IDs
+  ["patientId", "doctorId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+
+  // Clear dropdowns
+  [
+    "organizationSelect",
+    "facilitySelect",
+    "departmentSelect",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Reset date
+  const dateInput = document.getElementById("dateTime");
+  if (dateInput) dateInput.value = "";
 }
 
 /* ============================================================
-   🧭 FORM VISIBILITY
+   🧭 FORM VISIBILITY CONTROL
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -91,7 +102,7 @@ function hideForm() {
   localStorage.setItem("appointmentFormVisible", "false");
 }
 
-// 🔗 Expose globally (parity with Feature Access / Patient)
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -117,53 +128,49 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 LIST LOADER STUB (FORM-ONLY PAGE)
+   📦 LIST LOADER STUB (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // handled by list page
 }
 
 /* ============================================================
    🚀 INIT ENTRYPOINT
 ============================================================ */
 export async function initAppointmentModule() {
-  showForm(); // form-only page opens by default
+  showForm(); // form-only mode (MASTER parity)
 
-  setupAppointmentFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupAppointmentFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("appointmentPanelVisible", "false");
 
-  // 🔐 Normalize role (EXACT same logic as master)
+  // Normalize role for field defaults (EXACT MASTER LOGIC)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
-  if (role.includes("super") && role.includes("admin")) {
-    role = "superadmin";
-  } else if (role.includes("admin")) {
-    role = "admin";
-  } else {
-    role = "staff";
-  }
+  if (role.includes("super") && role.includes("admin")) role = "superadmin";
+  else if (role.includes("admin")) role = "admin";
+  else role = "staff";
 
   setupFieldSelector({
-    module: "appointment",
+    module: "appointments",
     fieldLabels: FIELD_LABELS_APPOINTMENT,
     fieldOrder: FIELD_ORDER_APPOINTMENT,
-    defaultFields:
-      FIELD_DEFAULTS_APPOINTMENT[role] ||
-      FIELD_DEFAULTS_APPOINTMENT.staff,
+    defaultFields: FIELD_DEFAULTS_APPOINTMENT[role],
   });
 }
 
 /* ============================================================
-   (Optional) STATE SYNC STUB
+   🔁 SYNC STUB
 ============================================================ */
 export function syncRefsToState() {
-  // no-op placeholder for consistency
+  // reserved for future reactive syncing
 }

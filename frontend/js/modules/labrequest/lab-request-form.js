@@ -1,8 +1,12 @@
 // 📦 labrequest-form.js
-// ============================================================
-// 🧭 Secure & Role-Aware Lab Request Form (Enterprise-Aligned)
-// Master Pattern: Central Stock + EKG (Pill-based, Multi-item, Secure)
-// ============================================================
+// ============================================================================
+// 🧭 Secure & Role-Aware Lab Request Form (ENTERPRISE MASTER PARITY)
+// 🔹 MASTER parity with consultation-form.js
+// 🔹 Pill-based multi-item handling (PRESERVED)
+// 🔹 Rule-driven validation
+// 🔹 Controller-faithful (NO org/fac submission)
+// 🔹 Clean payload normalization
+// ============================================================================
 
 import {
   showToast,
@@ -12,22 +16,28 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
-import { authFetch } from "../../authSession.js";
+
 import {
-  loadOrganizationsLite,
-  loadFacilitiesLite,
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
+import { authFetch } from "../../authSession.js";
+
+import {
   loadDepartmentsLite,
-  loadBillableItemsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers (MASTER)
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
+
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
@@ -39,6 +49,11 @@ function normalizeMessage(result, fallback) {
     return fallback;
   }
 }
+
+function normalizeUUID(val) {
+  return typeof val === "string" && val.trim() !== "" ? val : null;
+}
+
 function normalizeDate(val) {
   if (!val) return null;
   const d = new Date(val);
@@ -47,20 +62,28 @@ function normalizeDate(val) {
     d.getDate()
   ).padStart(2, "0")}`;
 }
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-function validateLabRequestItem(obj) {
-  if (!obj.lab_test_id) return showToast("❌ Lab Test is required"), false;
-  return true;
+
+function buildPersonName(obj) {
+  if (!obj) return "";
+  return [obj.first_name, obj.middle_name, obj.last_name]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /* ============================================================
-   💊 Pill-Based Item Handling
+   💊 Pill-Based Item Handling (PRESERVED)
 ============================================================ */
 let selectedTests = [];
 let pillsContainer = null;
 let editingIndex = null;
+
+function validateLabRequestItem(obj) {
+  if (!obj.lab_test_id) {
+    showToast("❌ Lab Test is required");
+    return false;
+  }
+  return true;
+}
 
 function renderItemPills() {
   if (!pillsContainer) return;
@@ -68,340 +91,311 @@ function renderItemPills() {
 
   if (!selectedTests.length) {
     pillsContainer.innerHTML = `<p class="text-muted">No lab tests added yet.</p>`;
-  } else {
-    selectedTests.forEach((test, idx) => {
-      const pill = document.createElement("div");
-      pill.className = "pill";
-      pill.innerHTML = `
-        ${test.lab_test_name || "—"}
-        <button type="button" class="btn btn-sm btn-link pill-edit" data-idx="${idx}" title="Edit">
-          <i class="ri-pencil-line"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-link text-danger pill-remove" data-idx="${idx}" title="Remove">
-          <i class="ri-close-line"></i>
-        </button>
-      `;
-      pillsContainer.appendChild(pill);
-    });
-
-    pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = btn.dataset.idx;
-        const test = selectedTests[idx];
-        document.getElementById("labTestSearch").dataset.value = test.lab_test_id;
-        document.getElementById("labTestSearch").value = test.lab_test_name || "";
-        document.getElementById("itemNotes").value = test.notes || "";
-        editingIndex = idx;
-      });
-    });
-
-    pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = btn.dataset.idx;
-        selectedTests.splice(idx, 1);
-        renderItemPills();
-      });
-    });
+    return;
   }
 
-  const submitBtn = document.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML =
-      selectedTests.length > 1
-        ? `<i class="ri-save-3-line me-1"></i> Submit All`
-        : `<i class="ri-save-3-line me-1"></i> Submit`;
-  }
-}
+  selectedTests.forEach((test, idx) => {
+    const pill = document.createElement("div");
+    pill.className = "pill";
+    pill.innerHTML = `
+      ${test.lab_test_name || "—"}
+      <button type="button" class="btn btn-sm btn-link pill-edit" data-idx="${idx}">
+        <i class="ri-pencil-line"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-link text-danger pill-remove" data-idx="${idx}">
+        <i class="ri-close-line"></i>
+      </button>
+    `;
+    pillsContainer.appendChild(pill);
+  });
 
-export function getLabRequestFormState() {
-  return { selectedTests, renderItemPills };
+  pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      const test = selectedTests[idx];
+      document.getElementById("labTestSearch").dataset.value = test.lab_test_id;
+      document.getElementById("labTestSearch").value = test.lab_test_name || "";
+      document.getElementById("itemNotes").value = test.notes || "";
+      editingIndex = idx;
+    });
+  });
+
+  pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      selectedTests.splice(idx, 1);
+      renderItemPills();
+    });
+  });
 }
 
 /* ============================================================
-   🚀 Setup Lab Request Form
+   🚀 Main Setup
 ============================================================ */
 export async function setupLabRequestFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
   const requestId = getQueryParam("id");
-  const isEdit = !!requestId;
+  const isEdit = Boolean(requestId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
   const addItemBtn = document.getElementById("addItemBtn");
-  pillsContainer = document.getElementById("requestPillsContainer");
-  const requestDateInput = document.getElementById("request_date");
 
-  // 🧭 UI Mode
-  if (isEdit) {
-    titleEl && (titleEl.textContent = "Edit Lab Request");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Request`);
-  } else {
-    titleEl && (titleEl.textContent = "Add Lab Request");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit All`);
-  }
+  pillsContainer = document.getElementById("requestPillsContainer");
+
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Lab Request" : "Add Lab Request";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Lab Request`
+          : `<i class="ri-add-line me-1"></i> Save Lab Request`;
+  };
+  setUI(isEdit ? "edit" : "add");
 
   /* ============================================================
-     🏢 Role-Aware Dropdowns & Suggestions
+     📋 DOM Refs
+  ============================================================ */
+  const deptSelect = document.getElementById("departmentSelect");
+
+  const patientInput = document.getElementById("patientSearch");
+  const patientSuggestions = document.getElementById("patientSearchSuggestions");
+
+  const doctorInput = document.getElementById("doctorSearch");
+  const doctorSuggestions = document.getElementById("doctorSearchSuggestions");
+
+  const consultationInput = document.getElementById("consultationSearch");
+  const consultationSuggestions = document.getElementById(
+    "consultationSearchSuggestions"
+  );
+
+  const regLogInput = document.getElementById("registrationLogSearch");
+  const regLogSuggestions = document.getElementById(
+    "registrationLogSearchSuggestions"
+  );
+
+  const labTestInput = document.getElementById("labTestSearch");
+  const labTestSuggestions = document.getElementById(
+    "labTestSearchSuggestions"
+  );
+
+  const requestDateInput = document.getElementById("request_date");
+  const notesInput = document.getElementById("notes");
+  const emergencyInput = document.getElementById("is_emergency");
+
+  /* ============================================================
+     🌐 Dropdowns & Suggestions (MASTER)
   ============================================================ */
   try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-    const orgSelect = document.getElementById("organizationSelect");
-    const facSelect = document.getElementById("facilitySelect");
-    const deptSelect = document.getElementById("departmentSelect");
+    setupSelectOptions(
+      deptSelect,
+      await loadDepartmentsLite({}, true),
+      "id",
+      "name",
+      "-- Select Department --"
+    );
 
-    // 🔹 Role-based scope (same as EKG)
-    if (userRole.includes("super")) {
-      // 🏢 Super Admin → can select any org/facility
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      // 🧑‍💼 Admin → facility only
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      // 👨‍⚕️ Doctor, Nurse, Staff, Facility Head, Org Owner
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
-    }
-
-    // Departments
-    const depts = await loadDepartmentsLite({}, true);
-    setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
-
-    // Suggestions
     setupSuggestionInputDynamic(
-      document.getElementById("patientSearch"),
-      document.getElementById("patientSearchSuggestions"),
+      patientInput,
+      patientSuggestions,
       "/api/lite/patients",
       (sel) => {
-        const input = document.getElementById("patientSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || sel?.full_name || "";
+        patientInput.dataset.value = sel?.id || "";
+        patientInput.value =
+          sel?.label ||
+          `${sel?.pat_no || ""} ${buildPersonName(sel)}`.trim();
       },
       "label"
     );
 
     setupSuggestionInputDynamic(
-      document.getElementById("doctorSearch"),
-      document.getElementById("doctorSearchSuggestions"),
+      doctorInput,
+      doctorSuggestions,
       "/api/lite/employees",
       (sel) => {
-        const input = document.getElementById("doctorSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || sel?.full_name || "";
+        doctorInput.dataset.value = sel?.id || "";
+        doctorInput.value = buildPersonName(sel);
       },
-      "label"
+      "full_name"
     );
 
     setupSuggestionInputDynamic(
-      document.getElementById("consultationSearch"),
-      document.getElementById("consultationSearchSuggestions"),
+      consultationInput,
+      consultationSuggestions,
       "/api/lite/consultations",
       (sel) => {
-        const input = document.getElementById("consultationSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || `Consultation ${normalizeDate(sel?.consultation_date) || ""}`;
+        consultationInput.dataset.value = sel?.id || "";
+        consultationInput.value =
+          sel?.label ||
+          `Consultation ${normalizeDate(sel?.consultation_date) || ""}`;
       },
       "label"
     );
 
     setupSuggestionInputDynamic(
-      document.getElementById("registrationLogSearch"),
-      document.getElementById("registrationLogSearchSuggestions"),
+      regLogInput,
+      regLogSuggestions,
       "/api/lite/registration-logs",
       (sel) => {
-        const input = document.getElementById("registrationLogSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || `RegLog #${sel?.id || ""}`;
+        regLogInput.dataset.value = sel?.id || "";
+        regLogInput.value = sel?.label || `RegLog #${sel?.id || ""}`;
       },
       "label"
     );
 
     setupSuggestionInputDynamic(
-      document.getElementById("labTestSearch"),
-      document.getElementById("labTestSearchSuggestions"),
+      labTestInput,
+      labTestSuggestions,
       "/api/lite/billable-items",
       (sel) => {
-        const input = document.getElementById("labTestSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.name || "";
+        labTestInput.dataset.value = sel?.id || "";
+        labTestInput.value = sel?.name || "";
       },
       "name"
     );
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-    ✏️ Prefill if Editing
+     ✏️ Prefill (EDIT MODE)
   ============================================================ */
-  if (isEdit && requestId) {
+  if (isEdit) {
     try {
       showLoading();
-      const res = await authFetch(`/api/lab-requests/${requestId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`/api/lab-requests/${requestId}`);
       const result = await res.json().catch(() => ({}));
-      hideLoading();
+      if (!res.ok)
+        throw new Error(
+          normalizeMessage(result, "Failed to load lab request")
+        );
 
-      if (res.ok && result?.data) {
-        const entry = result.data;
+      const entry = result.data;
 
-        if (entry.organization_id)
-          document.getElementById("organizationSelect").value = entry.organization_id;
-        if (entry.facility_id)
-          document.getElementById("facilitySelect").value = entry.facility_id;
-        document.getElementById("departmentSelect").value = entry.department_id || "";
+      patientInput.dataset.value = entry.patient_id || "";
+      patientInput.value = entry.patient
+        ? `${entry.patient.pat_no || ""} ${buildPersonName(entry.patient)}`.trim()
+        : "";
 
-        // Patient
-        if (entry.patient) {
-          const input = document.getElementById("patientSearch");
-          input.dataset.value = entry.patient.id;
+      deptSelect.value = entry.department_id || "";
+      requestDateInput.value = normalizeDate(entry.request_date);
+      notesInput.value = entry.notes || "";
+      emergencyInput.checked = !!entry.is_emergency;
 
-          const first = entry.patient.first_name || "";
-          const last = entry.patient.last_name || "";
-          input.value =
-            entry.patient.label ||
-            (entry.patient.pat_no
-              ? `${entry.patient.pat_no} - ${first} ${last}`.trim()
-              : `${first} ${last}`.trim());
-        }
-
-        // Doctor
-        if (entry.doctor) {
-          const input = document.getElementById("doctorSearch");
-          input.dataset.value = entry.doctor.id;
-
-          const first = entry.doctor.first_name || "";
-          const last = entry.doctor.last_name || "";
-          input.value =
-            entry.doctor.full_name ||
-            (first || last ? `Dr. ${first} ${last}`.trim() : "—");
-        }
-
-        // Consultation
-        if (entry.consultation) {
-          const input = document.getElementById("consultationSearch");
-          input.dataset.value = entry.consultation.id;
-          input.value =
-            entry.consultation.label ||
-            `Consultation ${normalizeDate(entry.consultation.consultation_date) || ""}`;
-        }
-
-        // Registration Log
-        if (entry.registrationLog) {
-          const input = document.getElementById("registrationLogSearch");
-          input.dataset.value = entry.registrationLog.id;
-          input.value = entry.registrationLog.label || `RegLog #${entry.registrationLog.id}`;
-        }
-
-        document.getElementById("notes").value = entry.notes || "";
-        document.getElementById("is_emergency").checked = !!entry.is_emergency;
-        document.getElementById("request_date").value = normalizeDate(entry.request_date);
-
-        selectedTests =
-          entry.items?.map((i) => ({
-            id: i.id,
-            lab_test_id: i.lab_test_id,
-            lab_test_name: i.labTest?.name || "",
-            notes: i.notes || "",
-          })) || [];
-        renderItemPills();
+      if (entry.doctor) {
+        doctorInput.dataset.value = entry.doctor.id;
+        doctorInput.value = buildPersonName(entry.doctor);
       }
+
+      if (entry.consultation) {
+        consultationInput.dataset.value = entry.consultation.id;
+        consultationInput.value =
+          entry.consultation.label ||
+          `Consultation ${normalizeDate(
+            entry.consultation.consultation_date
+          )}`;
+      }
+
+      if (entry.registrationLog) {
+        regLogInput.dataset.value = entry.registrationLog.id;
+        regLogInput.value =
+          entry.registrationLog.label ||
+          `RegLog #${entry.registrationLog.id}`;
+      }
+
+      selectedTests =
+        entry.items?.map((i) => ({
+          id: i.id,
+          lab_test_id: i.lab_test_id,
+          lab_test_name: i.labTest?.name || "",
+          notes: i.notes || "",
+        })) || [];
+
+      renderItemPills();
     } catch (err) {
+      showToast(err.message || "❌ Could not load lab request");
+    } finally {
       hideLoading();
-      console.error("❌ Prefill error:", err);
-      showToast("❌ Could not load lab request");
     }
   } else {
-    if (requestDateInput) requestDateInput.value = normalizeDate(new Date());
+    requestDateInput.value = normalizeDate(new Date());
     renderItemPills();
   }
 
-  /* ============================================================
-     ➕ Add / Update Item Pill
-  ============================================================ */
-  addItemBtn?.addEventListener("click", () => {
-    const obj = {
-      lab_test_id: document.getElementById("labTestSearch").dataset.value || null,
-      lab_test_name: document.getElementById("labTestSearch").value || "",
-      notes: document.getElementById("itemNotes").value.trim(),
+/* ============================================================
+   ➕ Add / Update Pill  (FIXED – ID PRESERVED)
+============================================================ */
+addItemBtn?.addEventListener("click", () => {
+  const obj = {
+    lab_test_id: normalizeUUID(labTestInput.dataset.value),
+    lab_test_name: labTestInput.value || "",
+    notes: document.getElementById("itemNotes").value.trim(),
+  };
+
+  if (!validateLabRequestItem(obj)) return;
+
+  if (editingIndex !== null) {
+    // 🔒 CRITICAL FIX: preserve existing id (and any future flags)
+    selectedTests[editingIndex] = {
+      ...selectedTests[editingIndex],
+      ...obj,
     };
-    if (!validateLabRequestItem(obj)) return;
+    editingIndex = null;
+  } else {
+    selectedTests.push(obj);
+  }
 
-    if (editingIndex !== null) {
-      selectedTests[editingIndex] = obj;
-      editingIndex = null;
-    } else {
-      selectedTests.push(obj);
-    }
-
-    document.getElementById("labTestSearch").value = "";
-    document.getElementById("labTestSearch").dataset.value = "";
-    document.getElementById("itemNotes").value = "";
-    renderItemPills();
-  });
+  labTestInput.value = "";
+  labTestInput.dataset.value = "";
+  document.getElementById("itemNotes").value = "";
+  renderItemPills();
+});
 
   /* ============================================================
-    💾 Submit (with EKG-style auto-scope)
+     💾 SUBMIT — MASTER PARITY (NO TENANT FROM UI)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    if (!normalizeUUID(patientInput.dataset.value)) {
+      applyServerErrors(form, [
+        { field: "patientSearch", message: "Patient is required" },
+      ]);
+      return;
+    }
+
+    if (!selectedTests.length) {
+      showToast("❌ Add at least one Lab Test");
+      return;
+    }
 
     const payload = {
-      organization_id: normalizeUUID(document.getElementById("organizationSelect")?.value),
-      facility_id: normalizeUUID(document.getElementById("facilitySelect")?.value),
-      patient_id: normalizeUUID(document.getElementById("patientSearch")?.dataset?.value),
-      doctor_id: normalizeUUID(document.getElementById("doctorSearch")?.dataset?.value),
-      department_id: normalizeUUID(document.getElementById("departmentSelect")?.value),
-      consultation_id: normalizeUUID(document.getElementById("consultationSearch")?.dataset?.value),
-      registration_log_id: normalizeUUID(document.getElementById("registrationLogSearch")?.dataset?.value),
-      request_date: document.getElementById("request_date")?.value,
-      notes: document.getElementById("notes")?.value?.trim(),
-      is_emergency: document.getElementById("is_emergency")?.checked || false,
+      patient_id: normalizeUUID(patientInput.dataset.value),
+      doctor_id: normalizeUUID(doctorInput.dataset.value),
+      department_id: normalizeUUID(deptSelect.value),
+      consultation_id: normalizeUUID(consultationInput.dataset.value),
+      registration_log_id: normalizeUUID(regLogInput.dataset.value),
+      request_date: normalizeDate(requestDateInput.value),
+      notes: notesInput.value || null,
+      is_emergency: !!emergencyInput.checked,
       items: selectedTests.map((t) => ({
         lab_test_id: t.lab_test_id,
         notes: t.notes || "",
       })),
     };
 
-    // 🧩 Enterprise auto-scope fallback (EKG-style)
-    const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
-    payload.organization_id =
-      payload.organization_id ||
-      currentUser.organization_id ||
-      localStorage.getItem("organizationId") ||
-      null;
-    payload.facility_id =
-      payload.facility_id ||
-      currentUser.facility_id ||
-      localStorage.getItem("facilityId") ||
-      null;
-
-    // ✅ Validation
-    if (!payload.organization_id)
-      return showToast("❌ Organization is required (auto-scope missing)");
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.items.length) return showToast("❌ Add at least one Lab Test");
-
     try {
       showLoading();
+
       const res = await authFetch(
         isEdit ? `/api/lab-requests/${requestId}` : `/api/lab-requests`,
         {
@@ -410,24 +404,28 @@ export async function setupLabRequestFormSubmission({ form }) {
           body: JSON.stringify(payload),
         }
       );
+
       const result = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
 
       showToast(
         isEdit
-          ? "✅ Lab Request updated successfully"
-          : "✅ Lab Request created successfully"
+          ? "✅ Lab Request updated"
+          : "✅ Lab Request created"
       );
 
-      if (isEdit) window.location.href = "/lab-requests-list.html";
-      else {
-        selectedTests = [];
+      if (isEdit) {
+        window.location.href = "/lab-requests-list.html";
+      } else {
         form.reset();
+        selectedTests = [];
         renderItemPills();
+        setUI("add");
       }
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -442,8 +440,10 @@ export async function setupLabRequestFormSubmission({ form }) {
   });
 
   clearBtn?.addEventListener("click", () => {
+    clearFormErrors(form);
     form.reset();
     selectedTests = [];
     renderItemPills();
+    setUI("add");
   });
 }

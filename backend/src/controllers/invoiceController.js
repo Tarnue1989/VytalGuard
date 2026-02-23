@@ -391,7 +391,8 @@ export const getInvoiceById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ALL INVOICES LITE (for dropdowns, ?q=search, ?patient_id=UUID)
+   📌 GET ALL INVOICES LITE (PAYABLE ONLY – MASTER)
+   Used by: Payment / Deposit / Waiver forms
 ============================================================ */
 export const getAllInvoicesLite = async (req, res) => {
   try {
@@ -403,48 +404,57 @@ export const getAllInvoicesLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q } = req.query;
+    const { q, patient_id } = req.query;
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    const where = {};
+    const where = { [Op.and]: [] };
 
-    // 🔒 Org/facility scoping
+    /* ================= TENANT SCOPE (MASTER) ================= */
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (role === "facility_head") {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    // ✅ Filter by status (single or multiple)
-    if (req.query.status) {
-      const statuses = req.query.status
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      where.status = statuses.length > 1 ? { [Op.in]: statuses } : statuses[0];
+    /* ================= PAYABLE ONLY ================= */
+    // 🔒 Exclude fully-paid invoices
+    where[Op.and].push({
+      balance: { [Op.gt]: 0 },
+    });
+
+    /* ================= PATIENT FILTER ================= */
+    if (patient_id) {
+      where[Op.and].push({ patient_id });
     }
 
-    // ✅ Unified search
+    /* ================= SEARCH ================= */
     if (q) {
       const term = `%${q}%`;
-      where[Op.or] = [
-        { invoice_number: { [Op.iLike]: term } },
-        { "$patient.first_name$": { [Op.iLike]: term } },
-        { "$patient.last_name$": { [Op.iLike]: term } },
-        { "$patient.pat_no$": { [Op.iLike]: term } },
-        { "$organization.name$": { [Op.iLike]: term } },
-        { "$facility.name$": { [Op.iLike]: term } },
-        sequelize.where(sequelize.cast(sequelize.col("Invoice.status"), "text"), {
-          [Op.iLike]: term,
-        }),
-      ];
-    }
-
-    // ✅ Filter by patient_id (for payment form linkage)
-    if (req.query.patient_id) {
-      where.patient_id = req.query.patient_id;
+      where[Op.and].push({
+        [Op.or]: [
+          { invoice_number: { [Op.iLike]: term } },
+          { "$patient.first_name$": { [Op.iLike]: term } },
+          { "$patient.last_name$": { [Op.iLike]: term } },
+          { "$patient.pat_no$": { [Op.iLike]: term } },
+        ],
+      });
     }
 
     const invoices = await Invoice.findAll({
@@ -460,47 +470,48 @@ export const getAllInvoicesLite = async (req, res) => {
         "created_at",
       ],
       include: [
-        { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-        { model: Organization, as: "organization", attributes: ["id", "name"] },
-        { model: Facility, as: "facility", attributes: ["id", "name"] },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
+        {
+          model: Organization,
+          as: "organization",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Facility,
+          as: "facility",
+          attributes: ["id", "name"],
+        },
       ],
       order: [["created_at", "DESC"]],
       limit: 20,
     });
 
-    // 🔹 Optional: Force recalc of balances
-    if (req.query.forceRecalc === "true") {
-      for (const inv of invoices) {
-        await financialService.recalcInvoice(inv.id);
-        await inv.reload();
-      }
-    }
-
-    const result = invoices.map((inv) => {
-      const plain = inv.get({ plain: true });
-      const patientObj = plain.patient
-        ? {
-            id: plain.patient.id,
-            code: plain.patient.pat_no,
-            full_name: `${plain.patient.first_name} ${plain.patient.last_name}`.trim(),
-          }
-        : null;
+    const records = invoices.map((inv) => {
+      const p = inv.get({ plain: true });
+      const patientLabel = p.patient
+        ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
+        : "Unknown Patient";
 
       return {
-        id: plain.id,
-        invoice_number: plain.invoice_number,
-        status: plain.status,
-        subtotal: plain.subtotal != null ? parseFloat(plain.subtotal).toFixed(2) : "0.00",
-        total_tax: plain.total_tax != null ? parseFloat(plain.total_tax).toFixed(2) : "0.00",
-        total: plain.total != null ? parseFloat(plain.total).toFixed(2) : "0.00",
-        balance: plain.balance != null ? parseFloat(plain.balance).toFixed(2) : "0.00",
-        patient: patientObj,
-        organization_label: plain.organization?.name || null,
-        facility_label: plain.facility?.name || null,
-        created_at: plain.created_at,
-        label: `${plain.invoice_number} · ${
-          patientObj ? `${patientObj.code} - ${patientObj.full_name}` : "Unknown Patient"
-        } · Bal: ${parseFloat(plain.balance || 0).toFixed(2)}`,
+        id: p.id,
+        invoice_number: p.invoice_number,
+        status: p.status,
+        subtotal: parseFloat(p.subtotal || 0).toFixed(2),
+        total_tax: parseFloat(p.total_tax || 0).toFixed(2),
+        total: parseFloat(p.total || 0).toFixed(2),
+        balance: parseFloat(p.balance || 0).toFixed(2),
+        patient_id: p.patient?.id || null,
+        patient_label: patientLabel,
+        organization_label: p.organization?.name || null,
+        facility_label: p.facility?.name || null,
+        created_at: p.created_at,
+        label: `${p.invoice_number} · ${patientLabel} · Bal: ${parseFloat(
+          p.balance || 0
+        ).toFixed(2)}`,
       };
     });
 
@@ -509,13 +520,13 @@ export const getAllInvoicesLite = async (req, res) => {
       module: MODULE_KEY,
       action: "list_lite",
       details: {
-        count: result.length,
+        count: records.length,
         query: q || null,
-        patient_id: req.query.patient_id || null,
+        patient_id: patient_id || null,
       },
     });
 
-    return success(res, "✅ Invoices loaded (lite)", { records: result });
+    return success(res, "✅ Invoices loaded (lite)", { records });
   } catch (err) {
     return error(res, "❌ Failed to load invoices (lite)", err);
   }

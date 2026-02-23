@@ -21,21 +21,26 @@
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
-  <link rel="stylesheet" href="assets/css/summary.css">
+  <link rel="stylesheet" href="assets/css/summary.css" />
 </head>
 
 <body>
   <div class="page-wrapper">
     <div class="app-container">
+
       <!-- Header -->
       <div class="app-header d-flex align-items-center"></div>
 
       <!-- Breadcrumb -->
       <div class="app-hero-header d-flex align-items-center">
         <ol class="breadcrumb mb-0">
-          <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
           <li class="breadcrumb-item">Lab Requests</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Lab Requests List</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Lab Requests List
+          </li>
         </ol>
       </div>
 
@@ -44,17 +49,19 @@
         <div class="row gx-4">
           <div class="col-sm-12">
             <div class="card">
+
+              <!-- Card Header -->
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title mb-0">Lab Requests</h5>
                 <a href="add-lab-request.html" class="btn btn-primary ms-auto">
-                  <i class="ri-add-line me-1"></i> Add
+                  <i class="ri-add-line me-1"></i> Add Lab Request
                 </a>
               </div>
 
               <div class="card-body">
 
                 <!-- ============================================================ -->
-                <!-- 🔍 FILTER SECTION -->
+                <!-- 🔍 FILTER SECTION (MASTER PARITY) -->
                 <!-- ============================================================ -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
@@ -79,61 +86,61 @@
                     </div>
                   </div>
 
-                  <!-- Collapsible Filters -->
+                  <!-- Collapsible Filter Body -->
                   <div id="filterCollapse" class="card-body filter-body hidden">
-                    <div class="section-label mb-2"><strong>Filter Lab Requests</strong></div>
+                    <div class="section-label mb-2">
+                      <strong>Filter Lab Requests</strong>
+                    </div>
 
                     <div class="row gx-3 gy-2 filter-grid compact">
 
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper form-group">
-                          <label class="form-label" for="filterOrganizationSelect">Organization</label>
-                          <select id="filterOrganizationSelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper form-group">
-                          <label class="form-label" for="filterFacilitySelect">Facility</label>
-                          <select id="filterFacilitySelect" class="form-select"></select>
-                        </div>
-                      </div>
-
+                      <!-- Patient -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
-                          <label for="filterDept" class="form-label">Department</label>
-                          <input type="text" id="filterDept" class="form-control suggestion-input" placeholder="Search Department..." autocomplete="off" />
-                          <div id="filterDeptSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
-
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label for="filterPatient" class="form-label">Patient</label>
-                          <input type="text" id="filterPatient" class="form-control suggestion-input" placeholder="Search Patient..." autocomplete="off" />
+                          <label class="form-label" for="filterPatient">Patient</label>
+                          <input type="text" id="filterPatient" class="form-control suggestion-input"
+                                 placeholder="Search patient..." autocomplete="off" />
+                          <input type="hidden" id="filterPatientId" />
                           <div id="filterPatientSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- Doctor -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
-                          <label for="filterDoctor" class="form-label">Doctor</label>
-                          <input type="text" id="filterDoctor" class="form-control suggestion-input" placeholder="Search Doctor..." autocomplete="off" />
+                          <label class="form-label" for="filterDoctor">Doctor</label>
+                          <input type="text" id="filterDoctor" class="form-control suggestion-input"
+                                 placeholder="Search doctor..." autocomplete="off" />
+                          <input type="hidden" id="filterDoctorId" />
                           <div id="filterDoctorSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- Department -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
-                          <label for="filterLabTest" class="form-label">Lab Test</label>
-                          <input type="text" id="filterLabTest" class="form-control suggestion-input" placeholder="Search Lab Test..." autocomplete="off" />
+                          <label class="form-label" for="filterDepartment">Department</label>
+                          <select id="filterDepartment" class="form-select">
+                            <option value="">All</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Lab Test -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterLabTest">Lab Test</label>
+                          <input type="text" id="filterLabTest" class="form-control suggestion-input"
+                                 placeholder="Search lab test..." autocomplete="off" />
+                          <input type="hidden" id="filterLabTestId" />
                           <div id="filterLabTestSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
+                      <!-- Status -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
-                          <label for="filterStatus" class="form-label">Status</label>
+                          <label class="form-label" for="filterStatus">Status</label>
                           <select id="filterStatus" class="form-select">
                             <option value="">All</option>
                             <option value="draft">Draft</option>
@@ -147,24 +154,39 @@
                         </div>
                       </div>
 
-                      <div class="col-xxl-2 col-lg-3 col-sm-6">
-                        <div class="field-wrapper">
-                          <label for="filterDateFrom" class="form-label">From Date</label>
-                          <input type="date" id="filterDateFrom" class="form-control" />
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper form-group">
+                          <label class="form-label" for="filterOrganizationSelect">Organization</label>
+                          <select id="filterOrganizationSelect" class="form-select"></select>
                         </div>
                       </div>
 
-                      <div class="col-xxl-2 col-lg-3 col-sm-6">
-                        <div class="field-wrapper">
-                          <label for="filterDateTo" class="form-label">To Date</label>
-                          <input type="date" id="filterDateTo" class="form-control" />
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper form-group">
+                          <label class="form-label" for="filterFacilitySelect">Facility</label>
+                          <select id="filterFacilitySelect" class="form-select"></select>
                         </div>
                       </div>
 
+                      <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input type="text" id="dateRange"
+                                   class="form-control custom-daterange"
+                                   placeholder="Select date range" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Filter Actions -->
                       <div class="col-12 d-flex gap-2 filter-actions mt-2">
-                        <button id="filterBtn" class="btn btn-primary btn-sm">
-                          <i class="fas fa-search me-1"></i> Search
-                        </button>
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
@@ -177,7 +199,9 @@
                 <!-- ============================================================ -->
                 <!-- 🧭 VIEW CONTROLS -->
                 <!-- ============================================================ -->
-                <div class="d-flex mb-2 view-toggle compact align-items-center">
+                <div class="d-flex mb-2 view-toggle compact align-items-center gap-2 flex-wrap">
+
+                  <!-- Field Selector -->
                   <div class="dropdown relative-wrapper export-ignore">
                     <button class="btn btn-outline-primary btn-sm dropdown-toggle"
                             id="fieldSelectorBtn"
@@ -186,11 +210,12 @@
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
                     <div class="dropdown-menu p-2 field-selector-dropdown"
-                        id="fieldSelectorDropdown"
-                        style="min-width:240px;"></div>
+                         id="fieldSelectorDropdown"
+                         style="min-width:240px;"></div>
                   </div>
 
-                  <div class="btn-group ms-2" role="group">
+                  <!-- View Toggle -->
+                  <div class="btn-group" role="group">
                     <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
                       <i class="fas fa-th me-1"></i> Card View
                     </button>
@@ -200,7 +225,7 @@
                   </div>
                 </div>
 
-                <!-- Records per page (ABOVE SUMMARY) -->
+                <!-- Records Per Page -->
                 <div class="btn-group align-items-center ms-2" role="group">
                   <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
                   <select id="recordsPerPage"
@@ -217,13 +242,12 @@
                 <!-- ============================================================ -->
                 <!-- 📊 BREAKDOWN SUMMARY -->
                 <!-- ============================================================ -->
-                <hr class="my-2">
-                <div class="text-muted fw-semibold small mb-1">
-                  Breakdown Summary
-                </div>
+                <hr class="my-2" />
+                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
                 <div class="module-summary">
-  <div id="moduleSummary"></div>
-</div>                <hr class="my-2">
+                  <div id="moduleSummary"></div>
+                </div>
+                <hr class="my-2" />
 
                 <!-- ============================================================ -->
                 <!-- 📋 TABLE VIEW -->
@@ -246,7 +270,6 @@
                 <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
 
               </div>
-
             </div>
           </div>
         </div>
@@ -261,7 +284,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <div id="viewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
@@ -287,10 +312,13 @@
   <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
   <script src="assets/js/custom.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Modules -->
   <script type="module" src="/js/logout.js"></script>
   <script type="module" src="/js/authSession.js"></script>
   <script type="module" src="/js/modules/labrequest/lab-request-filter-main.js"></script>
+  <script type="module" src="/js/modules/labrequest/lab-request-render.js"></script>
+  <script type="module" src="/js/modules/shared/list-export.js"></script>
 </body>
 </html>

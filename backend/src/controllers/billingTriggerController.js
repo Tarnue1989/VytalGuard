@@ -49,11 +49,16 @@ const BILLING_TRIGGER_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY)
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY | FK-DRIVEN)
 ============================================================ */
 function buildBillingTriggerSchema(user, mode = "create") {
   const base = {
+    // 🔑 LOGIC KEY (FK ONLY)
+    feature_module_id: Joi.string().uuid().required(),
+
+    // 🧾 DISPLAY / SEARCH ONLY
     module_key: Joi.string().max(100).required(),
+
     trigger_status: Joi.string().max(50).required(),
     is_active: Joi.boolean().default(true),
 
@@ -77,6 +82,7 @@ function buildBillingTriggerSchema(user, mode = "create") {
 
   return Joi.object(base);
 }
+
 
 /* ============================================================
    ➕ CREATE
@@ -114,7 +120,10 @@ export const createBillingTrigger = async (req, res) => {
 
     const trigger = await BillingTrigger.create(
       {
-        ...value,
+        feature_module_id: value.feature_module_id,
+        module_key: value.module_key,
+        trigger_status: value.trigger_status,
+        is_active: value.is_active,
         organization_id: orgId,
         facility_id: facilityId,
         created_by_id: req.user?.id || null,
@@ -181,7 +190,16 @@ export const updateBillingTrigger = async (req, res) => {
 
     await trigger.update(
       {
-        ...value,
+        ...(value.feature_module_id && {
+          feature_module_id: value.feature_module_id,
+        }),
+        ...(value.module_key && { module_key: value.module_key }),
+        ...(value.trigger_status && {
+          trigger_status: value.trigger_status,
+        }),
+        ...(value.is_active !== undefined && {
+          is_active: value.is_active,
+        }),
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }

@@ -1,8 +1,9 @@
 // 📁 backend/src/routes/appointmentRoutes.js
 // ============================================================================
 // 🧠 Enterprise Appointment Routes – VytalGuard HMS
-// 🔹 Aligned with Consultation, Vital, and Central Stock master patterns
-// 🔹 Includes full lifecycle control: activate, complete, cancel, void, verify, restore
+// 🔹 MASTER-aligned with Consultation lifecycle
+// 🔹 Explicit lifecycle only (NO toggle endpoints)
+// 🔹 Billing-safe, audit-safe, tenant-safe
 // ============================================================================
 
 import { Router } from "express";
@@ -15,19 +16,17 @@ import {
   updateAppointment,
   deleteAppointment,
 
-  // 🔄 Status & Lifecycle
-  toggleAppointmentStatus,
+  // 🔄 Explicit Lifecycle
   activateAppointment,
   completeAppointment,
   cancelAppointment,
   markNoShowAppointment,
   voidAppointment,
   verifyAppointment,
-  restoreAppointment, // ✅ Added for full enterprise lifecycle
+  restoreAppointment,
 } from "../controllers/appointmentController.js";
 
 import { verifyAuth } from "../middleware/verifyAuth.js";
-
 
 const router = Router();
 
@@ -37,46 +36,44 @@ const UUIDv4 =
 
 /* ============================================================
    📌 APPOINTMENT ROUTES
-   ============================================================ */
+============================================================ */
 
 // 🔍 List & Lookup
-router.get("/", verifyAuth,  getAllAppointments);
-router.get("/lite", verifyAuth,  getAllAppointmentsLite);
-router.get(`/:id(${UUIDv4})`, verifyAuth,  getAppointmentById);
+router.get("/", verifyAuth, getAllAppointments);
+router.get("/lite", verifyAuth, getAllAppointmentsLite);
+router.get(`/:id(${UUIDv4})`, verifyAuth, getAppointmentById);
 
 // ➕ Create / ✏️ Update / 🗑️ Delete
-router.post("/", verifyAuth,  createAppointment);
-router.put(`/:id(${UUIDv4})`, verifyAuth,  updateAppointment);
-router.delete(`/:id(${UUIDv4})`, verifyAuth,  deleteAppointment);
-
-// 🔄 Toggle (scheduled ↔ cancelled)
-router.patch(`/:id(${UUIDv4})/toggle-status`, verifyAuth,  toggleAppointmentStatus);
+router.post("/", verifyAuth, createAppointment);
+router.put(`/:id(${UUIDv4})`, verifyAuth, updateAppointment);
+router.delete(`/:id(${UUIDv4})`, verifyAuth, deleteAppointment);
 
 /* ============================================================
-   📌 LIFECYCLE ROUTES (Enterprise-Aligned)
-   ============================================================ */
-// ⏱️ Activate scheduled → in_progress
-router.patch(`/:id(${UUIDv4})/activate`, verifyAuth,  activateAppointment);
+   📌 LIFECYCLE ROUTES (MASTER – EXPLICIT ONLY)
+============================================================ */
 
-// ✅ Mark in_progress → completed
-router.patch(`/:id(${UUIDv4})/complete`, verifyAuth,  completeAppointment);
+// ⏱️ scheduled → in_progress
+router.patch(`/:id(${UUIDv4})/activate`, verifyAuth, activateAppointment);
 
-// 🚫 Cancel scheduled/in_progress
-router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth,  cancelAppointment);
+// ✅ in_progress → completed
+router.patch(`/:id(${UUIDv4})/complete`, verifyAuth, completeAppointment);
 
-// 👤 Mark scheduled → no_show
-router.patch(`/:id(${UUIDv4})/no-show`, verifyAuth,  markNoShowAppointment);
+// 🚫 scheduled / in_progress → cancelled
+router.patch(`/:id(${UUIDv4})/cancel`, verifyAuth, cancelAppointment);
 
-// 💸 Void charges + mark voided
-router.patch(`/:id(${UUIDv4})/void`, verifyAuth,  voidAppointment);
+// 👤 scheduled → no_show
+router.patch(`/:id(${UUIDv4})/no-show`, verifyAuth, markNoShowAppointment);
 
-// 🔏 Verification step (admin/doctor finalize)
-router.patch(`/:id(${UUIDv4})/verify`, verifyAuth,  verifyAppointment);
+// 💸 any → voided (billing rollback)
+router.patch(`/:id(${UUIDv4})/void`, verifyAuth, voidAppointment);
 
-// ♻️ Restore (cancelled/no_show/voided/deleted → scheduled)
-router.patch(`/:id(${UUIDv4})/restore`, verifyAuth,  restoreAppointment);
+// 🔏 completed → verified
+router.patch(`/:id(${UUIDv4})/verify`, verifyAuth, verifyAppointment);
+
+// ♻️ cancelled / no_show / voided → scheduled
+router.patch(`/:id(${UUIDv4})/restore`, verifyAuth, restoreAppointment);
 
 /* ============================================================
    ✅ EXPORT
-   ============================================================ */
+============================================================ */
 export default router;

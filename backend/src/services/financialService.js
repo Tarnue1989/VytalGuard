@@ -150,64 +150,136 @@ async function logLedger({
 ============================================================ */
 export const financialService = {
   /* ----------------- Payments (TRANSACTION-SAFE) ----------------- */
-  async applyPayment({
+async applyPayment({
+  invoice_id,
+  amount,
+  method,
+  transaction_ref,
+  user,
+  organization_id,
+  facility_id,
+  t,
+}) {
+  if (!t) {
+    throw new Error("❌ Transaction (t) is required for applyPayment");
+  }
+
+  /* ============================
+     🔍 DEBUG: ENTRY PAYLOAD
+  ============================ */
+  console.log("💰 [applyPayment] START", {
     invoice_id,
     amount,
     method,
     transaction_ref,
-    user,
     organization_id,
     facility_id,
-    t,
-  }) {
-    if (!t) {
-      throw new Error("❌ Transaction (t) is required for applyPayment");
-    }
+    user_org: user?.organization_id,
+    user_fac: user?.facility_id,
+  });
 
-    const invoice = await db.Invoice.findByPk(invoice_id, {
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
+  /* ============================
+     🧠 DEBUG: ACTIVE DATABASE
+  ============================ */
+  const [dbName] = await sequelize.query("select current_database()");
+  console.log("🧠 [applyPayment] Connected DB:", dbName?.current_database);
 
-    if (!invoice) throw new Error("❌ Invoice not found");
-    if (invoice.is_locked)
-      throw new Error("❌ Cannot add payment to locked invoice");
+  /* ============================
+     🔒 LOAD + LOCK INVOICE
+  ============================ */
+  const invoice = await db.Invoice.findByPk(invoice_id, {
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
 
-    if (parseFloat(amount) <= 0)
-      throw new Error("❌ Payment amount must be greater than 0");
+  console.log("📄 [applyPayment] Invoice lookup:", {
+    found: !!invoice,
+    id: invoice?.id,
+    org: invoice?.organization_id,
+    fac: invoice?.facility_id,
+    status: invoice?.status,
+  });
 
-    const payment = await db.Payment.create(
+  /* ============================
+     🧪 RAW SQL CHECK (IF NULL)
+  ============================ */
+  if (!invoice) {
+    const [rows] = await sequelize.query(
+      `SELECT id, invoice_number, organization_id, facility_id, status
+       FROM invoices
+       WHERE id = :id`,
       {
-        invoice_id,
-        organization_id: organization_id ?? invoice.organization_id,
-        facility_id: facility_id ?? invoice.facility_id,
-        patient_id: invoice.patient_id,
-        amount,
-        method,
-        transaction_ref,
-        status: PS.PENDING,
-        created_by_id: user?.id,
-      },
-      { transaction: t, user }
+        replacements: { id: invoice_id },
+        transaction: t,
+      }
     );
 
-    await logLedger({
-      type: "payment",
-      entity: payment,
-      organization_id: payment.organization_id,
-      facility_id: payment.facility_id,
-      patient_id: payment.patient_id,
+    console.log("🧪 [applyPayment] Raw SQL invoice check:", rows);
+    throw new Error("❌ Invoice not found");
+  }
+
+  if (invoice.is_locked) {
+    throw new Error("❌ Cannot add payment to locked invoice");
+  }
+
+  if (parseFloat(amount) <= 0) {
+    throw new Error("❌ Payment amount must be greater than 0");
+  }
+
+  /* ============================
+     💳 CREATE PAYMENT
+  ============================ */
+  const payment = await db.Payment.create(
+    {
       invoice_id,
+      organization_id: organization_id ?? invoice.organization_id,
+      facility_id: facility_id ?? invoice.facility_id,
+      patient_id: invoice.patient_id,
       amount,
       method,
-      note: `Payment of ${amount} via ${method}`,
-      user,
-      t,
-    });
+      transaction_ref,
+      status: PS.PENDING,
+      created_by_id: user?.id,
+    },
+    { transaction: t, user }
+  );
 
-    const updatedInvoice = await recalcInvoice(invoice_id, t);
-    return { payment, invoice: updatedInvoice };
-  },
+  console.log("💳 [applyPayment] Payment created:", {
+    payment_id: payment.id,
+    amount: payment.amount,
+    status: payment.status,
+  });
+
+  /* ============================
+     📒 LEDGER ENTRY
+  ============================ */
+  await logLedger({
+    type: "payment",
+    entity: payment,
+    organization_id: payment.organization_id,
+    facility_id: payment.facility_id,
+    patient_id: payment.patient_id,
+    invoice_id,
+    amount,
+    method,
+    note: `Payment of ${amount} via ${method}`,
+    user,
+    t,
+  });
+
+  /* ============================
+     🔄 RECALC INVOICE
+  ============================ */
+  const updatedInvoice = await recalcInvoice(invoice_id, t);
+
+  console.log("🔄 [applyPayment] Invoice recalculated:", {
+    invoice_id: updatedInvoice?.id,
+    balance: updatedInvoice?.balance,
+    status: updatedInvoice?.status,
+  });
+
+  return { payment, invoice: updatedInvoice };
+},
 
   async completePayment({ payment_id, user, t }) {
     if (!t) {
@@ -929,297 +1001,297 @@ export const financialService = {
       });
     },
 
-/* ============================================================
+    /* ============================================================
    💸 Discount Waivers — Enterprise MASTER Parity (FINAL)
-============================================================ */
+    ============================================================ */
 
-/* ----------------- createWaiver ----------------- */
-async createWaiver({
-  invoice_id,
-  type,
-  percentage,
-  amount,
-  reason,
-  user,
-}) {
-  return await sequelize.transaction(async (t) => {
-    const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
-    if (!invoice) throw new Error("❌ Invoice not found");
-    if (invoice.is_locked)
-      throw new Error("❌ Cannot request waiver on locked invoice");
-
-    if (!["percentage", "fixed"].includes(type)) {
-      throw new Error("❌ Invalid waiver type");
-    }
-
-    // 🔥 SOURCE OF TRUTH (DERIVED)
-    const patient_id = invoice.patient_id;
-    const organization_id = invoice.organization_id;
-    const facility_id = invoice.facility_id;
-
-    // 🧮 Preview amount (NOT applied yet)
-    const baseTotal = parseFloat(invoice.total) || 0;
-    let previewAmount =
-      type === "fixed"
-        ? parseFloat(amount) || 0
-        : (baseTotal * (parseFloat(percentage) || 0)) / 100;
-
-    previewAmount = Math.min(
-      previewAmount,
-      parseFloat(invoice.balance || 0)
-    );
-
-    const waiver = await db.DiscountWaiver.create(
-      {
-        invoice_id,
-        patient_id,
-        organization_id,
-        facility_id,
-        type,
-        percentage: type === "percentage" ? percentage : null,
-        amount: type === "fixed" ? amount : null,
-        applied_total: 0,
-        reason,
-        status: WS.PENDING,
-        created_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    return waiver;
-  });
-},
-
-/* ----------------- updateWaiver ----------------- */
-async updateWaiver({ id, payload, user }) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    // 🔒 HARD LOCK
-    if ([WS.APPLIED, WS.VOIDED, WS.FINALIZED].includes(waiver.status)) {
-      throw new Error("❌ Finalized / applied / voided waivers cannot be edited");
-    }
-
-    const updateData = {
-      updated_by_id: user?.id,
-    };
-
-    if (payload.reason !== undefined) updateData.reason = payload.reason;
-
-    if (payload.type) {
-      if (!["percentage", "fixed"].includes(payload.type)) {
-        throw new Error("❌ Invalid waiver type");
-      }
-
-      updateData.type = payload.type;
-      updateData.percentage =
-        payload.type === "percentage" ? payload.percentage : null;
-      updateData.amount =
-        payload.type === "fixed" ? payload.amount : null;
-    }
-
-    await waiver.update(updateData, { transaction: t, user });
-    return waiver;
-  });
-},
-
-/* ----------------- approveWaiver ----------------- */
-async approveWaiver({ id, user }) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    if (waiver.status !== WS.PENDING) {
-      throw new Error("❌ Only pending waivers can be approved");
-    }
-
-    await waiver.update(
-      {
-        status: WS.APPROVED,
-        approved_by_id: user?.id,
-        approved_at: new Date(),
-        updated_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    return waiver;
-  });
-},
-
-/* ----------------- rejectWaiver ----------------- */
-async rejectWaiver({ id, reason, user }) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    if (waiver.status !== WS.PENDING) {
-      throw new Error("❌ Only pending waivers can be rejected");
-    }
-
-    if (!reason || !String(reason).trim()) {
-      throw new Error("❌ Rejection reason is required");
-    }
-
-    await waiver.update(
-      {
-        status: WS.REJECTED,
-        reason,
-        rejected_by_id: user?.id,
-        rejected_at: new Date(),
-        updated_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    return waiver;
-  });
-},
-/* ----------------- voidWaiver ----------------- */
-async voidWaiver({ id, reason, user }) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    if (waiver.status === WS.VOIDED) {
-      throw new Error("❌ Waiver already voided");
-    }
-
-    if (!reason || !String(reason).trim()) {
-      throw new Error("❌ Void reason is required");
-    }
-
-    // 🔁 Delegate to unified reversal logic
-    await this.reverseTransaction({
-      type: "waiver",
-      id,
-      user,
-      reason,
-    });
-
-    return await db.DiscountWaiver.findByPk(id, { transaction: t });
-  });
-},
-
-/* ----------------- finalizeWaiver ----------------- */
-async finalizeWaiver(waiver_id, user) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(waiver_id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    if (waiver.status !== WS.APPROVED) {
-      throw new Error("❌ Only approved waivers can be finalized");
-    }
-
-    const invoice = await db.Invoice.findByPk(waiver.invoice_id, { transaction: t });
-    if (!invoice) throw new Error("❌ Invoice not found");
-
-    const baseTotal = parseFloat(invoice.total) || 0;
-    let applyAmount =
-      waiver.type === "fixed"
-        ? parseFloat(waiver.amount) || 0
-        : (baseTotal * (parseFloat(waiver.percentage) || 0)) / 100;
-
-    applyAmount = Math.min(
-      applyAmount,
-      parseFloat(invoice.balance || 0)
-    );
-
-    await waiver.update(
-      {
-        status: WS.APPLIED,
-        applied_total: applyAmount.toFixed(2),
-        finalized_by_id: user?.id,
-        finalized_at: new Date(),
-        updated_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    await logLedger({
-      type: "waiver",
-      entity: waiver,
-      organization_id: waiver.organization_id,
-      facility_id: waiver.facility_id,
-      patient_id: waiver.patient_id,
-      invoice_id: waiver.invoice_id,
-      amount: applyAmount,
-      note: `Waiver applied (${waiver.type})`,
-      user,
-      t,
-    });
-
-    const updatedInvoice = await recalcInvoice(waiver.invoice_id, t);
-    return { waiver, invoice: updatedInvoice };
-  });
-},
-/* ----------------- restoreWaiver ----------------- */
-async restoreWaiver({ id, user }) {
-  return await sequelize.transaction(async (t) => {
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    if (waiver.status !== WS.VOIDED) {
-      throw new Error("❌ Only voided waivers can be restored");
-    }
-
-    // 🔄 Restore to last valid lifecycle state
-    // MASTER rule: voided → approved (not applied)
-    await waiver.update(
-      {
-        status: WS.APPROVED,
-        applied_total: 0,
-        updated_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    // 🔁 Recalculate invoice to ensure balance correctness
-    await recalcInvoice(waiver.invoice_id, t);
-
-    return waiver;
-  });
-},
-
-/* ----------------- reverseTransaction (waiver only) ----------------- */
-async reverseTransaction({ type, id, user, reason = null }) {
-  return await sequelize.transaction(async (t) => {
-    if (type !== "waiver") {
-      throw new Error("❌ Unsupported reversal type");
-    }
-
-    const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-    if (!waiver) throw new Error("❌ Waiver not found");
-
-    const amount = Math.abs(parseFloat(waiver.applied_total) || 0);
-
-    await waiver.update(
-      {
-        status: WS.VOIDED,
-        applied_total: 0,
-        updated_by_id: user?.id,
-      },
-      { transaction: t, user }
-    );
-
-    await logLedger({
-      type: "reversal",
-      entity: waiver,
-      organization_id: waiver.organization_id,
-      facility_id: waiver.facility_id,
-      patient_id: waiver.patient_id,
-      invoice_id: waiver.invoice_id,
+    /* ----------------- createWaiver ----------------- */
+    async createWaiver({
+      invoice_id,
+      type,
+      percentage,
       amount,
-      note: `Reversal of waiver${reason ? ` · ${reason}` : ""}`,
+      reason,
       user,
-      t,
-    });
+    }) {
+      return await sequelize.transaction(async (t) => {
+        const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
+        if (!invoice) throw new Error("❌ Invoice not found");
+        if (invoice.is_locked)
+          throw new Error("❌ Cannot request waiver on locked invoice");
 
-    await recalcInvoice(waiver.invoice_id, t);
-    return { success: true };
-  });
-},
+        if (!["percentage", "fixed"].includes(type)) {
+          throw new Error("❌ Invalid waiver type");
+        }
+
+        // 🔥 SOURCE OF TRUTH (DERIVED)
+        const patient_id = invoice.patient_id;
+        const organization_id = invoice.organization_id;
+        const facility_id = invoice.facility_id;
+
+        // 🧮 Preview amount (NOT applied yet)
+        const baseTotal = parseFloat(invoice.total) || 0;
+        let previewAmount =
+          type === "fixed"
+            ? parseFloat(amount) || 0
+            : (baseTotal * (parseFloat(percentage) || 0)) / 100;
+
+        previewAmount = Math.min(
+          previewAmount,
+          parseFloat(invoice.balance || 0)
+        );
+
+        const waiver = await db.DiscountWaiver.create(
+          {
+            invoice_id,
+            patient_id,
+            organization_id,
+            facility_id,
+            type,
+            percentage: type === "percentage" ? percentage : null,
+            amount: type === "fixed" ? amount : null,
+            applied_total: 0,
+            reason,
+            status: WS.PENDING,
+            created_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        return waiver;
+      });
+    },
+
+    /* ----------------- updateWaiver ----------------- */
+    async updateWaiver({ id, payload, user }) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        // 🔒 HARD LOCK
+        if ([WS.APPLIED, WS.VOIDED, WS.FINALIZED].includes(waiver.status)) {
+          throw new Error("❌ Finalized / applied / voided waivers cannot be edited");
+        }
+
+        const updateData = {
+          updated_by_id: user?.id,
+        };
+
+        if (payload.reason !== undefined) updateData.reason = payload.reason;
+
+        if (payload.type) {
+          if (!["percentage", "fixed"].includes(payload.type)) {
+            throw new Error("❌ Invalid waiver type");
+          }
+
+          updateData.type = payload.type;
+          updateData.percentage =
+            payload.type === "percentage" ? payload.percentage : null;
+          updateData.amount =
+            payload.type === "fixed" ? payload.amount : null;
+        }
+
+        await waiver.update(updateData, { transaction: t, user });
+        return waiver;
+      });
+    },
+
+    /* ----------------- approveWaiver ----------------- */
+    async approveWaiver({ id, user }) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        if (waiver.status !== WS.PENDING) {
+          throw new Error("❌ Only pending waivers can be approved");
+        }
+
+        await waiver.update(
+          {
+            status: WS.APPROVED,
+            approved_by_id: user?.id,
+            approved_at: new Date(),
+            updated_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        return waiver;
+      });
+    },
+
+    /* ----------------- rejectWaiver ----------------- */
+    async rejectWaiver({ id, reason, user }) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        if (waiver.status !== WS.PENDING) {
+          throw new Error("❌ Only pending waivers can be rejected");
+        }
+
+        if (!reason || !String(reason).trim()) {
+          throw new Error("❌ Rejection reason is required");
+        }
+
+        await waiver.update(
+          {
+            status: WS.REJECTED,
+            reason,
+            rejected_by_id: user?.id,
+            rejected_at: new Date(),
+            updated_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        return waiver;
+      });
+    },
+    /* ----------------- voidWaiver ----------------- */
+    async voidWaiver({ id, reason, user }) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        if (waiver.status === WS.VOIDED) {
+          throw new Error("❌ Waiver already voided");
+        }
+
+        if (!reason || !String(reason).trim()) {
+          throw new Error("❌ Void reason is required");
+        }
+
+        // 🔁 Delegate to unified reversal logic
+        await this.reverseTransaction({
+          type: "waiver",
+          id,
+          user,
+          reason,
+        });
+
+        return await db.DiscountWaiver.findByPk(id, { transaction: t });
+      });
+    },
+
+    /* ----------------- finalizeWaiver ----------------- */
+    async finalizeWaiver(waiver_id, user) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(waiver_id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        if (waiver.status !== WS.APPROVED) {
+          throw new Error("❌ Only approved waivers can be finalized");
+        }
+
+        const invoice = await db.Invoice.findByPk(waiver.invoice_id, { transaction: t });
+        if (!invoice) throw new Error("❌ Invoice not found");
+
+        const baseTotal = parseFloat(invoice.total) || 0;
+        let applyAmount =
+          waiver.type === "fixed"
+            ? parseFloat(waiver.amount) || 0
+            : (baseTotal * (parseFloat(waiver.percentage) || 0)) / 100;
+
+        applyAmount = Math.min(
+          applyAmount,
+          parseFloat(invoice.balance || 0)
+        );
+
+        await waiver.update(
+          {
+            status: WS.APPLIED,
+            applied_total: applyAmount.toFixed(2),
+            finalized_by_id: user?.id,
+            finalized_at: new Date(),
+            updated_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        await logLedger({
+          type: "waiver",
+          entity: waiver,
+          organization_id: waiver.organization_id,
+          facility_id: waiver.facility_id,
+          patient_id: waiver.patient_id,
+          invoice_id: waiver.invoice_id,
+          amount: applyAmount,
+          note: `Waiver applied (${waiver.type})`,
+          user,
+          t,
+        });
+
+        const updatedInvoice = await recalcInvoice(waiver.invoice_id, t);
+        return { waiver, invoice: updatedInvoice };
+      });
+    },
+    /* ----------------- restoreWaiver ----------------- */
+    async restoreWaiver({ id, user }) {
+      return await sequelize.transaction(async (t) => {
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        if (waiver.status !== WS.VOIDED) {
+          throw new Error("❌ Only voided waivers can be restored");
+        }
+
+        // 🔄 Restore to last valid lifecycle state
+        // MASTER rule: voided → approved (not applied)
+        await waiver.update(
+          {
+            status: WS.APPROVED,
+            applied_total: 0,
+            updated_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        // 🔁 Recalculate invoice to ensure balance correctness
+        await recalcInvoice(waiver.invoice_id, t);
+
+        return waiver;
+      });
+    },
+
+    /* ----------------- reverseTransaction (waiver only) ----------------- */
+    async reverseTransaction({ type, id, user, reason = null }) {
+      return await sequelize.transaction(async (t) => {
+        if (type !== "waiver") {
+          throw new Error("❌ Unsupported reversal type");
+        }
+
+        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+        if (!waiver) throw new Error("❌ Waiver not found");
+
+        const amount = Math.abs(parseFloat(waiver.applied_total) || 0);
+
+        await waiver.update(
+          {
+            status: WS.VOIDED,
+            applied_total: 0,
+            updated_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        await logLedger({
+          type: "reversal",
+          entity: waiver,
+          organization_id: waiver.organization_id,
+          facility_id: waiver.facility_id,
+          patient_id: waiver.patient_id,
+          invoice_id: waiver.invoice_id,
+          amount,
+          note: `Reversal of waiver${reason ? ` · ${reason}` : ""}`,
+          user,
+          t,
+        });
+
+        await recalcInvoice(waiver.invoice_id, t);
+        return { success: true };
+      });
+    },
 
 
     /* ----------------- Discounts ----------------- */
