@@ -1,11 +1,16 @@
+// 📁 backend/src/config/database.js
+import "dotenv/config";
 import { Sequelize } from "sequelize";
 
-let sequelize;
+let sequelize = null;
 
 export function getSequelize() {
   if (!sequelize) {
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("DATABASE_URL is not set");
+    if (!url) throw new Error("❌ DATABASE_URL is not set");
+
+    const isLocal =
+      url.includes("localhost") || url.includes("127.0.0.1");
 
     // 🔐 ENV-AWARE SSL (authoritative)
     const isProduction = process.env.NODE_ENV === "production";
@@ -14,21 +19,22 @@ export function getSequelize() {
       dialect: "postgres",
       logging: process.env.SQL_LOG === "true" ? console.log : false,
       define: { freezeTableName: true },
-      dialectOptions: isProduction
-        ? {
+      dialectOptions: isLocal
+        ? {}
+        : {
             ssl: {
               require: true,
-              rejectUnauthorized: false, // Render / managed PG
+              rejectUnauthorized: false,
             },
-          }
-        : {
-            ssl: false, // LOCAL Postgres — NO SSL
           },
     });
   }
 
   return sequelize;
 }
+
+// ✅ THIS IS WHAT MODELS NEED
+export { sequelize };
 
 export async function initSequelize() {
   const db = getSequelize();
