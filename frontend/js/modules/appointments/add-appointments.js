@@ -1,11 +1,14 @@
-// 📁 add-appointment.js – Init Add/Edit Appointment (MASTER-ALIGNED)
+// 📁 add-appointment.js – Appointment Form Page Controller (Enterprise MASTER Pattern)
 // ============================================================================
-// 🧭 Mirrors add-feature-access.js architecture EXACTLY (appointment variant)
-// 🔹 Unified guard (single source of truth)
-// 🔹 Edit-prefill handled inside form module
-// 🔹 ADD-mode reset only
-// 🔹 100% DOM ID retention
+// 🧭 Mirrors add-deposit.js / consultation-main.js EXACTLY
+// 🔹 Auth guard + logout watcher
+// 🔹 Form reset orchestration (ADD MODE ONLY)
+// 🔹 Edit session coordination
+// 🔹 Delegates ALL business logic to appointments-form.js
+// 🔹 NO data loaders, NO API calls, NO RBAC branching here
 // ============================================================================
+
+import { setupAppointmentFormSubmission } from "./appointments-form.js";
 
 import {
   initPageGuard,
@@ -13,81 +16,109 @@ import {
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
-import { setupAppointmentFormSubmission } from "./appointments-form.js";
-
 /* ============================================================
-   🔐 Auth Guard (SINGLE SOURCE)
+   🔐 Auth Guard + Global Watchers
 ============================================================ */
-initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey(["appointments:create", "appointments:edit"])
+);
 initLogoutWatcher();
 
 /* ============================================================
-   🧠 Shared State (ADD MODE ONLY)
+   🌐 Shared State (Enterprise Pattern)
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧹 Reset Form Helper (ADD MODE ONLY)
+   📎 DOM Refs
+============================================================ */
+const form = document.getElementById("appointmentForm");
+const cancelBtn = document.getElementById("cancelBtn");
+const clearBtn = document.getElementById("clearBtn");
+
+/* ============================================================
+   🧹 Reset Helper (ADD MODE ONLY)
 ============================================================ */
 function resetForm() {
-  const form = document.getElementById("appointmentForm");
   if (!form) return;
 
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
+  // Clear cached edit state
+  sessionStorage.removeItem("appointmentEditId");
+  sessionStorage.removeItem("appointmentEditPayload");
+
+  // Clear hidden + text fields
   [
     "patientInput",
     "patientId",
     "doctorInput",
     "doctorId",
-    "organizationSelect",
-    "facilitySelect",
-    "departmentSelect",
     "notes",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
+  // Clear selects
+  [
+    "organizationSelect",
+    "facilitySelect",
+    "departmentSelect",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Reset date
   const dateEl = document.getElementById("dateTime");
   if (dateEl) dateEl.value = "";
 
+  // Reset UI labels
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Appointment";
 
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn) {
     submitBtn.innerHTML =
-      `<i class="ri-save-3-line me-1"></i> Save Appointment`;
+      `<i class="ri-add-line me-1"></i> Add Appointment`;
   }
 }
 
 /* ============================================================
-   🚀 Init (ADD / EDIT handled in form module)
+   🚀 Init (Page Entry)
 ============================================================ */
-document.addEventListener("DOMContentLoaded", async () => {
-  const form = document.getElementById("appointmentForm");
+document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  await setupAppointmentFormSubmission({ form });
+  // Wire form logic (ALL business logic lives there)
+  setupAppointmentFormSubmission({
+    form,
+    token,
+    sharedState,
+    resetForm,
+  });
 
-  /* ----------------------------------------------------------
-     🚪 Cancel
-  ----------------------------------------------------------- */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+  /* ---------------- Cancel ---------------- */
+  cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("appointmentEditId");
     sessionStorage.removeItem("appointmentEditPayload");
     window.location.href = "/appointments-list.html";
   });
 
-  /* ----------------------------------------------------------
-     🧹 Clear (ADD MODE ONLY)
-  ----------------------------------------------------------- */
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
+  /* ---------------- Clear (ADD MODE ONLY) ---------------- */
+  clearBtn?.addEventListener("click", () => {
     if (sharedState.currentEditIdRef.value) return;
     resetForm();
   });
 });
+
+/* ============================================================
+   🔁 Reserved Sync Hook (Future)
+============================================================ */
+export function syncRefsToState() {
+  // Reserved for enterprise reactive form syncing
+}

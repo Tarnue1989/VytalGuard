@@ -1,13 +1,14 @@
-// 📁 patient-constants.js – Enterprise Master Pattern (Corrected)
+// 📁 patient-constants.js – Enterprise MASTER–ALIGNED (Consultation Parity)
 // ============================================================================
-// 🧭 Matches Employee & Delivery Record Constants Pattern
-// 🔹 Fully aligned with Patient model + API payload
-// 🔹 NO phantom fields (JSONB handled correctly)
-// 🔹 Safe for list, export, and detail views
+// 🔹 Pattern Source: consultation-constants.js (Enterprise MASTER)
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
+// 🔹 Backend-safe: aligned with patientController search, status, audit logic
 // ============================================================================
 
 /* ============================================================
-   📋 Field Labels (Enterprise Aligned)
+   🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_PATIENT = {
   // 🏢 Organizational Scope
@@ -53,10 +54,10 @@ export const FIELD_LABELS_PATIENT = {
 
   // 🧾 Audit Trail
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
   // ⚙️ System
@@ -64,11 +65,12 @@ export const FIELD_LABELS_PATIENT = {
 };
 
 /* ============================================================
-   📋 Field Display Order (Table / Export / Detail)
+   📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_PATIENT = [
   "organization",
   "facility",
+
   "pat_no",
   "full_name",
   "first_name",
@@ -77,71 +79,150 @@ export const FIELD_ORDER_PATIENT = [
   "gender",
   "date_of_birth",
   "date_of_birth_precision",
+
   "phone_number",
   "email_address",
   "home_address",
+
   "marital_status",
   "religion",
   "profession",
+
   "national_id",
   "insurance_number",
   "passport_number",
-  "emergency_contacts", // ✅ JSONB (formatted in renderer)
+
+  "emergency_contacts",
+
   "registration_status",
   "source_of_registration",
+
   "notes",
   "photo_path",
   "qr_code_path",
+
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
 /* ============================================================
-   👥 Role-Based Default Field Sets
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
+// 🧩 Superadmin/Admin: full demographic + audit visibility
+// 🧩 Facility Head / Manager: scoped operational visibility
+// 🧩 Staff: essential operational fields only
 export const FIELD_DEFAULTS_PATIENT = {
-  admin: [
+  superadmin: [
     "organization",
     "facility",
+
     "pat_no",
     "full_name",
     "gender",
     "date_of_birth",
+    "date_of_birth_precision",
+
     "phone_number",
     "email_address",
     "home_address",
+
+    "marital_status",
+    "religion",
+    "profession",
+
+    "national_id",
+    "insurance_number",
+    "passport_number",
+
     "emergency_contacts",
+
     "registration_status",
     "source_of_registration",
 
-    // 🧾 AUDIT
+    "notes",
+    "photo_path",
+    "qr_code_path",
+
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+
+    "actions",
+  ],
+
+  admin: [
+    "organization",
+    "facility",
+
+    "pat_no",
+    "full_name",
+    "gender",
+    "date_of_birth",
+
+    "phone_number",
+    "email_address",
+    "home_address",
+
+    "emergency_contacts",
+
+    "registration_status",
+    "source_of_registration",
+
+    "notes",
+    "photo_path",
+    "qr_code_path",
+
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+
+    "actions",
+  ],
+
+  facility_head: [
+    "facility",
+
+    "pat_no",
+    "full_name",
+    "gender",
+    "date_of_birth",
+
+    "phone_number",
+    "email_address",
+
+    "registration_status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
 
-    // 📎 MEDIA
-    "photo_path",
-    "qr_code_path",
-
     "actions",
   ],
 
   manager: [
-    "organization",
     "facility",
+
     "pat_no",
     "full_name",
     "gender",
+
     "phone_number",
+
     "registration_status",
 
-    // 🧾 AUDIT (read-only)
     "createdBy",
     "created_at",
 
@@ -155,4 +236,82 @@ export const FIELD_DEFAULTS_PATIENT = {
     "registration_status",
     "actions",
   ],
+};
+
+/* ============================================================
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
+============================================================ */
+export const FIELD_GROUPS_PATIENT = {
+  org_scope: ["organization", "facility"],
+
+  identity: [
+    "pat_no",
+    "full_name",
+    "first_name",
+    "middle_name",
+    "last_name",
+    "gender",
+    "date_of_birth",
+    "date_of_birth_precision",
+  ],
+
+  contact: [
+    "phone_number",
+    "email_address",
+    "home_address",
+    "emergency_contacts",
+  ],
+
+  demographics: [
+    "marital_status",
+    "religion",
+    "profession",
+  ],
+
+  identification: [
+    "national_id",
+    "insurance_number",
+    "passport_number",
+  ],
+
+  registration: [
+    "registration_status",
+    "source_of_registration",
+  ],
+
+  media: [
+    "photo_path",
+    "qr_code_path",
+  ],
+
+  meta: [
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+  ],
+
+  system: [
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+};
+
+/* ============================================================
+   ⚙️ MODULE METADATA (Enterprise UI Context)
+============================================================ */
+export const MODULE_KEY_PATIENT = "patient";
+export const MODULE_LABEL_PATIENT = "Patient";
+
+/* ============================================================
+   📦 EXPORT (Unified)
+============================================================ */
+export default {
+  FIELD_LABELS_PATIENT,
+  FIELD_ORDER_PATIENT,
+  FIELD_DEFAULTS_PATIENT,
+  FIELD_GROUPS_PATIENT,
+  MODULE_KEY_PATIENT,
+  MODULE_LABEL_PATIENT,
 };

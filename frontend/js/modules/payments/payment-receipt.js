@@ -1,19 +1,18 @@
 // 📁 frontend/js/modules/payments/payment-receipt.js
 // ============================================================================
-// 💳 Payment Receipt – Enterprise Master Pattern Aligned (Deposit Receipt Mirror)
-// ----------------------------------------------------------------------------
-// 🔹 Unified styling & structure (org/facility/meta/summary/footer)
-// 🔹 Auto-hides “Paid To Date” when zero
-// 🔹 Fully tenant-aware (organization & facility labels)
-// 🔹 Currency-safe & localized printing
+// 💳 Payment Receipt Printer (Enterprise FINAL – Deposit Parity)
+// 🔹 Audit-first user resolution (createdBy → auth_user → currentUser → System)
+// 🔹 Auth-user fallback (NO UI globals)
+// 🔹 Silent + print-safe
+// 🔹 Footer + branding handled ONLY by receipt-utils
+// 🔹 Structure & formatting MATCH deposit-receipt.js
 // ============================================================================
 
 import { printReceipt } from "../../utils/receipt-utils.js";
-import { getOrgInfo } from "../shared/org-config.js";
 
-/* ============================================================
-   📅 Date Formatter
-============================================================ */
+/* --------------------------------------------------
+   Utilities
+-------------------------------------------------- */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -25,16 +24,37 @@ function formatDate(dateStr) {
   });
 }
 
-/* ============================================================
-   🧾 Print Payment Receipt
-============================================================ */
+function resolvePrintedBy(payment) {
+  if (payment?.createdBy?.first_name || payment?.createdBy?.last_name) {
+    return [payment.createdBy.first_name, payment.createdBy.last_name]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const authUser =
+    JSON.parse(localStorage.getItem("auth_user") || "null") ||
+    JSON.parse(localStorage.getItem("currentUser") || "null");
+
+  if (!authUser) return "System";
+
+  if (authUser.first_name || authUser.last_name) {
+    return [authUser.first_name, authUser.last_name]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return authUser.name || "System";
+}
+
+/* --------------------------------------------------
+   Receipt Printer
+-------------------------------------------------- */
 export function printPaymentReceipt(payment) {
-  const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = resolvePrintedBy(payment);
   const printedAt = new Date().toLocaleString();
 
-  // 🧩 Safe invoice & patient labels
-  const invoiceInfo = payment.invoice
+  /* ---------------- Invoice Resolution ---------------- */
+  const invoiceLabel = payment.invoice
     ? `${payment.invoice.invoice_number || "—"} (Bal: $${Number(
         payment.invoice.balance ?? 0
       ).toFixed(2)})`
@@ -42,73 +62,67 @@ export function printPaymentReceipt(payment) {
     ? `Invoice ID: ${payment.invoice_id}`
     : "—";
 
+  /* ---------------- Patient Resolution ---------------- */
   const patientLabel =
-    payment.patient?.pat_no || payment.patient?.first_name || payment.patient?.last_name
-      ? `${payment.patient?.pat_no || ""} - ${payment.patient?.first_name || ""} ${
+    payment.patient?.pat_no ||
+    payment.patient?.first_name ||
+    payment.patient?.last_name
+      ? `${payment.patient?.pat_no || "—"} - ${payment.patient?.first_name || ""} ${
           payment.patient?.last_name || ""
         }`
       : "—";
 
-  // 💵 Optional “Paid To Date” line (only if > 0)
-  const paidToDateValue = Number(payment.invoice?.total_paid || 0);
+  /* ---------------- Optional Paid-To-Date ---------------- */
+  const paidToDate = Number(payment.invoice?.total_paid || 0);
   const paidToDateHTML =
-    paidToDateValue > 0
-      ? `<div><strong>Paid To Date:</strong> $${paidToDateValue.toFixed(2)}</div>`
+    paidToDate > 0
+      ? `<div><strong>Paid To Date:</strong> $${paidToDate.toFixed(2)}</div>`
       : "";
 
-  /* ============================================================
-     🧱 Body Content
-  ============================================================ */
+  /* --------------------------------------------------
+     Body Content (Deposit Parity Structure)
+  -------------------------------------------------- */
   const bodyHTML = `
-    <!-- 🏢 Organization & Facility -->
-    <div class="facility-info mb-3">
-      <p><strong>Organization:</strong> ${orgInfo?.name || payment.organization?.name || "—"}</p>
+    <div class="facility-info">
       <p><strong>Facility:</strong> ${payment.facility?.name || "—"}</p>
     </div>
 
-    <!-- 💬 Payment Meta -->
     <div class="invoice-meta">
       <div><strong>Payment ID:</strong> ${payment.payment_ref || payment.id || "—"}</div>
-      <div><strong>Invoice:</strong> ${invoiceInfo}</div>
+      <div><strong>Invoice:</strong> ${invoiceLabel}</div>
       <div><strong>Patient:</strong> ${patientLabel}</div>
       <div><strong>Method:</strong> ${payment.method || "—"}</div>
       <div><strong>Reference:</strong> ${payment.transaction_ref || "—"}</div>
       <div><strong>Status:</strong> ${payment.status || "—"}</div>
       <div><strong>Date:</strong> ${formatDate(payment.created_at)}</div>
-      <div><strong>Received By:</strong> ${
-        payment.createdBy
-          ? `${payment.createdBy.first_name} ${payment.createdBy.last_name}`
-          : "—"
-      }</div>
-      <div style="grid-column: 1 / -1;"><strong>Reason:</strong> ${payment.reason || "—"}</div>
-      <div style="grid-column: 1 / -1;"><strong>Notes:</strong> ${payment.notes || "—"}</div>
+      <div><strong>Received By:</strong> ${printedBy}</div>
+      <div style="grid-column: 1 / -1;">
+        <strong>Reason:</strong> ${payment.reason || "—"}
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <strong>Notes:</strong> ${payment.notes || "—"}
+      </div>
     </div>
 
-    <!-- 💵 Amount Summary -->
-    <h5 class="border-bottom pb-1 mt-3">Amount Summary</h5>
+    <h5>Amount Summary</h5>
     <div class="invoice-meta">
       <div><strong>Payment Amount:</strong> $${Number(payment.amount || 0).toFixed(2)}</div>
       <div><strong>Invoice Total:</strong> $${Number(payment.invoice?.total || 0).toFixed(2)}</div>
       ${paidToDateHTML}
-      <div><strong>Invoice Balance:</strong>
-        <span class="fw-bold">$${Number(payment.invoice?.balance || 0).toFixed(2)}</span>
+      <div>
+        <strong>Invoice Balance:</strong>
+        <strong>$${Number(payment.invoice?.balance || 0).toFixed(2)}</strong>
       </div>
     </div>
 
-    <!-- 🕓 Print Info -->
-    <div class="mt-3 border-top pt-2 small text-muted">
+    <div class="print-meta">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-
-    <!-- 🧾 Footer -->
-    <div id="receiptFooter" class="mt-3">
-      <p class="mb-0">Payment successfully recorded.</p>
-    </div>
   `;
 
-  /* ============================================================
-     🖨️ Dispatch to Printer
-  ============================================================ */
+  /* --------------------------------------------------
+     Print Dispatch (Branding via receipt-utils ONLY)
+  -------------------------------------------------- */
   printReceipt("Payment Receipt", bodyHTML, payment.organization_id);
 }

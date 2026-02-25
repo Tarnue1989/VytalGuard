@@ -28,7 +28,7 @@ import { normalizeDateRangeLocal } from "../utils/date-utils.js";
    🧩 MODULE KEYS (SINGLE SOURCE OF TRUTH)
 ============================================================ */
 const MODULE_KEY_FEATURE = "feature_modules";
-const MODULE_KEY_FEATURE_ACCESS = "feature_access";
+const MODULE_KEY_FEATURE_ACCESS = "feature_accesses";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (FEATURE CONTROLLER)
@@ -1251,17 +1251,19 @@ const FEATURE_ACCESS_INCLUDES = [
 
 
 /* ============================================================
-   📋 FEATURE ACCESS SCHEMA
+   📋 FEATURE ACCESS SCHEMA (CONSULTATION-STYLE)
 ============================================================ */
 function buildFeatureAccessSchema(mode = "create") {
   const base = {
-    organization_id: Joi.string().uuid().required().label("Organization"),
     role_id: Joi.string().uuid().required().label("Role"),
     module_id: Joi.string().uuid().required().label("Module"),
     facility_id: Joi.string().uuid().allow(null).label("Facility"),
     status: Joi.string()
       .valid(...FEATURE_ACCESS_STATUS)
       .default(ACCESS_ACTIVE),
+
+    // ❌ NEVER required from UI
+    organization_id: Joi.string().uuid().optional(),
   };
 
   if (mode === "update") {
@@ -1288,8 +1290,6 @@ export const createFeatureAccess = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("access-create → incoming", req.body);
-
     const schema = buildFeatureAccessSchema("create");
     const { error: validationError, value } = schema.validate(req.body, {
       stripUnknown: true,
@@ -1300,46 +1300,43 @@ export const createFeatureAccess = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ================= ORG RESOLUTION ================= */
-    const finalOrgId = isSuperAdmin(req.user)
-      ? value.organization_id
-      : req.user.organization_id;
+    /* ================= TENANT RESOLUTION (LIKE CONSULTATION) ================= */
 
-    if (!finalOrgId) {
-      await t.rollback();
-      return error(
-        res,
-        "❌ Organization ID is invalid or not allowed for your role",
-        null,
-        400
-      );
+    let organization_id;
+    let facility_id = value.facility_id ?? null;
+
+    if (isSuperAdmin(req.user)) {
+      // superadmin MAY pass org, but not required
+      organization_id = value.organization_id;
+      if (!organization_id) {
+        await t.rollback();
+        return error(res, "Organization is required for superadmin", null, 400);
+      }
+    } else {
+      // 🔒 locked to session
+      organization_id = req.user.organization_id;
     }
 
-    /* ================= FACILITY RESOLUTION ================= */
-    const finalFacilityId = value.facility_id ?? null;
+    if (!organization_id) {
+      await t.rollback();
+      return error(res, "Invalid organization context", null, 400);
+    }
 
-    if (finalFacilityId) {
-      const facilityCheck = await Facility.findOne({
-        where: { id: finalFacilityId, organization_id: finalOrgId },
+    /* ================= FACILITY CHECK ================= */
+    if (facility_id) {
+      const facility = await Facility.findOne({
+        where: { id: facility_id, organization_id },
+        transaction: t,
       });
 
-      if (!facilityCheck) {
+      if (!facility) {
         await t.rollback();
-        return error(
-          res,
-          "❌ Facility does not belong to your organization",
-          null,
-          400
-        );
+        return error(res, "❌ Facility does not belong to organization", null, 400);
       }
     }
 
     /* ================= MODULE GUARDS ================= */
-    const module = await FeatureModule.findOne({
-      where: { id: value.module_id },
-      transaction: t,
-    });
-
+    const module = await FeatureModule.findByPk(value.module_id, { transaction: t });
     if (!module) {
       await t.rollback();
       return error(res, "❌ Module not found", null, 404);
@@ -1347,31 +1344,21 @@ export const createFeatureAccess = async (req, res) => {
 
     if (module.visibility === "hidden") {
       await t.rollback();
-      return error(
-        res,
-        "❌ Cannot assign access to hidden modules",
-        null,
-        400
-      );
+      return error(res, "❌ Cannot assign hidden module", null, 400);
     }
 
     if (module.tenant_scope === "global" && !isSuperAdmin(req.user)) {
       await t.rollback();
-      return error(
-        res,
-        "❌ Cannot assign access to global modules",
-        null,
-        403
-      );
+      return error(res, "❌ Global modules are superadmin-only", null, 403);
     }
 
-    /* ================= DUPLICATE CHECK ================= */
+    /* ================= DUPLICATE GUARD ================= */
     const exists = await FeatureAccess.findOne({
       where: {
-        organization_id: finalOrgId,
+        organization_id,
         role_id: value.role_id,
         module_id: value.module_id,
-        facility_id: finalFacilityId,
+        facility_id,
       },
       paranoid: false,
       transaction: t,
@@ -1379,20 +1366,17 @@ export const createFeatureAccess = async (req, res) => {
 
     if (exists) {
       await t.rollback();
-      return error(
-        res,
-        "❌ Access already exists for this organization / role / module / facility",
-        null,
-        409
-      );
+      return error(res, "❌ Access already exists", null, 409);
     }
 
     /* ================= CREATE ================= */
     const created = await FeatureAccess.create(
       {
-        ...value,
-        organization_id: finalOrgId,
-        facility_id: finalFacilityId,
+        role_id: value.role_id,
+        module_id: value.module_id,
+        organization_id,
+        facility_id,
+        status: value.status,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -1400,24 +1384,9 @@ export const createFeatureAccess = async (req, res) => {
 
     await t.commit();
 
-    const full = await FeatureAccess.findOne({
-      where: { id: created.id },
-      include: FEATURE_ACCESS_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY_FEATURE_ACCESS,
-      action: "create",
-      entityId: created.id,
-      entity: full,
-      details: value,
-    });
-
-    return success(res, "✅ Feature access granted", { record: full });
+    return success(res, "✅ Feature access granted", created);
   } catch (err) {
     await t.rollback();
-    debug.error("access-create → FAILED", err);
     return error(res, "❌ Failed to create feature access", err);
   }
 };
@@ -1613,7 +1582,7 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     const schema = Joi.object({
       role_id: Joi.string().uuid().required(),
       module_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
-      organization_id: Joi.string().uuid().required(),
+      organization_id: Joi.string().uuid().optional(),
       facility_id: Joi.string().uuid().allow(null),
       status: Joi.string()
         .valid(...FEATURE_ACCESS_STATUS)
@@ -1711,14 +1680,16 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     }
 
     /* ========================================================
-       🧹 DELETE EXISTING ACCESS (ROLE SCOPE)
+      🧹 DELETE EXISTING ACCESS (ROLE + ORG + FACILITY)
+      🔥 MUST BE HARD DELETE
     ======================================================== */
     await FeatureAccess.destroy({
       where: {
-        role_id: value.role_id,
         organization_id: finalOrgId,
+        role_id: value.role_id,
         facility_id: finalFacilityId,
       },
+      force: true,      // 🔥 REQUIRED
       transaction: t,
     });
 

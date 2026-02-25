@@ -15,14 +15,17 @@ export const STATUS_ACTION_MATRIX = {
   delivery_record:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 📅 APPOINTMENT ======================== */
-  appointment:{scheduled:["edit","activate","cancel","no-show","void"],
+  appointment:{
+    scheduled:["edit","activate","cancel","no-show","void"],
     in_progress:["complete","cancel","void"],
     completed:["verify","void"],
     verified:[],
     cancelled:["restore"],
     no_show:["restore"],
     voided:["restore"],
-    deleted:["restore"]},
+    deleted:[]
+  },
+
 
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
@@ -91,16 +94,22 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 💰 REFUND DEPOSIT (DEPOSIT REFUNDS) ======================== */
-  refund_deposit: {
-    pending:   ["edit", "review", "approve", "reject", "cancel", "void", "delete"],
-    review:    ["approve", "reject", "cancel", "void"],
-    approved:  ["process", "void"],
-    processed: ["reverse"],
-    reversed:  ["restore"],
-    rejected:  ["restore"],
-    cancelled: ["restore"],
-    voided:    ["restore"],
-  },
+    refund_deposit: {
+      pending:   ["review", "edit", "cancel", "void"],
+      review:    ["approve", "reject", "cancel", "void"],
+      approved:  ["process", "void"],
+      processed: ["reverse"],
+
+      // ❌ NO restore here
+      rejected:  [],
+      cancelled: [],
+
+      // ✅ restore allowed
+      reversed:  ["restore"],
+      voided:    ["restore"],
+    },
+
+
 
   /* ======================== 🩹 SURGERY ======================== */
   surgery:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
@@ -291,6 +300,13 @@ export function buildActionButtons({
   );
 
   let allowed = STATUS_ACTION_MATRIX[module]?.[status] || [];
+  /* ========================= NORMALIZE PATIENT TOGGLE ========================= */
+  if (module === "patient") {
+    allowed = allowed.map(a =>
+      a === "toggle" ? "toggle-status" : a
+    );
+  }
+
   /* ========================= NORMALIZE INVENTORY ACTIONS ========================= */
   /* ========================= INVENTORY LOCK STATE ========================= */
   if (module === "central_stock") {
@@ -435,7 +451,10 @@ export function buildActionButtons({
     finalize: "Finalize",
 
     /* 📅 Appointment */
-    activate: "Activate Appointment",
+    activate:
+      module === "appointment" ? "Activate Appointment"
+    : module === "registration_log" ? "Activate Registration"
+    : "Activate",
     "no-show": "Mark No Show",
 
     /* 🔗 Processing */
@@ -521,14 +540,29 @@ export function buildActionButtons({
   }
 
   for (const act of allowed) {
-  const backend =
-    act === "toggle-status" ? "toggle-status" :
-    act === "lock" || act === "unlock" ? "update" :
-    act === "complete" ? "finalize" :
-    act === "toggle-status" && module === "user" ? "edit" :
-    act === "toggle-status" && module === "supplier" ? "update" :
-    act;
+    let backend = act;
 
+    /* =========================
+      NORMALIZE TO DB PERMS
+    ========================= */
+    if (act === "toggle-status") {
+      backend = "toggle_status";
+    }
+    /* =========================
+      MODULE-SPECIFIC OVERRIDES
+    ========================= */
+    if (module === "user" && act === "toggle-status") {
+      backend = "edit";
+    }
+    if (module === "supplier" && act === "toggle-status") {
+      backend = "update";
+    }
+    /* =========================
+      INVENTORY LOCK
+    ========================= */
+    if (act === "lock" || act === "unlock") {
+      backend = "update";
+    }
     const permKey = `${permissionPrefix}:${backend}`;
 
     if (isSuperAdmin || perms.has(permKey)) {

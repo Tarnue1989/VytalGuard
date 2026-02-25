@@ -1,10 +1,12 @@
-// 📦 discount-waiver-actions.js – Enterprise Master Pattern (v2.4 Modal Void Reason)
+// 📦 discount-waiver-actions.js – Enterprise MASTER–ALIGNED (Deposit Actions Parity)
 // ============================================================================
-// 🔹 Mirrors discount-actions.js for unified permission-driven flow
-// 🔹 Adds modal-based void reason (no browser prompt)
-// 🔹 Includes instant post-action refresh (approve, reject, finalize, void, restore)
-// 🔹 Superadmin bypass + unified permission normalization
-// 🔹 Fully compatible with discount-waiver-filter-main.js
+// 🔹 Pattern Source: deposit-actions.js (Enterprise MASTER)
+// 🔹 Permission-driven + superadmin-aware (role + roleNames)
+// 🔹 Unified lifecycle dispatcher (view / edit / delete / approve / reject / finalize / void / restore)
+// 🔹 Safe fallback fetch (MASTER safety)
+// 🔹 Modal-based void + reject reason (NO browser prompt)
+// 🔹 Instant post-action refresh
+// 🔹 100% API preservation (NO endpoint changes)
 // ============================================================================
 
 import {
@@ -18,9 +20,9 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./discount-waiver-render.js";
 import { printDiscountWaiverSummary } from "./discount-waiver-summary.js";
 
-/* ============================================================
-   ⚙️ Unified Action Handler – Discount Waiver Module
-============================================================ */
+/**
+ * Unified permission-aware action handler for Discount Waiver module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -28,7 +30,7 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions }
+  user,
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("discountWaiverTableBody");
@@ -38,12 +40,12 @@ export function setupActionHandlers({
   // 🗂️ Cache latest entries
   window.latestDiscountWaiverEntries = entries;
 
-  [tableBody, cardContainer, modalBody].forEach((el) =>
-    el?.addEventListener("click", handleActions)
-  );
+  if (tableBody) tableBody.addEventListener("click", handleActions);
+  if (cardContainer) cardContainer.addEventListener("click", handleActions);
+  if (modalBody) modalBody.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Permission + Role Normalization
+     🔑 Permissions
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -57,14 +59,25 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
+
   const isSuperAdmin =
-    (user?.role || "").toLowerCase().replace(/\s+/g, "") === "superadmin";
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (Array.isArray(user?.roleNames) &&
+      user.roleNames.some(
+        (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
+      ));
+
   const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(key.trim().toLowerCase());
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     🎛️ Main Action Dispatcher
+     🎯 Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -76,46 +89,53 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
+    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
         const res = await authFetch(`/api/discount-waivers/${id}`);
         const data = await res.json().catch(() => ({}));
         entry = data?.data;
+      } catch {
+        return showToast("❌ Discount waiver not found");
       } finally {
         hideLoading();
       }
     }
 
-    if (!entry) return showToast("❌ Discount Waiver not found");
+    if (!entry) return showToast("❌ Discount waiver data missing");
 
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("discount-waivers:view"))
         return showToast("⛔ No permission to view waivers");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
-      if (!hasPerm("discount-waivers:edit") && !hasPerm("discount-waivers:create"))
+      if (
+        !hasPerm("discount-waivers:edit") &&
+        !hasPerm("discount-waivers:create")
+      )
         return showToast("⛔ No permission to edit waivers");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("discount-waivers:delete"))
         return showToast("⛔ No permission to delete waivers");
-      return await handleDelete(id);
+      return handleDelete(id);
     }
 
-    // --- Lifecycle Actions ---
+    if (cls.contains("reject-btn")) {
+      if (!hasPerm("discount-waivers:reject"))
+        return showToast("⛔ No permission to reject waivers");
+      return handleReject(entry);
+    }
+
     const lifecycleMap = {
       "approve-btn": "approve",
-      "reject-btn": "reject",
       "finalize-btn": "finalize",
       "void-btn": "void",
       "restore-btn": "restore",
@@ -125,12 +145,11 @@ export function setupActionHandlers({
       if (cls.contains(clsName)) {
         if (!hasPerm(`discount-waivers:${action}`))
           return showToast(`⛔ No permission to ${action} waivers`);
-        if (action === "void") return await handleVoid(entry);
-        return await handleLifecycle(id, entry, action);
+        if (action === "void") return handleVoid(entry);
+        return handleLifecycle(id, action);
       }
     }
 
-    // --- Print ---
     if (cls.contains("print-btn")) {
       if (!hasPerm("discount-waivers:view"))
         return showToast("⛔ No permission to print waivers");
@@ -139,11 +158,13 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🧩 Core Action Handlers
+     ⚙️ Core Handlers
   ============================================================ */
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
-    openViewModal("Discount Waiver Info", html);
+    openViewModal(
+      "Discount Waiver Info",
+      renderCard(entry, visibleFields, user)
+    );
   }
 
   function handleEdit(entry) {
@@ -154,8 +175,9 @@ export function setupActionHandlers({
   }
 
   async function handleDelete(id) {
-    const confirmed = await showConfirm("🗑️ Delete this discount waiver?");
+    const confirmed = await showConfirm("Delete this discount waiver?");
     if (!confirmed) return;
+
     try {
       showLoading();
       const res = await authFetch(`/api/discount-waivers/${id}`, {
@@ -164,8 +186,10 @@ export function setupActionHandlers({
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete waiver");
-      showToast("✅ Waiver deleted successfully");
-      await loadEntries(1);
+
+      showToast("✅ Waiver deleted");
+      window.latestDiscountWaiverEntries = [];
+      await loadEntries(currentPage);
     } catch (err) {
       showToast(err.message || "❌ Failed to delete waiver");
     } finally {
@@ -173,26 +197,23 @@ export function setupActionHandlers({
     }
   }
 
-  /* ============================================================
-     🔄 Lifecycle Handler (Live Refresh)
-  ============================================================ */
-  async function handleLifecycle(id, entry, action) {
-    const confirmMsg =
-      action === "restore"
-        ? "♻️ Restore this discount waiver?"
-        : `Proceed to ${action} this waiver?`;
-    const confirmed = await showConfirm(confirmMsg);
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(`Proceed to ${action} this waiver?`);
     if (!confirmed) return;
-
-    const url = `/api/discount-waivers/${id}/${action}`;
 
     try {
       showLoading();
-      const res = await authFetch(url, { method: "PATCH" });
+      const res = await authFetch(
+        `/api/discount-waivers/${id}/${action}`,
+        { method: "PATCH" }
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || `❌ Failed to ${action}`);
+      if (!res.ok)
+        throw new Error(data.message || `❌ Failed to ${action} waiver`);
+
       showToast(`✅ Waiver ${action} successful`);
-      await loadEntries(1);
+      window.latestDiscountWaiverEntries = [];
+      await loadEntries(currentPage);
     } catch (err) {
       showToast(err.message || `❌ Failed to ${action} waiver`);
     } finally {
@@ -201,12 +222,57 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🚫 Void Handler (Modal-Based Reason Input)
+     🚫 Reject (MODAL)
+  ============================================================ */
+  async function handleReject(entry) {
+    const id = entry.id;
+
+    const modal = document.getElementById("discountWaiverRejectModal");
+    const reasonInput = document.getElementById("rejectReasonInput");
+    const confirmBtn = document.getElementById("confirmRejectBtn");
+
+    reasonInput.value = "";
+    modal.classList.remove("hidden");
+
+    confirmBtn.onclick = async () => {
+      const reason = reasonInput.value.trim();
+      if (!reason)
+        return showToast("❌ Rejection reason is required");
+
+      const confirmed = await showConfirm("Reject this discount waiver?");
+      if (!confirmed) return;
+
+      try {
+        showLoading();
+        const res = await authFetch(
+          `/api/discount-waivers/${id}/reject`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok)
+          throw new Error(data.message || "❌ Failed to reject waiver");
+
+        showToast("✅ Waiver rejected");
+        modal.classList.add("hidden");
+        window.latestDiscountWaiverEntries = [];
+        await loadEntries(currentPage);
+      } catch (err) {
+        showToast(err.message || "❌ Failed to reject waiver");
+      } finally {
+        hideLoading();
+      }
+    };
+  }
+
+  /* ============================================================
+     🚫 Void (MODAL)
   ============================================================ */
   async function handleVoid(entry) {
     const id = entry.id;
-    const status = (entry?.status || "").toLowerCase();
-    if (status === "voided") return showToast("❌ Already voided");
 
     const modal = document.getElementById("discountWaiverVoidModal");
     const reasonInput = document.getElementById("voidReasonInput");
@@ -217,24 +283,30 @@ export function setupActionHandlers({
 
     confirmBtn.onclick = async () => {
       const reason = reasonInput.value.trim();
-      if (!reason) return showToast("❌ Reason is required to void waiver");
+      if (!reason)
+        return showToast("❌ Reason is required to void waiver");
 
-      const confirmed = await showConfirm("⚠️ Confirm voiding this waiver?");
+      const confirmed = await showConfirm("Void this discount waiver?");
       if (!confirmed) return;
 
       try {
         showLoading();
-        const res = await authFetch(`/api/discount-waivers/${id}/void`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ void_reason: reason }),
-        });
+        const res = await authFetch(
+          `/api/discount-waivers/${id}/void`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ void_reason: reason }),
+          }
+        );
         const data = await res.json().catch(() => ({}));
         if (!res.ok)
           throw new Error(data.message || "❌ Failed to void waiver");
-        showToast("✅ Waiver voided successfully");
+
+        showToast("✅ Waiver voided");
         modal.classList.add("hidden");
-        await loadEntries(1);
+        window.latestDiscountWaiverEntries = [];
+        await loadEntries(currentPage);
       } catch (err) {
         showToast(err.message || "❌ Failed to void waiver");
       } finally {
@@ -244,67 +316,36 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🖨️ Print Handler
+     🖨️ Print
   ============================================================ */
   function handlePrint(entry) {
-    try {
-      printDiscountWaiverSummary(entry);
-      showToast("🖨️ Printing waiver summary...");
-    } catch {
-      showToast("❌ Failed to print waiver summary");
-    }
+    printDiscountWaiverSummary(entry);
+    showToast("🖨️ Printing waiver summary...");
   }
 
   /* ============================================================
-     🌐 Global Helpers (Enterprise Standard)
+     🌍 Global helpers
   ============================================================ */
   const findEntry = (id) =>
     (window.latestDiscountWaiverEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewDiscountWaiver = (id) => {
-    if (!hasPerm("discount-waivers:view"))
-      return showToast("⛔ No permission to view");
+  window.rejectDiscountWaiver = async (id) => {
+    if (!hasPerm("discount-waivers:reject"))
+      return showToast("⛔ No permission to reject waivers");
     const entry = findEntry(id);
-    if (entry) handleView(entry);
+    if (entry) await handleReject(entry);
   };
 
-  window.editDiscountWaiver = (id) => {
-    if (!hasPerm("discount-waivers:edit"))
-      return showToast("⛔ No permission to edit");
-    const entry = findEntry(id);
-    if (entry) handleEdit(entry);
-  };
-
-  window.deleteDiscountWaiver = async (id) => {
-    if (!hasPerm("discount-waivers:delete"))
-      return showToast("⛔ No permission to delete");
-    await handleDelete(id);
-  };
-
-  ["approve", "reject", "finalize", "void", "restore"].forEach((action) => {
-    window[`${action}DiscountWaiver`] = async (id) => {
-      if (!hasPerm(`discount-waivers:${action}`))
-        return showToast(`⛔ No permission to ${action}`);
-      const entry = findEntry(id);
-      if (action === "void") return await handleVoid(entry);
-      await handleLifecycle(id, entry, action);
-    };
-  });
-
-  window.printDiscountWaiver = (id) => {
-    if (!hasPerm("discount-waivers:view"))
-      return showToast("⛔ No permission to print");
-    const entry = findEntry(id);
-    if (entry) handlePrint(entry);
-  };
-
-  // 🔹 Universal modal close behavior
+  /* ============================================================
+     ❌ MASTER MODAL CLOSE SUPPORT (FIX)
+  ============================================================ */
   document.querySelectorAll("[data-close]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const id = btn.dataset.close;
-      document.getElementById(id)?.classList.add("hidden");
+      const modalId = btn.dataset.close;
+      const modal = document.getElementById(modalId);
+      if (modal) modal.classList.add("hidden");
     });
   });
 }

@@ -1,23 +1,31 @@
-// 📦 discount-main.js – Enterprise Master Pattern Aligned
+// 📦 discount-main.js – Form-only loader for Discount (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors deposit-main.js for consistent form lifecycle & RBAC logic
-// 🔹 Retains all discount-specific logic, IDs, and API endpoints
-// 🔹 Includes unified auth guard, visibility helpers, and role-based field setup
+// 🧭 FULL MASTER PARITY WITH deposit-main.js / consultation-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 FORM-ONLY (no filters, no list, no summary)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
   showToast,
 } from "../../utils/index.js";
+
 import { setupDiscountFormSubmission } from "./discount-form.js";
+
 import {
   FIELD_LABELS_DISCOUNT,
   FIELD_ORDER_DISCOUNT,
   FIELD_DEFAULTS_DISCOUNT,
 } from "./discount-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -25,19 +33,20 @@ import {
 } from "../../utils/data-loaders.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 Auth Guard + Shared State (MASTER)
 ============================================================ */
-// Auto-detect correct permission key (create / edit)
-const token = initPageGuard(autoPagePermissionKey(["discounts:create", "discounts:edit"]));
+const token = initPageGuard(
+  autoPagePermissionKey(["discounts:create", "discounts:edit"])
+);
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State + DOM Refs
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs (ID-SAFE)
+============================================================ */
 const form = document.getElementById("discountForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -45,7 +54,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 async function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -55,7 +64,7 @@ async function resetForm() {
   sessionStorage.removeItem("discountEditId");
   sessionStorage.removeItem("discountEditPayload");
 
-  // Explicitly clear text fields
+  // Clear text inputs
   ["invoiceInput", "value", "reason"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -67,7 +76,7 @@ async function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset dropdowns
+  // Reset type selector explicitly
   const typeEl = document.getElementById("typeSelect");
   if (typeEl) {
     typeEl.innerHTML = `
@@ -77,11 +86,11 @@ async function resetForm() {
     `;
   }
 
-  // 🔄 Reload live orgs/facs per role
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-
+  // Reload scoped org / facility lists (SAFE, no API change)
   try {
-    if (userRole.includes("super")) {
+    const roleRaw = (localStorage.getItem("userRole") || "").toLowerCase();
+
+    if (roleRaw.includes("super")) {
       const orgs = await loadOrganizationsLite();
       setupSelectOptions(
         document.getElementById("organizationSelect"),
@@ -101,19 +110,17 @@ async function resetForm() {
       );
     }
   } catch (err) {
-    console.error("❌ Failed to reload dropdowns on reset:", err);
-    showToast("❌ Could not reload reference lists");
+    console.error("❌ Failed to reload dropdowns on reset", err);
+    showToast("❌ Failed to reload reference lists");
   }
 
-  // Hide reason field by default (only used in edit mode)
+  // Hide reason group by default
   const reasonGroup = document.getElementById("reason")?.closest(".form-group");
   if (reasonGroup) reasonGroup.classList.add("hidden");
-
-  console.info("🧹 [Discount] Form reset complete");
 }
 
 /* ============================================================
-   🧭 Visibility Controls
+   🧭 Form Show / Hide (MASTER)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -128,16 +135,15 @@ function hideForm() {
   localStorage.setItem("discountFormVisible", "false");
 }
 
-// 🔗 Expose globally for other handlers
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   🔘 Button Wiring (MASTER)
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Discount] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/discounts-list.html";
   };
@@ -147,7 +153,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Discount] Switching to Add mode");
     sessionStorage.removeItem("discountEditId");
     sessionStorage.removeItem("discountEditPayload");
     resetForm();
@@ -156,29 +161,31 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Stub – List Loader (no-op here)
+   📦 Loader Stub (FORM-ONLY)
 ============================================================ */
 async function loadEntries() {
-  return; // handled on list page
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Init
+   🚀 Init Entrypoint (MASTER)
 ============================================================ */
 export async function initDiscountModule() {
-  showForm(); // open immediately for form-only page
+  showForm(); // form-only mode
 
-  setupDiscountFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupDiscountFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("discountPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role (MASTER logic)
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -187,20 +194,17 @@ export async function initDiscountModule() {
   else if (role.includes("manager")) role = "manager";
   else role = "staff";
 
-  // 🧩 Setup field selector (role-based defaults)
   setupFieldSelector({
     module: "discount",
     fieldLabels: FIELD_LABELS_DISCOUNT,
     fieldOrder: FIELD_ORDER_DISCOUNT,
-    defaultFields: FIELD_DEFAULTS_DISCOUNT[role] || FIELD_DEFAULTS_DISCOUNT.staff,
+    defaultFields: FIELD_DEFAULTS_DISCOUNT[role],
   });
-
-  console.info(`✅ [Discount] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   (Optional)
+   🔁 Sync Stub (Reserved)
 ============================================================ */
 export function syncRefsToState() {
-  // placeholder for future sync extensions
+  // reserved for future reactive syncing
 }

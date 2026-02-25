@@ -1,10 +1,11 @@
 // 📦 add-registration-log.js – Registration Log Form Page Controller (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Mirrors department-main.js / patient-main.js responsibilities exactly
+// 🧭 Mirrors consultation-main.js EXACTLY
 // 🔹 Auth guard + logout watcher
-// 🔹 Form visibility & reset orchestration
+// 🔹 Form reset orchestration
 // 🔹 Edit session coordination
 // 🔹 Delegates ALL business logic to registration-log-form.js
+// 🔹 NO data loaders, NO API calls, NO RBAC branching here
 // ============================================================================
 
 import { setupRegistrationLogFormSubmission } from "./registration-log-form.js";
@@ -19,7 +20,10 @@ import {
    🔐 Auth Guard + Global Watchers
 ============================================================ */
 const token = initPageGuard(
-  autoPagePermissionKey(["registration_logs:create", "registration_logs:edit"])
+  autoPagePermissionKey([
+    "registration_logs:create",
+    "registration_logs:edit",
+  ])
 );
 initLogoutWatcher();
 
@@ -34,7 +38,6 @@ const sharedState = {
    📎 DOM Refs
 ============================================================ */
 const form = document.getElementById("registrationLogForm");
-const formContainer = document.getElementById("formContainer");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
@@ -47,13 +50,18 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
+  // Clear cached edit state
   sessionStorage.removeItem("registrationLogEditId");
   sessionStorage.removeItem("registrationLogEditPayload");
 
-  // Clear hidden + select fields
+  // Clear hidden IDs
+  ["patientId", "registrarId"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Clear selects
   [
-    "patientId",
-    "registrarId",
     "organizationSelect",
     "facilitySelect",
     "registrationTypeSelect",
@@ -62,9 +70,9 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset emergency flag
-  document.getElementById("isEmergency") &&
-    (document.getElementById("isEmergency").checked = false);
+  // Reset emergency checkbox
+  const emergencyEl = document.getElementById("isEmergency");
+  if (emergencyEl) emergencyEl.checked = false;
 
   // Reset UI labels
   const titleEl = document.querySelector(".card-title");
@@ -73,7 +81,7 @@ function resetForm() {
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn)
     submitBtn.innerHTML =
-      `<i class="ri-add-line me-1"></i> Create Registration Log`;
+      `<i class="ri-add-line me-1"></i> Submit`;
 }
 
 /* ============================================================
@@ -82,7 +90,7 @@ function resetForm() {
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // Wire form logic (ALL business logic lives there)
+  // Wire form logic (ALL business logic lives in form file)
   setupRegistrationLogFormSubmission({
     form,
     token,

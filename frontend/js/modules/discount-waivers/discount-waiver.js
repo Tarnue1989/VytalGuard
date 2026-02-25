@@ -1,71 +1,53 @@
-// 📦 discount-waivers.js – Enterprise Entry Point (Master Pattern Aligned)
+// 📦 discount-waivers.js – Entry Point (Enterprise-Aligned MASTER Pattern)
 // ============================================================================
-// 🔹 Mirrors discounts.js for unified lifecycle, RBAC, and safe boot logic
-// 🔹 Handles both form + list initialization dynamically
-// 🔹 Preserves all existing DOM IDs and API references
+// 🧭 Master Pattern: deposits.js / consultation.js / department.js / role.js
+// 🔹 Unified initialization entry for the Discount Waiver module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 STRICT parity with deposits.js (NO extra logic, NO manual action wiring)
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (filters + table + pagination)
+// 🧭 Main module init (handles filter, table, card, pagination, summary, export)
 import { initDiscountWaiverModule } from "./discount-waiver-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, approve, void, etc.)
-import { setupActionHandlers } from "./discount-waiver-actions.js";
+// ⚙️ Lifecycle + action handlers (side-effect import, MASTER style)
+import "./discount-waiver-actions.js";
 
-// 🧩 Constants (exportable for global UI usage)
+// 🧩 Constants (kept for enterprise parity & future extensibility)
 import {
   FIELD_LABELS_DISCOUNT_WAIVER,
   FIELD_ORDER_DISCOUNT_WAIVER,
   FIELD_DEFAULTS_DISCOUNT_WAIVER,
 } from "./discount-waiver-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Module Boot
+   🚀 DOM-Ready Bootstrap (MASTER SAFE GUARD)
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("discountWaiverForm");
-    const hasList = document.getElementById("discountWaiverTableBody");
-
-    // ✅ Initialize only when form or list exists
-    if (hasForm || hasList) await initDiscountWaiverModule();
-
-    // ✅ Setup action handlers if list view is active
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const permsRaw = localStorage.getItem("permissions") || "[]";
-      const parsedPerms = Array.isArray(JSON.parse(permsRaw))
-        ? JSON.parse(permsRaw)
-        : [];
-      const user = { role: userRole, permissions: parsedPerms };
-
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_DISCOUNT_WAIVER[userRole] ||
-        FIELD_DEFAULTS_DISCOUNT_WAIVER.staff;
-
-      setupActionHandlers({
-        entries: window.latestDiscountWaiverEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
+    // 🧩 Initialize only if the waiver form or list container exists
+    if (
+      document.getElementById("discountWaiverForm") ||
+      document.getElementById("discountWaiverList") ||
+      document.getElementById("discountWaiverTableBody")
+    ) {
+      await initDiscountWaiverModule();
     }
+
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("discountWaiverTableBody")) {
+    //   await initDiscountWaiverListModule();
+    // }
+
   } catch (err) {
-    console.error("❌ Failed to initialize discount waiver module", err);
+    console.error("❌ Failed to initialize Discount Waiver module", err);
     hideLoading();
-    showToast("❌ Failed to load discount waiver module");
+    showToast("❌ Failed to load Discount Waiver module");
   }
 });

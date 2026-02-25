@@ -1,5 +1,6 @@
 // 📁 backend/src/utils/autoLinkHelpers.js
 import { Op } from "sequelize";
+
 import {
   Consultation,
   RegistrationLog,
@@ -7,103 +8,148 @@ import {
   Admission,
   TriageRecord,
 } from "../models/index.js";
-import { REGISTRATION_LOG_STATUS } from "../constants/enums.js";
+
+import {
+  CONSULTATION_STATUS,
+  REGISTRATION_LOG_STATUS,
+  INVOICE_STATUS,
+  ADMISSION_STATUS,
+  TRIAGE_STATUS,
+} from "../constants/enums.js";
 
 /* ============================================================
-   🔧 Universal auto-link helper for clinical modules
-   - Detects which IDs exist in `value` and resolves only those
-   - Safe for: MedicalRecord, Triage, Vital, Consultation, etc.
-   ============================================================ */
-export async function resolveClinicalLinks(value, orgId, facilityId, t) {
-  // 🔹 Doctor fallback
-  if ("doctor_id" in value && !value.doctor_id && value._currentUser?.employee_id) {
-    value.doctor_id = value._currentUser.employee_id;
+   🔗 Universal Auto-Link Helper — ENTERPRISE MASTER
+============================================================ */
+export async function resolveClinicalLinks({
+  value,
+  user,
+  orgId,
+  facilityId,
+  transaction,
+}) {
+  if (!value || !value.patient_id) return value;
+
+  const resolved = { ...value };
+
+  /* ================= 👤 Staff fallback ================= */
+  if ("doctor_id" in resolved && !resolved.doctor_id && user?.employee_id) {
+    resolved.doctor_id = user.employee_id;
   }
 
-  // 🔹 Nurse fallback
-  if ("nurse_id" in value && !value.nurse_id && value._currentUser?.employee_id) {
-    value.nurse_id = value._currentUser.employee_id;
+  if ("nurse_id" in resolved && !resolved.nurse_id && user?.employee_id) {
+    resolved.nurse_id = user.employee_id;
   }
 
-  // 🔹 Auto-link Consultation
-  if ("consultation_id" in value && !value.consultation_id && value.patient_id) {
-    const latestConsult = await Consultation.findOne({
+  /* ================= 🩺 Consultation ================= */
+  if ("consultation_id" in resolved && !resolved.consultation_id) {
+    const consult = await Consultation.findOne({
       where: {
-        patient_id: value.patient_id,
+        patient_id: resolved.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
-        status: { [Op.in]: ["open", "in_progress"] },
+        status: {
+          [Op.in]: [
+            CONSULTATION_STATUS[0], // open
+            CONSULTATION_STATUS[1], // in_progress
+          ],
+        },
       },
       order: [["created_at", "DESC"]],
-      transaction: t,
+      transaction,
     });
-    if (latestConsult) {
-      value.consultation_id = latestConsult.id;
-      if ("doctor_id" in value && !value.doctor_id) {
-        value.doctor_id = latestConsult.doctor_id;
+
+    if (consult) {
+      resolved.consultation_id = consult.id;
+      if ("doctor_id" in resolved && !resolved.doctor_id) {
+        resolved.doctor_id = consult.doctor_id;
       }
     }
   }
 
-  // 🔹 Auto-link RegistrationLog
-  if ("registration_log_id" in value && !value.registration_log_id && value.patient_id) {
-    const latestReg = await RegistrationLog.findOne({
+  /* ================= 📝 Registration Log ================= */
+  if ("registration_log_id" in resolved && !resolved.registration_log_id) {
+    const reg = await RegistrationLog.findOne({
       where: {
-        patient_id: value.patient_id,
+        patient_id: resolved.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
-        log_status: { [Op.in]: [REGISTRATION_LOG_STATUS[1], REGISTRATION_LOG_STATUS[2]] }, // pending + active
+        log_status: {
+          [Op.in]: [
+            REGISTRATION_LOG_STATUS[1], // pending
+            REGISTRATION_LOG_STATUS[2], // active
+          ],
+        },
       },
       order: [["created_at", "DESC"]],
-      transaction: t,
+      transaction,
     });
-    if (latestReg) value.registration_log_id = latestReg.id;
+
+    if (reg) resolved.registration_log_id = reg.id;
   }
 
-  // 🔹 Auto-link Invoice
-  if ("invoice_id" in value && !value.invoice_id && value.patient_id) {
-    const latestInvoice = await Invoice.findOne({
+  /* ================= 💳 Invoice ================= */
+  if ("invoice_id" in resolved && !resolved.invoice_id) {
+    const invoice = await Invoice.findOne({
       where: {
-        patient_id: value.patient_id,
+        patient_id: resolved.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
-        status: { [Op.in]: ["open", "unpaid"] },
+        status: {
+          [Op.in]: [
+            INVOICE_STATUS[1],
+            INVOICE_STATUS[2],
+            INVOICE_STATUS[3],
+          ],
+        },
       },
       order: [["created_at", "DESC"]],
-      transaction: t,
+      transaction,
     });
-    if (latestInvoice) value.invoice_id = latestInvoice.id;
+
+    if (invoice) resolved.invoice_id = invoice.id;
   }
 
-  // 🔹 Auto-link Admission
-  if ("admission_id" in value && !value.admission_id && value.patient_id) {
-    const latestAdmission = await Admission.findOne({
+  /* ================= 🏥 Admission ================= */
+  if ("admission_id" in resolved && !resolved.admission_id) {
+    const admission = await Admission.findOne({
       where: {
-        patient_id: value.patient_id,
+        patient_id: resolved.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
-        status: { [Op.in]: ["active", "admitted"] },
+        status: {
+          [Op.in]: [
+            ADMISSION_STATUS[0],
+            ADMISSION_STATUS[1],
+          ],
+        },
       },
       order: [["created_at", "DESC"]],
-      transaction: t,
+      transaction,
     });
-    if (latestAdmission) value.admission_id = latestAdmission.id;
+
+    if (admission) resolved.admission_id = admission.id;
   }
 
-  // 🔹 Auto-link TriageRecord
-  if ("triage_record_id" in value && !value.triage_record_id && value.patient_id) {
-    const latestTriage = await TriageRecord.findOne({
+  /* ================= 🩸 Triage ================= */
+  if ("triage_record_id" in resolved && !resolved.triage_record_id) {
+    const triage = await TriageRecord.findOne({
       where: {
-        patient_id: value.patient_id,
+        patient_id: resolved.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
-        triage_status: { [Op.in]: ["open", "in_progress"] },
+        triage_status: {
+          [Op.in]: [
+            TRIAGE_STATUS[0],
+            TRIAGE_STATUS[1],
+          ],
+        },
       },
       order: [["created_at", "DESC"]],
-      transaction: t,
+      transaction,
     });
-    if (latestTriage) value.triage_record_id = latestTriage.id;
+
+    if (triage) resolved.triage_record_id = triage.id;
   }
 
-  return value;
+  return resolved;
 }

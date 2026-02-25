@@ -49,6 +49,8 @@ export const USER_FACILITY_STATUS = ['active', 'inactive'];
 export const REGISTRATION_LOG_STATUS = ['draft', 'pending', 'active', 'completed', 'cancelled', 'voided'];
 export const REGISTRATION_METHODS = ['walk_in', 'appointment', 'referral', 'transfer'];
 export const REGISTRATION_CATEGORIES = ['general', 'insured', 'vip', 'staff', 'charity'];
+// 🔹 Patient Lifecycle (USED BY Patient MODEL)
+export const PATIENT_STATUS = ['active', 'cancelled'];
 
 // ============================================================
 // 🔹 Encounter Lifecycles
@@ -81,7 +83,7 @@ export const PLAN_MODULE_STATUS = ['active', 'inactive'];
 export const INVOICE_STATUS = ['draft', 'issued', 'unpaid', 'partial', 'paid', 'cancelled', 'voided'];
 export const PAYMENT_STATUS = ['pending', 'completed', 'failed', 'cancelled', 'reversed', 'voided', 'verified'];
 export const REFUND_STATUS = ['pending', 'approved', 'rejected', 
-  'processed', 'cancelled', "reversed",];
+  'processed', 'cancelled', "reversed", 'voided',];
 // ============================================================
 // 🔹 Deposit Refund Lifecycle (Enterprise-Grade)
 // ============================================================

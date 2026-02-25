@@ -1,9 +1,10 @@
-// 📦 deposit-actions.js – Enterprise Master Pattern Aligned 
+// 📦 deposit-actions.js – Enterprise MASTER–ALIGNED (Consultation Parity)
 // ============================================================================
-// 🔹 Mirrors appointments-actions.js for unified permission-driven flow
-// 🔹 Preserves modal-based apply logic, all deposit-specific buttons, and lifecycle handlers
-// 🔹 Adds role-based permission checks, superadmin bypass, unified globals
-// 🔹 Now supports: toggle, cancel, reverse, apply, verify, void, restore
+// 🔹 Pattern Source: consultation-actions.js (Enterprise Master)
+// 🔹 Permission-driven + superadmin-aware (role + roleNames)
+// 🔹 Unified lifecycle dispatcher (view / edit / delete / toggle / cancel / reverse / apply / verify / void / restore)
+// 🔹 Safe fallback fetch + modal-based apply preserved
+// 🔹 100% API preservation (NO endpoint changes)
 // ============================================================================
 
 import {
@@ -17,9 +18,9 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./deposit-render.js";
 import { printDepositReceipt } from "./deposit-receipt.js";
 
-/* ============================================================
-   ⚙️ Unified Action Handler – Deposit Module
-============================================================ */
+/**
+ * Unified permission-aware action handler for Deposit module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -27,14 +28,14 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, permissions }
+  user, // { role, roleNames, permissions }
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("depositTableBody");
   const cardContainer = document.getElementById("depositList");
   const modalBody = document.getElementById("viewModalBody");
 
-  // 🗂️ Cache latest entries
+  // 🗂️ Cache latest entries (MASTER PATTERN)
   window.latestDepositEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
@@ -42,7 +43,7 @@ export function setupActionHandlers({
   if (modalBody) modalBody.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Permission + Role Normalization
+     🔑 Normalize Permissions (MASTER PATTERN)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -56,15 +57,26 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
+
+  // 🧠 Superadmin bypass (role OR roleNames)
   const isSuperAdmin =
-    (user?.role || "").toLowerCase().replace(/\s+/g, "") === "superadmin";
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (Array.isArray(user?.roleNames) &&
+      user.roleNames.some(
+        (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
+      ));
 
   const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(key.trim().toLowerCase());
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     🎛️ Main Action Dispatcher
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -76,6 +88,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
+    // 🩹 Fallback fetch (MASTER SAFETY)
     if (!entry) {
       try {
         showLoading();
@@ -88,57 +101,52 @@ export function setupActionHandlers({
         hideLoading();
       }
     }
+
     if (!entry) return showToast("❌ Deposit data missing");
 
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("deposits:view"))
         return showToast("⛔ No permission to view deposits");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("deposits:edit") && !hasPerm("deposits:create"))
         return showToast("⛔ No permission to edit deposits");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("deposits:delete"))
         return showToast("⛔ No permission to delete deposits");
       return await handleDelete(id);
     }
 
-    // --- Lifecycle Actions ---
+    // 🔄 Lifecycle map (MASTER STYLE)
     const lifecycleMap = {
-      "clear-btn": "toggle-status",   
-      "revert-btn": "toggle-status",     
       "toggle-status-btn": "toggle-status",
+      "clear-btn": "toggle-status",
+      "revert-btn": "toggle-status",
       "cancel-btn": "cancel",
       "reverse-btn": "reverse",
       "apply-btn": "apply",
       "verify-btn": "verify",
-      "void-btn": "void",
+      "void-btn": "voided",
       "restore-btn": "restore",
     };
-
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
         if (!hasPerm(`deposits:${action}`) && !hasPerm("deposits:edit"))
           return showToast(`⛔ No permission to ${action} deposits`);
 
-        // ⚙️ Use modal flow for "apply"
         if (action === "apply") return await handleApply(entry);
-        return await handleLifecycle(id, entry, action);
+        return await handleLifecycle(id, action);
       }
     }
 
-    // --- Print ---
     if (cls.contains("print-btn")) {
       if (!hasPerm("deposits:view"))
         return showToast("⛔ No permission to print deposits");
@@ -147,7 +155,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🧩 Action Handlers
+     ⚙️ Action Handlers
   ============================================================ */
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
@@ -164,12 +172,16 @@ export function setupActionHandlers({
   async function handleDelete(id) {
     const confirmed = await showConfirm("Delete this deposit?");
     if (!confirmed) return;
+
     try {
       showLoading();
-      const res = await authFetch(`/api/deposits/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/deposits/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete deposit");
+
       showToast("✅ Deposit deleted successfully");
       window.latestDepositEntries = [];
       await loadEntries(currentPage);
@@ -180,9 +192,10 @@ export function setupActionHandlers({
     }
   }
 
-  async function handleLifecycle(id, entry, action) {
-    const confirmMsg = `Proceed to ${action} this deposit?`;
-    const confirmed = await showConfirm(confirmMsg);
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(
+      `Proceed to ${action} this deposit?`
+    );
     if (!confirmed) return;
 
     const url =
@@ -196,6 +209,7 @@ export function setupActionHandlers({
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || `❌ Failed to ${action} deposit`);
+
       showToast(`✅ Deposit ${action} successful`);
       window.latestDepositEntries = [];
       await loadEntries(currentPage);
@@ -207,7 +221,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     💳 Modal-Based Apply (Preserved)
+     💳 Apply Deposit (Modal – PRESERVED)
   ============================================================ */
   async function handleApply(entry) {
     const depositIdInput = document.getElementById("applyDepositId");
@@ -293,7 +307,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🖨️ Print Handler
+     🖨️ Print
   ============================================================ */
   function handlePrint(entry) {
     try {
@@ -307,59 +321,56 @@ export function setupActionHandlers({
   /* ============================================================
      🪟 Modal Helpers
   ============================================================ */
-  function openModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) modal.classList.remove("hidden");
+  function openModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove("hidden");
   }
 
-  function closeModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-      modal.classList.add("hidden");
-      const form = modal.querySelector("form");
-      if (form) form.reset();
+  function closeModal(id) {
+    const m = document.getElementById(id);
+    if (m) {
+      m.classList.add("hidden");
+      const f = m.querySelector("form");
+      if (f) f.reset();
     }
   }
 
   /* ============================================================
-     🌐 Global Helpers (Enterprise Standard)
+     🌍 Global Helpers (MASTER + Backward Compatible)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestDepositEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  window.viewDeposit = (id) => {
     if (!hasPerm("deposits:view"))
       return showToast("⛔ No permission to view deposits");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Deposit not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editDeposit = (id) => {
     if (!hasPerm("deposits:edit") && !hasPerm("deposits:create"))
       return showToast("⛔ No permission to edit deposits");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Deposit not found for editing");
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteDeposit = async (id) => {
     if (!hasPerm("deposits:delete"))
       return showToast("⛔ No permission to delete deposits");
     await handleDelete(id);
   };
 
-  // 🔄 Unified lifecycle globals (enterprise pattern)
-  ["toggle-status", "cancel", "reverse", "apply", "verify", "void", "restore"].forEach(
+  ["toggle-status", "cancel", "reverse", "apply", "verify", "voided", "restore"].forEach(
     (action) => {
       window[`${action}Deposit`] = async (id) => {
         if (!hasPerm(`deposits:${action}`) && !hasPerm("deposits:edit"))
           return showToast(`⛔ No permission to ${action} deposits`);
         const entry = findEntry(id);
         if (action === "apply") return await handleApply(entry);
-        await handleLifecycle(id, entry, action);
+        await handleLifecycle(id, action);
       };
     }
   );
@@ -369,12 +380,14 @@ export function setupActionHandlers({
       return showToast("⛔ No permission to print deposits");
     const entry = findEntry(id);
     if (entry) handlePrint(entry);
-    else showToast("❌ Deposit not found for printing");
   };
 
-  // ============================================================
-  // 🔹 Close modal buttons (Cancel / X)
-  // ============================================================
+  // 🔹 Backward compatibility
+  window.viewEntry = window.viewDeposit;
+  window.editEntry = window.editDeposit;
+  window.deleteEntry = window.deleteDeposit;
+
+  // 🔹 Close modal buttons
   document.querySelectorAll("[data-close]").forEach((btn) => {
     btn.addEventListener("click", () => closeModal(btn.dataset.close));
   });

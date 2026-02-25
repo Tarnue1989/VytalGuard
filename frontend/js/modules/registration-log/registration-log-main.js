@@ -1,6 +1,6 @@
 // 📦 registrationLog-main.js – Form-only loader for Registration Log (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Mirrors department-main.js / patient-main.js structure exactly
+// 🧭 FULL MASTER PARITY WITH consultation-main.js / department-main.js
 // 🔹 Auth guard + logout watcher
 // 🔹 Unified form visibility and reset logic
 // 🔹 Session-safe edit caching
@@ -10,8 +10,8 @@
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
 } from "../../utils/index.js";
 
 import { setupRegistrationLogFormSubmission } from "./registration-log-form.js";
@@ -133,7 +133,7 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
   return; // handled by list page
@@ -143,7 +143,7 @@ async function loadEntries() {
    🚀 Init Entrypoint
 ============================================================ */
 export async function initRegistrationLogModule() {
-  showForm(); // form-only mode (matches Department / Patient)
+  showForm(); // form-only mode (MASTER parity)
 
   if (form) {
     setupRegistrationLogFormSubmission({
@@ -176,7 +176,7 @@ export async function initRegistrationLogModule() {
 }
 
 /* ============================================================
-   (Optional) State Sync Stub
+   🔁 Sync Stub (Future)
 ============================================================ */
 export function syncRefsToState() {
   // reserved for future reactive syncing

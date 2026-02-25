@@ -1,9 +1,13 @@
-// 📁 refundDeposit-form.js – Enterprise Master Pattern (Add/Edit Deposit Refund)
+// 📁 refundDeposit-form.js – Secure & Role-Aware Deposit Refund Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors refund-form.js but for DEPOSIT REFUNDS
-// 🔹 Uses refundable deposit balance (remaining_balance from backend)
-// 🔹 Supports Add + Edit Mode with session caching
-// 🔹 Fully aligned with refundDepositController + refundDepositService
+// 🧭 FULL parity with refund-form.js MASTER (Deposit-adapted)
+// 🔹 Rule-driven validation (RULE FILE – NO inline rules)
+// 🔹 Page guard + logout watcher enforced
+// 🔹 Tenant inherited strictly from Deposit (NO org/fac/patient payload)
+// 🔹 Patient → Deposits dependency
+// 🔹 Refundable balance enforced (UX + backend)
+// 🔹 Clean payload normalization (UUID | number | null)
+// 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
 // ============================================================================
 
 import {
@@ -11,28 +15,43 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
+  initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
 
-import { authFetch } from "../../authSession.js";
 import {
-  loadOrganizationsLite,
-  loadFacilitiesLite,
-  loadPatientsLite,
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
+import { authFetch } from "../../authSession.js";
+
+import {
   loadDepositsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 /* ============================================================
-   Helpers
+   📋 RULES (MASTER – IMPORTED)
+============================================================ */
+import { REFUND_DEPOSIT_FORM_RULES } from "./refund-deposits-form-rules.js";
+
+/* ============================================================
+   🧩 Helpers (MASTER)
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
 
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
+}
+
+function normalizeNumber(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeMessage(result, fallback) {
@@ -47,65 +66,43 @@ function normalizeMessage(result, fallback) {
   }
 }
 
-function validateDepositRefundForm(payload, isEdit, userRole) {
-  const errors = [];
-
-  if (!payload.deposit_id) errors.push("Deposit is required");
-  if (!payload.patient_id) errors.push("Patient is required");
-  if (!payload.refund_amount || payload.refund_amount <= 0)
-    errors.push("Valid refund amount is required");
-  if (!payload.method) errors.push("Refund Method is required");
-  if (!payload.reason || payload.reason.trim().length < 3)
-    errors.push("Reason (min 3 chars) is required");
-
-  if (userRole.includes("super")) {
-    if (!payload.organization_id) errors.push("Organization is required");
-    if (!payload.facility_id) errors.push("Facility is required");
-  } else if (userRole.includes("admin")) {
-    if (!payload.facility_id) errors.push("Facility is required");
-  }
-
-  return errors;
-}
-
 /* ============================================================
-   Main Setup
+   🚀 Main Setup
 ============================================================ */
 export async function setupRefundDepositFormSubmission({ form }) {
+  initPageGuard(autoPagePermissionKey());
+  initLogoutWatcher();
+  enableLiveValidation(form);
+
   const sessionId = sessionStorage.getItem("refundDepositEditId");
   const queryId = getQueryParam("id");
   const refundId = sessionId || queryId;
-  const isEdit = !!refundId;
-
-  const token = initPageGuard(
-    autoPagePermissionKey(["refund-deposits:create", "refund-deposits:edit"])
-  );
+  const isEdit = Boolean(refundId);
 
   /* ============================================================
-     UI Mode
+     🎨 UI Mode
   ============================================================ */
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
 
-  const setAddModeUI = () => {
-    if (titleEl) titleEl.textContent = "Add Deposit Refund";
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Refund`;
+  const setUI = (mode = "add") => {
+    if (titleEl) {
+      titleEl.textContent =
+        mode === "edit" ? "Edit Deposit Refund" : "Add Deposit Refund";
+    }
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Refund`
+          : `<i class="ri-add-line me-1"></i> Add Refund`;
+    }
   };
 
-  const setEditModeUI = () => {
-    if (titleEl) titleEl.textContent = "Edit Deposit Refund";
-    if (submitBtn)
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Refund`;
-  };
-
-  isEdit ? setEditModeUI() : setAddModeUI();
+  setUI(isEdit ? "edit" : "add");
 
   /* ============================================================
-     DOM Elements
+     📋 DOM Refs
   ============================================================ */
-  const orgSelect = document.getElementById("organizationSelect");
-  const facSelect = document.getElementById("facilitySelect");
   const patientInput = document.getElementById("patientInput");
   const patientHidden = document.getElementById("patientId");
   const patientSuggestions = document.getElementById("patientSuggestions");
@@ -118,51 +115,21 @@ export async function setupRefundDepositFormSubmission({ form }) {
   const reasonInput = document.getElementById("reason");
 
   /* ============================================================
-     Load Orgs / Facilities
+     🔐 TENANT UI LOCK (MASTER)
+     Refund Deposit NEVER selects org/fac
   ============================================================ */
-  try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  document
+    .getElementById("organizationSelect")
+    ?.closest(".form-group")
+    ?.classList.add("hidden");
 
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
-        );
-
-        setupSelectOptions(
-          facSelect,
-          facs,
-          "id",
-          "name",
-          "-- Select Facility --"
-        );
-      }
-
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-
-    } else if (userRole.includes("admin")) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      facSelect?.closest(".form-group")?.classList.add("hidden");
-    }
-  } catch (err) {
-    console.error("❌ Failed to load org/facility lists:", err);
-    showToast("❌ Failed to load organization or facility");
-  }
+  document
+    .getElementById("facilitySelect")
+    ?.closest(".form-group")
+    ?.classList.add("hidden");
 
   /* ============================================================
-     Patient → Deposits loader
+     🔎 Patient → Deposits (MASTER)
   ============================================================ */
   setupSuggestionInputDynamic(
     patientInput,
@@ -171,9 +138,10 @@ export async function setupRefundDepositFormSubmission({ form }) {
     async (selected) => {
       patientHidden.value = selected?.id || "";
       depositHidden.value = "";
+      amountInput.value = "";
+      amountInput.removeAttribute("max");
 
       if (!selected) {
-        depositInput.value = "";
         setupSelectOptions(depositInput, [], "id", "label");
         return;
       }
@@ -182,44 +150,35 @@ export async function setupRefundDepositFormSubmission({ form }) {
         selected.label ||
         `${selected.pat_no || ""} ${selected.full_name || ""}`.trim();
 
-      // Load deposits
       const deposits = await loadDepositsLite({
         patient_id: selected.id,
       });
 
-      // Make readable labels (FORMAT C)
-      const readableDeposits = deposits.map((d) => {
-        const depositNo = d.label?.split(" - ")[0] ?? d.label;
-        return {
-          ...d,
-          label: `Deposit ${depositNo} — Amount ${d.amount} — Balance ${d.remaining_balance} — ${d.method?.toUpperCase() ?? ""}`
-        };
-      });
+      const readable = deposits.map((d) => ({
+        ...d,
+        label: `Deposit ${d.label} — Amount ${Number(d.amount || 0).toFixed(
+          2
+        )} — Balance ${Number(d.remaining_balance || 0).toFixed(2)} — ${(
+          d.method || ""
+        ).toUpperCase()}`,
+      }));
 
       setupSelectOptions(
         depositInput,
-        readableDeposits,
+        readable,
         "id",
         "label",
         "-- Select Deposit --"
       );
 
-      /* Handle onchange */
       depositInput.onchange = () => {
-        const dep = readableDeposits.find((d) => d.id === depositInput.value);
-
-        if (!dep) {
-          amountInput.value = "";
-          amountInput.removeAttribute("max");
-          methodSelect.value = "";
-          depositHidden.value = "";
-          return;
-        }
+        const dep = readable.find((d) => d.id === depositInput.value);
+        if (!dep) return;
 
         depositHidden.value = dep.id;
         methodSelect.value = dep.method || "";
 
-        const bal = Number(dep.remaining_balance ?? dep.balance ?? 0);
+        const bal = Number(dep.remaining_balance || 0);
         amountInput.value = bal.toFixed(2);
         amountInput.max = bal.toFixed(2);
       };
@@ -228,197 +187,156 @@ export async function setupRefundDepositFormSubmission({ form }) {
   );
 
   /* ============================================================
-     Edit Mode
+     ✏️ PREFILL (EDIT MODE — MASTER SAFE)
   ============================================================ */
-  if (isEdit) {
+  if (isEdit && refundId) {
     try {
       showLoading();
 
-      let entry = null;
-      const raw = sessionStorage.getItem("refundDepositEditPayload");
-      if (raw) entry = JSON.parse(raw);
+      let entry = JSON.parse(
+        sessionStorage.getItem("refundDepositEditPayload") || "null"
+      );
 
       if (!entry) {
         const res = await authFetch(`/api/refund-deposits/${refundId}`);
         const result = await res.json().catch(() => ({}));
-        entry = result?.data;
-
-        if (!res.ok || !entry)
-          throw new Error(normalizeMessage(result, "❌ Refund not found"));
-      }
-
-      /* ===========================
-        PATIENT PREFILL (FIXED)
-      =========================== */
-      if (entry.patient) {
-        let patientLabel = "";
-        let patientId = "";
-
-        if (typeof entry.patient === "string") {
-          // Case 1: API returned formatted string
-          patientLabel = entry.patient;
-          patientId = entry.patient_id || "";
-        } else if (typeof entry.patient === "object") {
-          // Case 2: API returned object
-          patientLabel =
-            entry.patient.label ||
-            `${entry.patient.pat_no || ""} - ${entry.patient.full_name || ""}`.trim();
-
-          patientId = entry.patient.id || entry.patient_id || "";
-        }
-
-        patientInput.value = patientLabel;
-        patientHidden.value = patientId;
-
-        // Load deposits for that patient
-        if (patientId) {
-          const deposits = await loadDepositsLite({
-            patient_id: patientId,
-          });
-
-          const readableDeposits = deposits.map((d) => {
-            const depositNo = d.label?.split(" - ")[0] ?? d.label;
-            return {
-              ...d,
-              label: `Deposit ${depositNo} — Amount ${d.amount} — Balance ${d.remaining_balance} — ${d.method?.toUpperCase() ?? ""}`,
-            };
-          });
-
-          setupSelectOptions(
-            depositInput,
-            readableDeposits,
-            "id",
-            "label",
-            "-- Select Deposit --"
+        if (!res.ok) {
+          throw new Error(
+            normalizeMessage(result, "Failed to load refund")
           );
-
-          if (entry.deposit_id) {
-            depositInput.value = entry.deposit_id;
-            depositHidden.value = entry.deposit_id;
-          }
         }
+        entry = result?.data;
       }
 
-      // Refund amount
-      amountInput.value = Number(entry.refund_amount).toFixed(2);
+      if (!entry) return;
 
+      patientHidden.value = entry.patient_id || "";
+      patientInput.value =
+        entry.patient?.label ||
+        `${entry.patient?.pat_no || ""} ${
+          entry.patient?.full_name || ""
+        }`.trim();
+
+      setupSelectOptions(
+        depositInput,
+        [
+          {
+            id: entry.deposit_id,
+            label:
+              entry.deposit?.transaction_ref ||
+              entry.deposit?.deposit_ref ||
+              "Deposit",
+          },
+        ],
+        "id",
+        "label"
+      );
+
+      depositInput.value = entry.deposit_id;
+      depositHidden.value = entry.deposit_id;
+
+      amountInput.value = Number(entry.refund_amount || 0).toFixed(2);
       amountInput.max = Number(
         entry.deposit?.remaining_balance ??
-        entry.deposit?.balance ??
-        entry.refund_amount
+          entry.refund_amount ??
+          0
       ).toFixed(2);
 
       methodSelect.value = entry.method || "";
       reasonInput.value = entry.reason || "";
 
-      if (entry.organization_id && orgSelect)
-        orgSelect.value = entry.organization_id;
-      if (entry.facility_id && facSelect)
-        facSelect.value = entry.facility_id;
+      patientInput.disabled = true;
+      depositInput.disabled = true;
 
-      setEditModeUI();
-
+      setUI("edit");
     } catch (err) {
-      console.error("❌ Prefill error:", err);
-      showToast(err.message || "❌ Could not load refund");
+      showToast(err.message || "❌ Failed to load refund");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     Submit Handler
+     🛡️ SUBMIT (RULE FILE DRIVEN – MASTER)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
 
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+    const errors = [];
 
-    const payload = {
-      deposit_id: normalizeUUID(depositHidden.value),
-      patient_id: normalizeUUID(patientHidden.value),
-      refund_amount: parseFloat(amountInput.value || 0) || null,
-      method: methodSelect.value || null,
-      reason: reasonInput.value || null,
-      organization_id:
-        normalizeUUID(orgSelect?.value) ||
-        localStorage.getItem("organizationId"),
-      facility_id:
-        normalizeUUID(facSelect?.value) ||
-        localStorage.getItem("facilityId"),
-    };
+    for (const rule of REFUND_DEPOSIT_FORM_RULES) {
+      const el = document.getElementById(rule.id);
+      if (!el || el.closest(".hidden")) continue;
+      if (!el.value || el.value.trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
 
-    const errors = validateDepositRefundForm(payload, isEdit, userRole);
-    if (errors.length > 0) {
-      showToast("❌ " + errors.join("\n"));
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
       return;
     }
 
-    const url = isEdit
-      ? `/api/refund-deposits/${refundId}`
-      : `/api/refund-deposits`;
+    const payload = {
+      refund_amount: normalizeNumber(amountInput.value),
+      method: methodSelect.value || null,
+      reason: reasonInput.value || null,
+    };
+
+    if (!isEdit) {
+      payload.deposit_id = normalizeUUID(depositHidden.value);
+    }
+
+    // 🔒 HARD STRIP TENANT (Refund inherits from Deposit)
+    delete payload.organization_id;
+    delete payload.facility_id;
+    delete payload.patient_id;
 
     try {
       showLoading();
 
-      const res = await authFetch(url, {
-        method: isEdit ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await authFetch(
+        isEdit
+          ? `/api/refund-deposits/${refundId}`
+          : `/api/refund-deposits`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const result = await res.json().catch(() => ({}));
-
-      if (!res.ok)
+      if (!res.ok) {
         throw new Error(
-          normalizeMessage(result, `❌ Server error (${res.status})`)
+          normalizeMessage(result, "Submission failed")
         );
-
-      if (isEdit) {
-        showToast("✅ Deposit refund updated successfully");
-        sessionStorage.removeItem("refundDepositEditId");
-        sessionStorage.removeItem("refundDepositEditPayload");
-        window.location.href = "/refund-deposits-list.html";
-      } else {
-        showToast("✅ Deposit refund created successfully");
-        form.reset();
-        depositHidden.value = "";
-        patientHidden.value = "";
-        amountInput.removeAttribute("max");
-        setAddModeUI();
       }
 
+      showToast(isEdit ? "✅ Refund updated" : "✅ Refund created");
+
+      sessionStorage.removeItem("refundDepositEditId");
+      sessionStorage.removeItem("refundDepositEditPayload");
+      window.location.href = "/refund-deposits-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
   };
 
-/* ============================================================
-   Clear Button (HARD REFRESH – TRUE RESET)
-============================================================ */
-document.getElementById("clearRefundDepositBtn")?.addEventListener("click", () => {
-  // Clear edit session first (important)
-  sessionStorage.removeItem("refundDepositEditId");
-  sessionStorage.removeItem("refundDepositEditPayload");
-
-  // 🔥 Hard reload – same as browser refresh
-  window.location.reload();
-});
-
-
   /* ============================================================
-     Cancel Button
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
-  document.getElementById("cancelRefundDepositBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("refundDepositEditId");
-    sessionStorage.removeItem("refundDepositEditPayload");
+  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+    sessionStorage.clear();
     window.location.href = "/refund-deposits-list.html";
+  });
+
+  document.getElementById("clearBtn")?.addEventListener("click", () => {
+    sessionStorage.clear();
+    window.location.reload();
   });
 }

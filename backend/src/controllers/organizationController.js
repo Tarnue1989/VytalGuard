@@ -18,6 +18,8 @@ import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("organizationController", DEBUG_OVERRIDE);
 
+const MODULE_KEY = "organizations";
+
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
@@ -73,7 +75,7 @@ export const getAllOrganizations = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -160,7 +162,7 @@ export const getAllOrganizations = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "list",
       details: {
         returned: count,
@@ -191,7 +193,7 @@ export const getOrganizationById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -212,7 +214,7 @@ export const getOrganizationById = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "view",
       entityId: org.id,
       entity: org,
@@ -232,7 +234,7 @@ export const getAllOrganizationsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "read",
       res,
     });
@@ -267,7 +269,7 @@ export const getAllOrganizationsLite = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "list_lite",
       details: { q: q || null, count: records.length },
     });
@@ -287,7 +289,7 @@ export const createOrganization = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "create",
       res,
     });
@@ -333,7 +335,7 @@ export const createOrganization = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "create",
       entityId: created.id,
       entity: full,
@@ -361,7 +363,7 @@ export const updateOrganization = async (req, res) => {
 
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
@@ -425,7 +427,7 @@ export const updateOrganization = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "update",
       entityId: org.id,
       entity: full,
@@ -447,7 +449,7 @@ export const toggleOrganizationStatus = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "update",
       res,
     });
@@ -479,7 +481,7 @@ export const toggleOrganizationStatus = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "toggle_status",
       entityId: org.id,
       entity: full,
@@ -505,7 +507,7 @@ export const deleteOrganization = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "delete",
       res,
     });
@@ -547,7 +549,7 @@ export const deleteOrganization = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "organization",
+      module: MODULE_KEY,
       action: "delete",
       entityId: org.id,
       entity: full,

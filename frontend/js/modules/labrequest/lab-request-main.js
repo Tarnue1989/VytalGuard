@@ -1,29 +1,36 @@
-// 📦 labrequest-main.js – Form-only loader for Lab Requests (Master Pattern Aligned)
+// 📦 labrequest-main.js – Form-only loader for Lab Requests (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🧭 FULL MASTER PARITY WITH consultation-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 Pill state preserved (handled by form module)
+// 🔹 100% ID-safe and controller-aligned
+// ============================================================================
 
 import {
   initPageGuard,
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
 import { setupLabRequestFormSubmission } from "./lab-request-form.js";
+
 import {
   FIELD_LABELS_LAB_REQUEST,
   FIELD_ORDER_LAB_REQUEST,
   FIELD_DEFAULTS_LAB_REQUEST,
 } from "./lab-request-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-
-// Automatically resolves correct permission ("lab_requests:create" / "lab_requests:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -38,7 +45,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
@@ -48,8 +55,8 @@ function resetForm() {
   sessionStorage.removeItem("labRequestEditId");
   sessionStorage.removeItem("labRequestEditPayload");
 
-  // Explicitly clear text fields
-  ["notes", "request_date"].forEach((id) => {
+  // Clear text inputs
+  ["notes", "request_date", "itemNotes"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -60,8 +67,14 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset inputs with data attributes
-  ["patientSearch", "doctorSearch", "consultationSearch", "registrationLogSearch"].forEach((id) => {
+  // Clear suggestion inputs + hidden values
+  [
+    "patientSearch",
+    "doctorSearch",
+    "consultationSearch",
+    "registrationLogSearch",
+    "labTestSearch",
+  ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       el.value = "";
@@ -69,18 +82,18 @@ function resetForm() {
     }
   });
 
-  // Reset checkbox
+  // Reset emergency checkbox
   const emergencyCheck = document.getElementById("is_emergency");
   if (emergencyCheck) emergencyCheck.checked = false;
 
-  // Clear lab test pills
-  const pillsContainer = document.getElementById("requestPillsContainer");
-  if (pillsContainer)
-    pillsContainer.innerHTML = `<p class="text-muted">No lab tests added yet.</p>`;
+  // NOTE:
+  // Pill state is intentionally NOT force-mutated here.
+  // The form module owns pill state and exposes render helpers.
+  // This mirrors Consultation MASTER separation of concerns.
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 Form Show / Hide (MASTER)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -95,12 +108,12 @@ function hideForm() {
   localStorage.setItem("labRequestFormVisible", "false");
 }
 
-// Expose globally
+// 🔗 Expose globally (MASTER parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   🔘 Button Wiring (MASTER)
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
@@ -111,15 +124,7 @@ if (cancelBtn) {
 
 if (clearBtn) {
   clearBtn.onclick = () => {
-    const isEdit = !!sharedState.currentEditIdRef.value;
-    sessionStorage.removeItem("labRequestEditId");
-    sessionStorage.removeItem("labRequestEditPayload");
-
-    if (isEdit) {
-      window.location.href = "/lab-requests-list.html";
-    } else {
-      resetForm();
-    }
+    resetForm();
   };
 }
 
@@ -133,36 +138,38 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   🧠 Loader (no-op)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return; // list page handles loading
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint (MASTER)
 ============================================================ */
 export async function initLabRequestModule() {
-  showForm(); // auto-open form on standalone page
+  showForm(); // form-only mode (MASTER parity)
 
-  setupLabRequestFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupLabRequestFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("labRequestPanelVisible", "false");
 
-  // Normalize role for default field visibility
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
+
   if (role.includes("super") && role.includes("admin")) role = "superadmin";
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🧩 Initialize Field Selector (role-based)
   setupFieldSelector({
     module: "lab_request",
     fieldLabels: FIELD_LABELS_LAB_REQUEST,
@@ -172,8 +179,8 @@ export async function initLabRequestModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper
+   🔁 Sync Stub (MASTER)
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for advanced reactive integration
+  // reserved for future reactive syncing
 }

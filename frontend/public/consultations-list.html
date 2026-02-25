@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
-  <link rel="stylesheet" href="assets/css/summary.css">
+  <link rel="stylesheet" href="assets/css/summary.css" />
 </head>
 
 <body>
@@ -49,6 +49,8 @@
         <div class="row gx-4">
           <div class="col-sm-12">
             <div class="card">
+
+              <!-- Card Header -->
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="card-title mb-0">Consultations</h5>
                 <a href="add-consultation.html" class="btn btn-primary ms-auto">
@@ -59,7 +61,7 @@
               <div class="card-body">
 
                 <!-- ============================================================ -->
-                <!-- 🔍 FILTER SECTION -->
+                <!-- 🔍 FILTER SECTION (MASTER PARITY) -->
                 <!-- ============================================================ -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
@@ -70,7 +72,7 @@
                       </button>
                     </div>
 
-                    <!-- ✅ Export Buttons -->
+                    <!-- Export Buttons -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
@@ -84,28 +86,41 @@
                     </div>
                   </div>
 
-                  <!-- 🔻 Collapsible Filters -->
+                  <!-- Collapsible Filter Body -->
                   <div id="filterCollapse" class="card-body filter-body hidden">
-                    <div class="section-label mb-2"><strong>Filter Consultations</strong></div>
+                    <div class="section-label mb-2">
+                      <strong>Filter Consultations</strong>
+                    </div>
 
                     <div class="row gx-3 gy-2 filter-grid compact">
+
                       <!-- Patient -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
                           <label class="form-label" for="filterPatient">Patient</label>
-                          <input type="text" id="filterPatient" class="form-control suggestion-input"
-                                 placeholder="Search patient..." autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterPatient"
+                            class="form-control suggestion-input"
+                            placeholder="Search patient..."
+                            autocomplete="off"
+                          />
                           <input type="hidden" id="filterPatientId" />
                           <div id="filterPatientSuggestions" class="suggestions"></div>
                         </div>
                       </div>
 
                       <!-- Doctor -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6 form-group">
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
                           <label class="form-label" for="filterDoctor">Doctor</label>
-                          <input type="text" id="filterDoctor" class="form-control suggestion-input"
-                                 placeholder="Search doctor..." autocomplete="off" />
+                          <input
+                            type="text"
+                            id="filterDoctor"
+                            class="form-control suggestion-input"
+                            placeholder="Search doctor..."
+                            autocomplete="off"
+                          />
                           <input type="hidden" id="filterDoctorId" />
                           <div id="filterDoctorSuggestions" class="suggestions"></div>
                         </div>
@@ -116,7 +131,7 @@
                         <div class="field-wrapper">
                           <label class="form-label" for="filterDepartment">Department</label>
                           <select id="filterDepartment" class="form-select">
-                            <option value="">-- All Departments --</option>
+                            <option value="">All</option>
                           </select>
                         </div>
                       </div>
@@ -126,7 +141,7 @@
                         <div class="field-wrapper">
                           <label class="form-label" for="filterConsultationType">Consultation Type</label>
                           <select id="filterConsultationType" class="form-select">
-                            <option value="">-- All Types --</option>
+                            <option value="">All</option>
                           </select>
                         </div>
                       </div>
@@ -161,9 +176,7 @@
                           <label class="form-label" for="filterFacilitySelect">Facility</label>
                           <select id="filterFacilitySelect" class="form-select"></select>
                         </div>
-                      </div>
-
-
+                      </div
                       <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
                       <div class="col-md-3">
                         <div class="field-wrapper">
@@ -182,12 +195,13 @@
                         </div>
                       </div>
 
-                      <!-- Filter Buttons -->
+                      <!-- Filter Actions -->
                       <div class="col-12 d-flex gap-2 filter-actions mt-2">
                         <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
                           <i class="fas fa-times me-1"></i> Clear
                         </button>
                       </div>
+
                     </div>
                   </div>
                 </div>
@@ -196,15 +210,22 @@
                 <!-- 🧭 VIEW CONTROLS -->
                 <!-- ============================================================ -->
                 <div class="d-flex mb-2 view-toggle compact align-items-center gap-2 flex-wrap">
+
                   <!-- Field Selector -->
                   <div class="dropdown relative-wrapper export-ignore">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle" id="fieldSelectorBtn"
-                            data-bs-toggle="dropdown" aria-expanded="false">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                    >
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2 field-selector-dropdown"
-                         id="fieldSelectorDropdown"
-                         style="min-width:240px;"></div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
 
                   <!-- View Toggle -->
@@ -218,12 +239,14 @@
                   </div>
                 </div>
 
-                <!-- Records per page -->
+                <!-- Records Per Page -->
                 <div class="btn-group align-items-center ms-2" role="group">
                   <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
-                  <select id="recordsPerPage"
-                          class="btn btn-outline-secondary btn-sm text-center"
-                          style="width:64px; appearance:auto;">
+                  <select
+                    id="recordsPerPage"
+                    class="btn btn-outline-secondary btn-sm text-center"
+                    style="width:64px; appearance:auto;"
+                  >
                     <option value="10">10</option>
                     <option value="25" selected>25</option>
                     <option value="50">50</option>
@@ -233,12 +256,12 @@
                 </div>
 
                 <!-- 📊 Breakdown Summary -->
-                <hr class="my-2">
+                <hr class="my-2" />
                 <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
                 <div class="module-summary">
                   <div id="moduleSummary"></div>
                 </div>
-                <hr class="my-2">
+                <hr class="my-2" />
 
                 <!-- ============================================================ -->
                 <!-- 📋 TABLE VIEW -->
@@ -275,7 +298,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <div id="viewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
@@ -301,9 +326,12 @@
   <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
   <script src="assets/js/custom.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script type="module" src="/js/logout.js"></script>
   <script type="module" src="/js/authSession.js"></script>
   <script type="module" src="/js/modules/consultations/consultation-filter-main.js"></script>
+  <script type="module" src="/js/modules/consultations/consultation-render.js"></script>
+  <script type="module" src="/js/modules/shared/list-export.js"></script>
 </body>
 </html>

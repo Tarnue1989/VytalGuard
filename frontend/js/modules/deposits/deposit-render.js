@@ -1,90 +1,183 @@
-// 📦 deposit-render.js – Enterprise Master Pattern Aligned
+// 📦 deposit-render.js – Entity Card System (DEPOSIT | ENTERPRISE FINAL)
 // ============================================================================
-// 🔹 Mirrors appointment-render.js for unified structure & enterprise behavior
-// 🔹 Supports role-based visibility, tooltips, exports, and STATUS_ACTION_MATRIX
-// 🔹 Preserves all deposit-specific logic and DOM IDs
+// 🧭 FULL MASTER PARITY WITH consultation-render.js
+// 🔹 Table = flat | Card = RICH + structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
 // ============================================================================
 
 import { FIELD_LABELS_DEPOSIT } from "./deposit-constants.js";
+
 import { formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
-/* ============================================================================
-   🎛️ Action Buttons (centralized + permission-driven)
-============================================================================ */
+/* ============================================================
+   🔃 SORTABLE FIELDS (MASTER PARITY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "amount",
+  "applied_amount",
+  "remaining_balance",
+  "method",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("depositSortBy") || "";
+let sortDir = localStorage.getItem("depositSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+  localStorage.setItem("depositSortBy", sortBy);
+  localStorage.setItem("depositSortDir", sortDir);
+  window.setDepositSort?.(sortBy, sortDir);
+  window.loadDepositPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTIONS
+============================================================ */
 function getDepositActionButtons(entry, user) {
   return buildActionButtons({
-    module: "deposit", // maps to STATUS_ACTION_MATRIX.deposit
+    module: "deposit",
     status: (entry.status || "").toLowerCase(),
-    entry, // ✅ important — needed for balance check
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "deposits",
   });
 }
 
-
-/* ============================================================================
-   🧱 Dynamic Table Head Renderer
-============================================================================ */
+/* ============================================================
+   🧱 TABLE HEAD
+============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    th.dataset.key = field;
+
+    const label =
       FIELD_LABELS_DEPOSIT[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field)
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadDepositPage?.(1),
+  });
 }
 
-/* ============================================================================
-   🔠 Field Render Helpers
-============================================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || "—";
+/* ============================================================
+   🔠 HELPERS
+============================================================ */
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return [u.first_name, u.middle_name, u.last_name]
+    .filter(Boolean)
+    .join(" ") || u.full_name || "—";
 }
 
 function renderPatient(entry) {
+  if (!entry.patient) return "—";
   const p = entry.patient;
-  if (!p) return "—";
-  const patNo = p.pat_no || "—";
-  const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
-  return `${patNo} - ${name || "Unnamed"}`;
+  return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ")}`;
 }
 
+/* ============================================================
+   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        pending: "bg-warning text-dark",
-        cleared: "bg-primary",
-        applied: "bg-success",
-        cancelled: "bg-danger",
-        reversed: "bg-dark text-light",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "pending"
+          ? "bg-warning text-dark"
+          : s === "cleared"
+          ? "bg-primary"
+          : s === "applied"
+          ? "bg-success"
+          : s === "cancelled"
+          ? "bg-danger"
+          : s === "reversed"
+          ? "bg-dark text-light"
+          : "bg-secondary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "patient":
+    case "patient_id":
       return renderPatient(entry);
+
     case "appliedInvoice":
       return entry.appliedInvoice
         ? `${entry.appliedInvoice.invoice_number} (Bal: $${Number(
@@ -92,17 +185,18 @@ function renderValue(entry, field) {
           ).toFixed(2)})`
         : "—";
 
+    case "amount":
     case "applied_amount":
     case "remaining_balance":
-    case "amount":
-      return entry[field] != null ? `$${Number(entry[field]).toFixed(2)}` : "—";
+      return entry[field] != null
+        ? `$${Number(entry[field]).toFixed(2)}`
+        : "—";
 
     case "method":
-      return entry.method || "—";
     case "transaction_ref":
-      return entry.transaction_ref || "—";
     case "notes":
-      return entry.notes || "—";
+    case "reason":
+      return safe(entry[field]);
 
     case "createdBy":
       return renderUserName(entry.createdBy);
@@ -116,83 +210,151 @@ function renderValue(entry, field) {
     case "deleted_at":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
-/* ============================================================================
-   🗂️ Card Renderer
-============================================================================ */
+/* ============================================================
+   🗂️ CARD RENDERER — RICH (MASTER)
+============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_DEPOSIT[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getDepositActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === "") return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
+  };
+
+  // UI-only derived clarity helpers (NO backend mutation)
+  const refundedAmount = Number(entry.refund_amount || 0);
+  const hasRefund = refundedAmount > 0;
+
+  const lifecycleHint =
+    status === "applied" && hasRefund
+      ? "Applied → Refunded"
+      : status === "applied"
+      ? "Applied"
+      : status === "voided"
+      ? "Voided"
+      : "";
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card deposit-card">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient(entry)}</div>
+          <div class="entity-primary">${money(entry.amount)}</div>
+        </div>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
+            : ""
+        }
+      </div>
+
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
+        ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
+        ${entry.transaction_ref ? `<div>🔗 ${entry.transaction_ref}</div>` : ""}
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Amount", money(entry.amount))}
+        ${row("Applied Amount", money(entry.applied_amount))}
+
+        <!-- 🔁 UI clarity rename -->
+        ${row("Available Balance", money(entry.remaining_balance))}
+
+        <!-- 💸 Refund visibility (ONLY when exists) -->
+        ${hasRefund ? row("Refunded Amount", money(refundedAmount)) : ""}
+
+        ${row("Status", status.toUpperCase())}
+
+        <!-- 🧠 Lifecycle hint (UI only) -->
+        ${
+          lifecycleHint
+            ? row(
+                "Lifecycle",
+                `<span class="text-muted">${lifecycleHint}</span>`
+              )
+            : ""
+        }
+
+        ${row("Reason", entry.reason)}
+        ${row("Notes", entry.notes)}
+      </div>
+
+      <details class="entity-notes">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDate(entry.updated_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getDepositActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
-/* ============================================================================
-   📋 Main List Renderer
-============================================================================ */
+
+/* ============================================================
+   📋 LIST RENDERER
+============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("depositTableBody");
   const cardContainer = document.getElementById("depositList");
   const tableContainer = document.querySelector(".table-container");
   if (!tableBody || !cardContainer || !tableContainer) return;
 
-  // 🔄 Sync view toggle "active" states
-  document.getElementById("tableViewBtn")?.classList.toggle("active", viewMode === "table");
-  document.getElementById("cardViewBtn")?.classList.toggle("active", viewMode === "card");
-
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No deposits found.</td></tr>`;
-
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No deposits found.</td></tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getDepositActionButtons(
-                  entry,
-                  user
-                )}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getDepositActionButtons(
+                e,
+                user
+              )}</td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -201,42 +363,36 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No deposits found.</p>`;
-
+      : `<p class="text-center text-muted">No deposits found.</p>`;
     initTooltips(cardContainer);
   }
 
   setupExportHandlers(entries);
 }
 
-/* ============================================================================
-   📤 Export Handlers
-============================================================================ */
+/* ============================================================
+   📤 EXPORT
+============================================================ */
 let exportHandlersBound = false;
-
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
   exportHandlersBound = true;
 
   const title = "Deposits Report";
-
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
-
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
-
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
+    exportData({ type: "csv", data: entries, title })
+  );
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
+    exportData({ type: "xlsx", data: entries, title })
+  );
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #depositList.active",
       orientation: "landscape",
-    });
-  });
+    })
+  );
 }

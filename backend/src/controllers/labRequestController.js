@@ -1,10 +1,27 @@
 // 📁 controllers/labRequestController.js
+// ============================================================================
+// 🧪 Lab Request Controller — ENTERPRISE MASTER–ALIGNED (Delivery Billing Style)
+// ----------------------------------------------------------------------------
+// 🔹 NO billing constants / shouldTriggerBilling
+// 🔹 NO inline role helpers
+// 🔹 Uses role-utils + resolveOrgFacility
+// 🔹 Billing handled ONLY via billingService
+// ============================================================================
+
+/* ============================================================
+   📦 CORE / THIRD-PARTY
+============================================================ */
 import Joi from "joi";
 import { Op } from "sequelize";
+
+/* ============================================================
+   🗄️ MODELS
+============================================================ */
 import {
   sequelize,
   LabRequest,
   LabRequestItem,
+  LabResult,
   Patient,
   Employee,
   Department,
@@ -14,21 +31,57 @@ import {
   Organization,
   Facility,
   User,
-  LabResult 
 } from "../models/index.js";
+
+/* ============================================================
+   🧰 CORE UTILITIES
+============================================================ */
 import { success, error } from "../utils/response.js";
+import { validate } from "../utils/validation.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
+
+/* ============================================================
+   🔐 ROLE & ACCESS
+============================================================ */
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+
+/* ============================================================
+   📜 CONSTANTS
+============================================================ */
 import { LAB_REQUEST_STATUS } from "../constants/enums.js";
+import { FIELD_VISIBILITY_LAB_REQUEST } from "../constants/fieldVisibility.js";
+
+/* ============================================================
+   🔧 SERVICES
+============================================================ */
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
-import { FIELD_VISIBILITY_LAB_REQUEST } from "../constants/fieldVisibility.js";
 import { billingService } from "../services/billingService.js";
-import { shouldTriggerBilling } from "../constants/billing.js";
-import { isSuperAdmin, hasRole, getUserRoles } from "../utils/role-utils.js";
 
-const MODULE_KEY = "lab-request";
+/* ============================================================
+   🐞 DEBUG LOGGER (MASTER)
+============================================================ */
+import { makeModuleLogger } from "../utils/debugLogger.js";
 
-// 🔖 Local enum map for readability
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("labRequestController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔐 MODULE
+============================================================ */
+const MODULE_KEY = "lab-requests";
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM-DRIVEN, MASTER)
+============================================================ */
 const LRS = {
   DRAFT: LAB_REQUEST_STATUS[0],
   PENDING: LAB_REQUEST_STATUS[1],
@@ -40,33 +93,25 @@ const LRS = {
 };
 
 /* ============================================================
-   👨‍⚕️ DOCTOR RESOLUTION HELPER
-   ============================================================ */
-function resolveDoctorId(request, user) {
-  if (request?.doctor_id) return request.doctor_id;
-  if (user?.employee_id) {
-    const roleName = (user.roleNames?.[0] || "").toLowerCase();
-    if (["doctor", "admin", "superadmin"].includes(roleName)) {
-      return user.employee_id;
-    }
-  }
-  return null;
-}
-
-/* ============================================================
-   🔗 SHARED INCLUDES
-   ============================================================ */
+   🔗 SHARED INCLUDES (MASTER PARITY)
+============================================================ */
 const LAB_REQUEST_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
   { model: Employee.unscoped(), as: "doctor", attributes: ["id", "first_name", "last_name"] },
   { model: Department, as: "department", attributes: ["id", "name"] },
   { model: Consultation, as: "consultation", attributes: ["id", "consultation_date", "status"] },
-  { model: RegistrationLog, as: "registrationLog", attributes: ["id", "registration_time", "log_status"] },
+  {
+    model: RegistrationLog,
+    as: "registrationLog",
+    attributes: ["id", "registration_time", "log_status"],
+  },
   {
     model: LabRequestItem,
     as: "items",
-    where: { status: { [Op.notIn]: [LRS.CANCELLED, LRS.VOIDED] } }, // 🚫 hide cancelled/voided
     required: false,
+    where: {
+      status: { [Op.notIn]: [LRS.CANCELLED, LRS.VOIDED] },
+    },
     include: [
       { model: BillableItem, as: "labTest", attributes: ["id", "name", "price"] },
     ],
@@ -79,21 +124,23 @@ const LAB_REQUEST_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMA FACTORY (Consultation-Aligned)
-   ============================================================ */
+   📋 JOI SCHEMA (MASTER-ALIGNED, TENANT-SAFE) — REPLACEMENT
+============================================================ */
 function buildLabRequestSchema(mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
-    doctor_id: Joi.string().uuid().allow(null, ""), // optional, resolved automatically
-    department_id: Joi.string().uuid().allow(null),
-    consultation_id: Joi.string().uuid().allow(null),
-    registration_log_id: Joi.string().uuid().allow(null, "").optional(),
-    facility_id: Joi.string().uuid().allow(null, "").optional(),
-    organization_id: Joi.string().uuid().allow(null, "").optional(),
-    request_date: Joi.date().iso().allow(null),
+    doctor_id: Joi.string().uuid().allow(null, ""),
+    department_id: Joi.string().uuid().allow(null, ""),
+    consultation_id: Joi.string().uuid().allow(null, ""),
+    registration_log_id: Joi.string().uuid().allow(null, ""),
+    request_date: Joi.date().default(() => new Date()),
     notes: Joi.string().allow("", null),
     is_emergency: Joi.boolean().default(false),
-    status: Joi.string().valid(...LAB_REQUEST_STATUS).default(LRS.DRAFT),
+
+    // 🔒 lifecycle-controlled
+    status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
 
     items: Joi.array()
       .items(
@@ -111,7 +158,6 @@ function buildLabRequestSchema(mode = "create") {
       base[k] = base[k].optional();
     });
 
-    // ✅ Items: optional + supports id + _delete flag
     base.items = Joi.array()
       .items(
         Joi.object({
@@ -126,1673 +172,1347 @@ function buildLabRequestSchema(mode = "create") {
 
   return Joi.object(base);
 }
-
 /* ============================================================
-   📌 CREATE LAB REQUEST(S) + ITEMS (Consultation-Aligned)
-   ============================================================ */
+   📌 CREATE LAB REQUEST(S) — MASTER / CONSULTATION PARITY
+============================================================ */
 export const createLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // 🔐 Permission
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "create",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const schema = buildLabRequestSchema("create");
-
+    /* ================= PAYLOAD NORMALIZATION ================= */
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
-    if (payloads.length === 0) {
+    if (!payloads.length) {
       await t.rollback();
-      return error(res, "Payload must be an object or non-empty array", null, 400);
+      return error(res, "Payload must not be empty", null, 400);
     }
 
-    const prepared = [];
+    const createdIds = [];
     const skipped = [];
 
+    /* ================= PROCESS PAYLOADS ================= */
     for (const [idx, payload] of payloads.entries()) {
-      const { error: validationError, value } = schema.validate(payload, { stripUnknown: true });
-      if (validationError) {
-        skipped.push({ index: idx, reason: "Validation failed", details: validationError.details });
+      /* ---------- VALIDATION ---------- */
+      const { value, errors } = validate(
+        buildLabRequestSchema("create"),
+        payload
+      );
+
+      if (errors) {
+        skipped.push({ index: idx, reason: "Validation failed", errors });
         continue;
       }
 
-      // 👨‍⚕️ Doctor resolution
-      let doctorId = resolveDoctorId(value, req.user);
+      /* ---------- TENANT RESOLUTION ---------- */
+      const { orgId, facilityId } = await resolveOrgFacility({
+        user: req.user,
+        value,
+        body: payload,
+      });
 
-      // 🏢 Org/facility (Consultation-aligned)
-      let orgId = req.user.organization_id || null;
-      let facilityId = req.user.facility_id || null;
+      /* ---------- AUTO-LINK CLINICAL CONTEXT (FIX 1) ---------- */
+      const resolved = await resolveClinicalLinks({
+        value,
+        user: req.user,
+        orgId,
+        facilityId,
+        transaction: t,
+      });
 
-      // Allow superadmin query override
-      if (isSuperAdmin(req.user)) {
-        if (req.query.organization_id) orgId = req.query.organization_id;
-        if (req.query.facility_id) facilityId = req.query.facility_id;
+      /* ---------- DOCTOR ENFORCEMENT (FIX 2) ---------- */
+      if (!isSuperAdmin(req.user) && !resolved.doctor_id) {
+        resolved.doctor_id = req.user.employee_id;
       }
 
-      // 🧩 Encounter / Consultation linkage
-      let registrationLogId = null;
-      let consultationId = value.consultation_id || null;
-
-      // 1️⃣ From consultation
-      if (consultationId) {
-        const consult = await Consultation.findByPk(consultationId);
-        if (consult) {
-          registrationLogId = consult.registration_log_id;
-          orgId = orgId || consult.organization_id;
-          facilityId = facilityId || consult.facility_id;
-        }
-      }
-
-      // 2️⃣ From active registration log
-      if (!registrationLogId) {
-        const regLog = await RegistrationLog.findOne({
-          where: {
-            patient_id: value.patient_id,
-            log_status: "active",
-          },
-          order: [["registration_time", "DESC"]],
-        });
-
-        if (regLog) {
-          registrationLogId = regLog.id;
-          orgId = orgId || regLog.organization_id;
-          facilityId = facilityId || regLog.facility_id;
-
-          // auto-link latest consultation if any
-          const consult = await Consultation.findOne({
-            where: { registration_log_id: regLog.id },
-            order: [["consultation_date", "DESC"]],
-          });
-          if (consult) consultationId = consultationId || consult.id;
-        }
-      }
-
-      // 3️⃣ Superadmin fallback: try again via query
-      if (isSuperAdmin(req.user)) {
-        if (!orgId && req.query.organization_id) orgId = req.query.organization_id;
-        if (!facilityId && req.query.facility_id) facilityId = req.query.facility_id;
-      }
-
-      // 4️⃣ Final safety net (match Consultation)
-      if (!orgId || !facilityId) {
-        const activeLog = await RegistrationLog.findOne({
-          where: {
-            patient_id: value.patient_id,
-            log_status: "active",
-          },
-          order: [["registration_time", "DESC"]],
-        });
-        if (activeLog) {
-          orgId = orgId || activeLog.organization_id;
-          facilityId = facilityId || activeLog.facility_id;
-          registrationLogId = registrationLogId || activeLog.id;
-        }
-      }
-
-      // ⛔ Still unresolved org → skip
-      if (!orgId) {
+      if (isSuperAdmin(req.user) && !resolved.doctor_id) {
         skipped.push({
           index: idx,
-          reason: "Unable to resolve organization (no org_id, registration, or query param)",
+          reason: "Doctor is required for superadmin",
         });
         continue;
       }
 
-      // ✅ Build main request (Consultation-aligned)
-      prepared.push({
-        request: {
-          patient_id: value.patient_id,
-          doctor_id: doctorId,
-          department_id: value.department_id,
-          registration_log_id: registrationLogId,
-          consultation_id: consultationId,
-          request_date: value.request_date || new Date(),
-          notes: value.notes,
-          is_emergency: value.is_emergency,
-          status: value.status,
+      /* ---------- HARD REQUIREMENT: REGISTRATION LOG ---------- */
+      if (!resolved.registration_log_id) {
+        skipped.push({
+          index: idx,
+          reason: "No active registration log found",
+        });
+        continue;
+      }
+
+      /* ---------- CREATE LAB REQUEST ---------- */
+      const request = await LabRequest.create(
+        {
+          ...resolved,
+          status: LRS.DRAFT,
           organization_id: orgId,
           facility_id: facilityId,
           created_by_id: req.user?.id || null,
         },
-        items: value.items,
-      });
-    }
+        { transaction: t }
+      );
 
-    // 🚀 Create records
-    const createdRequests = [];
-    try {
-      for (const entry of prepared) {
-        const request = await LabRequest.create(entry.request, { transaction: t });
+      /* ---------- CREATE ITEMS ---------- */
+      const items = resolved.items.map((it) => ({
+        lab_request_id: request.id,
+        lab_test_id: it.lab_test_id,
+        notes: it.notes || null,
+        status: request.status,
+        organization_id: orgId,
+        facility_id: facilityId,
+        created_by_id: req.user?.id || null,
+      }));
 
-        // 🧾 Create items (inherit parent)
-        const itemsData = entry.items.map((it) => ({
-          lab_request_id: request.id,
-          lab_test_id: it.lab_test_id,
-          notes: it.notes,
-          status: request.status,
-          organization_id: request.organization_id,
-          facility_id: request.facility_id,
-          created_by_id: req.user?.id || null,
-        }));
-        await LabRequestItem.bulkCreate(itemsData, { transaction: t });
+      await LabRequestItem.bulkCreate(items, { transaction: t });
 
-        // 💵 Billing Hook
-        try {
-          if (shouldTriggerBilling(MODULE_KEY, request.status)) {
-            if (typeof billingService.billLabRequestItems === "function") {
-              await billingService.billLabRequestItems({
-                labRequest: request,
-                user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-                transaction: t,
-              });
-            } else {
-              console.warn("⚠️ billingService.billLabRequestItems not defined");
-            }
-          }
-        } catch (billErr) {
-          console.error("❌ Billing service failed:", billErr);
-        }
-
-        createdRequests.push(request);
-      }
-    } catch (loopErr) {
-      console.error("❌ Lab request creation loop failed:", loopErr);
-      await t.rollback();
-      return error(res, "❌ Failed to create lab request(s)", loopErr, 500);
+      createdIds.push(request.id);
     }
 
     await t.commit();
 
-    const full = createdRequests.length
+    /* ================= LOAD CREATED ================= */
+    const records = createdIds.length
       ? await LabRequest.findAll({
-          where: { id: { [Op.in]: createdRequests.map((c) => c.id) } },
+          where: { id: { [Op.in]: createdIds } },
           include: LAB_REQUEST_INCLUDES,
         })
       : [];
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
-      action: payloads.length > 1 ? "bulk_create" : "create",
-      details: { saved: createdRequests.length, skipped: skipped.length },
+      module_key: MODULE_KEY,
+      action: createdIds.length > 1 ? "bulk_create" : "create",
+      details: {
+        created: createdIds.length,
+        skipped: skipped.length,
+      },
     });
 
-    return success(res, {
-      message: `✅ ${createdRequests.length} created, ⚠️ ${skipped.length} skipped`,
-      records: full,
+    return success(res, "✅ Lab Requests created", {
+      records,
       skipped,
     });
   } catch (err) {
-    console.error("❌ Top-level createLabRequests error:", err);
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to create lab request(s)", err);
+    await t.rollback();
+    debug.error("createLabRequests → FAILED", err);
+    return error(res, "❌ Failed to create lab requests", err);
   }
 };
 
+
 /* ============================================================
-   📌 UPDATE LAB REQUEST (Consultation-Aligned, Diff-Based Sync)
-   ============================================================ */
+   📌 UPDATE LAB REQUEST — MASTER / CONSULTATION PARITY
+============================================================ */
 export const updateLabRequest = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    console.log("🔹 Incoming update payload:", JSON.stringify(req.body, null, 2));
-
-    // 🔐 Permission
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const schema = buildLabRequestSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
-      console.warn("❌ Validation failed:", validationError.details);
+    /* ================= VALIDATION ================= */
+    const { value, errors } = validate(
+      buildLabRequestSchema("update"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    /* ============================================================
-       🏢 Organization / Facility Resolution (Consultation-aligned)
-    ============================================================ */
-    let orgId = req.user.organization_id || null;
-    let facilityId = req.user.facility_id || null;
+    /* ================= TENANT RESOLUTION (FIX 3) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      body: value,
+    });
 
-    if (isSuperAdmin(req.user)) {
-      if (req.query.organization_id) orgId = req.query.organization_id;
-      if (req.query.facility_id) facilityId = req.query.facility_id;
-    }
-
-    // Load the existing request record
-    const request = await LabRequest.findOne({
-      where: { id },
+    /* ================= LOAD RECORD (TENANT SAFE) ================= */
+    const record = await LabRequest.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
       include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: LabRequest },
+      lock: t.LOCK.UPDATE,
     });
-    if (!request) {
+
+    if (!record) {
       await t.rollback();
       return error(res, "Lab Request not found", null, 404);
     }
 
-    const currentStatus = request.status;
-    const oldSnapshot = { ...request.get() };
-
-    // Protect finalized requests
-    if ([LRS.COMPLETED, LRS.VERIFIED, LRS.CANCELLED, LRS.VOIDED].includes(currentStatus)) {
+    if (
+      [LRS.COMPLETED, LRS.VERIFIED, LRS.CANCELLED, LRS.VOIDED].includes(
+        record.status
+      )
+    ) {
       await t.rollback();
-      return error(res, `Cannot update Lab Request in status ${currentStatus}`, null, 400);
+      return error(res, "Finalized lab request cannot be edited", null, 400);
     }
 
-    /* ============================================================
-       👨‍⚕️ Doctor / Encounter Re-resolution (Consultation-aligned)
-    ============================================================ */
-    let doctorId = resolveDoctorId(value, req.user);
-    let registrationLogId = value.registration_log_id || request.registration_log_id || null;
-    let consultationId = value.consultation_id || request.consultation_id || null;
-
-    // 1️⃣ Try consultation first
-    if (consultationId) {
-      const consult = await Consultation.findByPk(consultationId);
-      if (consult) {
-        registrationLogId = registrationLogId || consult.registration_log_id;
-        orgId = orgId || consult.organization_id;
-        facilityId = facilityId || consult.facility_id;
-      }
+    /* ================= DOCTOR LOCK (MASTER) ================= */
+    if (!isSuperAdmin(req.user) && !value.doctor_id) {
+      value.doctor_id = req.user.employee_id;
     }
 
-    // 2️⃣ From active registration log
-    if (!registrationLogId) {
-      const regLog = await RegistrationLog.findOne({
-        where: {
-          patient_id: value.patient_id || request.patient_id,
-          log_status: "active",
-        },
-        order: [["registration_time", "DESC"]],
-      });
-
-      if (regLog) {
-        registrationLogId = regLog.id;
-        orgId = orgId || regLog.organization_id;
-        facilityId = facilityId || regLog.facility_id;
-
-        const consult = await Consultation.findOne({
-          where: { registration_log_id: regLog.id },
-          order: [["consultation_date", "DESC"]],
-        });
-        if (consult) consultationId = consultationId || consult.id;
-      }
-    }
-
-    // 3️⃣ Superadmin fallback via query
-    if (isSuperAdmin(req.user)) {
-      if (!orgId && req.query.organization_id) orgId = req.query.organization_id;
-      if (!facilityId && req.query.facility_id) facilityId = req.query.facility_id;
-    }
-
-    // 4️⃣ Final fallback from any active registration (safety net)
-    if (!orgId || !facilityId) {
-      const activeLog = await RegistrationLog.findOne({
-        where: {
-          patient_id: value.patient_id || request.patient_id,
-          log_status: "active",
-        },
-        order: [["registration_time", "DESC"]],
-      });
-      if (activeLog) {
-        orgId = orgId || activeLog.organization_id;
-        facilityId = facilityId || activeLog.facility_id;
-        registrationLogId = registrationLogId || activeLog.id;
-      }
-    }
-
-    /* ============================================================
-       ✏️ Update parent LabRequest
-    ============================================================ */
-    await request.update(
+    /* ================= UPDATE REQUEST ================= */
+    await record.update(
       {
-        patient_id: value.patient_id || request.patient_id,
-        doctor_id: doctorId || request.doctor_id,
-        department_id: value.department_id ?? request.department_id,
-        registration_log_id: registrationLogId,
-        consultation_id: consultationId,
-        request_date: value.request_date || request.request_date,
-        notes: value.notes ?? request.notes,
-        is_emergency: value.is_emergency ?? request.is_emergency,
-        status: value.status || request.status,
-        organization_id: orgId,
-        facility_id: facilityId || request.facility_id,
+        ...value,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    /* ============================================================
-       🔄 Diff-Based Sync for Items
-    ============================================================ */
+    /* ================= ITEM DIFF SYNC ================= */
     if (Array.isArray(value.items)) {
-      const existingItems = request.items || [];
-      const existingById = new Map(existingItems.map((e) => [e.id, e]));
-      const touched = new Set();
+      const existing = new Map(record.items.map((i) => [i.id, i]));
 
       for (const it of value.items) {
-        if (!it.lab_test_id && !it.id) continue;
+        /* ---- DELETE ITEM ---- */
+        if (it._delete && it.id && existing.has(it.id)) {
+          const item = existing.get(it.id);
 
-        // DELETE
-        if (it._delete && it.id && existingById.has(it.id)) {
-          const existing = existingById.get(it.id);
-          await existing.update(
+          await item.update(
             {
               status: LRS.CANCELLED,
-              deleted_at: new Date(),
               deleted_by_id: req.user?.id || null,
-              updated_by_id: req.user?.id || null,
             },
             { transaction: t }
           );
+
           await billingService.voidCharges({
-            module: "lab_request_item",
-            entityId: existing.id,
+            module_key: MODULE_KEY,
+            entityId: item.id,
             user: req.user,
             transaction: t,
           });
-          touched.add(existing.id);
           continue;
         }
 
-        // UPDATE
-        if (it.id && existingById.has(it.id)) {
-          const existing = existingById.get(it.id);
-          await existing.update(
+        /* ---- UPDATE ITEM ---- */
+        if (it.id && existing.has(it.id)) {
+          const current = existing.get(it.id);
+
+          await current.update(
             {
-              lab_test_id: it.lab_test_id || existing.lab_test_id,
-              notes: it.notes ?? existing.notes,
-              status: request.status,
+              lab_test_id: it.lab_test_id || current.lab_test_id,
+              notes: it.notes ?? current.notes,
               updated_by_id: req.user?.id || null,
             },
             { transaction: t }
           );
-          touched.add(existing.id);
           continue;
         }
 
-        // CREATE or REACTIVATE
-        const dup = await LabRequestItem.findOne({
-          where: { lab_request_id: request.id, lab_test_id: it.lab_test_id },
-          transaction: t,
-        });
-
-        if (dup) {
-          if ([LRS.CANCELLED, LRS.VOIDED].includes(dup.status)) {
-            await dup.update(
-              {
-                status: request.status,
-                notes: it.notes || dup.notes,
-                deleted_at: null,
-                deleted_by_id: null,
-                updated_by_id: req.user?.id || null,
-              },
-              { transaction: t }
-            );
-            touched.add(dup.id);
-          } else {
-            touched.add(dup.id);
-          }
-        } else {
-          const newItem = await LabRequestItem.create(
+        /* ---- ADD NEW ITEM ---- */
+        if (it.lab_test_id) {
+          await LabRequestItem.create(
             {
-              lab_request_id: request.id,
+              lab_request_id: record.id,
               lab_test_id: it.lab_test_id,
               notes: it.notes || null,
-              status: request.status,
-              organization_id: orgId,
-              facility_id: facilityId,
+              status: record.status,
+              organization_id: record.organization_id,
+              facility_id: record.facility_id,
               created_by_id: req.user?.id || null,
             },
             { transaction: t }
           );
-          touched.add(newItem.id);
         }
       }
-
-      // Auto-cancel missing items (draft only)
-      if (currentStatus === LRS.DRAFT) {
-        for (const existing of existingItems) {
-          if (!touched.has(existing.id)) {
-            await existing.update(
-              {
-                status: LRS.CANCELLED,
-                deleted_at: new Date(),
-                deleted_by_id: req.user?.id || null,
-                updated_by_id: req.user?.id || null,
-              },
-              { transaction: t }
-            );
-            await billingService.voidCharges({
-              module: "lab_request_item",
-              entityId: existing.id,
-              user: req.user,
-              transaction: t,
-            });
-          }
-        }
-      }
-    }
-
-    /* ============================================================
-       💵 Billing Hook
-    ============================================================ */
-    try {
-      if (oldSnapshot.status !== request.status && shouldTriggerBilling(MODULE_KEY, request.status)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: orgId, facility_id: facilityId },
-          transaction: t,
-        });
-      }
-    } catch (billErr) {
-      console.error("❌ Billing failed:", billErr);
     }
 
     await t.commit();
 
-    const full = await LabRequest.findOne({ where: { id }, include: LAB_REQUEST_INCLUDES });
+    /* ================= LOAD FULL ================= */
+    const full = await LabRequest.findOne({
+      where: { id: record.id },
+      include: LAB_REQUEST_INCLUDES,
+    });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: record.id,
       entity: full,
-      details: { before: oldSnapshot, after: full.get() },
     });
 
     return success(res, "✅ Lab Request updated", full);
   } catch (err) {
-    console.error("❌ updateLabRequest error:", err);
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("updateLabRequest → FAILED", err);
     return error(res, "❌ Failed to update lab request", err);
   }
 };
 
 
 /* ============================================================
-   📌 TOGGLE LAB REQUEST STATUS (single + bulk)
-   ============================================================ */
-export const toggleLabRequestStatus = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
-      await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
-    }
-
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const requests = await LabRequest.findAll({
-      where,
-      include: [{ model: LabRequestItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: LabRequest }
-    });
-    if (!requests.length) {
-      await t.rollback();
-      return error(res, "❌ No Lab Requests found", null, 404);
-    }
-
-    const updated = [], skipped = [];
-
-    for (const request of requests) {
-      const oldStatus = request.status;
-      let newStatus = oldStatus;
-
-      // explicit override from body
-      if (req.body?.status && LAB_REQUEST_STATUS.includes(req.body.status)) {
-        newStatus = req.body.status;
-      } else if (oldStatus === LRS.IN_PROGRESS) {
-        newStatus = LRS.CANCELLED;
-      } else if (oldStatus === LRS.CANCELLED) {
-        newStatus = LRS.IN_PROGRESS;
-      }
-
-      if (oldStatus === newStatus) {
-        skipped.push({ id: request.id, reason: "No status change" });
-        continue;
-      }
-
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: newStatus, doctor_id: doctorId, updated_by_id: req.user?.id || null },
-        { transaction: t }
-      );
-
-      // Cascade children + billing
-      if (newStatus === LRS.CANCELLED) {
-        // rollback billing per item
-        for (const item of request.items || []) {
-          await billingService.voidCharges({
-            module: "lab_request_item",
-            entityId: item.id,
-            user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-            transaction: t,
-          });
-        }
-
-        await LabResult.update(
-          { status: "cancelled", updated_by_id: req.user?.id },
-          { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided", "cancelled"] } }, transaction: t }
-        );
-
-        await LabRequestItem.update(
-          { status: "cancelled", updated_by_id: req.user?.id },
-          { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided", "cancelled"] } }, transaction: t }
-        );
-      } else if (shouldTriggerBilling(MODULE_KEY, newStatus)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ request, from: oldStatus, to: newStatus });
-    }
-
-    await t.commit();
-
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_toggle_status" : "toggle_status",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
-    });
-
-    return success(res, `✅ ${updated.length} toggled, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to toggle lab request status", err);
-  }
-};
-
-/* ============================================================
-   📌 GET LAB REQUEST BY ID (with labels)
-   ============================================================ */
+   📌 GET LAB REQUEST BY ID — MASTER
+============================================================ */
 export const getLabRequestById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+    const record = await LabRequest.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      include: LAB_REQUEST_INCLUDES,
+    });
+
+    if (!record) {
+      return error(res, "Lab request not found", null, 404);
     }
 
-    const request = await LabRequest.findOne({ where, include: LAB_REQUEST_INCLUDES });
-    if (!request) return error(res, "❌ Lab Request not found", null, 404);
+    const plain = record.get({ plain: true });
 
-    // 🏷️ Add friendly labels
-    const plain = request.get({ plain: true });
     const patientLabel = plain.patient
       ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
       : "Unknown Patient";
+
     const doctorLabel = plain.doctor
       ? `Dr. ${plain.doctor.first_name} ${plain.doctor.last_name}`
       : "No Doctor";
-    const testNames = (plain.items || [])
-      .map(i => i.labTest?.name)
+
+    const tests = (plain.items || [])
+      .map((i) => i.labTest?.name)
       .filter(Boolean)
       .join(", ");
-    const dateLabel = plain.request_date
-      ? new Date(plain.request_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      : "Unknown Date";
 
-    plain.label = `${dateLabel} · ${patientLabel} · ${testNames || "No tests"} · ${plain.status}`;
+    plain.label = `${patientLabel} · ${tests || "No tests"} · ${plain.status}`;
     plain.patient_label = patientLabel;
     plain.doctor_label = doctorLabel;
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "view",
-      entityId: id,
-      entity: plain,
+      entityId: plain.id,
     });
 
-    return success(res, "✅ Lab Request loaded", plain);
+    return success(res, "Lab request loaded", plain);
   } catch (err) {
-    return error(res, "❌ Failed to load lab request", err);
+    debug.error("getLabRequestById → FAILED", err);
+    return error(res, "Failed to load lab request", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET ALL LAB REQUESTS (with labels)
+   📌 GET ALL LAB REQUESTS — MASTER (STRICT + FILTERS + SUMMARY)
 ============================================================ */
 export const getAllLabRequests = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
+
+    /* ================= STRICT PAGINATION ================= */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_LAB_REQUEST[role] ||
       FIELD_VISIBILITY_LAB_REQUEST.staff;
 
-    const options = buildQueryOptions(req, "request_date", "DESC", visibleFields);
-    options.where = options.where || {};
+    /* ================= STRIP UI-ONLY PARAMS ================= */
+    const {
+      dateRange,
+      status,
+      patient_id,
+      doctor_id,
+      department_id,
+      consultation_id,
+      facility_id, // explicitly captured
+      ...safeQuery
+    } = req.query;
 
-    // 🗓️ Ensure range filter (if not already handled by queryHelper)
-    if (req.query["request_date[gte]"]) {
-      options.where.request_date = {
-        ...(options.where.request_date || {}),
-        [Op.gte]: req.query["request_date[gte]"],
-      };
-    }
-    if (req.query["request_date[lte]"]) {
-      options.where.request_date = {
-        ...(options.where.request_date || {}),
-        [Op.lte]: req.query["request_date[lte]"],
-      };
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
+
+    const options = buildQueryOptions(
+      req,
+      "request_date",
+      "DESC",
+      visibleFields
+    );
+
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (request_date) — FIXED
+    ======================================================== */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          request_date: { [Op.between]: [start, end] },
+        });
+      }
     }
 
-    // 🔐 Scoped org/fac filtering
+    /* ================= TENANT SCOPE (MASTER) ================= */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facilityhead")
-        options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      } else if (facility_id) {
+        options.where[Op.and].push({
+          facility_id,
+        });
+      }
     } else {
-      if (req.query.organization_id)
-        options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (facility_id) {
+        options.where[Op.and].push({
+          facility_id,
+        });
+      }
     }
 
-    // 🔎 Search by notes (or extend later)
+    /* ================= FILTERS ================= */
+    if (patient_id) {
+      options.where[Op.and].push({ patient_id });
+    }
+
+    if (doctor_id) {
+      options.where[Op.and].push({ doctor_id });
+    }
+
+    if (department_id) {
+      options.where[Op.and].push({ department_id });
+    }
+
+    if (consultation_id) {
+      options.where[Op.and].push({ consultation_id });
+    }
+
+    if (status) {
+      const statuses = Array.isArray(status)
+        ? status
+        : status.split(",").map((s) => s.trim());
+
+      options.where[Op.and].push({
+        status: { [Op.in]: statuses },
+      });
+    }
+
+    /* ================= GLOBAL SEARCH ================= */
     if (options.search) {
-      options.where[Op.or] = [
-        { notes: { [Op.iLike]: `%${options.search}%` } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { notes: { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.first_name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.last_name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
-    const liteMode = req.query.lite === "true";
-    const safeLimit =
-      Number.isFinite(options.limit) && options.limit > 0 ? options.limit : 25;
-
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await LabRequest.findAndCountAll({
       where: options.where,
-      distinct: true,
-      include: liteMode ? [] : [...LAB_REQUEST_INCLUDES, ...(options.include || [])],
+      include: LAB_REQUEST_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: Math.min(safeLimit, 50),
+      offset,
+      limit,
+      distinct: true,
     });
 
-    // 🏷️ Map rows with labels
-    const records = rows.map((r) => {
-      const plain = r.get({ plain: true });
-      const patientLabel = plain.patient
-        ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
-        : "Unknown Patient";
-      const doctorLabel = plain.doctor
-        ? `Dr. ${plain.doctor.first_name} ${plain.doctor.last_name}`
-        : "No Doctor";
-      const testNames = (plain.items || [])
-        .map((i) => i.labTest?.name)
-        .filter(Boolean)
-        .join(", ");
-      const dateLabel = plain.request_date
-        ? new Date(plain.request_date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "Unknown Date";
+    /* ================= RICH SUMMARY (MASTER) ================= */
+    const summary = { total: count };
 
-      return {
-        ...plain,
-        label: `${dateLabel} · ${patientLabel} · ${testNames || "No tests"} · ${plain.status}`,
-        patient_label: patientLabel,
-        doctor_label: doctorLabel,
-      };
+    const statusCounts = await LabRequest.findAll({
+      where: options.where,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
     });
 
+    Object.values(LRS).forEach((s) => {
+      const found = statusCounts.find((r) => r.status === s);
+      summary[s] = found ? Number(found.get("count")) : 0;
+    });
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count, liteMode },
+      details: {
+        query: safeQuery,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
-    return success(res, "✅ Lab Requests loaded", {
-      records,
+    /* ================= RESPONSE ================= */
+    return success(res, "✅ Lab requests loaded", {
+      records: rows,
+      summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
     });
   } catch (err) {
+    debug.error("getAllLabRequests → FAILED", err);
     return error(res, "❌ Failed to load lab requests", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET ALL LAB REQUESTS LITE (supports patient_id + status + ?q=)
-   ============================================================ */
+   📌 GET ALL LAB REQUESTS — LITE (MASTER)
+============================================================ */
 export const getAllLabRequestsLite = async (req, res) => {
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
+    /* ================= QUERY PARAMS ================= */
     const { q, patient_id, status } = req.query;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    const where = {};
+    /* ================= TENANT RESOLUTION ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    // 🔎 Status filter (default to pending)
-    if (status) {
-      const normalized = status.toUpperCase();
-      where.status = LRS[normalized] || status;
-    } else {
-      where.status = LRS.PENDING;
-    }
+    /* ================= WHERE ================= */
+    const where = {
+      organization_id: orgId,
+      ...(facilityId ? { facility_id: facilityId } : {}),
+      ...(patient_id ? { patient_id } : {}),
+      ...(status ? { status } : {}),
+    };
 
-    // 🔎 Patient filter
-    if (patient_id) where.patient_id = patient_id;
-
-    // 🔎 Tenant scoping
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    // 🔎 Search filter
     if (q) {
       where[Op.or] = [
         { notes: { [Op.iLike]: `%${q}%` } },
         { "$patient.first_name$": { [Op.iLike]: `%${q}%` } },
         { "$patient.last_name$": { [Op.iLike]: `%${q}%` } },
-        { "$items.labTest.name$": { [Op.iLike]: `%${q}%` } },
       ];
     }
 
-    const requests = await LabRequest.findAll({
+    /* ================= QUERY ================= */
+    const rows = await LabRequest.findAll({
       where,
-      distinct: true,
-      attributes: ["id", "request_date", "notes", "is_emergency", "status"],
+      attributes: ["id", "request_date", "status"],
       include: [
-        { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-        { model: Employee, as: "doctor", attributes: ["id", "first_name", "last_name"] },
-        { model: Department, as: "department", attributes: ["id", "name"] },
-        { model: Consultation, as: "consultation", attributes: ["id", "consultation_date", "status"] },
-        { model: RegistrationLog, as: "registrationLog", attributes: ["id", "registration_time", "log_status"] },
         {
-          model: LabRequestItem,
-          as: "items",
-          attributes: ["id", "lab_test_id", "notes"],
-          include: [{ model: BillableItem, as: "labTest", attributes: ["id", "name"] }],
+          model: Patient,
+          as: "patient",
+          attributes: ["pat_no", "first_name", "last_name"],
         },
       ],
       order: [["request_date", "DESC"]],
-      limit: Math.min(Number(req.query.limit) || 20, 50),
+      limit: 50,
     });
 
-    const result = requests.map(r => {
-      const patientLabel = r.patient
-        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
-        : "Unknown Patient";
+    /* ================= SHAPE ================= */
+    const records = rows.map((r) => ({
+      id: r.id,
+      label: `${r.patient?.pat_no || "PAT"} · ${r.status}`,
+      patient: r.patient
+        ? `${r.patient.first_name} ${r.patient.last_name}`
+        : "Unknown",
+      date: r.request_date,
+      status: r.status,
+    }));
 
-      const doctorLabel = r.doctor
-        ? `Dr. ${r.doctor.first_name} ${r.doctor.last_name}`
-        : "No Doctor";
-
-      const dateLabel = r.request_date
-        ? new Date(r.request_date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "Unknown Date";
-
-      const statusTxt = (r.status || "").toLowerCase();
-
-      return {
-        id: r.id,
-        label: `${dateLabel} · ${statusTxt} · ${patientLabel}`, // ✅ user-friendly label
-        patient_id: r.patient?.id || null,
-        patient: patientLabel,
-        doctor_id: r.doctor?.id || null,
-        doctor_name: doctorLabel,
-        consultation_id: r.consultation?.id || null,
-        consultation_date: r.consultation?.consultation_date || null,
-        registration_log_id: r.registrationLog?.id || null,
-        registration_log_code: r.registrationLog?.log_status || null,
-        department_id: r.department?.id || null,
-        department_name: r.department?.name || null,
-        items: r.items?.map(i => ({
-          id: i.id,
-          lab_test_id: i.lab_test_id,
-          test: i.labTest?.name || "",
-          notes: i.notes || "",
-        })) || [],
-        date: r.request_date,
-        notes: r.notes || "",
-        emergency: r.is_emergency,
-        status: r.status,
-      };
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite_pending",
-      details: { count: result.length, query: q || null, patient_id: patient_id || null, status: status || "pending" },
-    });
-
-    return success(res, "✅ Lab Requests loaded (lite)", { records: result });
+    return success(res, "Lab requests loaded (lite)", { records });
   } catch (err) {
-    return error(res, "❌ Failed to load lab requests (lite)", err);
+    debug.error("getAllLabRequestsLite → FAILED", err);
+    return error(res, "Failed to load lab requests (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL LAB REQUEST ITEMS LITE (by lab_request_id)
-   ============================================================ */
+   📌 GET ALL LAB REQUEST ITEMS — LITE (MASTER)
+============================================================ */
 export const getAllLabRequestItemsLite = async (req, res) => {
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
+    /* ================= PARAMS ================= */
     const { lab_request_id, status } = req.query;
     if (!lab_request_id) {
       return error(res, "lab_request_id is required", null, 400);
     }
 
-    const where = { lab_request_id };
-    if (status) where.status = status; // optional filter, e.g. "pending"
+    /* ================= TENANT RESOLUTION ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
+    /* ================= WHERE ================= */
+    const where = {
+      lab_request_id,
+      organization_id: orgId,
+      ...(facilityId ? { facility_id: facilityId } : {}),
+      ...(status ? { status } : {}),
+    };
+
+    /* ================= QUERY ================= */
     const items = await LabRequestItem.findAll({
       where,
       attributes: ["id", "lab_request_id", "lab_test_id", "status", "notes"],
       include: [
-        { model: BillableItem, as: "labTest", attributes: ["id", "name", "price"] },
+        {
+          model: BillableItem,
+          as: "labTest",
+          attributes: ["id", "name", "price"],
+        },
       ],
       order: [["created_at", "ASC"]],
     });
 
-    const result = items.map(i => {
-      const testLabel = i.labTest?.name || "Unnamed Test";
-      const statusTxt = (i.status || "").toLowerCase();
-      return {
-        id: i.id,
-        label: `${testLabel} · ${statusTxt}`,   // ✅ friendly label for dropdowns
-        lab_request_id: i.lab_request_id,
-        lab_test_id: i.lab_test_id,
-        test: testLabel,
-        status: i.status,
-        notes: i.notes || "",
-      };
-    });
+    /* ================= SHAPE ================= */
+    const records = items.map((i) => ({
+      id: i.id,
+      label: `${i.labTest?.name || "Unnamed Test"} · ${(i.status || "").toLowerCase()}`,
+      lab_request_id: i.lab_request_id,
+      lab_test_id: i.lab_test_id,
+      test: i.labTest?.name || "",
+      status: i.status,
+      notes: i.notes || "",
+    }));
 
-    return success(res, "✅ Lab Request Items loaded (lite)", { records: result });
+    return success(res, "Lab request items loaded (lite)", { records });
   } catch (err) {
-    return error(res, "❌ Failed to load lab request items (lite)", err);
+    debug.error("getAllLabRequestItemsLite → FAILED", err);
+    return error(res, "Failed to load lab request items (lite)", err);
   }
 };
 
-
 /* ============================================================
-   📌 ACTIVATE LAB REQUEST(S) (pending → in_progress)
-   ============================================================ */
+   📌 ACTIVATE LAB REQUEST(S) (pending → in_progress) — MASTER
+============================================================ */
 export const activateLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    const requests = await LabRequest.findAll({ where, transaction: t, lock: { level: t.LOCK.UPDATE, of: LabRequest } });
+    /* ================= LOAD ================= */
+    const requests = await LabRequest.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: LRS.PENDING,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
     if (!requests.length) {
       await t.rollback();
-      return error(res, "❌ No Lab Requests found", null, 404);
+      return error(res, "No pending lab requests found", null, 404);
     }
 
-    const updated = [], skipped = [];
-
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (oldStatus !== LRS.PENDING) {
-        skipped.push({ id: request.id, reason: `Not pending (${oldStatus})` });
-        continue;
-      }
-
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.IN_PROGRESS, doctor_id: doctorId, updated_by_id: req.user?.id || null },
+    /* ================= UPDATE ================= */
+    for (const r of requests) {
+      await r.update(
+        {
+          status: LRS.IN_PROGRESS,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
-
-      if (shouldTriggerBilling(MODULE_KEY, LRS.IN_PROGRESS)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ request, from: oldStatus, to: LRS.IN_PROGRESS });
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
+    const records = await LabRequest.findAll({
+      where: { id: { [Op.in]: ids } },
+      include: LAB_REQUEST_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_activate" : "activate",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { count: records.length },
     });
 
-    return success(res, `✅ ${updated.length} activated, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests activated", { records });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to activate lab request(s)", err);
+    debug.error("activateLabRequests → FAILED", err);
+    return error(res, "Failed to activate lab requests", err);
   }
 };
 
 /* ============================================================
-   📌 DELETE LAB REQUEST(S) (Soft Delete + Cascade Results + Rollback Billing)
-   ============================================================ */
+   📌 DELETE LAB REQUEST(S) (SOFT DELETE) — MASTER
+============================================================ */
 export const deleteLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "delete",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
+    /* ================= LOAD ================= */
     const requests = await LabRequest.findAll({
-      where,
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
       include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: LabRequest }
+      lock: t.LOCK.UPDATE,
     });
+
     if (!requests.length) {
       await t.rollback();
-      return error(res, "❌ No Lab Requests found", null, 404);
+      return error(res, "No lab requests found", null, 404);
     }
 
-    const deleted = [], skipped = [];
+    const deleted = [];
+    const skipped = [];
 
-    for (const request of requests) {
-      if ([LRS.COMPLETED, LRS.VERIFIED].includes(request.status)) {
-        skipped.push({ id: request.id, reason: "Completed or verified cannot be deleted" });
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
+      if ([LRS.COMPLETED, LRS.VERIFIED].includes(r.status)) {
+        skipped.push({ id: r.id, reason: "Finalized request cannot be deleted" });
         continue;
       }
 
-      // ⚡ rollback billing for each child item
-      for (const item of request.items || []) {
+      for (const item of r.items || []) {
         await billingService.voidCharges({
-          module: "lab_request_item",
+          module_key: MODULE_KEY,
           entityId: item.id,
-          user: {
-            ...req.user,
-            organization_id: request.organization_id,
-            facility_id: request.facility_id,
-          },
+          user: req.user,
           transaction: t,
         });
       }
 
-      // Cascade results
-      await LabResult.update(
-        {
-          status: "cancelled",
-          updated_by_id: req.user?.id,
-          deleted_by_id: req.user?.id,
-          deleted_at: new Date(),
-        },
-        {
-          where: {
-            lab_request_id: request.id,
-            status: { [Op.notIn]: ["verified", "voided"] },
-          },
-          transaction: t,
-        }
-      );
-
-      // Cascade items
       await LabRequestItem.update(
-        {
-          status: "cancelled",
-          updated_by_id: req.user?.id,
-          deleted_by_id: req.user?.id,
-          deleted_at: new Date(),
-        },
-        {
-          where: {
-            lab_request_id: request.id,
-            status: { [Op.notIn]: ["verified", "voided"] },
-          },
-          transaction: t,
-        }
+        { status: LRS.CANCELLED },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      // Soft delete parent
-      await request.update({ deleted_by_id: req.user?.id }, { transaction: t });
-      await request.destroy({ transaction: t });
-      deleted.push(request);
+      await LabResult.update(
+        { status: "cancelled" },
+        { where: { lab_request_id: r.id }, transaction: t }
+      );
+
+      await r.update({ deleted_by_id: req.user.id }, { transaction: t });
+      await r.destroy({ transaction: t });
+
+      deleted.push(r.id);
     }
 
     await t.commit();
 
-    const full = deleted.length
-      ? await LabRequest.findAll({
-          where: { id: deleted.map(r => r.id) },
-          include: LAB_REQUEST_INCLUDES,
-          paranoid: false,
-        })
-      : [];
-
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_delete" : "delete",
-      details: { deleted: deleted.length, skipped },
+      details: { deleted, skipped },
     });
 
-    return success(res, `✅ ${deleted.length} deleted, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests deleted", { deleted, skipped });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to delete lab request(s)", err);
+    debug.error("deleteLabRequests → FAILED", err);
+    return error(res, "Failed to delete lab requests", err);
   }
 };
 
-
 /* ============================================================
-   📌 COMPLETE LAB REQUEST(S) (in_progress → completed)
-   ============================================================ */
+   📌 COMPLETE LAB REQUEST(S) (in_progress → completed) — MASTER
+============================================================ */
 export const completeLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    const requests = await LabRequest.findAll({ where, transaction: t, lock: { level: t.LOCK.UPDATE, of: LabRequest } });
+    /* ================= LOAD ================= */
+    const requests = await LabRequest.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: LRS.IN_PROGRESS,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
     if (!requests.length) {
       await t.rollback();
-      return error(res, "❌ No Lab Requests found", null, 404);
+      return error(res, "No in-progress lab requests found", null, 404);
     }
 
-    const updated = [], skipped = [];
+    const updated = [];
+    const skipped = [];
 
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (oldStatus !== LRS.IN_PROGRESS) {
-        skipped.push({ id: request.id, reason: `Not in progress (${oldStatus})` });
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
+      const resultCount = await LabResult.count({
+        where: { lab_request_id: r.id },
+        transaction: t,
+      });
+
+      if (!resultCount) {
+        skipped.push({ id: r.id, reason: "No lab results found" });
         continue;
       }
 
-      const resultCount = await LabResult.count({ where: { lab_request_id: request.id }, transaction: t });
-      if (resultCount === 0) {
-        skipped.push({ id: request.id, reason: "No results found" });
-        continue;
-      }
-
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.COMPLETED, doctor_id: doctorId, updated_by_id: req.user?.id || null },
+      await r.update(
+        {
+          status: LRS.COMPLETED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
 
       await LabRequestItem.update(
-        { status: LRS.COMPLETED, updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id }, transaction: t }
+        { status: LRS.COMPLETED },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      if (shouldTriggerBilling(MODULE_KEY, LRS.COMPLETED)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ request, from: oldStatus, to: LRS.COMPLETED });
+      updated.push(r.id);
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(r => r.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
+    const records = await LabRequest.findAll({
+      where: { id: { [Op.in]: updated } },
+      include: LAB_REQUEST_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_complete" : "complete",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { updated, skipped },
     });
 
-    return success(res, `✅ ${updated.length} completed, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests completed", { records, skipped });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to complete lab request(s)", err);
+    debug.error("completeLabRequests → FAILED", err);
+    return error(res, "Failed to complete lab requests", err);
   }
 };
 /* ============================================================
-   📌 CANCEL LAB REQUEST(S) (pending/in_progress → cancelled)
-   ============================================================ */
+   📌 CANCEL LAB REQUEST(S) (pending / in_progress → cancelled)
+============================================================ */
 export const cancelLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    /* 🔒 Tenant scoping */
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
+    /* ================= LOAD ================= */
     const requests = await LabRequest.findAll({
-      where,
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: { [Op.in]: [LRS.PENDING, LRS.IN_PROGRESS] },
+      },
       include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: LabRequest }
+      lock: t.LOCK.UPDATE,
     });
-    if (!requests.length) return error(res, "❌ No Lab Requests found", null, 404);
 
-    const updated = [], skipped = [];
+    if (!requests.length) {
+      await t.rollback();
+      return error(res, "No cancellable lab requests found", null, 404);
+    }
 
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (![LRS.PENDING, LRS.IN_PROGRESS].includes(oldStatus)) {
-        skipped.push({ id: request.id, reason: `Not cancellable (${oldStatus})` });
-        continue;
-      }
+    const updated = [];
+    const skipped = [];
 
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.CANCELLED, doctor_id: doctorId, updated_by_id: req.user?.id || null },
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
+      await r.update(
+        {
+          status: LRS.CANCELLED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
 
-      // rollback billing for each child item
-      for (const item of request.items || []) {
+      for (const item of r.items || []) {
         await billingService.voidCharges({
-          module: "lab_request_item",
+          module_key: MODULE_KEY,
           entityId: item.id,
-          user: {
-            ...req.user,
-            organization_id: request.organization_id,
-            facility_id: request.facility_id,
-          },
+          user: req.user,
           transaction: t,
         });
       }
 
-      // cascade results
-      await LabResult.update(
-        { status: "cancelled", updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided", "cancelled"] } }, transaction: t }
-      );
-
-      // cascade items
       await LabRequestItem.update(
-        { status: "cancelled", updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided", "cancelled"] } }, transaction: t }
+        { status: LRS.CANCELLED },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      updated.push({ request, from: oldStatus, to: LRS.CANCELLED });
+      await LabResult.update(
+        { status: "cancelled" },
+        { where: { lab_request_id: r.id }, transaction: t }
+      );
+
+      updated.push(r.id);
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
-
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_cancel" : "cancel",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { updated, skipped },
     });
 
-    return success(res, `✅ ${updated.length} cancelled, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests cancelled", { updated, skipped });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to cancel lab request(s)", err);
+    debug.error("cancelLabRequests → FAILED", err);
+    return error(res, "Failed to cancel lab requests", err);
   }
 };
 
 /* ============================================================
-   📌 VOID LAB REQUEST(S) (any → voided, admin/superadmin only)
-   ============================================================ */
+   📌 VOID LAB REQUEST(S) (any → voided) — ADMIN ONLY
+============================================================ */
 export const voidLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "❌ Only admin/superadmin can void lab requests", null, 403);
-    }
+    /* ================= PERMISSION ================= */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "void",
+      res,
+    });
+    if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
+    /* ================= LOAD ================= */
     const requests = await LabRequest.findAll({
-      where,
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: { [Op.ne]: LRS.VERIFIED },
+      },
       include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: LabRequest }
+      lock: t.LOCK.UPDATE,
     });
-    if (!requests.length) return error(res, "❌ No Lab Requests found", null, 404);
 
-    const updated = [], skipped = [];
+    if (!requests.length) {
+      await t.rollback();
+      return error(res, "No voidable lab requests found", null, 404);
+    }
 
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (oldStatus === LRS.VERIFIED) {
-        skipped.push({ id: request.id, reason: "Verified cannot be voided" });
-        continue;
-      }
+    const updated = [];
+    const skipped = [];
 
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.VOIDED, doctor_id: doctorId, updated_by_id: req.user?.id || null },
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
+      await r.update(
+        {
+          status: LRS.VOIDED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
 
-      // rollback billing for each child item
-      for (const item of request.items || []) {
+      for (const item of r.items || []) {
         await billingService.voidCharges({
-          module: "lab_request_item",
+          module_key: MODULE_KEY,
           entityId: item.id,
-          user: {
-            ...req.user,
-            organization_id: request.organization_id,
-            facility_id: request.facility_id,
-          },
+          user: req.user,
           transaction: t,
         });
       }
 
-      // cascade results
-      await LabResult.update(
-        { status: "voided", updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided"] } }, transaction: t }
-      );
-
-      // cascade items
       await LabRequestItem.update(
-        { status: "voided", updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id, status: { [Op.notIn]: ["verified", "voided"] } }, transaction: t }
+        { status: LRS.VOIDED },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      updated.push({ request, from: oldStatus, to: LRS.VOIDED });
+      await LabResult.update(
+        { status: "voided" },
+        { where: { lab_request_id: r.id }, transaction: t }
+      );
+
+      updated.push(r.id);
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
-
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_void" : "void",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { updated, skipped },
     });
 
-    return success(res, `✅ ${updated.length} voided, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests voided", { updated, skipped });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to void lab request(s)", err);
+    debug.error("voidLabRequests → FAILED", err);
+    return error(res, "Failed to void lab requests", err);
   }
 };
 
 /* ============================================================
    📌 SUBMIT LAB REQUEST(S) (draft → pending)
-   ============================================================ */
+============================================================ */
 export const submitLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    /* ================= LOAD ================= */
+    const requests = await LabRequest.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: LRS.DRAFT,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!requests.length) {
+      await t.rollback();
+      return error(res, "No draft lab requests found", null, 404);
     }
 
-    const requests = await LabRequest.findAll({ where, transaction: t, lock: { level: t.LOCK.UPDATE, of: LabRequest } });
-    if (!requests.length) return error(res, "❌ No Lab Requests found", null, 404);
+    const updated = [];
 
-    const updated = [], skipped = [];
-
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (oldStatus !== LRS.DRAFT) {
-        skipped.push({ id: request.id, reason: `Not in draft (${oldStatus})` });
-        continue;
-      }
-
-      // check for duplicate
-      const exists = await LabRequest.findOne({
-        where: {
-          organization_id: request.organization_id,
-          facility_id: request.facility_id,
-          patient_id: request.patient_id,
-          request_date: request.request_date,
-          id: { [Op.ne]: request.id },
-          status: { [Op.notIn]: [LRS.CANCELLED, LRS.VOIDED] },
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
+      await r.update(
+        {
+          status: LRS.PENDING,
+          updated_by_id: req.user.id,
         },
-        transaction: t,
-        paranoid: false,
-      });
-      if (exists) {
-        skipped.push({ id: request.id, reason: "Duplicate request on same date" });
-        continue;
-      }
-
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.PENDING, doctor_id: doctorId, updated_by_id: req.user?.id || null },
         { transaction: t }
       );
 
       await LabRequestItem.update(
-        { status: LRS.PENDING, updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id }, transaction: t }
+        { status: LRS.PENDING },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      if (shouldTriggerBilling(MODULE_KEY, LRS.PENDING)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ request, from: oldStatus, to: LRS.PENDING });
+      updated.push(r.id);
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
-
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_submit" : "submit",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { updated },
     });
 
-    return success(res, `✅ ${updated.length} submitted, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests submitted", { updated });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to submit lab request(s)", err);
+    debug.error("submitLabRequests → FAILED", err);
+    return error(res, "Failed to submit lab requests", err);
   }
 };
 
 /* ============================================================
-   📌 VERIFY LAB REQUEST(S) (completed → verified)
-   ============================================================ */
+   📌 VERIFY LAB REQUEST(S) (completed → verified) — ADMIN ONLY
+============================================================ */
 export const verifyLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "❌ Only admin/superadmin can verify lab requests", null, 403);
-    }
+    /* ================= PERMISSION ================= */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "verify",
+      res,
+    });
+    if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    /* ================= IDS ================= */
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Lab Request ID", null, 400);
+      return error(res, "At least one ID is required", null, 400);
     }
 
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    /* ================= LOAD ================= */
+    const requests = await LabRequest.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: LRS.COMPLETED,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!requests.length) {
+      await t.rollback();
+      return error(res, "No completed lab requests found", null, 404);
     }
 
-    const requests = await LabRequest.findAll({ where, transaction: t, lock: { level: t.LOCK.UPDATE, of: LabRequest } });
-    if (!requests.length) return error(res, "❌ No Lab Requests found", null, 404);
+    const updated = [];
+    const skipped = [];
 
-    const updated = [], skipped = [];
-
-    for (const request of requests) {
-      const oldStatus = request.status;
-      if (oldStatus !== LRS.COMPLETED) {
-        skipped.push({ id: request.id, reason: `Not completed (${oldStatus})` });
-        continue;
-      }
-
+    /* ================= PROCESS ================= */
+    for (const r of requests) {
       const unverified = await LabResult.count({
-        where: { lab_request_id: request.id, status: { [Op.ne]: "verified" } },
+        where: {
+          lab_request_id: r.id,
+          status: { [Op.ne]: "verified" },
+        },
         transaction: t,
       });
-      if (unverified > 0) {
-        skipped.push({ id: request.id, reason: "Unverified results remain" });
+
+      if (unverified) {
+        skipped.push({ id: r.id, reason: "Unverified results remain" });
         continue;
       }
 
-      let doctorId = resolveDoctorId(request, req.user);
-      await request.update(
-        { status: LRS.VERIFIED, doctor_id: doctorId, updated_by_id: req.user?.id || null },
+      await r.update(
+        {
+          status: LRS.VERIFIED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
 
       await LabRequestItem.update(
-        { status: LRS.VERIFIED, updated_by_id: req.user?.id },
-        { where: { lab_request_id: request.id }, transaction: t }
+        { status: LRS.VERIFIED },
+        { where: { lab_request_id: r.id }, transaction: t }
       );
 
-      if (shouldTriggerBilling(MODULE_KEY, LRS.VERIFIED)) {
-        await billingService.billLabRequestItems({
-          labRequest: request,
-          user: { ...req.user, organization_id: request.organization_id, facility_id: request.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ request, from: oldStatus, to: LRS.VERIFIED });
+      updated.push(r.id);
     }
 
     await t.commit();
 
-    const full = updated.length
-      ? await LabRequest.findAll({ where: { id: updated.map(u => u.request.id) }, include: LAB_REQUEST_INCLUDES })
-      : [];
-
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_verify" : "verify",
-      details: { updated: updated.map(u => ({ id: u.request.id, from: u.from, to: u.to })), skipped },
+      details: { updated, skipped },
     });
 
-    return success(res, `✅ ${updated.length} verified, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "Lab requests verified", { updated, skipped });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to verify lab request(s)", err);
+    debug.error("verifyLabRequests → FAILED", err);
+    return error(res, "Failed to verify lab requests", err);
   }
 };

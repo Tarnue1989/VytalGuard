@@ -54,7 +54,7 @@ router.post(`/:id(${UUIDv4})/apply-to-invoice`, verifyAuth,  applyDepositToInvoi
 
 // 🆕 Extended Admin / Audit Lifecycle
 router.patch(`/:id(${UUIDv4})/verify`, verifyAuth,  verifyDeposit);
-router.patch(`/:id(${UUIDv4})/void`, verifyAuth,  voidDeposit);
+router.patch(`/:id(${UUIDv4})/voided`, verifyAuth,  voidDeposit);
 router.patch(`/:id(${UUIDv4})/restore`, verifyAuth,  restoreDeposit); // ✅ Added
 
 /* ============================================================

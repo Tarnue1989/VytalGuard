@@ -1,18 +1,16 @@
-// 📁 appointment-render.js – Entity Card System (APPOINTMENT | ENTERPRISE FINAL)
+// 📁 appointment-render.js – Entity Card System (APPOINTMENT | ENTERPRISE MASTER)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH feature-access-render.js
-// 🔹 Table = flat | Card = structured
+// 🧭 FULL MASTER PARITY WITH consultation-render.js
+// 🔹 Table = flat | Card = RICH + structured
 // 🔹 Field-selector safe
 // 🔹 Backend sorting bridge
-// 🔹 Column resize enabled
-// 🔹 Column drag reorder enabled
-// 🔹 Status + permission driven actions
-// 🔹 Export-safe
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section (created / updated / deleted)
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
 // ============================================================================
 
-import {
-  FIELD_LABELS_APPOINTMENT,
-} from "./appointments-constants.js";
+import { FIELD_LABELS_APPOINTMENT } from "./appointments-constants.js";
 
 import {
   formatDate,
@@ -26,7 +24,7 @@ import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
+   🔃 SORTABLE FIELDS (MASTER PARITY)
 ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "organization_id",
@@ -34,22 +32,18 @@ const SORTABLE_FIELDS = new Set([
   "patient_id",
   "doctor_id",
   "department_id",
-  "status",
   "date_time",
+  "status",
   "created_at",
   "updated_at",
 ]);
 
-/* ============================================================
-   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
-============================================================ */
 let sortBy = localStorage.getItem("appointmentSortBy") || "";
 let sortDir = localStorage.getItem("appointmentSortDir") || "asc";
 
 function toggleSort(field) {
-  if (sortBy === field) {
-    sortDir = sortDir === "asc" ? "desc" : "asc";
-  } else {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
     sortBy = field;
     sortDir = "asc";
   }
@@ -57,18 +51,18 @@ function toggleSort(field) {
   localStorage.setItem("appointmentSortBy", sortBy);
   localStorage.setItem("appointmentSortDir", sortDir);
 
-  // 🔗 Bridge to MAIN
   window.setAppointmentSort?.(sortBy, sortDir);
   window.loadAppointmentPage?.(1);
 }
 
 /* ============================================================
-   🎛️ ACTION BUTTONS
+   🎛️ ACTIONS (MASTER)
 ============================================================ */
 function getAppointmentActionButtons(entry, user) {
   return buildActionButtons({
     module: "appointment",
     status: (entry.status || "").toLowerCase(),
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "appointments",
@@ -76,7 +70,7 @@ function getAppointmentActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
+   🧱 TABLE HEAD
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -88,6 +82,8 @@ export function renderDynamicTableHead(visibleFields) {
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
+    th.dataset.key = field;
+
     const label =
       FIELD_LABELS_APPOINTMENT[field] || field.replace(/_/g, " ");
 
@@ -98,11 +94,7 @@ export function renderDynamicTableHead(visibleFields) {
       return;
     }
 
-    th.dataset.key = field;
-
     if (SORTABLE_FIELDS.has(field)) {
-      th.classList.add("sortable");
-
       let icon = "ri-arrow-up-down-line";
       if (sortBy === field) {
         icon =
@@ -111,10 +103,8 @@ export function renderDynamicTableHead(visibleFields) {
             : "ri-arrow-down-line";
       }
 
-      th.innerHTML = `
-        <span>${label}</span>
-        <i class="${icon} sort-icon"></i>
-      `;
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
       th.onclick = () => toggleSort(field);
     } else {
       th.innerHTML = `<span>${label}</span>`;
@@ -125,7 +115,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   thead.appendChild(tr);
 
-  /* ================= Column resize ================= */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
@@ -138,55 +127,60 @@ export function renderDynamicTableHead(visibleFields) {
   table.prepend(colgroup);
 
   enableColumnResize(table);
-
-  /* ================= Column drag ================= */
   enableColumnDrag({
     table,
     visibleFields,
-    onReorder: () => {
-      renderDynamicTableHead(visibleFields);
-      window.loadAppointmentPage?.(1);
-    },
+    onReorder: () => window.loadAppointmentPage?.(1),
   });
 }
 
 /* ============================================================
    🔠 HELPERS
 ============================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.email || "—";
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return (
+    [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ") ||
+    u.full_name ||
+    u.email ||
+    "—"
+  );
 }
 
 function renderPatient(entry) {
+  if (!entry.patient) return "—";
   const p = entry.patient;
-  if (!p) return "—";
-  const name = [p.first_name, p.middle_name, p.last_name]
+  return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
     .filter(Boolean)
-    .join(" ");
-  return `${p.pat_no || "—"} - ${name || "Unnamed Patient"}`;
+    .join(" ")}`;
 }
 
 /* ============================================================
-   🧩 FIELD VALUE RENDERER
+   🧩 TABLE VALUE RENDERER (OBJECT SAFE)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      let cls = "bg-secondary";
-      if (raw === "scheduled") cls = "bg-primary";
-      if (raw === "in_progress") cls = "bg-warning text-dark";
-      if (raw === "completed") cls = "bg-success";
-      if (raw === "verified") cls = "bg-info";
-      if (raw === "cancelled") cls = "bg-danger";
-      if (raw === "no_show") cls = "bg-secondary";
-      if (raw === "voided") cls = "bg-dark";
-
-      return `<span class="badge ${cls}">
-        ${raw.replace(/_/g, " ").toUpperCase()}
-      </span>`;
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "scheduled"
+          ? "bg-primary"
+          : s === "in_progress"
+          ? "bg-warning text-dark"
+          : s === "completed"
+          ? "bg-success"
+          : s === "verified"
+          ? "bg-info"
+          : s === "cancelled"
+          ? "bg-danger"
+          : s === "no_show"
+          ? "bg-secondary"
+          : s === "voided"
+          ? "bg-dark text-light"
+          : "bg-secondary";
+      return `<span class="badge ${cls}">${s.replace(/_/g, " ").toUpperCase()}</span>`;
     }
 
     case "organization":
@@ -210,148 +204,106 @@ function renderValue(entry, field) {
       return entry.department?.name || "—";
 
     case "invoice":
+    case "invoice_id":
       return entry.invoice?.invoice_number || "—";
 
     case "createdBy":
+      return renderUserName(entry.createdBy);
     case "updatedBy":
+      return renderUserName(entry.updatedBy);
     case "deletedBy":
-      return renderUserName(entry[field]);
+      return renderUserName(entry.deletedBy);
 
     case "date_time":
+      return entry.date_time ? formatDateTime(entry.date_time) : "—";
+
     case "created_at":
     case "updated_at":
     case "deleted_at":
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — APPOINTMENT
+   🗂️ CARD RENDERER — RICH (MASTER)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
-  const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
-
-  const fieldRow = (label, value) => `
-    <div class="entity-field">
-      <span class="entity-label">${label}</span>
-      <span class="entity-value">${safe(value)}</span>
-    </div>
-  `;
-
   const status = (entry.status || "").toLowerCase();
 
-  const header = `
-    <div class="entity-card-header">
-      <div>
-        ${has("appointment_code")
-          ? `<div class="entity-secondary">${safe(entry.appointment_code)}</div>`
-          : ""}
-        ${has("patient")
-          ? `<div class="entity-primary">${renderPatient(entry)}</div>`
-          : ""}
-      </div>
-      ${
-        has("status")
-          ? `<span class="entity-status ${status}">
-               ${status.replace(/_/g, " ").toUpperCase()}
-             </span>`
-          : ""
-      }
-    </div>
-  `;
-
-  const contextItems = [];
-  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
-  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
-  if (has("date_time")) contextItems.push(`📅 ${formatDateTime(entry.date_time)}`);
-
-  const context = contextItems.length
-    ? `<div class="entity-card-context">
-         ${contextItems.map(v => `<div>${v}</div>`).join("")}
-       </div>`
-    : "";
-
-  const body = `
-    <div class="entity-card-body">
-      <div>
-        ${has("doctor")
-          ? fieldRow("Doctor", renderUserName(entry.doctor))
-          : ""}
-        ${has("department")
-          ? fieldRow("Department", entry.department?.name)
-          : ""}
-      </div>
-      <div>
-        ${has("invoice")
-          ? fieldRow("Invoice", renderValue(entry, "invoice"))
-          : ""}
-      </div>
-    </div>
-  `;
-
-  const audit =
-    has("created_at") || has("updated_at")
-      ? `
-        <details class="entity-notes">
-          <summary>Audit</summary>
-          <div class="entity-card-body">
-            <div>
-              ${has("createdBy")
-                ? fieldRow("Created By", renderUserName(entry.createdBy))
-                : ""}
-              ${has("created_at")
-                ? fieldRow("Created At", formatDateTime(entry.created_at))
-                : ""}
-            </div>
-            <div>
-              ${has("updatedBy")
-                ? fieldRow("Updated By", renderUserName(entry.updatedBy))
-                : ""}
-              ${has("updated_at")
-                ? fieldRow("Updated At", formatDateTime(entry.updated_at))
-                : ""}
-            </div>
-          </div>
-        </details>
-      `
-      : "";
-
-  const notes =
-    has("notes") && entry.notes
-      ? `
-        <details class="entity-notes">
-          <summary>Notes</summary>
-          <p>${entry.notes}</p>
-        </details>
-      `
-      : "";
-
-  const actions = has("actions")
-    ? `
-      <div class="entity-card-footer export-ignore">
-        ${getAppointmentActionButtons(entry, user)}
-      </div>
-    `
-    : "";
+  const row = (label, value) =>
+    value === undefined || value === null || value === ""
+      ? ""
+      : `
+        <div class="entity-field">
+          <span class="entity-label">${label}</span>
+          <span class="entity-value">${safe(value)}</span>
+        </div>
+      `;
 
   return `
     <div class="entity-card appointment-card">
-      ${header}
-      ${context}
-      ${body}
-      ${audit}
-      ${notes}
-      ${actions}
+      <div class="entity-card-header">
+        <div>
+          ${has("appointment_code")
+            ? `<div class="entity-secondary">${safe(entry.appointment_code)}</div>`
+            : ""}
+          <div class="entity-primary">${renderPatient(entry)}</div>
+        </div>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">${status.replace(/_/g, " ").toUpperCase()}</span>`
+            : ""
+        }
+      </div>
+
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
+        ${entry.doctor ? `<div>👨‍⚕️ ${renderUserName(entry.doctor)}</div>` : ""}
+        ${entry.department ? `<div>🏬 ${entry.department.name}</div>` : ""}
+        ${entry.date_time ? `<div>📅 ${formatDateTime(entry.date_time)}</div>` : ""}
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Doctor", renderUserName(entry.doctor))}
+        ${row("Department", entry.department?.name)}
+        ${row("Invoice", entry.invoice?.invoice_number)}
+        ${row("Status", status.replace(/_/g, " ").toUpperCase())}
+      </div>
+
+      <details class="entity-notes">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDateTime(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${row("Deleted By", renderUserName(entry.deletedBy))}
+          ${row("Deleted At", formatDateTime(entry.deleted_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getAppointmentActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
     </div>
   `;
 }
 
 /* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("appointmentTableBody");
@@ -363,31 +315,29 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   cardContainer.innerHTML = "";
 
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="${visibleFields.length}" class="text-muted text-center">
+          <td colspan="${visibleFields.length}" class="text-center text-muted">
             No appointments found.
           </td>
         </tr>`;
-      initTooltips(tableBody);
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((field) =>
-          field === "actions"
-            ? `<td class="actions-cell text-center export-ignore">
-                 ${getAppointmentActionButtons(entry, user)}
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">
+                 ${getAppointmentActionButtons(e, user)}
                </td>`
-            : `<td>${renderValue(entry, field)}</td>`
+            : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
       tableBody.appendChild(tr);
@@ -397,11 +347,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center">No appointments found.</p>`;
-
+      : `<p class="text-center text-muted">No appointments found.</p>`;
     initTooltips(cardContainer);
   }
 
@@ -409,30 +357,27 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 EXPORT HANDLERS
+   📤 EXPORT (MASTER)
 ============================================================ */
 let exportHandlersBound = false;
-
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
   exportHandlersBound = true;
 
   const title = "Appointments Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
-
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
-
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
+    exportData({ type: "csv", data: entries, title })
+  );
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
+    exportData({ type: "xlsx", data: entries, title })
+  );
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",
       title,
       selector: ".table-container.active, #appointmentList.active",
       orientation: "landscape",
-    });
-  });
+    })
+  );
 }

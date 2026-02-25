@@ -24,7 +24,7 @@ import { validate } from "../utils/validation.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 
-const MODULE_KEY = "facility";
+const MODULE_KEY = "facilities";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
@@ -65,7 +65,7 @@ const FACILITY_INCLUDES = [
 function buildFacilitySchema(userRole, mode = "create") {
   const base = {
     name: Joi.string().max(255).required(),
-    code: Joi.string().max(50).required(),
+    code: Joi.string().max(50).required(), // ✅ org admins allowed
     address: Joi.string().allow("", null),
     phone: Joi.string().allow("", null),
     email: Joi.string().email().allow("", null),
@@ -80,10 +80,6 @@ function buildFacilitySchema(userRole, mode = "create") {
 
   if (userRole === "superadmin") {
     base.organization_id = Joi.string().uuid().required();
-  }
-
-  if (userRole !== "superadmin") {
-    base.code = Joi.forbidden();
   }
 
   return Joi.object(base);

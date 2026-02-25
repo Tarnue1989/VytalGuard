@@ -1,8 +1,13 @@
 // 📁 lab-request-actions.js
-// ============================================================
-// 🧭 Full Permission-Driven Action Handlers for Lab Requests
-// Enterprise-Aligned (Central Stock Master Pattern)
-// ============================================================
+// ============================================================================
+// 🧭 Enterprise MASTER–ALIGNED Action Handlers (Lab Requests)
+// ----------------------------------------------------------------------------
+// 🔹 Pattern Source: consultation-actions.js (Enterprise MASTER)
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Unified lifecycle: view / edit / delete / submit / activate / complete / verify / cancel / void
+// 🔹 Safe fallback fetch + global helpers
+// 🔹 100% API preservation (NO endpoint changes)
+// ============================================================================
 
 import {
   showToast,
@@ -15,8 +20,7 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./lab-request-render.js";
 
 /**
- * Unified, permission-driven action handler
- * (Aligned to Central Stock master pattern)
+ * Unified permission-aware action handler for Lab Request module
  */
 export function setupActionHandlers({
   entries,
@@ -25,20 +29,20 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user,
+  user, // { role, permissions, roleNames }
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("labRequestTableBody");
   const cardContainer = document.getElementById("labRequestList");
 
-  // Cache globally for easy re-access
+  // 🗂️ Cache latest entries
   window.latestLabRequestEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Permission Normalization + Check
+     🔑 Normalize Permissions (MASTER PATTERN)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -52,24 +56,26 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
+
+  // 🧠 Superadmin bypass (MASTER PATTERN)
   const isSuperAdmin =
-    (user?.role && user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
     (Array.isArray(user?.roleNames) &&
       user.roleNames.some(
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  const hasPerm = (key) => {
-    const normalizedKey = key
-      .replace(/labrequests/gi, "lab_requests")
-      .trim()
-      .toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  const hasPerm = (key) =>
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     ⚙️ Action Dispatcher
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -81,6 +87,7 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
+    // 🩹 Fallback fetch (MASTER SAFETY NET)
     if (!entry) {
       try {
         showLoading();
@@ -95,70 +102,91 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Lab request data missing");
+
     const cls = btn.classList;
 
-    // --- Basic View ---
-    if (cls.contains("view-btn")) return handleView(entry);
+    if (cls.contains("view-btn")) {
+      if (!hasPerm("lab_requests:view"))
+        return showToast("⛔ You don't have permission to view lab requests");
+      return handleView(entry);
+    }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("lab_requests:edit"))
-        return showToast("⛔ You don't have permission to edit");
+        return showToast("⛔ You don't have permission to edit lab requests");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("lab_requests:delete"))
-        return showToast("⛔ You don't have permission to delete");
+        return showToast("⛔ You don't have permission to delete lab requests");
       return await handleDelete(id, entry);
     }
 
-    // --- Lifecycle Actions ---
-    const lifecycleActions = {
-      submit: "Submit this lab request?",
-      activate: "Activate this lab request?",
-      complete: "Mark this lab request as completed?",
-      verify: "Verify this lab request?",
-      cancel: "Cancel this lab request?",
-      void: "Void this lab request? (Admin/Superadmin only)",
-    };
+    if (cls.contains("submit-btn")) {
+      if (!hasPerm("lab_requests:submit"))
+        return showToast("⛔ No permission to submit lab request");
+      return await handleLifecycle(id, "submit", "Submit this lab request?");
+    }
 
-    for (const [key, msg] of Object.entries(lifecycleActions)) {
-      if (cls.contains(`${key}-btn`)) {
-        if (!hasPerm(`lab_requests:${key}`))
-          return showToast(`⛔ No permission to ${key} lab request`);
-        const requiresReason = ["cancel", "void"].includes(key);
-        return await handleLifecycle(id, key, msg, requiresReason);
-      }
+    if (cls.contains("activate-btn")) {
+      if (!hasPerm("lab_requests:activate"))
+        return showToast("⛔ No permission to activate lab request");
+      return await handleLifecycle(id, "activate", "Activate this lab request?");
+    }
+
+    if (cls.contains("complete-btn")) {
+      if (!hasPerm("lab_requests:complete"))
+        return showToast("⛔ No permission to complete lab request");
+      return await handleLifecycle(
+        id,
+        "complete",
+        "Mark this lab request as completed?"
+      );
+    }
+
+    if (cls.contains("verify-btn")) {
+      if (!hasPerm("lab_requests:verify"))
+        return showToast("⛔ No permission to verify lab request");
+      return await handleLifecycle(id, "verify", "Verify this lab request?");
+    }
+
+    if (cls.contains("cancel-btn")) {
+      if (!hasPerm("lab_requests:cancel"))
+        return showToast("⛔ No permission to cancel lab request");
+      return await handleLifecycle(id, "cancel", "Cancel this lab request?");
+    }
+
+    if (cls.contains("void-btn")) {
+      if (!hasPerm("lab_requests:void"))
+        return showToast("⛔ No permission to void lab request");
+      return await handleLifecycle(
+        id,
+        "void",
+        "Void this lab request? (Admin/Superadmin only)"
+      );
     }
   }
 
   /* ============================================================
-     🧩 Individual Handlers
+     ⚙️ Action Handlers
   ============================================================ */
+
   function handleView(entry) {
-    if (!hasPerm("lab_requests:view"))
-      return showToast("⛔ You don't have permission to view lab request");
-
-    // Open professional read-only view page
-    window.open(
-      `/lab-results-view.html?id=${entry.id}`,
-      "_blank"
-    );
+    const html = renderCard(entry, visibleFields, user);
+    openViewModal("Lab Request Info", html);
   }
-
 
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("labRequestEditId", entry.id);
     sessionStorage.setItem("labRequestEditPayload", JSON.stringify(entry));
-    window.location.href = `add-lab-request.html?id=${entry.id}`;
+    window.location.href = "add-lab-request.html";
   }
 
   async function handleDelete(id, entry) {
     const confirmed = await showConfirm(
-      `Delete lab request for "${entry.patient?.full_name || "Unknown"}"?`
+      `Delete lab request for patient "${entry?.patient?.first_name || ""}"?`
     );
     if (!confirmed) return;
 
@@ -171,7 +199,7 @@ export function setupActionHandlers({
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete lab request");
 
-      showToast(`✅ Lab request deleted successfully`);
+      showToast("✅ Lab request deleted successfully");
       window.latestLabRequestEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -182,29 +210,14 @@ export function setupActionHandlers({
     }
   }
 
-  /* ============================================================
-     🧠 Lifecycle Handler (Reason Modal Support)
-  ============================================================ */
-  async function handleLifecycle(id, action, confirmMsg, requiresReason = false) {
+  async function handleLifecycle(id, action, confirmMsg) {
     const confirmed = await showConfirm(confirmMsg);
     if (!confirmed) return;
-
-    let reason = null;
-    if (requiresReason) {
-      reason = await showReasonModal({
-        title: action === "void" ? "Void Lab Request" : "Cancel Lab Request",
-        message:
-          "Please provide a reason to proceed. This action will be logged for auditing and may affect billing records.",
-      });
-      if (!reason) return showToast("⚠️ Reason is required to proceed.");
-    }
 
     try {
       showLoading();
       const res = await authFetch(`/api/lab-requests/${id}/${action}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: requiresReason ? JSON.stringify({ reason }) : undefined,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
@@ -222,107 +235,57 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     💬 Reason Modal (Bootstrap 5, Enterprise Style)
-  ============================================================ */
-  async function showReasonModal({ title, message }) {
-    return new Promise((resolve) => {
-      let modal = document.getElementById("reasonModal");
-      if (!modal) {
-        const html = `
-        <div class="modal fade" id="reasonModal" tabindex="-1">
-          <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-              <div class="modal-header bg-light">
-                <h5 class="modal-title">${title}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-              <div class="modal-body">
-                <p>${message}</p>
-                <textarea id="reasonInput" class="form-control" rows="3" placeholder="Enter reason..."></textarea>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" id="reasonSubmitBtn" class="btn btn-primary">Submit</button>
-              </div>
-            </div>
-          </div>
-        </div>`;
-        document.body.insertAdjacentHTML("beforeend", html);
-        modal = document.getElementById("reasonModal");
-      }
-
-      const bsModal = new bootstrap.Modal(modal, { backdrop: "static" });
-      bsModal.show();
-
-      const input = modal.querySelector("#reasonInput");
-      const submitBtn = modal.querySelector("#reasonSubmitBtn");
-
-      function cleanup(value = null) {
-        submitBtn.removeEventListener("click", handleSubmit);
-        modal.removeEventListener("hidden.bs.modal", handleCancel);
-        bsModal.hide();
-        resolve(value);
-      }
-
-      function handleSubmit() {
-        const val = input.value.trim();
-        if (!val) return showToast("⚠️ Please provide a reason before submitting.");
-        cleanup(val);
-      }
-
-      function handleCancel() {
-        cleanup(null);
-      }
-
-      submitBtn.addEventListener("click", handleSubmit);
-      modal.addEventListener("hidden.bs.modal", handleCancel);
-    });
-  }
-
-  /* ============================================================
-     🌐 Global Shortcut Functions
+     🌍 Global Helpers (MASTER + Backward Compatible)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestLabRequestEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewEntry = (id) => {
+  // 🔹 Master-style helpers
+  window.viewLabRequest = (id) => {
     if (!hasPerm("lab_requests:view"))
-      return showToast("⛔ No permission to view lab request");
+      return showToast("⛔ No permission to view lab requests");
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Lab request not found for viewing");
   };
 
-  window.editEntry = (id) => {
+  window.editLabRequest = (id) => {
     if (!hasPerm("lab_requests:edit"))
-      return showToast("⛔ No permission to edit lab request");
+      return showToast("⛔ No permission to edit lab requests");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Lab request not found for editing");
   };
 
-  window.deleteEntry = async (id) => {
+  window.deleteLabRequest = async (id) => {
     if (!hasPerm("lab_requests:delete"))
-      return showToast("⛔ No permission to delete lab request");
+      return showToast("⛔ No permission to delete lab requests");
     const entry = findEntry(id);
     await handleDelete(id, entry);
   };
 
   ["submit", "activate", "complete", "verify", "cancel", "void"].forEach(
     (action) => {
-      window[`${action}Entry`] = async (id) => {
+      window[`${action}LabRequest`] = async (id) => {
         if (!hasPerm(`lab_requests:${action}`))
           return showToast(`⛔ No permission to ${action} lab request`);
-        const entry = findEntry(id);
         await handleLifecycle(
           id,
           action,
-          `Proceed to ${action} this lab request?`,
-          ["cancel", "void"].includes(action)
+          `Proceed to ${action} this lab request?`
         );
       };
     }
   );
+
+  // 🔹 Backward compatibility (existing bindings)
+  window.viewEntry = window.viewLabRequest;
+  window.editEntry = window.editLabRequest;
+  window.deleteEntry = window.deleteLabRequest;
+  window.submitEntry = window.submitLabRequest;
+  window.activateEntry = window.activateLabRequest;
+  window.completeEntry = window.completeLabRequest;
+  window.verifyEntry = window.verifyLabRequest;
+  window.cancelEntry = window.cancelLabRequest;
+  window.voidEntry = window.voidLabRequest;
 }

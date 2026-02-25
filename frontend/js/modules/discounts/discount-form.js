@@ -1,8 +1,11 @@
-// 📁 discount-form.js – Enterprise Master Pattern Aligned (Add/Edit Discount)
+// 📁 discount-form.js – Secure & Role-Aware Discount Form (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors autoBillingRule-form.js for unified tenant + role visibility
-// 🔹 Permission-driven org/facility logic (super → admin → facility-level)
-// 🔹 Preserves all DOM IDs, event wiring, and backend flow
+// 🔹 FULL parity with deposit-form.js MASTER
+// 🔹 Rule-driven validation (DISCOUNT_FORM_RULES)
+// 🔹 Role-aware org/fac handling (SUPER ONLY)
+// 🔹 Clean payload normalization (UUID | number | null)
+// 🔹 Controller-faithful (no HTML validation, no silent rules)
+// 🔹 Preserves ALL existing DOM IDs, API calls, and wiring
 // ============================================================================
 
 import {
@@ -13,7 +16,15 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -22,8 +33,11 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { DISCOUNT_FORM_RULES } from "./discount.form.rules.js";
+
 /* ============================================================
-   🧩 Helpers
+   🧩 Helpers (MASTER)
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
@@ -42,101 +56,110 @@ function normalizeMessage(result, fallback) {
 }
 
 function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
 
-function resolveTenantScope() {
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-  const userOrg = localStorage.getItem("organization_id") || null;
-  const userFac = localStorage.getItem("facility_id") || null;
-  return {
-    userRole,
-    userOrg,
-    userFac,
-    isSuper: userRole.includes("super"),
-    isAdmin: userRole.includes("admin"),
-    isFacilityHead:
-      userRole.includes("facilityhead") || userRole.includes("manager"),
-  };
+function normalizeNumber(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
 }
 
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
 export async function setupDiscountFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey(["discounts:create", "discounts:edit"]));
+  initPageGuard(autoPagePermissionKey(["discounts:create", "discounts:edit"]));
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const queryId = getQueryParam("id");
-  const sessionId = sessionStorage.getItem("discountEditId");
-  const discountId = sessionId || queryId;
-  const isEdit = !!discountId;
+  const discountId =
+    sessionStorage.getItem("discountEditId") || getQueryParam("id");
+  const isEdit = Boolean(discountId);
 
+  /* ============================================================
+     🎨 UI Mode
+  ============================================================ */
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const reasonGroup = document.getElementById("reasonGroup");
 
-  if (isEdit) {
-    titleEl && (titleEl.textContent = "Edit Discount");
-    submitBtn &&
-      (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Discount`);
-  } else {
-    titleEl && (titleEl.textContent = "Add Discount");
-    submitBtn &&
-      (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Discount`);
-  }
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent = mode === "edit" ? "Edit Discount" : "Add Discount";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Discount`
+          : `<i class="ri-add-line me-1"></i> Add Discount`;
+    if (reasonGroup)
+      reasonGroup.classList.remove("hidden");
+  };
+  setUI(isEdit ? "edit" : "add");
 
-  // 📋 DOM refs
+  /* ============================================================
+     📋 DOM Refs
+  ============================================================ */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
+
   const invoiceInput = document.getElementById("invoiceInput");
   const invoiceHidden = document.getElementById("invoiceId");
   const invoiceSuggestions = document.getElementById("invoiceSuggestions");
+
   const invoiceItemSelect = document.getElementById("invoiceItemId");
   const typeSelect = document.getElementById("typeSelect");
   const valueInput = document.getElementById("value");
   const reasonInput = document.getElementById("reason");
 
-  let maxAllowed = null;
+  /* ============================================================
+     👥 Role
+  ============================================================ */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
 
   /* ============================================================
-     🔽 Prefill Dropdowns (Org/Facility visibility logic)
+     🌐 Dropdowns & Suggestions (MASTER)
   ============================================================ */
   try {
-    const { isSuper, isAdmin, userOrg } = resolveTenantScope();
-
     if (isSuper) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
         );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      };
 
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (isAdmin) {
-      orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({ organization_id: userOrg }, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // Invoice suggestion loader
     setupSuggestionInputDynamic(
       invoiceInput,
       invoiceSuggestions,
       "/api/lite/invoices",
       async (selected) => {
         invoiceHidden.value = selected?.id || "";
-        maxAllowed = selected?.balance ? parseFloat(selected.balance) : 0;
 
         if (selected && invoiceItemSelect) {
           try {
@@ -156,12 +179,6 @@ export async function setupDiscountFormSubmission({ form }) {
               "displayLabel",
               "-- Apply to whole invoice --"
             );
-            invoiceItemSelect.addEventListener("change", () => {
-              const chosen = filtered.find((x) => x.id === invoiceItemSelect.value);
-              maxAllowed = chosen
-                ? parseFloat(chosen.net_amount || chosen.total_price || 0)
-                : parseFloat(selected.balance || 0);
-            });
           } catch {
             invoiceItemSelect.innerHTML = `<option value="">-- Apply to whole invoice --</option>`;
           }
@@ -173,41 +190,52 @@ export async function setupDiscountFormSubmission({ form }) {
       "label"
     );
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     🧩 Prefill If Editing
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit && discountId) {
     try {
       showLoading();
+
       let entry = null;
       const cached = sessionStorage.getItem("discountEditPayload");
       if (cached) entry = JSON.parse(cached);
 
       if (!entry) {
-        const res = await authFetch(`/api/discounts/${discountId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await authFetch(`/api/discounts/${discountId}`);
         const result = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(normalizeMessage(result, `❌ Failed to load discount`));
-        entry = result.data;
+        if (!res.ok)
+          throw new Error(
+            normalizeMessage(result, "Failed to load discount")
+          );
+        entry = result?.data;
       }
 
-      // Populate fields
-      orgSelect.value = entry.organization_id || "";
-      facSelect.value = entry.facility_id || "";
+      if (!entry) return;
+
+      invoiceHidden.value = entry.invoice_id || "";
+      invoiceInput.value = entry.invoice
+        ? `${entry.invoice.invoice_number || ""}`
+        : "";
+
+      invoiceItemSelect.value = entry.invoice_item_id || "";
       typeSelect.value = entry.type || "";
-      valueInput.value = entry.value || "";
+      valueInput.value = entry.value ?? "";
       reasonInput.value = entry.reason || "";
-      if (entry.invoice) {
-        invoiceInput.value = entry.invoice.invoice_number;
-        invoiceHidden.value = entry.invoice.id;
+
+      if (isSuper) {
+        if (orgSelect && entry.organization_id)
+          orgSelect.value = entry.organization_id;
+        if (facSelect && entry.facility_id)
+          facSelect.value = entry.facility_id;
       }
+
+      setUI("edit");
     } catch (err) {
-      console.error("❌ Prefill error:", err);
       showToast(err.message || "❌ Could not load discount");
     } finally {
       hideLoading();
@@ -215,40 +243,54 @@ export async function setupDiscountFormSubmission({ form }) {
   }
 
   /* ============================================================
-     💾 Submit Handler (Role-aware enforcement)
+     🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of DISCOUNT_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el) continue;
+      if (el.closest(".hidden")) continue;
+
+      if (!el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    const payload = {
+      invoice_id: normalizeUUID(invoiceHidden.value),
+      invoice_item_id: normalizeUUID(invoiceItemSelect?.value),
+      type: typeSelect.value || null,
+      value: normalizeNumber(valueInput.value),
+      reason: reasonInput.value || null,
+    };
+
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect?.value);
+      payload.facility_id = normalizeUUID(facSelect?.value);
+    }
 
     try {
       showLoading();
 
-      const { isSuper, isAdmin, userOrg, userFac } = resolveTenantScope();
-
-      const payload = {
-        invoice_id: normalizeUUID(invoiceHidden.value),
-        invoice_item_id: normalizeUUID(invoiceItemSelect?.value || null),
-        type: typeSelect?.value || null,
-        value: parseFloat(valueInput?.value || 0) || null,
-        reason: reasonInput?.value || null,
-        organization_id: orgSelect?.value || null,
-        facility_id: facSelect?.value || null,
-      };
-
-      // Enforce tenant scoping
-      if (isSuper) {
-        payload.organization_id = orgSelect.value || null;
-        payload.facility_id = facSelect.value || null;
-      } else if (isAdmin) {
-        payload.organization_id = userOrg;
-        payload.facility_id = facSelect.value || null;
-      } else {
-        payload.organization_id = userOrg;
-        payload.facility_id = userFac;
-      }
-
-      const url = isEdit ? `/api/discounts/${discountId}` : `/api/discounts`;
+      const url = isEdit
+        ? `/api/discounts/${discountId}`
+        : `/api/discounts`;
       const method = isEdit ? "PUT" : "POST";
 
       const res = await authFetch(url, {
@@ -258,21 +300,19 @@ export async function setupDiscountFormSubmission({ form }) {
       });
 
       const result = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      if (isEdit) {
-        showToast("✅ Discount updated successfully");
-        sessionStorage.removeItem("discountEditId");
-        sessionStorage.removeItem("discountEditPayload");
-        window.location.href = "/discounts-list.html";
-      } else {
-        showToast("✅ Discount created successfully");
-        form.reset();
-        invoiceHidden.value = "";
-        invoiceItemSelect.innerHTML = `<option value="">-- Apply to whole invoice --</option>`;
+      if (!res.ok) {
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
       }
+
+      showToast(isEdit ? "✅ Discount updated" : "✅ Discount created");
+
+      sessionStorage.removeItem("discountEditId");
+      sessionStorage.removeItem("discountEditPayload");
+
+      window.location.href = "/discounts-list.html";
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -280,20 +320,18 @@ export async function setupDiscountFormSubmission({ form }) {
   };
 
   /* ============================================================
-     🚪 Cancel / Clear
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("discountEditId");
-    sessionStorage.removeItem("discountEditPayload");
+  cancelBtn?.addEventListener("click", () => {
+    sessionStorage.clear();
     window.location.href = "/discounts-list.html";
   });
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("discountEditId");
-    sessionStorage.removeItem("discountEditPayload");
+  clearBtn?.addEventListener("click", () => {
+    clearFormErrors(form);
     form.reset();
     invoiceHidden.value = "";
     invoiceItemSelect.innerHTML = `<option value="">-- Apply to whole invoice --</option>`;
-    titleEl && (titleEl.textContent = "Add Discount");
+    setUI("add");
   });
 }

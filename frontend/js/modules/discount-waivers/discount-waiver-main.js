@@ -1,40 +1,45 @@
-// 📦 discount-waiver-main.js – Enterprise Master Pattern Aligned
+// 📦 discount-waiver-main.js – Form-only Loader (ENTERPRISE MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors discount-main.js for unified form lifecycle & RBAC logic
-// 🔹 Retains all waiver-specific IDs, logic, and API endpoints
-// 🔹 Includes unified auth guard, visibility helpers, and role-based field setup
+// 🧭 FULL MASTER PARITY WITH deposit-main.js / consultation-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
   showToast,
 } from "../../utils/index.js";
+
 import { setupDiscountWaiverFormSubmission } from "./discount-waiver-form.js";
+
 import {
   FIELD_LABELS_DISCOUNT_WAIVER,
   FIELD_ORDER_DISCOUNT_WAIVER,
-  FIELD_VISIBILITY_DISCOUNT_WAIVER,
+  FIELD_DEFAULTS_DISCOUNT_WAIVER,
 } from "./discount-waiver-constants.js";
-import { setupFieldSelector, setupSelectOptions } from "../../utils/ui-utils.js";
-import { loadOrganizationsLite, loadFacilitiesLite } from "../../utils/data-loaders.js";
+
+import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard + Session Watch
+   🔐 Auth Guard + Shared State
 ============================================================ */
 const token = initPageGuard(
   autoPagePermissionKey(["discount-waivers:create", "discount-waivers:edit"])
 );
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State + DOM Refs
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("discountWaiverForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -42,9 +47,9 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
-async function resetForm() {
+function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
 
@@ -52,8 +57,14 @@ async function resetForm() {
   sessionStorage.removeItem("discountWaiverEditId");
   sessionStorage.removeItem("discountWaiverEditPayload");
 
-  // Explicitly clear text fields
-  ["invoiceInput", "patientInput", "percentage", "amount", "reason"].forEach((id) => {
+  // Clear visible inputs
+  [
+    "invoiceInput",
+    "percentage",
+    "amount",
+    "appliedTotal",
+    "reason",
+  ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -64,52 +75,17 @@ async function resetForm() {
     if (el) el.value = "";
   });
 
-  // 🔄 Reload org/facility lists based on role
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(
-        document.getElementById("organizationSelect"),
-        orgs,
-        "id",
-        "name",
-        "-- Select Organization --"
-      );
-    } else {
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(
-        document.getElementById("facilitySelect"),
-        facs,
-        "id",
-        "name",
-        "-- Select Facility --"
-      );
-    }
-  } catch (err) {
-    console.error("❌ Failed to reload dropdowns on reset:", err);
-    showToast("❌ Could not reload reference lists");
-  }
+  // Reset type selector
+  const typeSelect = document.getElementById("typeSelect");
+  if (typeSelect) typeSelect.value = "";
 
-  // Reset type dropdown
-  const typeEl = document.getElementById("typeSelect");
-  if (typeEl) {
-    typeEl.innerHTML = `
-      <option value="">-- Select Type --</option>
-      <option value="percentage">Percentage</option>
-      <option value="fixed">Fixed Amount</option>
-    `;
-  }
-
-  // Reset Applied Total
-  const appliedEl = document.getElementById("appliedTotal");
-  if (appliedEl) appliedEl.value = "0.00";
-
-  console.info("🧹 [Discount Waiver] Form reset complete");
+  // Hide conditional groups
+  document.getElementById("percentageGroup")?.classList.add("hidden");
+  document.getElementById("amountGroup")?.classList.add("hidden");
 }
 
 /* ============================================================
-   🧭 Visibility Controls
+   🧭 Form Show / Hide
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -124,7 +100,7 @@ function hideForm() {
   localStorage.setItem("discountWaiverFormVisible", "false");
 }
 
-// 🔗 Expose globally for reuse
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -133,7 +109,6 @@ window.resetForm = resetForm;
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Discount Waiver] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/discount-waivers-list.html";
   };
@@ -143,7 +118,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Discount Waiver] Switching to Add mode");
     sessionStorage.removeItem("discountWaiverEditId");
     sessionStorage.removeItem("discountWaiverEditPayload");
     resetForm();
@@ -152,55 +126,52 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Stub – List Loader (handled on list page)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Init
+   🚀 Init Entrypoint
 ============================================================ */
 export async function initDiscountWaiverModule() {
-  // Restore last state
-  if (localStorage.getItem("discountWaiverFormVisible") === "true") {
-    showForm();
-  } else {
-    hideForm();
-  }
+  showForm(); // form-only mode (MASTER parity)
 
-  setupDiscountWaiverFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupDiscountWaiverFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("discountWaiverPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
+
   if (role.includes("super") && role.includes("admin")) role = "superadmin";
   else if (role.includes("admin")) role = "admin";
   else if (role.includes("manager")) role = "manager";
   else role = "staff";
 
-  // 🧩 Field Selector
   setupFieldSelector({
     module: "discount-waiver",
     fieldLabels: FIELD_LABELS_DISCOUNT_WAIVER,
     fieldOrder: FIELD_ORDER_DISCOUNT_WAIVER,
-    defaultFields: FIELD_VISIBILITY_DISCOUNT_WAIVER[role] || FIELD_VISIBILITY_DISCOUNT_WAIVER.staff,
+    defaultFields:
+      FIELD_DEFAULTS_DISCOUNT_WAIVER[role] ||
+      FIELD_DEFAULTS_DISCOUNT_WAIVER.staff,
   });
-
-  console.info(`✅ [Discount Waiver] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   (Optional)
+   🔁 Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // placeholder for extensions
+  // reserved for future reactive syncing
 }

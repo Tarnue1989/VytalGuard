@@ -12,6 +12,9 @@ export function getSequelize() {
     const isLocal =
       url.includes("localhost") || url.includes("127.0.0.1");
 
+    // 🔐 ENV-AWARE SSL (authoritative)
+    const isProduction = process.env.NODE_ENV === "production";
+
     sequelize = new Sequelize(url, {
       dialect: "postgres",
       logging: process.env.SQL_LOG === "true" ? console.log : false,
@@ -26,6 +29,7 @@ export function getSequelize() {
           },
     });
   }
+
   return sequelize;
 }
 

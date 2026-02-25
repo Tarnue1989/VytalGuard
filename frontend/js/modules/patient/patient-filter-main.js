@@ -1,9 +1,12 @@
-// 📦 patient-filter-main.js – Enterprise Filter + Table/Card (ROLE PARITY)
+// 📦 patient-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🔹 Pagination EXACTLY mirrors role-filter-main.js
-// 🔹 DateRange wired correctly (single source)
-// 🔹 Role-aware filters, summary, export, view toggle
-// 🔹 Non-breaking: preserves all IDs and behaviors
+// 🔹 FULLY mirrors consultation-filter-main.js MASTER pattern
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single input, NEVER DB column)
+// 🔹 Org / Facility fully wired (role-aware)
+// 🔹 Patient Status fully wired (registration_status)
+// 🔹 Summary + export aligned
+// 🔹 ALL existing Patient API calls PRESERVED
 // ============================================================================
 
 import {
@@ -11,60 +14,75 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
-import { renderModuleSummary } from "../../utils/render-module-summary.js";
 import { authFetch } from "../../authSession.js";
-import { setupSuggestionInputDynamic } from "../../utils/data-loaders.js";
+
+import {
+  loadOrganizationsLite,
+  loadFacilitiesLite,
+  setupSelectOptions,
+  setupSuggestionInputDynamic,
+} from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./patient-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./patient-render.js";
+
 import { setupActionHandlers } from "./patient-actions.js";
 
 import {
   FIELD_ORDER_PATIENT,
   FIELD_DEFAULTS_PATIENT,
+  FIELD_LABELS_PATIENT,
 } from "./patient-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard + Role Context
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("patientView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "patient",
@@ -73,11 +91,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_PATIENT,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -85,166 +106,111 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM (MASTER STRUCTURE)
 ============================================================ */
-const dateRangeInput = document.getElementById("dateRange");
+const qs = (id) => document.getElementById(id);
 
-const filterSearch = document.getElementById("filterSearch");
-const filterSearchSuggestions = document.getElementById("filterSearchSuggestions");
-
-const filterOrganization = document.getElementById("filterOrganization");
-const filterOrganizationSuggestions =
-  document.getElementById("filterOrganizationSuggestions");
-
-const filterFacility = document.getElementById("filterFacility");
-const filterFacilitySuggestions =
-  document.getElementById("filterFacilitySuggestions");
-
-const filterGender = document.getElementById("filterGender");
-const filterStatus = document.getElementById("filterStatus");
-
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("filterSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const filterGender   = qs("filterGender");
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Pagination State (ROLE-EXACT)
-============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("patientView") || "table";
-
-/* ============================================================
-   🔃 Sort State (ROLE PARITY)
-============================================================ */
-let sortBy = "";
-let sortDir = "asc"; // asc | desc
-
-/* ============================================================
-   🔃 Sort Bridge (RENDER ↔ MAIN)
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
 window.setPatientSort = (field, dir) => {
   sortBy = field;
   sortDir = dir;
 };
+window.loadPatientPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔗 SAFE PUBLIC RELOAD HOOK (RENDER → MAIN)
-   ✅ REQUIRED FOR TABLE SORTING
-   ❌ DOES NOT CHANGE EXISTING LOGIC
+   📄 PAGINATION
 ============================================================ */
-window.loadPatientPage = (page = 1) => loadEntries(page);
-
-// ✅ EXACT SAME LINE AS ROLE (ONLY module key differs)
-const getPagination = initPaginationControl("patient", loadEntries, 25);
+const getPagination = initPaginationControl(
+  "patient",
+  loadEntries,
+  Number(localStorage.getItem("patientPageLimit") || 25)
+);
 
 /* ============================================================
-   📅 Date Range → ISO
+   🔎 AUTO SEARCH / FILTERS (MASTER)
 ============================================================ */
-function getDateRange() {
-  if (!dateRangeInput?.value) return {};
+globalSearch && setupAutoSearch(globalSearch, loadEntries);
 
-  const [start, end] = dateRangeInput.value.split(" - ");
-  if (!start || !end) return {};
-
-  return {
-    created_from: moment(start, "MM/DD/YYYY", true).format("YYYY-MM-DD"),
-    created_to: moment(end, "MM/DD/YYYY", true).format("YYYY-MM-DD"),
-  };
-}
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterGender,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
 
 /* ============================================================
-   📋 Build Filters
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
-  const { created_from, created_to } = getDateRange();
-
   return {
-    global: filterSearch?.dataset.value || "",
-    organization_id: filterOrganization?.dataset.value || "",
-    facility_id: filterFacility?.dataset.value || "",
-    gender: filterGender?.value || "",
-    registration_status: filterStatus?.value || "",
-    created_from,
-    created_to,
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    registration_status: filterStatus?.value,
+    gender: filterGender?.value,
+    dateRange: dateRange?.value,
   };
 }
 
-function clearFilters() {
-  [
-    filterSearch,
-    filterOrganization,
-    filterFacility,
-    filterGender,
-    filterStatus,
-    dateRangeInput,
-  ].forEach((el) => {
-    if (!el) return;
-    el.value = "";
-    if (el.dataset) el.dataset.value = "";
-  });
-
-  filterSearchSuggestions && (filterSearchSuggestions.innerHTML = "");
-  filterOrganizationSuggestions && (filterOrganizationSuggestions.innerHTML = "");
-  filterFacilitySuggestions && (filterFacilitySuggestions.innerHTML = "");
-}
-
 /* ============================================================
-   📦 Load Patients (SAFE – NO STALE DATA + SORTING)
+   📦 LOAD PATIENTS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
-    window.entries = [];
-
-    const tbody = document.getElementById("patientTableBody");
-    if (tbody) tbody.innerHTML = "";
-
-    const cardList = document.getElementById("patientList");
-    if (cardList) cardList.innerHTML = "";
-
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
     if (sortBy) {
-      q.append("sortBy", sortBy);
-      q.append("sortDir", sortDir);
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
     }
 
-    if (filters.created_from)
-      q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to)
-      q.append("created_at[lte]", filters.created_to);
-
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_PATIENT.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)              q.set("search", f.search);
+    if (f.dateRange)           q.set("dateRange", f.dateRange);
+    if (f.organization_id)     q.set("organization_id", f.organization_id);
+    if (f.facility_id)         q.set("facility_id", f.facility_id);
+    if (f.registration_status) q.set("registration_status", f.registration_status);
+    if (f.gender)              q.set("gender", f.gender);
 
     const res = await authFetch(`/api/patients?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    payload.summary && renderModuleSummary(payload.summary);
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "PATIENTS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -257,15 +223,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length) showToast("ℹ️ No patients found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load patients");
   } finally {
     hideLoading();
@@ -273,59 +237,61 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle
+   🧭 VIEW TOGGLE
 ============================================================ */
-const cardViewBtn = document.getElementById("cardViewBtn");
-const tableViewBtn = document.getElementById("tableViewBtn");
-
-function setViewMode(mode) {
-  viewMode = mode;
-  localStorage.setItem("patientView", mode);
-
-  cardViewBtn?.classList.toggle("active", mode === "card");
-  tableViewBtn?.classList.toggle("active", mode === "table");
-
+qs("tableViewBtn").onclick = () => {
+  viewMode = "table";
+  localStorage.setItem("patientView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-}
+};
 
-cardViewBtn && (cardViewBtn.onclick = () => setViewMode("card"));
-tableViewBtn && (tableViewBtn.onclick = () => setViewMode("table"));
-
-/* ============================================================
-   🔍 Filter Actions
-============================================================ */
-document.getElementById("filterBtn").onclick = async () => loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = async () => {
-  clearFilters();
-  await loadEntries(1);
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("patientView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
-exportCSVBtn &&
-  (exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `patients_${new Date().toISOString().slice(0, 10)}.xlsx`
-    ));
-
-exportPDFBtn &&
-  (exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#patientList";
-    exportToPDF("Patient List", target, "portrait", true);
-  });
+qs("resetFilterBtn").onclick = () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterGender,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
+  loadEntries(1);
+};
 
 /* ============================================================
-   🚀 Init Module (NO PAGINATION HERE – ROLE PARITY)
+   ⬇️ EXPORT (MASTER)
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_PATIENT),
+    `patients_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Patients List",
+    viewMode === "table" ? ".table-container" : "#patientList",
+    "portrait"
+  );
+});
+
+/* ============================================================
+   🚀 INIT
 ============================================================ */
 export async function initPatientModule() {
   renderDynamicTableHead(visibleFields);
-
-  cardViewBtn?.classList.toggle("active", viewMode === "card");
-  tableViewBtn?.classList.toggle("active", viewMode === "table");
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -334,44 +300,32 @@ export async function initPatientModule() {
     "patientFilterVisible"
   );
 
-  setupSuggestionInputDynamic(
-    filterSearch,
-    filterSearchSuggestions,
-    "/api/lite/patients",
-    (sel) => (filterSearch.dataset.value = sel?.id || ""),
-    "label"
-  );
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-  setupSuggestionInputDynamic(
-    filterOrganization,
-    filterOrganizationSuggestions,
-    "/api/lite/organizations",
-    (sel) => {
-      filterOrganization.dataset.value = sel?.id || "";
-      filterFacility.value = "";
-      filterFacility.dataset.value = "";
-    },
-    "name"
-  );
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-  setupSuggestionInputDynamic(
-    filterFacility,
-    filterFacilitySuggestions,
-    "/api/lite/facilities",
-    (sel) => (filterFacility.dataset.value = sel?.id || ""),
-    "name",
-    {
-      extraParams: () => ({
-        organization_id: filterOrganization?.dataset.value || "",
-      }),
-    }
-  );
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
+  }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
 document.readyState === "loading"
   ? document.addEventListener("DOMContentLoaded", initPatientModule)

@@ -1,17 +1,19 @@
-// 📁 refundDeposit-receipt.js – Enterprise Master Pattern Aligned
+// 📁 refundDeposit-receipt.js – Enterprise FINAL (MASTER–ALIGNED)
 // ============================================================================
-// 🔹 Mirrors deposit-receipt.js for unified receipt format
-// 🔹 Designed ONLY for DEPOSIT REFUNDS (RefundDeposit entity)
-// 🔹 Includes org/facility info, patient info, audit info, and balance summary
-// 🔹 Fully compatible with printReceipt() + getOrgInfo()
+// 🧾 Deposit Refund Receipt Printer (Enterprise Final)
+// 🔹 FULL parity with refund-receipt.js MASTER
+// 🔹 Audit-first user resolution
+// 🔹 Auth-user fallback
+// 🔹 Silent + print-safe
+// 🔹 Footer + branding handled ONLY by receipt-utils
+// 🔹 NO org-config, NO inline footer, NO UI bleed
 // ============================================================================
 
 import { printReceipt } from "../../utils/receipt-utils.js";
-import { getOrgInfo } from "../shared/org-config.js";
 
-/* ============================================================
-   🗓️ Date Formatter
-============================================================ */
+/* --------------------------------------------------
+   Utilities
+-------------------------------------------------- */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -23,78 +25,107 @@ function formatDate(dateStr) {
   });
 }
 
-/* ============================================================
-   🧾 Print Deposit Refund Receipt
-============================================================ */
+function resolvePrintedBy(refund) {
+  if (
+    refund?.createdBy?.first_name ||
+    refund?.createdBy?.last_name
+  ) {
+    return [
+      refund.createdBy.first_name,
+      refund.createdBy.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const authUser =
+    JSON.parse(localStorage.getItem("auth_user") || "null") ||
+    JSON.parse(localStorage.getItem("currentUser") || "null");
+
+  if (!authUser) return "System";
+
+  if (authUser.first_name || authUser.last_name) {
+    return [
+      authUser.first_name,
+      authUser.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return authUser.name || "System";
+}
+
+/* --------------------------------------------------
+   Receipt Printer
+-------------------------------------------------- */
 export function printRefundDepositReceipt(refund) {
-  const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = resolvePrintedBy(refund);
   const printedAt = new Date().toLocaleString();
 
-  // 🔗 DEPOSIT REF ID
-  const refundRef = refund.refund_ref || refund.refund_no || refund.id || "—";
+  const refundRef =
+    refund.refund_ref ||
+    refund.refund_no ||
+    refund.id ||
+    "—";
 
-  // 🔗 Deposit Info
-  const depositNo =
-    refund.deposit?.deposit_no || refund.deposit_id || "—";
+  const depositRef =
+    refund.deposit?.transaction_ref ||
+    refund.deposit?.deposit_ref ||
+    refund.deposit_id ||
+    "—";
 
-  // 🔗 Patient Display
   const patient = refund.patient
-    ? `${refund.patient.pat_no || ""} - ${refund.patient.first_name || ""} ${
-        refund.patient.last_name || ""
-      }`
+    ? `${refund.patient.pat_no || "—"} - ${
+        refund.patient.first_name || ""
+      } ${refund.patient.last_name || ""}`.trim()
     : "—";
 
-  // 💰 Amounts
-  const refundAmount = Number(refund.refund_amount || 0);
-  const openingBalance = Number(refund.deposit?.balance_before || 0);
-  const closingBalance = Number(refund.deposit?.balance_after || 0);
-  const method = refund.method || "—";
+  const openingBalance = Number(
+    refund.deposit?.balance_before ?? 0
+  );
+  const refundAmount = Number(refund.refund_amount ?? 0);
+  const closingBalance = Number(
+    refund.deposit?.balance_after ??
+      refund.deposit?.remaining_balance ??
+      0
+  );
 
   const bodyHTML = `
-    <!-- 🏥 Facility / Org Info -->
-    <div class="facility-info mb-3">
-      <p><strong>Facility:</strong> ${refund.facility?.name || orgInfo?.facilityName || "—"}</p>
-      <p><strong>Organization:</strong> ${refund.organization?.name || orgInfo?.orgName || "—"}</p>
+    <div class="facility-info">
+      <p><strong>Facility:</strong> ${refund.facility?.name || "—"}</p>
     </div>
 
-    <!-- 🧾 Refund Details -->
     <div class="invoice-meta">
       <div><strong>Refund ID:</strong> ${refundRef}</div>
-      <div><strong>Deposit No:</strong> ${depositNo}</div>
+      <div><strong>Deposit Ref:</strong> ${depositRef}</div>
       <div><strong>Patient:</strong> ${patient}</div>
-      <div><strong>Method:</strong> ${method}</div>
-      <div><strong>Status:</strong> ${refund.status || "processed"}</div>
+      <div><strong>Method:</strong> ${refund.method || "—"}</div>
+      <div><strong>Status:</strong> ${refund.status || "—"}</div>
       <div><strong>Reason:</strong> ${refund.reason || "—"}</div>
       <div><strong>Date:</strong> ${formatDate(refund.created_at)}</div>
-      <div><strong>Processed By:</strong> ${
-        refund.createdBy
-          ? `${refund.createdBy.first_name} ${refund.createdBy.last_name}`
-          : "—"
-      }</div>
+      <div><strong>Processed By:</strong> ${printedBy}</div>
     </div>
 
-    <!-- 💵 Amount Summary -->
-    <h5 class="border-bottom pb-1 mt-3">Amount Summary</h5>
+    <h5>Amount Summary</h5>
     <div class="invoice-meta">
       <div><strong>Opening Balance:</strong> $${openingBalance.toFixed(2)}</div>
       <div><strong>Refund Amount:</strong> $${refundAmount.toFixed(2)}</div>
-      <div><strong>Closing Balance:</strong> 
-        <span class="fw-bold">$${closingBalance.toFixed(2)}</span>
+      <div>
+        <strong>Closing Balance:</strong>
+        <strong>$${closingBalance.toFixed(2)}</strong>
       </div>
     </div>
 
-    <!-- 🖨️ Print Info -->
-    <div class="mt-3 border-top pt-2 small text-muted">
+    <div class="print-meta">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-
-    <!-- 📌 Footer -->
-    <div id="receiptFooter" class="mt-3">
-      <p class="mb-0">Deposit refund recorded successfully.</p>
-    </div>
   `;
 
-  printReceipt("Deposit Refund Receipt", bodyHTML, refund.organization_id);
+  printReceipt(
+    "Deposit Refund Receipt",
+    bodyHTML,
+    refund.organization_id
+  );
 }

@@ -1,45 +1,42 @@
-// 📦 discount-constants.js – Enterprise Master Pattern Aligned
+// 📦 discount-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors deposit-constants.js / consultation-constants.js for consistency
-// 🔹 Keeps all original field IDs intact for HTML + JS compatibility
-// 🔹 Supports dynamic table rendering, tooltips, exports, and role visibility
+// 🔹 Pattern Source: deposit-constants.js (Consultation Parity)
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
 // ============================================================================
 
 /* ============================================================
-   🏷️ FIELD LABELS
+   🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_DISCOUNT = {
   organization: "Organization",
   facility: "Facility",
-  invoice: "Invoice", // 🔗 Linked Invoice
-  invoiceItem: "Invoice Item", // 🔗 Linked Invoice Item
-  type: "Type", // percentage | fixed
-  value: "Value", // amount or %
+  invoice: "Invoice",
+  invoiceItem: "Invoice Item",
+  type: "Type",
+  value: "Value",
   reason: "Reason",
   status: "Status",
 
-  // 🛡️ Audit fields
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
-  finalizedBy: "Finalized By",
-  voidedBy: "Voided By",
-
-  // 🕑 Timestamps
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
-  finalized_at: "Finalized At",
-  voided_at: "Voided At",
 
-  // 📝 Special
+  finalizedBy: "Finalized By",
+  finalized_at: "Finalized At",
+  voidedBy: "Voided By",
+  voided_at: "Voided At",
   void_reason: "Void Reason",
 
   actions: "Actions",
 };
 
 /* ============================================================
-   🧩 FIELD ORDER
+   📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_DISCOUNT = [
   "organization",
@@ -68,11 +65,32 @@ export const FIELD_ORDER_DISCOUNT = [
 ];
 
 /* ============================================================
-   👥 ROLE-BASED FIELD DEFAULTS
-   Matches enterprise master RBAC visibility (admin → manager → staff)
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
 export const FIELD_DEFAULTS_DISCOUNT = {
-  // 🧑‍💼 Admin: full visibility
+  superadmin: [
+    "organization",
+    "facility",
+    "invoice",
+    "invoiceItem",
+    "type",
+    "value",
+    "reason",
+    "status",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "deletedBy",
+    "deleted_at",
+    "finalizedBy",
+    "finalized_at",
+    "voidedBy",
+    "voided_at",
+    "void_reason",
+    "actions",
+  ],
+
   admin: [
     "organization",
     "facility",
@@ -96,7 +114,6 @@ export const FIELD_DEFAULTS_DISCOUNT = {
     "actions",
   ],
 
-  // 👔 Manager: scoped (no organization or delete info)
   manager: [
     "facility",
     "invoice",
@@ -114,51 +131,44 @@ export const FIELD_DEFAULTS_DISCOUNT = {
     "actions",
   ],
 
-  // 👷 Staff: minimal operational view
   staff: [
     "facility",
     "invoice",
     "invoiceItem",
     "type",
     "value",
-    "reason",
     "status",
     "actions",
   ],
 };
 
 /* ============================================================
-   🧠 FIELD GROUPS (Optional Extension)
-   Enables dynamic section toggling & report grouping
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
 ============================================================ */
 export const FIELD_GROUPS_DISCOUNT = {
   org_scope: ["organization", "facility"],
   linked_items: ["invoice", "invoiceItem"],
   discount_info: ["type", "value", "reason", "status"],
-  audit_trail: [
-    "createdBy",
-    "created_at",
-    "updatedBy",
-    "updated_at",
-    "deletedBy",
-    "deleted_at",
-  ],
-  finalization: [
-    "finalizedBy",
-    "finalized_at",
-    "voidedBy",
-    "voided_at",
-    "void_reason",
-  ],
+  meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
+  audit: ["deletedBy", "deleted_at"],
+  finalization: ["finalizedBy", "finalized_at", "voidedBy", "voided_at", "void_reason"],
   system: ["actions"],
 };
 
 /* ============================================================
-   ⚙️ EXPORT (for external import)
+   ⚙️ MODULE METADATA (Enterprise UI Context)
+============================================================ */
+export const MODULE_KEY_DISCOUNT = "discounts";
+export const MODULE_LABEL_DISCOUNT = "Discount";
+
+/* ============================================================
+   📦 EXPORT (Unified)
 ============================================================ */
 export default {
   FIELD_LABELS_DISCOUNT,
   FIELD_ORDER_DISCOUNT,
   FIELD_DEFAULTS_DISCOUNT,
   FIELD_GROUPS_DISCOUNT,
+  MODULE_KEY_DISCOUNT,
+  MODULE_LABEL_DISCOUNT,
 };

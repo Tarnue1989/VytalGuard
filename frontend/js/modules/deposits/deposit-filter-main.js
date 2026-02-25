@@ -1,8 +1,12 @@
-// 📦 deposit-filter-main.js – Filters + Table/Card (Enterprise Pattern Aligned)
+// 📦 deposit-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors appointment-filter-main.js for unified summary, export, pagination
-// 🔹 Includes Deposit Summary (PDF/Excel-ready)
-// 🔹 Handles role-aware org/facility filters and lifecycle-safe reload
+// 🔹 FULLY mirrors consultation-filter-main.js MASTER pattern
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single input, NEVER DB column)
+// 🔹 Org / Facility fully wired (role-aware)
+// 🔹 Deposit Status fully wired
+// 🔹 Summary + export aligned
+// 🔹 ALL existing Deposit API calls PRESERVED
 // ============================================================================
 
 import {
@@ -10,65 +14,75 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
-import { renderModuleSummary } from "../../utils/render-module-summary.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./deposit-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./deposit-render.js";
+
 import { setupActionHandlers } from "./deposit-actions.js";
+
 import {
   FIELD_ORDER_DEPOSIT,
   FIELD_DEFAULTS_DEPOSIT,
+  FIELD_LABELS_DEPOSIT,
 } from "./deposit-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("depositView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "deposit",
@@ -77,139 +91,137 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_DEPOSIT,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
   FIELD_ORDER_DEPOSIT
 );
 
-
-
 /* ============================================================
-   🔎 Filter DOM
+   🔎 FILTER DOM (MASTER STRUCTURE)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterMethod = document.getElementById("filterMethodSelect");
-const filterStatus = document.getElementById("filterStatus");
-const filterTransactionRef = document.getElementById("filterTransactionRef");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
 
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const dateRange      = qs("dateRange");
+
+const filterPatient            = qs("filterPatient");
+const filterPatientHidden      = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterMethod        = qs("filterMethodSelect");
+const filterTransactionRef = qs("filterTransactionRef");
 
 /* ============================================================
-   🔁 Pagination / State
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("depositView") || "table";
-
-const savedLimit = parseInt(localStorage.getItem("depositPageLimit") || "25", 10);
-let getPagination = initPaginationControl("deposit", loadEntries, savedLimit);
-
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("depositPageLimit", newLimit);
-    getPagination = initPaginationControl("deposit", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+window.setDepositSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadDepositPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Filters Builder
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "deposit",
+  loadEntries,
+  Number(localStorage.getItem("depositPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    method: filterMethod?.value || "",
-    status: filterStatus?.value || "",
-    transaction_ref: filterTransactionRef?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    method: filterMethod?.value,
+    transaction_ref: filterTransactionRef?.value,
+    patient_id: filterPatientHidden?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🧹 Reset Filters
-============================================================ */
-function clearFilters() {
-  [
-    filterOrg,
-    filterFacility,
-    filterPatient,
-    filterPatientHidden,
-    filterMethod,
-    filterStatus,
-    filterTransactionRef,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
-    if (el) el.value = "";
-  });
-  if (filterPatientSuggestions)
-    filterPatientSuggestions.innerHTML = "";
-}
-
-/* ============================================================
-   📦 Load Deposits (with Summary)
+   📦 LOAD DEPOSITS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_DEPOSIT.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+    if (f.method)          q.set("method", f.method);
+    if (f.transaction_ref) q.set("transaction_ref", f.transaction_ref);
+    if (f.patient_id)      q.set("patient_id", f.patient_id);
 
     const res = await authFetch(`/api/deposits?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    if (payload.summary) {
-      renderModuleSummary(payload.summary);
-    }
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "DEPOSITS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
+
     setupActionHandlers({
       entries,
       token,
@@ -221,13 +233,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load deposits");
   } finally {
     hideLoading();
@@ -235,93 +247,71 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🔘 Filter Buttons Wiring
+   🧭 VIEW TOGGLE
 ============================================================ */
-if (filterBtn) {
-  filterBtn.addEventListener("click", async () => {
-    await loadEntries(1);
-  });
-}
-
-if (resetFilterBtn) {
-  resetFilterBtn.addEventListener("click", async () => {
-    clearFilters();
-    await loadEntries(1);
-  });
-}
-
-/* ============================================================
-   🪟 View Toggle (Table ↔ Card)
-============================================================ */
-const cardViewBtn = document.getElementById("cardViewBtn");
-const tableViewBtn = document.getElementById("tableViewBtn");
-
-cardViewBtn?.addEventListener("click", () => {
-  viewMode = "card";
-  localStorage.setItem("depositView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-});
-
-tableViewBtn?.addEventListener("click", () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("depositView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("depositView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+/* ============================================================
+   🔄 RESET FILTERS (MASTER)
+============================================================ */
+qs("resetFilterBtn").onclick = () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+    filterTransactionRef,
+    filterPatient,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
+  filterPatientHidden.value = "";
+  loadEntries(1);
+};
+
+/* ============================================================
+   ⬇️ EXPORT (MASTER)
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_DEPOSIT),
+    `deposits_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Deposits List",
+    viewMode === "table" ? ".table-container" : "#depositList",
+    "portrait"
+  );
 });
 
 /* ============================================================
-   ⬇️ Export Tools (with Summary)
-============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `deposits_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector = viewMode === "table" ? ".table-container" : "#depositList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
-
-      const summaryEl = document.getElementById("moduleSummary");
-      const summaryHTML = summaryEl
-        ? `<div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
-            <h5 class="fw-bold mb-2">Deposit Summary</h5>
-            ${summaryEl.innerHTML}
-          </div>`
-        : "";
-
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Deposits_Report", "#exportWrapper", "portrait", true);
-      setTimeout(() => tempDiv.remove(), 1000);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
-  };
-
-/* ============================================================
-   🚀 Init Deposit Module
+   🚀 INIT
 ============================================================ */
 export async function initDepositModule() {
   renderDynamicTableHead(visibleFields);
 
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible = localStorage.getItem("depositFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
-
-  setupToggleSection("toggleFilterBtn", "filterCollapse", "filterChevron", "depositFilterVisible");
+  setupToggleSection(
+    "toggleFilterBtn",
+    "filterCollapse",
+    "filterChevron",
+    "depositFilterVisible"
+  );
 
   setupSuggestionInputDynamic(
     filterPatient,
@@ -329,49 +319,39 @@ export async function initDepositModule() {
     "/api/lite/patients",
     (selected) => {
       filterPatientHidden.value = selected?.id || "";
-      filterPatient.value = selected?.label || selected?.full_name || "";
+      filterPatient.value = selected?.label || "";
+      loadEntries(1); // ✅ IMMEDIATE SEARCH
     },
     "label"
   );
 
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      }
-
-      await reloadFacilities();
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      filterFacility?.closest(".form-group")?.classList.add("hidden");
-    }
-  } catch (err) {
-    console.error("❌ preload dropdowns failed:", err);
-    showToast("❌ Failed to load filter dropdowns");
+    };
+
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initDepositModule().catch((err) => console.error("initDepositModule failed:", err));
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initDepositModule)
+  : initDepositModule();

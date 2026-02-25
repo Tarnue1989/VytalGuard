@@ -1,11 +1,11 @@
-// 📦 registrationLog-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// 📦 registrationLog-filter-main.js – Enterprise Filter + Table/Card (MASTER)
 // ============================================================================
 // 🔹 FULL PARITY WITH department-filter-main.js
 // 🔹 Auto search, auto filters, sorting, pagination
 // 🔹 UI-only dateRange (single field, NEVER DB column)
 // 🔹 Org / Facility fully wired
 // 🔹 Registration Log log_status fully wired
-// 🔹 DOM-safe suggestion inputs
+// 🔹 NO toggle-status (enterprise-safe)
 // ============================================================================
 
 import {
@@ -61,8 +61,9 @@ initLogoutWatcher();
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 const permissions = (() => {
   try {
-    return (JSON.parse(localStorage.getItem("permissions")) || [])
-      .map(p => String(p.key || p).toLowerCase());
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map(p =>
+      String(p.key || p).toLowerCase()
+    );
   } catch {
     return [];
   }
@@ -252,25 +253,26 @@ async function loadEntries(page = 1) {
     hideLoading();
   }
 }
+
 /* ============================================================
    🧭 VIEW TOGGLE
 ============================================================ */
 qs("tableViewBtn").onclick = () => {
   viewMode = "table";
-  localStorage.setItem("centralStockView", "table");
+  localStorage.setItem("registrationLogView", "table");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 qs("cardViewBtn").onclick = () => {
   viewMode = "card";
-  localStorage.setItem("centralStockView", "card");
+  localStorage.setItem("registrationLogView", "card");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔄 RESET FILTERS (FULL + SAFE)
+   🔄 RESET FILTERS
 ============================================================ */
 qs("resetFilterBtn")?.addEventListener("click", () => {
   [

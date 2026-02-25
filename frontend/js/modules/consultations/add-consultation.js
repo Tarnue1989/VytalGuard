@@ -1,10 +1,11 @@
 // 📦 consultation-main.js – Consultation Form Page Controller (Enterprise Master Pattern)
 // ============================================================================
-// 🧭 Mirrors department-main.js / patient-main.js responsibilities exactly
+// 🧭 Mirrors add-deposit.js EXACTLY
 // 🔹 Auth guard + logout watcher
 // 🔹 Form reset orchestration
 // 🔹 Edit session coordination
 // 🔹 Delegates ALL business logic to consultation-form.js
+// 🔹 NO data loaders, NO API calls, NO RBAC branching here
 // ============================================================================
 
 import { setupConsultationFormSubmission } from "./consultation-form.js";
@@ -18,7 +19,9 @@ import {
 /* ============================================================
    🔐 Auth Guard + Global Watchers
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey(["consultations:create", "consultations:edit"])
+);
 initLogoutWatcher();
 
 /* ============================================================
@@ -44,11 +47,12 @@ function resetForm() {
   form.reset();
   sharedState.currentEditIdRef.value = null;
 
+  // Clear cached edit state
   sessionStorage.removeItem("consultationEditId");
   sessionStorage.removeItem("consultationEditPayload");
 
   // Clear hidden IDs
-  ["patientId", "doctorId"].forEach((id) => {
+  ["patientId", "doctorId", "appointmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -64,9 +68,10 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset appointment select
+  // Reset appointment select UI
   const appt = document.getElementById("appointmentSelect");
-  if (appt) appt.innerHTML = `<option value="">— Select Appointment —</option>`;
+  if (appt)
+    appt.innerHTML = `<option value="">— Select Appointment —</option>`;
 
   // Reset UI labels
   const titleEl = document.querySelector(".card-title");
@@ -74,8 +79,7 @@ function resetForm() {
 
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn)
-    submitBtn.innerHTML =
-      `<i class="ri-add-line me-1"></i> Add Consultation`;
+    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Consultation`;
 }
 
 /* ============================================================

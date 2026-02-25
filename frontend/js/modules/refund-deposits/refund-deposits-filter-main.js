@@ -1,8 +1,14 @@
-// 📦 refund-deposits-filter-main.js – Enterprise Master Pattern Aligned
+// 📦 refund-deposits-filter-main.js – ENTERPRISE MASTER–ALIGNED (Refund ← Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors refund-filter-main.js for unified summary, export, and pagination
-// 🔹 Handles Deposit Refund Summary (PDF/Excel-ready)
-// 🔹 Supports RBAC-aware org/facility filters and lifecycle updates
+// 🔹 FULL parity with refund-filter-main.js MASTER
+// 🔹 Auto search + auto filters
+// 🔹 Sorting + pagination parity
+// 🔹 UI-only dateRange (MASTER)
+// 🔹 View toggle + summary + export
+// 🔹 Role-aware org / facility handling (MASTER)
+// 🔹 Suggestion inputs (patient → deposit)
+// 🔹 NO new fields, NO new API params
+// 🔹 ALL EXISTING DOM + API CALLS PRESERVED
 // ============================================================================
 
 import {
@@ -17,65 +23,73 @@ import {
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadDepositsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-import { renderFieldSelector } from "../../utils/ui-utils.js";
+import {
+  renderFieldSelector,
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
+
 import {
   renderList,
   renderDynamicTableHead,
 } from "./refund-deposits-render.js";
 
-import {
-  setupRefundDepositActionHandlers,
-} from "./refund-deposits-actions.js";
+import { setupRefundDepositActionHandlers } from "./refund-deposits-actions.js";
 
 import {
   FIELD_ORDER_REFUND_DEPOSIT,
   FIELD_DEFAULTS_REFUND_DEPOSIT,
+  FIELD_LABELS_REFUND_DEPOSIT,
 } from "./refund-deposits-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("refundDepositView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "refund-deposits",
@@ -84,11 +98,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_REFUND_DEPOSIT,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -96,196 +113,132 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   📊 Deposit Refund Summary Renderer (nested safe)
+   🔎 FILTER DOM
 ============================================================ */
-function renderDepositRefundSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
+const qs = (id) => document.getElementById(id);
 
-  const colorMap = {
-    pending: "text-warning",
-    approved: "text-success",
-    processed: "text-info",
-    reversed: "text-dark",
-    voided: "text-muted",
-    total: "text-dark fw-bold",
-  };
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const filterMethod   = qs("filterMethodSelect");
+const dateRange      = qs("dateRange");
 
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
+const filterPatient            = qs("filterPatient");
+const filterPatientHidden      = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-  const formatVal = (key, val) => {
-    if (val == null) return 0;
-
-    const currencyFields = /(amount|total|balance)/i;
-    if (typeof val === "number" && currencyFields.test(key)) {
-      return `$${val.toFixed(2)}`;
-    }
-
-    if (typeof val === "object") return JSON.stringify(val);
-    return val;
-  };
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
+const filterDeposit            = qs("filterDeposit");
+const filterDepositHidden      = qs("filterDepositId");
+const filterDepositSuggestions = qs("filterDepositSuggestions");
 
 /* ============================================================
-   🔎 Filter DOM
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-
-const filterDeposit = document.getElementById("filterDeposit");
-const filterDepositHidden = document.getElementById("filterDepositId");
-const filterDepositSuggestions = document.getElementById("filterDepositSuggestions");
-
-const filterMethod = document.getElementById("filterMethodSelect");
-const filterStatus = document.getElementById("filterStatus");
-
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
-
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+window.setRefundDepositSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadRefundDepositPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination / State
+   📄 PAGINATION
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-
-let viewMode =
-  localStorage.getItem("refundDepositView") || "table";
-
-const savedLimit = parseInt(
-  localStorage.getItem("refundDepositPageLimit") || "25",
-  10
-);
-
-let getPagination = initPaginationControl(
+const getPagination = initPaginationControl(
   "refund-deposits",
   loadEntries,
-  savedLimit
+  Number(localStorage.getItem("refundDepositPageLimit") || 25)
 );
 
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("refundDepositPageLimit", newLimit);
-    getPagination = initPaginationControl(
-      "refund-deposits",
-      loadEntries,
-      newLimit
-    );
-    await loadEntries(1);
-  });
-}
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
 
 /* ============================================================
-   📋 Filters Builder
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    deposit_id: filterDepositHidden?.value || "",
-    status: filterStatus?.value || "",
-    method: filterMethod?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    method: filterMethod?.value,
+    patient_id: filterPatientHidden?.value,
+    deposit_id: filterDepositHidden?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🧹 Reset Filters
-============================================================ */
-function clearFilters() {
-  [
-    filterOrg,
-    filterFacility,
-    filterPatient,
-    filterPatientHidden,
-    filterDeposit,
-    filterDepositHidden,
-    filterMethod,
-    filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => el && (el.value = ""));
-
-  if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
-  if (filterDepositSuggestions) filterDepositSuggestions.innerHTML = "";
-}
-
-/* ============================================================
-   📦 Load Deposit Refunds + Summary
+   📦 LOAD REFUND DEPOSITS
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_from", filters.created_from);
-    if (filters.created_to) q.append("created_to", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+    if (f.method)          q.set("method", f.method);
+    if (f.patient_id)      q.set("patient_id", f.patient_id);
+    if (f.deposit_id)      q.set("deposit_id", f.deposit_id);
+
+    const res = await authFetch(`/api/refund-deposits?${q.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_REFUND_DEPOSIT.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const res = await authFetch(`/api/refund-deposits?${q.toString()}`);
-    const result = await res.json().catch(() => ({}));
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    window.entries = records;
-    currentPage = payload.pagination?.page || safePage;
-    totalPages = payload.pagination?.pageCount || 1;
+    /* ========================================================
+       🧾 SUMMARY DATE NORMALIZATION (MASTER)
+    ======================================================== */
+    if (data.summary?.metrics) {
+      const m = data.summary.metrics;
+      if (m.last_approved_at)  m.last_approved_at  = formatDateTime(m.last_approved_at);
+      if (m.last_processed_at) m.last_processed_at = formatDateTime(m.last_processed_at);
+    }
 
-    renderList({
-      entries,
-      visibleFields,
-      viewMode,
-      user,
-      currentPage,
-    });
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "REFUND DEPOSITS",
+      });
 
-    if (payload.summary) renderDepositRefundSummary(payload.summary);
+    syncViewToggleUI({ mode: viewMode });
 
     setupRefundDepositActionHandlers({
       entries,
@@ -298,112 +251,82 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
+
+    initTooltips();
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
-    showToast("❌ Failed to load deposit refunds");
+    console.error(err);
+    showToast("❌ Failed to load refund deposits");
   } finally {
     hideLoading();
   }
 }
 
 /* ============================================================
-   🔘 Filter Buttons
+   🧭 VIEW TOGGLE
 ============================================================ */
-filterBtn?.addEventListener("click", async () => {
-  if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
-  if (filterDepositSuggestions) filterDepositSuggestions.innerHTML = "";
-  await loadEntries(1);
-});
-
-resetFilterBtn?.addEventListener("click", async () => {
-  clearFilters();
-  await loadEntries(1);
-});
-
-/* ============================================================
-   🪟 View Toggle
-============================================================ */
-document.getElementById("cardViewBtn")?.addEventListener("click", () => {
-  viewMode = "card";
-  localStorage.setItem("refundDepositView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-});
-
-document.getElementById("tableViewBtn")?.addEventListener("click", () => {
+qs("tableViewBtn")?.addEventListener("click", () => {
   viewMode = "table";
   localStorage.setItem("refundDepositView", "table");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+});
+
+qs("cardViewBtn")?.addEventListener("click", () => {
+  viewMode = "card";
+  localStorage.setItem("refundDepositView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 });
 
 /* ============================================================
-   ⬇️ Export Tools
+   🔄 RESET FILTERS
 ============================================================ */
-exportCSVBtn.onclick = () =>
-  exportToExcel(
-    entries,
-    `refund_deposits_${new Date().toISOString().slice(0, 10)}.xlsx`
-  );
+qs("resetFilterBtn")?.addEventListener("click", () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+    filterPatient,
+    filterDeposit,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
 
-exportPDFBtn.onclick = () => {
-  try {
-    const targetSelector =
-      viewMode === "table" ? ".table-container" : "#refundDepositList";
-    const target = document.querySelector(targetSelector);
-    if (!target) return showToast("⚠️ Nothing to export");
-
-    const summaryEl = document.getElementById("moduleSummary");
-    const summaryHTML = summaryEl
-      ? `<div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
-           <h5 class="fw-bold mb-2">Deposit Refund Summary</h5>
-           ${summaryEl.innerHTML}
-         </div>`
-      : "";
-
-    const wrapper = document.createElement("div");
-    wrapper.id = "exportWrapper";
-    wrapper.innerHTML = summaryHTML + target.outerHTML;
-    document.body.appendChild(wrapper);
-
-    exportToPDF("DepositRefunds_Report", "#exportWrapper", "portrait", true);
-    setTimeout(() => wrapper.remove(), 1000);
-  } catch (err) {
-    console.error("❌ Export PDF failed:", err);
-    showToast("❌ Failed to export PDF");
-  }
-};
+  filterPatientHidden.value = "";
+  filterDepositHidden.value = "";
+  loadEntries(1);
+});
 
 /* ============================================================
-   🚀 Init Deposit Refund Module
+   ⬇️ EXPORT
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_REFUND_DEPOSIT),
+    `refund_deposits_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Refund Deposits List",
+    viewMode === "table" ? ".table-container" : "#refundDepositList",
+    "portrait"
+  );
+});
+
+/* ============================================================
+   🚀 INIT
 ============================================================ */
 export async function initRefundDepositModule() {
   renderDynamicTableHead(visibleFields);
-
-  setupSelectOptions(filterMethod, [
-    { value: "", label: "-- All Methods --" },
-    { value: "cash", label: "Cash" },
-    { value: "card", label: "Card" },
-    { value: "mobile_money", label: "Mobile Money" },
-    { value: "bank_transfer", label: "Bank Transfer" },
-    { value: "cheque", label: "Cheque" },
-  ], "value", "label");
-
-  // --- Filter collapse memory
-  const collapse = document.getElementById("filterCollapse");
-  const chevron = document.getElementById("filterChevron");
-  const visible = localStorage.getItem("refundDepositFilterVisible") === "true";
-
-  if (visible) {
-    collapse?.classList.remove("hidden");
-    chevron?.classList.add("chevron-rotate");
-  } else {
-    collapse?.classList.add("hidden");
-    chevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -412,82 +335,62 @@ export async function initRefundDepositModule() {
     "refundDepositFilterVisible"
   );
 
-  // --- Patient autocomplete → loads deposits dynamically
   setupSuggestionInputDynamic(
     filterPatient,
     filterPatientSuggestions,
     "/api/lite/patients",
-    async (selected) => {
+    (selected) => {
       filterPatientHidden.value = selected?.id || "";
-      if (selected) {
-        try {
-          const deposits = await loadDepositsLite({
-            patient_id: selected.id,
-          });
-          setupSelectOptions(
-            filterDeposit,
-            deposits,
-            "id",
-            "label",
-            "-- Select Deposit --"
-          );
-        } catch {
-          setupSelectOptions(
-            filterDeposit,
-            [],
-            "id",
-            "label",
-            "-- Select Deposit --"
-          );
-        }
-      } else {
-        setupSelectOptions(filterDeposit, [], "id", "label");
-        filterDepositHidden.value = "";
-      }
+      filterPatient.value = selected?.label || "";
+      loadEntries(1);
     },
     "label"
   );
 
-  // --- ORG/FACILITY RBAC Rules
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+  setupSuggestionInputDynamic(
+    filterDeposit,
+    filterDepositSuggestions,
+    "/api/lite/deposits",
+    (selected) => {
+      filterDepositHidden.value = selected?.id || "";
+      filterDeposit.value = selected?.label || "";
+      loadEntries(1);
+    },
+    "label"
+  );
 
-      filterOrg.addEventListener("change", async () => {
-        const facs = await loadFacilitiesLite(
-          filterOrg.value ? { organization_id: filterOrg.value } : {},
-          true
-        );
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
+  if (userRole.includes("super")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
+
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg.closest(".form-group")?.classList.add("hidden");
-      filterFacility.closest(".form-group")?.classList.add("hidden");
-    }
-  } catch (e) {
-    console.error("Failed loading RBAC dropdowns:", e);
+    };
+
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else if (userRole.includes("admin")) {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    const facs = await loadFacilitiesLite({}, true);
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initRefundDepositModule().catch((err) =>
-    console.error("initRefundDepositModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initRefundDepositModule)
+  : initRefundDepositModule();

@@ -1,0 +1,168 @@
+/* ======================================================================
+   🧾 RECEIPT PRINT STYLES (ENTERPRISE FINAL — FIXED)
+====================================================================== */
+
+/* ================= BASE ================= */
+body {
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#receiptWrapper {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* ================= HEADER ================= */
+#receiptHeader {
+  background: #0b3a6e !important;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+#receiptHeader * {
+  color: #ffffff !important;
+}
+
+#receiptHeader h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+#receiptHeader p {
+  font-size: 13px;
+  margin: 0;
+  font-weight: 600;
+}
+
+#receiptHeader small {
+  font-size: 11px;
+  opacity: 0.95;
+}
+
+/* ================= FACILITY ================= */
+.facility-info {
+  font-size: 12px;
+  margin-bottom: 10px;
+  color: #222;
+}
+
+/* ================= META GRID ================= */
+.invoice-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 22px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.invoice-meta div {
+  white-space: nowrap;
+}
+
+/* ================= SECTION TITLES ================= */
+h3,
+h5 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #d0d0d0;
+  font-weight: 700;
+  color: #000;
+}
+
+/* ================= TABLES ================= */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+th,
+td {
+  border: 1px solid #cfcfcf;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+th {
+  background: #f2f2f2;
+  font-weight: 700;
+}
+
+/* ================= SUMMARY ================= */
+.summary {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.summary table {
+  width: auto;
+  border: none;
+}
+
+.summary td {
+  border: none;
+  padding: 2px 6px;
+  text-align: right;
+}
+
+.summary td.label {
+  font-weight: 700;
+}
+
+/* ================= FOOTER (SCREEN) ================= */
+#receiptFooter {
+  background: #0b3a6e !important;
+  color: #ffffff !important;
+  font-size: 11px;
+  text-align: center;
+  padding: 10px 12px;
+  margin-top: 18px;
+}
+
+#receiptFooter * {
+  color: #ffffff !important;
+}
+
+/* ======================================================
+   🖨️ PRINT RULES — THIS IS THE KEY PART
+====================================================== */
+@media print {
+  /* Force color printing */
+  #receiptHeader,
+  #receiptFooter {
+    background: #0b3a6e !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #receiptHeader *,
+  #receiptFooter * {
+    color: #ffffff !important;
+  }
+
+  /* 🔒 FIX FOOTER VISIBILITY */
+  #receiptFooter {
+    position: fixed;
+    bottom: 12mm;
+    left: 0;
+    right: 0;
+    margin: 0;
+  }
+
+  /* 🧱 Reserve space so content never hides footer */
+  #receiptWrapper {
+    padding-bottom: 30mm;
+  }
+
+  /* Avoid weird breaks */
+  #receiptFooter {
+    page-break-before: avoid;
+  }
+}

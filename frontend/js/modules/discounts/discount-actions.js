@@ -1,10 +1,12 @@
-// 📦 discount-actions.js – Enterprise Master Pattern (v2.4 Modal Void Reason)
+// 📦 discount-actions.js – Enterprise MASTER–ALIGNED (Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors deposit-actions.js for unified permission-driven flow
-// 🔹 Adds modal-based void reason (no browser prompt)
-// 🔹 Includes instant post-action refresh (void, restore, finalize, toggle)
-// 🔹 Superadmin bypass + unified permission normalization
-// 🔹 Fully compatible with discount-filter-main.js
+// 🔹 Pattern Source: deposit-actions.js (Enterprise MASTER)
+// 🔹 Permission-driven + superadmin-aware (role + roleNames)
+// 🔹 Unified lifecycle dispatcher (view / edit / delete / toggle / finalize / void / restore)
+// 🔹 Safe fallback fetch (MASTER safety)
+// 🔹 Modal-based void reason preserved (NO browser prompt)
+// 🔹 Instant post-action refresh
+// 🔹 100% API preservation (NO endpoint changes)
 // ============================================================================
 
 import {
@@ -18,9 +20,9 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./discount-render.js";
 import { printDiscountSummary } from "./discount-summary.js";
 
-/* ============================================================
-   ⚙️ Unified Action Handler – Discount Module
-============================================================ */
+/**
+ * Unified permission-aware action handler for Discount module
+ */
 export function setupActionHandlers({
   entries,
   token,
@@ -28,22 +30,22 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user,
+  user, // { role, roleNames, permissions }
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("discountTableBody");
   const cardContainer = document.getElementById("discountList");
   const modalBody = document.getElementById("viewModalBody");
 
-  // 🗂️ Cache latest entries
+  // 🗂️ Cache latest entries (MASTER PATTERN)
   window.latestDiscountEntries = entries;
 
-  [tableBody, cardContainer, modalBody].forEach((el) =>
-    el?.addEventListener("click", handleActions)
-  );
+  if (tableBody) tableBody.addEventListener("click", handleActions);
+  if (cardContainer) cardContainer.addEventListener("click", handleActions);
+  if (modalBody) modalBody.addEventListener("click", handleActions);
 
   /* ============================================================
-     🔐 Permission + Role Normalization
+     🔑 Normalize Permissions (MASTER PATTERN)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -57,15 +59,26 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      String(p).toLowerCase().trim()
+    )
+  );
+
+  // 🧠 Superadmin bypass (role OR roleNames)
   const isSuperAdmin =
-    (user?.role || "").toLowerCase().replace(/\s+/g, "") === "superadmin";
+    (user?.role &&
+      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
+    (Array.isArray(user?.roleNames) &&
+      user.roleNames.some(
+        (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
+      ));
 
   const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(key.trim().toLowerCase());
+    isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
   /* ============================================================
-     🎛️ Main Action Dispatcher
+     🎯 Main Dispatcher
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
@@ -77,42 +90,43 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
+    // 🩹 Fallback fetch (MASTER SAFETY)
     if (!entry) {
       try {
         showLoading();
         const res = await authFetch(`/api/discounts/${id}`);
         const data = await res.json().catch(() => ({}));
         entry = data?.data;
+      } catch {
+        return showToast("❌ Discount not found");
       } finally {
         hideLoading();
       }
     }
-    if (!entry) return showToast("❌ Discount not found");
+
+    if (!entry) return showToast("❌ Discount data missing");
 
     const cls = btn.classList;
 
-    // --- View ---
     if (cls.contains("view-btn")) {
       if (!hasPerm("discounts:view"))
         return showToast("⛔ No permission to view discounts");
       return handleView(entry);
     }
 
-    // --- Edit ---
     if (cls.contains("edit-btn")) {
       if (!hasPerm("discounts:edit") && !hasPerm("discounts:create"))
         return showToast("⛔ No permission to edit discounts");
       return handleEdit(entry);
     }
 
-    // --- Delete ---
     if (cls.contains("delete-btn")) {
       if (!hasPerm("discounts:delete"))
         return showToast("⛔ No permission to delete discounts");
       return await handleDelete(id);
     }
 
-    // --- Lifecycle Actions ---
+    // 🔄 Lifecycle map (MASTER STYLE)
     const lifecycleMap = {
       "toggle-status-btn": "toggle-status",
       "finalize-btn": "finalize",
@@ -124,12 +138,12 @@ export function setupActionHandlers({
       if (cls.contains(clsName)) {
         if (!hasPerm(`discounts:${action}`) && !hasPerm("discounts:edit"))
           return showToast(`⛔ No permission to ${action} discounts`);
+
         if (action === "void") return await handleVoid(entry);
-        return await handleLifecycle(id, entry, action);
+        return await handleLifecycle(id, action);
       }
     }
 
-    // --- Print ---
     if (cls.contains("print-btn")) {
       if (!hasPerm("discounts:view"))
         return showToast("⛔ No permission to print discounts");
@@ -138,7 +152,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🧩 Core Action Handlers
+     ⚙️ Action Handlers
   ============================================================ */
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
@@ -153,16 +167,21 @@ export function setupActionHandlers({
   }
 
   async function handleDelete(id) {
-    const confirmed = await showConfirm("🗑️ Delete this discount?");
+    const confirmed = await showConfirm("Delete this discount?");
     if (!confirmed) return;
+
     try {
       showLoading();
-      const res = await authFetch(`/api/discounts/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/discounts/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data.message || "❌ Failed to delete discount");
+
       showToast("✅ Discount deleted successfully");
-      await loadEntries(1);
+      window.latestDiscountEntries = [];
+      await loadEntries(currentPage);
     } catch (err) {
       showToast(err.message || "❌ Failed to delete discount");
     } finally {
@@ -170,15 +189,10 @@ export function setupActionHandlers({
     }
   }
 
-  /* ============================================================
-     🔄 Lifecycle Handler (Live Refresh)
-  ============================================================ */
-  async function handleLifecycle(id, entry, action) {
-    const confirmMsg =
-      action === "restore"
-        ? "♻️ Restore this discount?"
-        : `Proceed to ${action} this discount?`;
-    const confirmed = await showConfirm(confirmMsg);
+  async function handleLifecycle(id, action) {
+    const confirmed = await showConfirm(
+      `Proceed to ${action} this discount?`
+    );
     if (!confirmed) return;
 
     const url =
@@ -190,11 +204,12 @@ export function setupActionHandlers({
       showLoading();
       const res = await authFetch(url, { method: "PATCH" });
       const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) throw new Error(data.message || `❌ Failed to ${action}`);
+      if (!res.ok)
+        throw new Error(data.message || `❌ Failed to ${action} discount`);
 
       showToast(`✅ Discount ${action} successful`);
-      await loadEntries(1); // ✅ Live refresh
+      window.latestDiscountEntries = [];
+      await loadEntries(currentPage);
     } catch (err) {
       showToast(err.message || `❌ Failed to ${action} discount`);
     } finally {
@@ -203,7 +218,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🚫 Void Handler (Modal-Based Reason Input)
+     🚫 Void Discount (Modal – MASTER-STYLE)
   ============================================================ */
   async function handleVoid(entry) {
     const id = entry.id;
@@ -214,12 +229,16 @@ export function setupActionHandlers({
     const reasonInput = document.getElementById("voidReasonInput");
     const confirmBtn = document.getElementById("confirmVoidBtn");
 
+    if (!modal || !reasonInput || !confirmBtn)
+      return showToast("❌ Void modal not available");
+
     reasonInput.value = "";
-    modal.classList.remove("hidden");
+    openModal("discountVoidModal");
 
     confirmBtn.onclick = async () => {
       const reason = reasonInput.value.trim();
-      if (!reason) return showToast("❌ Reason is required to void discount");
+      if (!reason)
+        return showToast("❌ Reason is required to void discount");
 
       const confirmed = await showConfirm("⚠️ Confirm voiding this discount?");
       if (!confirmed) return;
@@ -236,10 +255,9 @@ export function setupActionHandlers({
           throw new Error(data.message || "❌ Failed to void discount");
 
         showToast("✅ Discount voided successfully");
-        modal.classList.add("hidden");
-
-        // ✅ Live refresh
-        await loadEntries(1);
+        closeModal("discountVoidModal");
+        window.latestDiscountEntries = [];
+        await loadEntries(currentPage);
       } catch (err) {
         showToast(err.message || "❌ Failed to void discount");
       } finally {
@@ -249,7 +267,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🖨️ Print Handler
+     🖨️ Print
   ============================================================ */
   function handlePrint(entry) {
     try {
@@ -261,7 +279,24 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🌐 Global Helpers (Enterprise Standard)
+     🪟 Modal Helpers (MASTER)
+  ============================================================ */
+  function openModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove("hidden");
+  }
+
+  function closeModal(id) {
+    const m = document.getElementById(id);
+    if (m) {
+      m.classList.add("hidden");
+      const f = m.querySelector("form");
+      if (f) f.reset();
+    }
+  }
+
+  /* ============================================================
+     🌍 Global Helpers (MASTER + Backward Compatible)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestDiscountEntries || entries || []).find(
@@ -270,46 +305,48 @@ export function setupActionHandlers({
 
   window.viewDiscount = (id) => {
     if (!hasPerm("discounts:view"))
-      return showToast("⛔ No permission to view");
+      return showToast("⛔ No permission to view discounts");
     const entry = findEntry(id);
     if (entry) handleView(entry);
   };
 
   window.editDiscount = (id) => {
-    if (!hasPerm("discounts:edit"))
-      return showToast("⛔ No permission to edit");
+    if (!hasPerm("discounts:edit") && !hasPerm("discounts:create"))
+      return showToast("⛔ No permission to edit discounts");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
   };
 
   window.deleteDiscount = async (id) => {
     if (!hasPerm("discounts:delete"))
-      return showToast("⛔ No permission to delete");
+      return showToast("⛔ No permission to delete discounts");
     await handleDelete(id);
   };
 
   ["toggle-status", "finalize", "void", "restore"].forEach((action) => {
     window[`${action}Discount`] = async (id) => {
-      if (!hasPerm(`discounts:${action}`))
-        return showToast(`⛔ No permission to ${action}`);
+      if (!hasPerm(`discounts:${action}`) && !hasPerm("discounts:edit"))
+        return showToast(`⛔ No permission to ${action} discounts`);
       const entry = findEntry(id);
       if (action === "void") return await handleVoid(entry);
-      await handleLifecycle(id, entry, action);
+      await handleLifecycle(id, action);
     };
   });
 
   window.printDiscount = (id) => {
     if (!hasPerm("discounts:view"))
-      return showToast("⛔ No permission to print");
+      return showToast("⛔ No permission to print discounts");
     const entry = findEntry(id);
     if (entry) handlePrint(entry);
   };
 
-  // 🔹 Universal modal close behavior
+  // 🔹 Backward compatibility
+  window.viewEntry = window.viewDiscount;
+  window.editEntry = window.editDiscount;
+  window.deleteEntry = window.deleteDiscount;
+
+  // 🔹 Close modal buttons
   document.querySelectorAll("[data-close]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.close;
-      document.getElementById(id)?.classList.add("hidden");
-    });
+    btn.addEventListener("click", () => closeModal(btn.dataset.close));
   });
 }

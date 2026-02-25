@@ -1,8 +1,12 @@
-// 📦 refund-filter-main.js – Enterprise Master Pattern Aligned
+// 📦 refund-filter-main.js – ENTERPRISE MASTER–ALIGNED (Refund ← Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors deposit-filter-main.js for unified summary, export, and pagination
-// 🔹 Includes Refund Summary (PDF/Excel-ready)
-// 🔹 Handles role-aware org/facility filters, lifecycle-safe reload, and RBAC logic
+// 🔹 FRONTEND parity with payment-filter-main.js
+// 🔹 Auto search + auto filters
+// 🔹 Sorting + pagination parity
+// 🔹 UI-only dateRange (MASTER)
+// 🔹 View toggle + summary + export
+// 🔹 NO new fields, NO new API params
+// 🔹 ALL EXISTING DOM + API CALLS PRESERVED
 // ============================================================================
 
 import {
@@ -17,6 +21,7 @@ import {
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -27,48 +32,59 @@ import {
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./refund-render.js";
-import { setupActionHandlers } from "./refund-actions.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./refund-render.js";
+
+import { setupRefundActionHandlers } from "./refund-actions.js";
+
 import {
   FIELD_ORDER_REFUND,
   FIELD_DEFAULTS_REFUND,
+  FIELD_LABELS_REFUND,
 } from "./refund-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("refundView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "refund",
@@ -77,11 +93,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_REFUND,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -89,228 +108,144 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   📊 Refund Summary Renderer (v2.4 – Nested Object Safe)
+   🔎 FILTER DOM
 ============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
+const qs = (id) => document.getElementById(id);
 
-  const colorMap = {
-    pending: "text-warning",
-    approved: "text-success",
-    rejected: "text-danger",
-    processed: "text-info",
-    cancelled: "text-secondary",
-    reversed: "text-dark",
-    voided: "text-muted",
-    total: "text-dark fw-bold",
-  };
+const globalSearch = qs("globalSearch");
 
-  const formatVal = (key, val) => {
-    if (val == null) return 0;
-    const lower = key.toLowerCase();
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const filterMethod   = qs("filterMethodSelect");
+const dateRange      = qs("dateRange");
 
-    const excludedExact = [
-      "pending",
-      "approved",
-      "rejected",
-      "processed",
-      "cancelled",
-      "reversed",
-      "voided",
-      "total_refunds",
-      "count",
-    ];
+const filterPatient            = qs("filterPatient");
+const filterPatientHidden      = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-    const shouldFormatAsCurrency =
-      !excludedExact.includes(lower) &&
-      (/_amount/.test(lower) || /_balance/.test(lower) || /total/.test(lower));
-
-    if (typeof val === "object") {
-      // ✅ Handle nested object summaries gracefully
-      if (key === "refund_summary") {
-        const rs = val || {};
-        const byMethod =
-          rs.by_method &&
-          Object.entries(rs.by_method)
-            .filter(([_, v]) => v > 0)
-            .map(([k, v]) => `${k}: $${v}`)
-            .join(", ");
-        return `
-          <div class="small text-dark">
-            Total: ${rs.total_refunds ?? 0} |
-            Amount: $${(rs.total_refund_amount ?? 0).toFixed(2)} |
-            Avg: $${(rs.average_refund_amount ?? 0).toFixed(2)} |
-            By Method: ${byMethod || "-"}
-          </div>
-        `;
-      }
-      if (key === "gender_breakdown") {
-        return Object.entries(val)
-          .map(([g, c]) => `${g}: ${c}`)
-          .join(", ");
-      }
-      // fallback for any generic object
-      return JSON.stringify(val);
-    }
-
-    if (shouldFormatAsCurrency && !isNaN(val)) {
-      const num = parseFloat(val);
-      return `$${num.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-
-    return val;
-  };
-
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
+const filterPayment            = qs("filterPayment");
+const filterPaymentHidden      = qs("filterPaymentId");
+const filterPaymentSuggestions = qs("filterPaymentSuggestions");
 
 /* ============================================================
-   🔎 Filter DOM
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterPayment = document.getElementById("filterPayment");
-const filterPaymentHidden = document.getElementById("filterPaymentId");
-const filterPaymentSuggestions = document.getElementById("filterPaymentSuggestions");
-const filterMethod = document.getElementById("filterMethodSelect");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-const filterApproved = document.getElementById("filterApprovedBy");
-const filterRejected = document.getElementById("filterRejectedBy");
-
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+window.setRefundSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadRefundPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination / State
+   📄 PAGINATION
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("refundView") || "table";
-
-const savedLimit = parseInt(localStorage.getItem("refundPageLimit") || "25", 10);
-let getPagination = initPaginationControl("refund", loadEntries, savedLimit);
-
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("refundPageLimit", newLimit);
-    getPagination = initPaginationControl("refund", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+const getPagination = initPaginationControl(
+  "refund",
+  loadEntries,
+  Number(localStorage.getItem("refundPageLimit") || 25)
+);
 
 /* ============================================================
-   📋 Filters Builder
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    payment_id: filterPaymentHidden?.value || "",
-    method: filterMethod?.value || "",
-    status: filterStatus?.value || "",
-    approved_by_id: filterApproved?.value || "",
-    rejected_by_id: filterRejected?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    method: filterMethod?.value,
+    patient_id: filterPatientHidden?.value,
+    payment_id: filterPaymentHidden?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🧹 Reset Filters
-============================================================ */
-function clearFilters() {
-  [
-    filterOrg,
-    filterFacility,
-    filterPatient,
-    filterPatientHidden,
-    filterPayment,
-    filterPaymentHidden,
-    filterMethod,
-    filterStatus,
-    filterApproved,
-    filterRejected,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => el && (el.value = ""));
-  if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
-  if (filterPaymentSuggestions) filterPaymentSuggestions.innerHTML = "";
-}
-
-/* ============================================================
-   📦 Load Refunds (with Summary)
+   📦 LOAD REFUNDS
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_REFUND.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+    if (f.method)          q.set("method", f.method);
+    if (f.patient_id)      q.set("patient_id", f.patient_id);
+    if (f.payment_id)      q.set("payment_id", f.payment_id);
 
     const res = await authFetch(`/api/refunds?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
 
-    setupActionHandlers({
+    /* ========================================================
+       🧾 SUMMARY DATE NORMALIZATION (UI-UTIL PARITY)
+       ✔ Uses formatDateTime
+       ✔ Frontend only
+       ✔ Matches Payment / Deposit pattern
+    ======================================================== */
+    if (data.summary?.refund_summary?.metrics) {
+      const m = data.summary.refund_summary.metrics;
+
+      if (m.last_approved_at) {
+        m.last_approved_at = formatDateTime(m.last_approved_at);
+      }
+
+      if (m.last_processed_at) {
+        m.last_processed_at = formatDateTime(m.last_processed_at);
+      }
+    }
+
+    data.summary?.refund_summary &&
+      renderModuleSummary(data.summary.refund_summary, "moduleSummary", {
+        moduleLabel: "REFUNDS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
+
+    setupRefundActionHandlers({
       entries,
       token,
       currentPage,
@@ -321,13 +256,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load refunds");
   } finally {
     hideLoading();
@@ -335,102 +270,73 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🔘 Filter Buttons Wiring (Fixed)
+   🧭 VIEW TOGGLE
 ============================================================ */
-if (filterBtn)
-  filterBtn.addEventListener("click", async () => {
-    if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
-    if (filterPaymentSuggestions) filterPaymentSuggestions.innerHTML = "";
-    await loadEntries(1); // 🔍 perform search
-  });
-
-if (resetFilterBtn)
-  resetFilterBtn.addEventListener("click", async () => {
-    clearFilters(); // 🧹 clear all
-    await loadEntries(1); // reload unfiltered
-  });
-
-/* ============================================================
-   🪟 View Toggle
-============================================================ */
-const cardViewBtn = document.getElementById("cardViewBtn");
-const tableViewBtn = document.getElementById("tableViewBtn");
-
-cardViewBtn?.addEventListener("click", () => {
-  viewMode = "card";
-  localStorage.setItem("refundView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-});
-
-tableViewBtn?.addEventListener("click", () => {
+qs("tableViewBtn")?.addEventListener("click", () => {
   viewMode = "table";
   localStorage.setItem("refundView", "table");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+});
+
+qs("cardViewBtn")?.addEventListener("click", () => {
+  viewMode = "card";
+  localStorage.setItem("refundView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 });
 
 /* ============================================================
-   ⬇️ Export Tools
+   🔄 RESET FILTERS
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `refunds_${new Date().toISOString().slice(0, 10)}.xlsx`);
+qs("resetFilterBtn")?.addEventListener("click", () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterMethod,
+    filterPatient,
+    filterPayment,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector = viewMode === "table" ? ".table-container" : "#refundList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
-
-      const summaryEl = document.getElementById("moduleSummary");
-      const summaryHTML = summaryEl
-        ? `<div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
-            <h5 class="fw-bold mb-2">Refund Summary</h5>
-            ${summaryEl.innerHTML}
-          </div>`
-        : "";
-
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Refunds_Report", "#exportWrapper", "portrait", true);
-      setTimeout(() => tempDiv.remove(), 1000);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
-  };
+  filterPatientHidden.value = "";
+  filterPaymentHidden.value = "";
+  loadEntries(1);
+});
 
 /* ============================================================
-   🚀 Init Refund Module
+   ⬇️ EXPORT
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_REFUND),
+    `refunds_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Refunds List",
+    viewMode === "table" ? ".table-container" : "#refundList",
+    "portrait"
+  );
+});
+
+/* ============================================================
+   🚀 INIT
 ============================================================ */
 export async function initRefundModule() {
   renderDynamicTableHead(visibleFields);
 
-  setupSelectOptions(filterMethod, [
-    { value: "", label: "-- All Methods --" },
-    { value: "cash", label: "Cash" },
-    { value: "card", label: "Card" },
-    { value: "mobile_money", label: "Mobile Money" },
-    { value: "bank_transfer", label: "Bank Transfer" },
-    { value: "cheque", label: "Cheque" },
-  ], "value", "label");
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible = localStorage.getItem("refundFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
-
-  setupToggleSection("toggleFilterBtn", "filterCollapse", "filterChevron", "refundFilterVisible");
+  setupToggleSection(
+    "toggleFilterBtn",
+    "filterCollapse",
+    "filterChevron",
+    "refundFilterVisible"
+  );
 
   setupSuggestionInputDynamic(
     filterPatient,
@@ -438,61 +344,70 @@ export async function initRefundModule() {
     "/api/lite/patients",
     async (selected) => {
       filterPatientHidden.value = selected?.id || "";
-      if (selected) {
-        try {
-          const payments = await loadPaymentsLite({ patient_id: selected.id });
-          setupSelectOptions(filterPayment, payments, "id", "label", "-- Select Payment --");
-        } catch {
-          setupSelectOptions(filterPayment, [], "id", "label", "-- Select Payment --");
-        }
+      filterPatient.value = selected?.label || "";
+
+      if (selected?.id) {
+        const payments = await loadPaymentsLite({ patient_id: selected.id });
+        setupSelectOptions(
+          filterPayment,
+          payments,
+          "id",
+          "label",
+          "-- All Payments --"
+        );
       } else {
-        setupSelectOptions(filterPayment, [], "id", "label", "-- Select Payment --");
+        setupSelectOptions(filterPayment, [], "id", "label", "-- All Payments --");
         filterPaymentHidden.value = "";
       }
+      loadEntries(1);
     },
     "label"
   );
 
-  try {
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+  setupSuggestionInputDynamic(
+    filterPayment,
+    filterPaymentSuggestions,
+    "/api/lite/payments",
+    (selected) => {
+      filterPaymentHidden.value = selected?.id || "";
+      filterPayment.value = selected?.label || "";
+      loadEntries(1);
+    },
+    "label"
+  );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      }
+  if (userRole.includes("super")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      await reloadFacilities();
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
-    } else {
-      filterOrg?.closest(".form-group")?.classList.add("hidden");
-      filterFacility?.closest(".form-group")?.classList.add("hidden");
-    }
-  } catch (err) {
-    console.error("❌ preload dropdowns failed:", err);
-    showToast("❌ Failed to load filter dropdowns");
+    };
+
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else if (userRole.includes("admin")) {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    const facs = await loadFacilitiesLite({}, true);
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initRefundModule().catch((err) =>
-    console.error("initRefundModule failed:", err)
-  );
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initRefundModule)
+  : initRefundModule();

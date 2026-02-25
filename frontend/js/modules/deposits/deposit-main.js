@@ -1,37 +1,42 @@
-// 📦 deposit-main.js – Enterprise Master Pattern Aligned
+// 📦 deposit-main.js – Form-only loader for Deposit (Enterprise Master Pattern)
 // ============================================================================
-// 🔹 Mirrors appointment-main.js for consistent form lifecycle & RBAC logic
-// 🔹 Retains all deposit-specific logic, IDs, and API endpoints
-// 🔹 Includes unified auth guard, visibility helpers, and role-based field setup
+// 🧭 FULL MASTER PARITY WITH consultation-main.js / department-main.js
+// 🔹 Auth guard + logout watcher
+// 🔹 Unified form visibility and reset logic
+// 🔹 Session-safe edit caching
+// 🔹 Field selector integration (role-aware)
+// 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
 import {
   initPageGuard,
-  initLogoutWatcher,
   autoPagePermissionKey,
+  initLogoutWatcher,
 } from "../../utils/index.js";
+
 import { setupDepositFormSubmission } from "./deposit-form.js";
+
 import {
   FIELD_LABELS_DEPOSIT,
   FIELD_ORDER_DEPOSIT,
   FIELD_DEFAULTS_DEPOSIT,
 } from "./deposit-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard
-   ============================================================ */
-// Auto-detect correct permission key (create / edit)
-const token = initPageGuard(autoPagePermissionKey(["deposits:create", "deposits:edit"]));
+   🔐 Auth Guard + Shared State
+============================================================ */
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State + DOM Refs
-   ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
+/* ============================================================
+   📎 DOM Refs
+============================================================ */
 const form = document.getElementById("depositForm");
 const formContainer = document.getElementById("formContainer");
 const desktopAddBtn = document.getElementById("desktopAddBtn");
@@ -39,8 +44,8 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset & Visibility Helpers
-   ============================================================ */
+   🧹 Reset Form Helper (MASTER PARITY)
+============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
   if (form) form.reset();
@@ -49,8 +54,20 @@ function resetForm() {
   sessionStorage.removeItem("depositEditId");
   sessionStorage.removeItem("depositEditPayload");
 
-  // Explicitly clear text fields
-  ["patientInput", "amount", "transactionRef", "notes"].forEach((id) => {
+  // Clear text inputs
+  [
+    "patientInput",
+    "amount",
+    "transactionRef",
+    "notes",
+    "reason",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  // Clear dropdowns
+  ["organizationSelect", "facilitySelect", "methodSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -61,19 +78,14 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Reset dropdowns
-  ["organizationSelect", "facilitySelect", "methodSelect"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  // Hide reason field by default (only used in edit mode)
+  // Hide reason group by default
   const reasonGroup = document.getElementById("reason")?.closest(".form-group");
   if (reasonGroup) reasonGroup.classList.add("hidden");
-
-  console.info("🧹 [Deposit] Form reset complete");
 }
 
+/* ============================================================
+   🧭 Form Show / Hide
+============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
   desktopAddBtn?.classList.add("hidden");
@@ -87,16 +99,15 @@ function hideForm() {
   localStorage.setItem("depositFormVisible", "false");
 }
 
-// 🔗 Expose globally for action handlers
+// 🔗 Expose globally (actions / hot reload)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
    🔘 Button Wiring
-   ============================================================ */
+============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
-    console.log("🚪 [Deposit] Cancel clicked – returning to list");
     resetForm();
     window.location.href = "/deposits-list.html";
   };
@@ -106,7 +117,6 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    console.log("➕ [Deposit] Switching to Add mode");
     sessionStorage.removeItem("depositEditId");
     sessionStorage.removeItem("depositEditPayload");
     resetForm();
@@ -115,29 +125,31 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Stub – List Loader (no-op here)
-   ============================================================ */
+   📦 Loader Placeholder (FORM-ONLY MODE)
+============================================================ */
 async function loadEntries() {
-  return; // handled on list page
+  return; // handled by list page
 }
 
 /* ============================================================
-   🚀 Module Init
-   ============================================================ */
+   🚀 Init Entrypoint
+============================================================ */
 export async function initDepositModule() {
-  showForm(); // open form immediately
+  showForm(); // form-only mode (MASTER parity)
 
-  setupDepositFormSubmission({
-    form,
-    token,
-    sharedState,
-    resetForm,
-    loadEntries,
-  });
+  if (form) {
+    setupDepositFormSubmission({
+      form,
+      token,
+      sharedState,
+      resetForm,
+      loadEntries,
+    });
+  }
 
   localStorage.setItem("depositPanelVisible", "false");
 
-  // Normalize role
+  // Normalize role for field defaults
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -145,21 +157,17 @@ export async function initDepositModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  // 🧩 Setup field selector
   setupFieldSelector({
-    module: "deposit",
+    module: "deposits",
     fieldLabels: FIELD_LABELS_DEPOSIT,
     fieldOrder: FIELD_ORDER_DEPOSIT,
-    defaultFields:
-      FIELD_DEFAULTS_DEPOSIT[role] || FIELD_DEFAULTS_DEPOSIT.staff,
+    defaultFields: FIELD_DEFAULTS_DEPOSIT[role],
   });
-
-  console.info(`✅ [Deposit] Module initialized for role: ${role}`);
 }
 
 /* ============================================================
-   (Optional)
-   ============================================================ */
+   🔁 Sync Stub
+============================================================ */
 export function syncRefsToState() {
-  // placeholder for future sync extensions
+  // reserved for future reactive syncing
 }

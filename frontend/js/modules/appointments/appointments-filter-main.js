@@ -1,9 +1,12 @@
-// 📦 appointment-filter-main.js – Enterprise Filter + Table/Card (MASTER FINAL)
+// 📦 appointment-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors feature-access-filter-main.js EXACTLY
+// 🔹 FULLY mirrors consultation-filter-main.js MASTER pattern
 // 🔹 Auto search, auto filters, sorting, pagination
-// 🔹 UI-only dateRange (never DB column)
-// 🔹 Org / Facility / Department fully wired
+// 🔹 UI-only dateRange (single input, NEVER DB column)
+// 🔹 Org / Facility fully wired (role-aware)
+// 🔹 Appointment Status fully wired
+// 🔹 Summary + export aligned
+// 🔹 ALL existing Appointment API calls PRESERVED
 // ============================================================================
 
 import {
@@ -59,13 +62,13 @@ initLogoutWatcher();
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 const permissions = (() => {
   try {
-    return (JSON.parse(localStorage.getItem("permissions")) || [])
-      .map(p => String(p.key || p).toLowerCase());
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
   } catch {
     return [];
   }
 })();
-
 const user = { role: userRole, permissions };
 
 /* ============================================================
@@ -95,7 +98,7 @@ let visibleFields = setupVisibleFields({
 renderFieldSelector(
   {},
   visibleFields,
-  fields => {
+  (fields) => {
     visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
@@ -104,29 +107,27 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 FILTER DOM
+   🔎 FILTER DOM (MASTER STRUCTURE)
 ============================================================ */
-const qs = id => document.getElementById(id);
+const qs = (id) => document.getElementById(id);
 
 const globalSearch = qs("globalSearch");
-
 const filterOrg = qs("filterOrganizationSelect");
 const filterFacility = qs("filterFacilitySelect");
-const filterDepartment = qs("filterDepartment");
 const filterStatus = qs("filterStatus");
+const filterDepartment = qs("filterDepartment");
+const dateRange = qs("dateRange");
 
 const filterPatient = qs("filterPatient");
-const filterPatientId = qs("filterPatientId");
+const filterPatientHidden = qs("filterPatientId");
 const filterPatientSuggestions = qs("filterPatientSuggestions");
 
 const filterDoctor = qs("filterDoctor");
-const filterDoctorId = qs("filterDoctorId");
+const filterDoctorHidden = qs("filterDoctorId");
 const filterDoctorSuggestions = qs("filterDoctorSuggestions");
 
-const dateRange = qs("dateRange");
-
 /* ============================================================
-   🔃 SORT BRIDGE
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
 window.setAppointmentSort = (field, dir) => {
   sortBy = field;
@@ -144,16 +145,16 @@ const getPagination = initPaginationControl(
 );
 
 /* ============================================================
-   🔎 AUTO SEARCH / FILTERS
+   🔎 AUTO SEARCH / FILTERS (MASTER)
 ============================================================ */
-setupAutoSearch(globalSearch, loadEntries);
+globalSearch && setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
   selectInputs: [
-    filterStatus,
     filterOrg,
     filterFacility,
+    filterStatus,
     filterDepartment,
   ],
   dateRangeInput: dateRange,
@@ -161,23 +162,23 @@ setupAutoFilters({
 });
 
 /* ============================================================
-   📋 FILTER BUILDER
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
     search: globalSearch?.value?.trim(),
     organization_id: filterOrg?.value,
     facility_id: filterFacility?.value,
-    department_id: filterDepartment?.value,
-    patient_id: filterPatientId?.value,
-    doctor_id: filterDoctorId?.value,
     status: filterStatus?.value,
+    department_id: filterDepartment?.value,
+    patient_id: filterPatientHidden?.value,
+    doctor_id: filterDoctorHidden?.value,
     dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 LOAD ENTRIES
+   📦 LOAD APPOINTMENTS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -197,15 +198,12 @@ async function loadEntries(page = 1) {
 
     if (f.search) q.set("search", f.search);
     if (f.dateRange) q.set("dateRange", f.dateRange);
-
-    [
-      "organization_id",
-      "facility_id",
-      "department_id",
-      "patient_id",
-      "doctor_id",
-      "status",
-    ].forEach(k => f[k] && q.set(k, f[k]));
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id) q.set("facility_id", f.facility_id);
+    if (f.status) q.set("status", f.status);
+    if (f.department_id) q.set("department_id", f.department_id);
+    if (f.patient_id) q.set("patient_id", f.patient_id);
+    if (f.doctor_id) q.set("doctor_id", f.doctor_id);
 
     const res = await authFetch(`/api/appointments?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -269,22 +267,22 @@ qs("cardViewBtn").onclick = () => {
 };
 
 /* ============================================================
-   🔄 RESET FILTERS
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
   [
     globalSearch,
     filterOrg,
     filterFacility,
-    filterDepartment,
     filterStatus,
+    filterDepartment,
     filterPatient,
-    filterPatientId,
     filterDoctor,
-    filterDoctorId,
     dateRange,
-  ].forEach(el => el && (el.value = "", el.dataset && (el.dataset.value = "")));
+  ].forEach((el) => el && (el.value = ""));
 
+  filterPatientHidden.value = "";
+  filterDoctorHidden.value = "";
   filterPatientSuggestions.innerHTML = "";
   filterDoctorSuggestions.innerHTML = "";
 
@@ -292,7 +290,7 @@ qs("resetFilterBtn").onclick = () => {
 };
 
 /* ============================================================
-   ⬇️ EXPORT
+   ⬇️ EXPORT (MASTER)
 ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
@@ -311,7 +309,7 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
 });
 
 /* ============================================================
-   🚀 INIT
+   🚀 INIT (MASTER)
 ============================================================ */
 export async function initAppointmentModule() {
   renderDynamicTableHead(visibleFields);
@@ -323,44 +321,40 @@ export async function initAppointmentModule() {
     "appointmentFilterVisible"
   );
 
-  const enforce = i => {
-    i.addEventListener("input", () => (i.dataset.value = ""));
-    i.addEventListener("blur", () => !i.dataset.value && (i.value = ""));
-  };
-  [filterPatient, filterDoctor].forEach(enforce);
-
   setupSuggestionInputDynamic(
     filterPatient,
     filterPatientSuggestions,
     "/api/lite/patients",
-    s => {
-      filterPatient.value = s.label;
-      filterPatientId.value = s.id;
-      filterPatient.dataset.value = s.id;
+    (selected) => {
+      filterPatientHidden.value = selected?.id || "";
+      filterPatient.value = selected?.label || "";
       loadEntries(1);
     },
     "label"
   );
 
-  setupSuggestionInputDynamic(
-    filterDoctor,
-    filterDoctorSuggestions,
-    "/api/lite/employees",
-    s => {
-      filterDoctor.value = s.full_name;
-      filterDoctorId.value = s.id;
-      filterDoctor.dataset.value = s.id;
-      loadEntries(1);
-    },
-    "full_name"
-  );
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    setupSuggestionInputDynamic(
+      filterDoctor,
+      filterDoctorSuggestions,
+      "/api/lite/employees",
+      (selected) => {
+        filterDoctorHidden.value = selected?.id || "";
+        filterDoctor.value = selected?.full_name || "";
+        loadEntries(1);
+      },
+      "full_name"
+    );
+  } else {
+    filterDoctor?.closest(".form-group")?.classList.add("hidden");
+  }
 
-  if (userRole.includes("super")) {
+  if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
     setupSelectOptions(filterOrg, orgs, "id", "name");
 
-    const reloadFacilities = async orgId => {
+    const reloadFacilities = async (orgId = null) => {
       const facs = await loadFacilitiesLite(
         orgId ? { organization_id: orgId } : {},
         true
@@ -376,13 +370,8 @@ export async function initAppointmentModule() {
     filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
-  setupSelectOptions(
-    filterDepartment,
-    await loadDepartmentsLite({}, true),
-    "id",
-    "name",
-    "-- All Departments --"
-  );
+  const depts = await loadDepartmentsLite({}, true);
+  setupSelectOptions(filterDepartment, depts, "id", "name", "-- All Departments --");
 
   await loadEntries(1);
 }

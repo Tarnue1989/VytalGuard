@@ -310,7 +310,6 @@ export const login = async (req, res) => {
       agent: req.headers["user-agent"],
     });
 
-
     const user = await User.scope(null).findOne({
       where: { email: email.trim().toLowerCase() },
       attributes: {
@@ -344,15 +343,14 @@ export const login = async (req, res) => {
             {
               model: Role,
               as: "role",
-              required: true,      // 🔑 FORCE ROLE JOIN
+              required: true,
               paranoid: false,
               attributes: ["id", "name", "requires_facility"],
             },
-
             {
               model: Facility,
               as: "facility",
-              required: false,   // 🔑 THIS IS THE FIX
+              required: false,
               attributes: ["id", "name", "organization_id"],
               include: [
                 {
@@ -363,7 +361,6 @@ export const login = async (req, res) => {
                 },
               ],
             },
-
           ],
         },
         {
@@ -375,11 +372,6 @@ export const login = async (req, res) => {
     });
 
     if (!user) {
-      logger.warn("[AUTH] Login failed", {
-        reason: "user_not_found",
-        email,
-        ip: req.ip,
-      });
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -395,11 +387,6 @@ export const login = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      logger.warn("[AUTH] Login failed", {
-        reason: "password_mismatch",
-        userId: user.id,
-        ip: req.ip,
-      });
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -409,13 +396,11 @@ export const login = async (req, res) => {
       });
     }
 
-    // reset counters
     user.login_attempts = 0;
     user.locked_until = null;
     user.last_login_at = new Date();
     await user.save();
 
-    // 🔹 Superadmin detection
     const isSystemOwner =
       user.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
 
@@ -428,14 +413,9 @@ export const login = async (req, res) => {
     let payload;
 
     // ============================================================
-    // 🛡️ SUPERADMIN PAYLOAD
+    // 🛡️ SUPER ADMIN
     // ============================================================
     if (isSystemOwner || hasSuperAdminRole) {
-      const superAdminRole =
-        (await Role.findOne({
-          where: { name: { [Op.iLike]: "%super admin%" } },
-        })) || { id: null, name: "Super Admin" };
-
       payload = {
         id: user.id,
         email: user.email,
@@ -444,26 +424,20 @@ export const login = async (req, res) => {
         facility_ids: [],
         roles: [
           {
-            id: superAdminRole.id,
-            name: superAdminRole.name,
+            id: null,
+            name: "Super Admin",
             normalized: "superadmin",
           },
         ],
       };
-
-      debug.log("LOGIN PAYLOAD RESOLVED", {
-        userId: user.id,
-        isSuperAdmin: true,
-        roles: payload.roles.map(r => r.normalized),
-      });
+    }
 
     // ============================================================
-    // 🏢 TENANT (ORG / FACILITY) PAYLOAD — FINAL FIX
+    // 🏢 TENANT (ORG / FACILITY) — FIXED
     // ============================================================
-    } else {
+    else {
       const links = user.facilityLinks || [];
 
-      // Facility-level roles
       const facilityRoles = links.filter(
         (fl) =>
           fl.role &&
@@ -471,34 +445,33 @@ export const login = async (req, res) => {
           (fl.organization_id || fl.facility?.organization_id)
       );
 
-// Org-only roles (NO facility)
-const orgRoles = links.filter(
-  fl =>
-    fl.role &&
-    fl.facility_id === null &&
-    fl.organization_id
-);
+      const orgRoles = links.filter(
+        (fl) =>
+          fl.role &&
+          fl.facility_id === null &&
+          fl.organization_id
+      );
 
-
-      // Prefer facility roles, fallback to org roles
       const effectiveRoles =
         facilityRoles.length > 0 ? facilityRoles : orgRoles;
 
-      // ❌ HARD GUARD — prevents silent role loss
       if (links.length > 0 && effectiveRoles.length === 0) {
-      logger.error("[AUTH] Role resolution failed", {
-        userId: user.id,
-        facilityLinks: links.map(l => ({
-          role: l.role?.name,
-          organization_id: l.organization_id,
-          facility_id: l.facility_id,
-        })),
-      });
-
-
         return res.status(500).json({
           error: "User role assignment is invalid. Contact administrator.",
         });
+      }
+
+      // ===============================
+      // ✅ FACILITY INJECTION (KEY FIX)
+      // ===============================
+      let facilityId = null;
+
+      if (facilityRoles.length > 0) {
+        facilityId = facilityRoles[0].facility_id;
+      } else if (orgRoles.length > 0) {
+        facilityId =
+          user.facilityLinks?.find((fl) => fl.facility_id)?.facility_id ||
+          null;
       }
 
       const primaryRole = effectiveRoles[0];
@@ -514,7 +487,7 @@ const orgRoles = links.filter(
         email: user.email,
         token_version: user.token_version,
         organization_id: resolvedOrgId,
-        facility_ids: facilityRoles.map((fl) => fl.facility_id),
+        facility_ids: facilityId ? [facilityId] : [],
         roles: effectiveRoles.map((fl) => ({
           id: fl.role.id,
           name: fl.role.name,
@@ -523,14 +496,6 @@ const orgRoles = links.filter(
             .replace(/[\s_-]+/g, ""),
         })),
       };
-
-      debug.log("LOGIN PAYLOAD RESOLVED", {
-        userId: user.id,
-        isSuperAdmin: false,
-        roles: payload.roles.map(r => r.normalized),
-        organization_id: payload.organization_id,
-        facility_ids: payload.facility_ids,
-      });
     }
 
     // ============================================================
@@ -540,21 +505,10 @@ const orgRoles = links.filter(
 
     const permissions = await getRolePermissions(roleIds, {
       organization_id: payload.organization_id,
-      facility_id:
-        payload.facility_ids.length > 0
-          ? payload.facility_ids[0]
-          : null,
+      facility_id: payload.facility_ids[0] || null,
     });
 
     payload.permissions = permissions || [];
-
-    debug.log("FINAL AUTH PAYLOAD", {
-      userId: payload.id,
-      roles: payload.roles.map(r => r.normalized),
-      organization_id: payload.organization_id,
-      facility_ids: payload.facility_ids,
-      permissionsCount: payload.permissions?.length || 0,
-    });
 
     // ============================================================
     // 🔑 TOKENS
@@ -581,16 +535,21 @@ const orgRoles = links.filter(
         email: user.email,
         name: user.full_name || "",
         role: payload.roles?.[0]?.name || "staff",
+
         organization_id: payload.organization_id,
+
+        // ✅ THIS IS THE MISSING PIECE
+        facility_ids: payload.facility_ids,
+        facility_id: payload.facility_ids?.[0] || null,
+
         permissions: payload.permissions,
       },
     });
+
   } catch (err) {
     logger.error("[AUTH] Login error", {
       message: err.message,
       stack: err.stack,
-      ip: req.ip,
-      agent: req.headers["user-agent"],
     });
     return res.status(500).json({ error: "Server error" });
   }

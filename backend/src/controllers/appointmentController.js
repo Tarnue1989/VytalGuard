@@ -23,6 +23,7 @@ import { auditService } from "../services/auditService.js";
 import { FIELD_VISIBILITY_APPOINTMENT } from "../constants/fieldVisibility.js";
 import { billingService } from "../services/billingService.js";
 
+import { CONSULTATION_STATUS } from "../constants/enums.js";
 import { isSuperAdmin } from "../utils/role-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 import { validate } from "../utils/validation.js";
@@ -32,10 +33,29 @@ import { buildDynamicSummary } from "../utils/summaryHelper.js";
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (APPOINTMENT CONTROLLER)
 ============================================================ */
-const DEBUG_OVERRIDE = false; // 👈 NEVER commit true
+const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("appointmentController", DEBUG_OVERRIDE);
 
 const MODULE_KEY = "appointments";
+
+/* ============================================================
+   🔖 STATUS MAP (MASTER / DELIVERY PARITY)
+============================================================ */
+const AS = {
+  SCHEDULED: APPOINTMENT_STATUS[0],
+  IN_PROGRESS: APPOINTMENT_STATUS[1],
+  COMPLETED: APPOINTMENT_STATUS[2],
+  VERIFIED: APPOINTMENT_STATUS[3],
+  CANCELLED: APPOINTMENT_STATUS[4],
+  NO_SHOW: APPOINTMENT_STATUS[5],
+  VOIDED: APPOINTMENT_STATUS[6],
+};
+
+const BLOCKING_CONSULTATION_STATUSES = [
+  CONSULTATION_STATUS[1], // in_progress
+  CONSULTATION_STATUS[2], // completed
+  CONSULTATION_STATUS[3], // verified
+];
 
 /* ============================================================
    🆔 APPOINTMENT CODE GENERATOR
@@ -47,7 +67,7 @@ function generateAppointmentCode() {
 }
 
 /* ============================================================
-   🔗 SHARED INCLUDES
+   🔗 SHARED INCLUDES (MASTER PARITY)
 ============================================================ */
 const APPOINTMENT_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
@@ -62,7 +82,7 @@ const APPOINTMENT_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 JOI SCHEMA (ROLE-AWARE, SAFE)
+   📋 JOI SCHEMA (MASTER-ALIGNED, TENANT-SAFE)
 ============================================================ */
 function buildAppointmentSchema(user, mode = "create") {
   const base = {
@@ -74,32 +94,23 @@ function buildAppointmentSchema(user, mode = "create") {
     date_time: Joi.date().required(),
     notes: Joi.string().allow("", null),
 
-    // system (injected)
+    // 🔒 lifecycle-controlled
+    status: Joi.forbidden(),
     organization_id: Joi.forbidden(),
     facility_id: Joi.forbidden(),
   };
 
   if (mode === "update") {
-    base.status = Joi.string()
-      .valid(...Object.values(APPOINTMENT_STATUS))
-      .optional();
-
-    Object.keys(base).forEach(k => {
+    Object.keys(base).forEach((k) => {
       base[k] = base[k].optional();
     });
-  }
-
-  // 🔓 Superadmin override
-  if (isSuperAdmin(user)) {
-    base.organization_id = Joi.string().uuid().allow("", null);
-    base.facility_id = Joi.string().uuid().allow("", null);
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 CREATE APPOINTMENT
+   📌 CREATE APPOINTMENT — MASTER / DELIVERY PARITY
 ============================================================ */
 export const createAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -112,21 +123,18 @@ export const createAppointment = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("create → incoming body", req.body);
-
     const { value, errors } = validate(
       buildAppointmentSchema(req.user, "create"),
       req.body
     );
 
     if (errors) {
-      debug.warn("create → validation error", errors);
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= ORG / FACILITY ================= */
-    const { orgId, facilityId } = resolveOrgFacility({
+    /* ================= TENANT RESOLUTION (MASTER) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
@@ -142,16 +150,10 @@ export const createAppointment = async (req, res) => {
       value.appointment_code = generateAppointmentCode();
     }
 
-    debug.log("create → final payload", {
-      ...value,
-      organization_id: orgId,
-      facility_id: facilityId,
-    });
-
     const created = await Appointment.create(
       {
         ...value,
-        status: APPOINTMENT_STATUS.SCHEDULED,
+        status: AS.SCHEDULED,
         organization_id: orgId,
         facility_id: facilityId,
         created_by_id: req.user?.id || null,
@@ -177,13 +179,13 @@ export const createAppointment = async (req, res) => {
     return success(res, "✅ Appointment created", full);
   } catch (err) {
     await t.rollback();
-    debug.error("create → FAILED", err);
+    debug.error("createAppointment → FAILED", err);
     return error(res, "❌ Failed to create appointment", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE APPOINTMENT
+   📌 UPDATE APPOINTMENT — MASTER (NO STATUS, NO BILLING)
 ============================================================ */
 export const updateAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -196,23 +198,18 @@ export const updateAppointment = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-
-    debug.log("update → incoming body", req.body);
-
     const { value, errors } = validate(
       buildAppointmentSchema(req.user, "update"),
       req.body
     );
 
     if (errors) {
-      debug.warn("update → validation error", errors);
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= ORG / FACILITY ================= */
-    const { orgId, facilityId } = resolveOrgFacility({
+    /* ================= TENANT RESOLUTION (MASTER) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
@@ -223,9 +220,11 @@ export const updateAppointment = async (req, res) => {
       return error(res, "Organization is required", null, 400);
     }
 
-    const where = { id };
+    const where = { id: req.params.id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = orgId;
+      if (facilityId) where.facility_id = facilityId;
     }
 
     const record = await Appointment.findOne({ where, transaction: t });
@@ -233,8 +232,6 @@ export const updateAppointment = async (req, res) => {
       await t.rollback();
       return error(res, "Appointment not found", null, 404);
     }
-
-    const oldStatus = record.status;
 
     await record.update(
       {
@@ -246,24 +243,10 @@ export const updateAppointment = async (req, res) => {
       { transaction: t }
     );
 
-    /* ================= DB-DRIVEN BILLING ================= */
-    if (oldStatus !== record.status) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: record,
-        user: {
-          ...req.user,
-          organization_id: orgId,
-          facility_id: facilityId,
-        },
-        transaction: t,
-      });
-    }
-
     await t.commit();
 
     const full = await Appointment.findOne({
-      where: { id },
+      where: { id: record.id },
       include: APPOINTMENT_INCLUDES,
     });
 
@@ -271,141 +254,25 @@ export const updateAppointment = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: record.id,
       entity: full,
-      details: { from: oldStatus, to: record.status },
     });
 
     return success(res, "✅ Appointment updated", full);
   } catch (err) {
     await t.rollback();
-    debug.error("update → FAILED", err);
+    debug.error("updateAppointment → FAILED", err);
     return error(res, "❌ Failed to update appointment", err);
   }
 };
-/* ============================================================
-   📌 TOGGLE APPOINTMENT STATUS (scheduled ↔ cancelled)
-============================================================ */
-export const toggleAppointmentStatus = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const { id } = req.params;
-
-    debug.log("toggle_status → request", { id });
-
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (req.user.facility_id) where.facility_id = req.user.facility_id;
-    }
-
-    const record = await Appointment.findOne({ where, transaction: t });
-    if (!record) {
-      await t.rollback();
-      return error(res, "Appointment not found", null, 404);
-    }
-
-    // 🔎 Block toggle if consultation active/completed
-    const cons = await Consultation.findOne({
-      where: { appointment_id: record.id },
-      transaction: t,
-    });
-
-    if (cons && ["in_progress", "completed", "verified"].includes(cons.status)) {
-      await t.rollback();
-      return error(
-        res,
-        "Cannot toggle appointment with active or completed consultation",
-        null,
-        400
-      );
-    }
-
-    const oldStatus = record.status;
-    let newStatus = oldStatus;
-
-    if (oldStatus === APPOINTMENT_STATUS.SCHEDULED) {
-      newStatus = APPOINTMENT_STATUS.CANCELLED;
-    } else if (oldStatus === APPOINTMENT_STATUS.CANCELLED) {
-      newStatus = APPOINTMENT_STATUS.SCHEDULED;
-    }
-
-    if (oldStatus === newStatus) {
-      await t.rollback();
-      return success(res, "No status change", record);
-    }
-
-    await record.update(
-      { status: newStatus, updated_by_id: req.user?.id || null },
-      { transaction: t }
-    );
-
-    // 💰 Billing (DB-driven)
-    if (newStatus === APPOINTMENT_STATUS.CANCELLED) {
-      await billingService.voidCharges({
-        module: MODULE_KEY,
-        entityId: record.id,
-        user: {
-          ...req.user,
-          organization_id: record.organization_id,
-          facility_id: record.facility_id,
-        },
-        transaction: t,
-      });
-    } else {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: record,
-        user: {
-          ...req.user,
-          organization_id: record.organization_id,
-          facility_id: record.facility_id,
-        },
-        transaction: t,
-      });
-    }
-
-    await t.commit();
-
-    const full = await Appointment.findOne({
-      where: { id },
-      include: APPOINTMENT_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "toggle_status",
-      entityId: id,
-      entity: full,
-      details: { from: oldStatus, to: newStatus },
-    });
-
-    return success(res, `Appointment status set to ${newStatus}`, full);
-  } catch (err) {
-    await t.rollback();
-    debug.error("toggle_status → FAILED", err);
-    return error(res, "Failed to toggle appointment status", err);
-  }
-};
 
 /* ============================================================
-   📌 ACTIVATE APPOINTMENT (scheduled → in_progress)
+   📌 ACTIVATE APPOINTMENT (scheduled → in_progress) — MASTER
 ============================================================ */
 export const activateAppointment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-
-    debug.log("activate → request", { id });
 
     const record = await Appointment.findByPk(id, { transaction: t });
     if (!record) {
@@ -413,37 +280,31 @@ export const activateAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (record.status !== APPOINTMENT_STATUS.SCHEDULED) {
+    if (record.status !== AS.SCHEDULED) {
       await t.rollback();
-      return error(res, "Only scheduled appointments can be activated", null, 400);
+      return error(res, "❌ Only scheduled appointments can be activated", null, 400);
     }
 
-    // 🔎 Prevent activation if consultation exists
+    /* ================= CONSULTATION GUARD ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
     });
     if (cons) {
       await t.rollback();
-      return error(
-        res,
-        "Consultation already exists for this appointment",
-        null,
-        400
-      );
+      return error(res, "❌ Consultation already exists for this appointment", null, 400);
     }
 
     const oldStatus = record.status;
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.IN_PROGRESS,
+        status: AS.IN_PROGRESS,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    // 💰 Billing (DB-driven)
     await billingService.triggerAutoBilling({
       module: MODULE_KEY,
       entity: record,
@@ -457,37 +318,30 @@ export const activateAppointment = async (req, res) => {
 
     await t.commit();
 
-    const full = await Appointment.findOne({
-      where: { id },
-      include: APPOINTMENT_INCLUDES,
-    });
-
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "activate",
       entityId: id,
-      entity: full,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.IN_PROGRESS },
+      entity: record,
+      details: { from: oldStatus, to: AS.IN_PROGRESS },
     });
 
-    return success(res, "Appointment activated", full);
+    return success(res, "✅ Appointment activated", record);
   } catch (err) {
     await t.rollback();
-    debug.error("activate → FAILED", err);
-    return error(res, "Failed to activate appointment", err);
+    debug.error("activateAppointment → FAILED", err);
+    return error(res, "❌ Failed to activate appointment", err);
   }
 };
 
 /* ============================================================
-   📌 COMPLETE APPOINTMENT (in_progress → completed)
+   📌 COMPLETE APPOINTMENT (in_progress → completed) — MASTER
 ============================================================ */
 export const completeAppointment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-
-    debug.log("complete → request", { id });
 
     const record = await Appointment.findByPk(id, { transaction: t });
     if (!record) {
@@ -495,27 +349,22 @@ export const completeAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (record.status !== APPOINTMENT_STATUS.IN_PROGRESS) {
+    if (record.status !== AS.IN_PROGRESS) {
       await t.rollback();
-      return error(
-        res,
-        "Only in-progress appointments can be completed",
-        null,
-        400
-      );
+      return error(res, "❌ Only in-progress appointments can be completed", null, 400);
     }
 
-    // 🔎 Require completed consultation
+    /* ================= CONSULTATION REQUIREMENT ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
     });
 
-    if (!cons || cons.status !== "completed") {
+    if (!cons || cons.status !== CONSULTATION_STATUS[2]) {
       await t.rollback();
       return error(
         res,
-        "Consultation must be completed before closing appointment",
+        "❌ Consultation must be completed before closing appointment",
         null,
         400
       );
@@ -525,13 +374,12 @@ export const completeAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.COMPLETED,
+        status: AS.COMPLETED,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    // 💰 Billing (DB-driven)
     await billingService.triggerAutoBilling({
       module: MODULE_KEY,
       entity: record,
@@ -551,26 +399,23 @@ export const completeAppointment = async (req, res) => {
       action: "complete",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.COMPLETED },
+      details: { from: oldStatus, to: AS.COMPLETED },
     });
 
-    return success(res, "Appointment marked as completed", record);
+    return success(res, "✅ Appointment completed", record);
   } catch (err) {
     await t.rollback();
-    debug.error("complete → FAILED", err);
-    return error(res, "Failed to complete appointment", err);
+    debug.error("completeAppointment → FAILED", err);
+    return error(res, "❌ Failed to complete appointment", err);
   }
 };
-
 /* ============================================================
-   📌 CANCEL APPOINTMENT (scheduled/in_progress → cancelled)
+   📌 CANCEL APPOINTMENT (scheduled/in_progress → cancelled) — MASTER
 ============================================================ */
 export const cancelAppointment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-
-    debug.log("cancel → request", { id });
 
     const record = await Appointment.findByPk(id, { transaction: t });
     if (!record) {
@@ -578,31 +423,27 @@ export const cancelAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (
-      ![
-        APPOINTMENT_STATUS.SCHEDULED,
-        APPOINTMENT_STATUS.IN_PROGRESS,
-      ].includes(record.status)
-    ) {
+    if (![AS.SCHEDULED, AS.IN_PROGRESS].includes(record.status)) {
       await t.rollback();
       return error(
         res,
-        "Only scheduled or in-progress appointments can be cancelled",
+        "❌ Only scheduled or in-progress appointments can be cancelled",
         null,
         400
       );
     }
 
-    // 🔎 Block cancellation if consultation active/completed
+    /* ================= CONSULTATION GUARD ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
     });
-    if (cons && ["in_progress", "completed", "verified"].includes(cons.status)) {
+
+    if (cons && BLOCKING_CONSULTATION_STATUSES.includes(cons.status)) {
       await t.rollback();
       return error(
         res,
-        "Cannot cancel appointment with active or completed consultation",
+        "❌ Cannot cancel appointment with active or completed consultation",
         null,
         400
       );
@@ -612,13 +453,13 @@ export const cancelAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.CANCELLED,
+        status: AS.CANCELLED,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    // 💰 Void billing
+    /* ================= BILLING (VOID) ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -638,19 +479,19 @@ export const cancelAppointment = async (req, res) => {
       action: "cancel",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.CANCELLED },
+      details: { from: oldStatus, to: AS.CANCELLED },
     });
 
-    return success(res, "Appointment cancelled and charges voided", record);
+    return success(res, "✅ Appointment cancelled & charges voided", record);
   } catch (err) {
     await t.rollback();
-    debug.error("cancel → FAILED", err);
-    return error(res, "Failed to cancel appointment", err);
+    debug.error("cancelAppointment → FAILED", err);
+    return error(res, "❌ Failed to cancel appointment", err);
   }
 };
 
 /* ============================================================
-   📌 MARK NO-SHOW APPOINTMENT (scheduled → no_show)
+   📌 MARK NO-SHOW APPOINTMENT (scheduled → no_show) — MASTER
 ============================================================ */
 export const markNoShowAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -664,7 +505,6 @@ export const markNoShowAppointment = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    debug.log("mark_no_show → request", { id });
 
     const where = { id };
     if (!isSuperAdmin(req.user)) {
@@ -678,26 +518,27 @@ export const markNoShowAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (record.status !== APPOINTMENT_STATUS.SCHEDULED) {
+    if (record.status !== AS.SCHEDULED) {
       await t.rollback();
       return error(
         res,
-        "Only scheduled appointments can be marked as no-show",
+        "❌ Only scheduled appointments can be marked as no-show",
         null,
         400
       );
     }
 
-    // 🔎 Block if consultation exists
+    /* ================= CONSULTATION GUARD ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
     });
-    if (cons && ["in_progress", "completed", "verified"].includes(cons.status)) {
+
+    if (cons && BLOCKING_CONSULTATION_STATUSES.includes(cons.status)) {
       await t.rollback();
       return error(
         res,
-        "Cannot mark no-show for appointment with active or completed consultation",
+        "❌ Cannot mark no-show with active or completed consultation",
         null,
         400
       );
@@ -707,7 +548,7 @@ export const markNoShowAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.NO_SHOW,
+        status: AS.NO_SHOW,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -721,19 +562,19 @@ export const markNoShowAppointment = async (req, res) => {
       action: "mark_no_show",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.NO_SHOW },
+      details: { from: oldStatus, to: AS.NO_SHOW },
     });
 
-    return success(res, "Appointment marked as no-show", record);
+    return success(res, "✅ Appointment marked as no-show", record);
   } catch (err) {
     await t.rollback();
-    debug.error("mark_no_show → FAILED", err);
-    return error(res, "Failed to mark appointment as no-show", err);
+    debug.error("markNoShowAppointment → FAILED", err);
+    return error(res, "❌ Failed to mark appointment as no-show", err);
   }
 };
 
 /* ============================================================
-   📌 VOID APPOINTMENT (scheduled/in_progress → voided)
+   📌 VOID APPOINTMENT (any → voided) — MASTER
 ============================================================ */
 export const voidAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -747,7 +588,6 @@ export const voidAppointment = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    debug.log("void → request", { id });
 
     const where = { id };
     if (!isSuperAdmin(req.user)) {
@@ -761,30 +601,22 @@ export const voidAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (
-      [APPOINTMENT_STATUS.VERIFIED, APPOINTMENT_STATUS.VOIDED].includes(
-        record.status
-      )
-    ) {
+    if (record.status === AS.VOIDED) {
       await t.rollback();
-      return error(
-        res,
-        "Cannot void a verified or already voided appointment",
-        null,
-        400
-      );
+      return error(res, "❌ Appointment already voided", null, 400);
     }
 
-    // 🔎 Block void if consultation active/completed
+    /* ================= CONSULTATION GUARD ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
     });
-    if (cons && ["in_progress", "completed", "verified"].includes(cons.status)) {
+
+    if (cons && BLOCKING_CONSULTATION_STATUSES.includes(cons.status)) {
       await t.rollback();
       return error(
         res,
-        "Cannot void appointment with active or completed consultation",
+        "❌ Cannot void appointment with active or completed consultation",
         null,
         400
       );
@@ -792,7 +624,7 @@ export const voidAppointment = async (req, res) => {
 
     const oldStatus = record.status;
 
-    // 💰 Void all related billing
+    /* ================= BILLING (VOID) ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -806,7 +638,7 @@ export const voidAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.VOIDED,
+        status: AS.VOIDED,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -820,19 +652,19 @@ export const voidAppointment = async (req, res) => {
       action: "void",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.VOIDED },
+      details: { from: oldStatus, to: AS.VOIDED },
     });
 
-    return success(res, "Appointment voided successfully", record);
+    return success(res, "✅ Appointment voided & charges rolled back", record);
   } catch (err) {
     await t.rollback();
-    debug.error("void → FAILED", err);
-    return error(res, "Failed to void appointment", err);
+    debug.error("voidAppointment → FAILED", err);
+    return error(res, "❌ Failed to void appointment", err);
   }
 };
 
 /* ============================================================
-   📌 VERIFY APPOINTMENT (completed → verified)
+   📌 VERIFY APPOINTMENT (completed → verified) — MASTER
 ============================================================ */
 export const verifyAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -846,7 +678,6 @@ export const verifyAppointment = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    debug.log("verify → request", { id });
 
     const where = { id };
     if (!isSuperAdmin(req.user)) {
@@ -860,11 +691,11 @@ export const verifyAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (record.status !== APPOINTMENT_STATUS.COMPLETED) {
+    if (record.status !== AS.COMPLETED) {
       await t.rollback();
       return error(
         res,
-        "Only completed appointments can be verified",
+        "❌ Only completed appointments can be verified",
         null,
         400
       );
@@ -874,7 +705,7 @@ export const verifyAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.VERIFIED,
+        status: AS.VERIFIED,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -888,19 +719,18 @@ export const verifyAppointment = async (req, res) => {
       action: "verify",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.VERIFIED },
+      details: { from: oldStatus, to: AS.VERIFIED },
     });
 
-    return success(res, "Appointment verified successfully", record);
+    return success(res, "✅ Appointment verified", record);
   } catch (err) {
     await t.rollback();
-    debug.error("verify → FAILED", err);
-    return error(res, "Failed to verify appointment", err);
+    debug.error("verifyAppointment → FAILED", err);
+    return error(res, "❌ Failed to verify appointment", err);
   }
 };
-
 /* ============================================================
-   📌 DELETE APPOINTMENT (Soft Delete + Billing Rollback)
+   📌 DELETE APPOINTMENT (Soft Delete + Billing Rollback) — MASTER
 ============================================================ */
 export const deleteAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -914,7 +744,6 @@ export const deleteAppointment = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    debug.log("delete → request", { id });
 
     const where = { id };
     if (!isSuperAdmin(req.user)) {
@@ -928,7 +757,7 @@ export const deleteAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    // 🔒 Block delete if consultation exists
+    /* ================= CONSULTATION GUARD ================= */
     const cons = await Consultation.findOne({
       where: { appointment_id: record.id },
       transaction: t,
@@ -937,13 +766,13 @@ export const deleteAppointment = async (req, res) => {
       await t.rollback();
       return error(
         res,
-        "Cannot delete appointment — linked consultation exists",
+        "❌ Cannot delete appointment — linked consultation exists",
         null,
         400
       );
     }
 
-    // 💰 Roll back billing
+    /* ================= BILLING (VOID) ================= */
     await billingService.voidCharges({
       module: MODULE_KEY,
       entityId: record.id,
@@ -955,7 +784,7 @@ export const deleteAppointment = async (req, res) => {
       transaction: t,
     });
 
-    // 🗑️ Soft delete
+    /* ================= SOFT DELETE ================= */
     await record.update(
       { deleted_by_id: req.user?.id || null },
       { transaction: t }
@@ -978,15 +807,16 @@ export const deleteAppointment = async (req, res) => {
       entity: full,
     });
 
-    return success(res, "Appointment deleted (billing rolled back)", full);
+    return success(res, "✅ Appointment deleted (billing rolled back)", full);
   } catch (err) {
     await t.rollback();
-    debug.error("delete → FAILED", err);
-    return error(res, "Failed to delete appointment", err);
+    debug.error("deleteAppointment → FAILED", err);
+    return error(res, "❌ Failed to delete appointment", err);
   }
 };
+
 /* ============================================================
-   📌 RESTORE APPOINTMENT (cancelled/no_show/voided → scheduled)
+   📌 RESTORE APPOINTMENT (cancelled/no_show/voided → scheduled) — MASTER
 ============================================================ */
 export const restoreAppointment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1000,7 +830,6 @@ export const restoreAppointment = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    debug.log("restore → request", { id });
 
     const where = { id };
     if (!isSuperAdmin(req.user)) {
@@ -1018,17 +847,11 @@ export const restoreAppointment = async (req, res) => {
       return error(res, "Appointment not found", null, 404);
     }
 
-    if (
-      ![
-        APPOINTMENT_STATUS.CANCELLED,
-        APPOINTMENT_STATUS.NO_SHOW,
-        APPOINTMENT_STATUS.VOIDED,
-      ].includes(record.status)
-    ) {
+    if (![AS.CANCELLED, AS.NO_SHOW, AS.VOIDED].includes(record.status)) {
       await t.rollback();
       return error(
         res,
-        "Only cancelled, no-show, or voided appointments can be restored",
+        "❌ Only cancelled, no-show, or voided appointments can be restored",
         null,
         400
       );
@@ -1038,7 +861,7 @@ export const restoreAppointment = async (req, res) => {
 
     await record.update(
       {
-        status: APPOINTMENT_STATUS.SCHEDULED,
+        status: AS.SCHEDULED,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -1052,20 +875,19 @@ export const restoreAppointment = async (req, res) => {
       action: "restore",
       entityId: id,
       entity: record,
-      details: { from: oldStatus, to: APPOINTMENT_STATUS.SCHEDULED },
+      details: { from: oldStatus, to: AS.SCHEDULED },
     });
 
-    return success(res, "Appointment restored to scheduled", record);
+    return success(res, "✅ Appointment restored to scheduled", record);
   } catch (err) {
     await t.rollback();
-    debug.error("restore → FAILED", err);
-    return error(res, "Failed to restore appointment", err);
+    debug.error("restoreAppointment → FAILED", err);
+    return error(res, "❌ Failed to restore appointment", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL APPOINTMENTS (Paginated + Summary)
-   ✅ MASTER-ALIGNED (GLOBAL FILTERS + DATE RANGE)
+   📌 GET ALL APPOINTMENTS — MASTER / STRICT (CONSULTATION PARITY)
 ============================================================ */
 export const getAllAppointments = async (req, res) => {
   try {
@@ -1077,89 +899,90 @@ export const getAllAppointments = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ========================================================
-       👤 ROLE → FIELD VISIBILITY
-    ======================================================== */
+    /* ================= ROLE → FIELD VISIBILITY ================= */
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_APPOINTMENT[role] ||
       FIELD_VISIBILITY_APPOINTMENT.staff;
 
-    /* ========================================================
-       ⚙️ BASE QUERY OPTIONS (MASTER)
-    ======================================================== */
+    /* ================= BASE QUERY OPTIONS ================= */
     const options = buildQueryOptions(req, {
       defaultSort: ["date_time", "DESC"],
       fields: visibleFields,
     });
 
-    options.where = options.where || {};
+    options.where = { [Op.and]: [] };
 
-    /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS (CRITICAL – PREVENT DB ERRORS)
-    ======================================================== */
-    if (options.where.dateRange) {
-      delete options.where.dateRange;
-    }
-
-    /* ========================================================
-       📅 DATE RANGE FILTER (SINGLE SOURCE OF TRUTH)
-    ======================================================== */
+    /* ================= DATE RANGE (UI-ONLY, AUDIT-SAFE) ================= */
     if (req.query.dateRange) {
-      const range = normalizeDateRangeLocal(req.query.dateRange);
-      if (range) {
-        options.where.date_time = {
-          ...(options.where.date_time || {}),
-          [Op.between]: [range.start, range.end],
-        };
+      const { start, end } = normalizeDateRangeLocal(req.query.dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
       }
     }
 
-    /* ========================================================
-       🏢 ORG / FACILITY SCOPING (SECURITY FIRST)
-    ======================================================== */
+    /* ================= TENANT SCOPE (EXACT CONSULTATION PARITY) ================= */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
+      // 🔒 Always lock to organization
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
 
-      if (req.user.facility_id) {
-        options.where.facility_id = req.user.facility_id;
+      // 🔒 Facility Head → always locked
+      if (req.user.roleNames?.includes("facility_head")) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+      // ✅ Org Admin / others → ONLY when user selects
+      else if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     } else {
+      // 🧠 SuperAdmin → filters ONLY when selected
       if (req.query.organization_id) {
-        options.where.organization_id = req.query.organization_id;
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
       }
       if (req.query.facility_id) {
-        options.where.facility_id = req.query.facility_id;
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     }
 
-    /* ========================================================
-       🔎 APPLY SAFE FILTERS (MASTER PARITY)
-    ======================================================== */
-    [
-      "department_id",
-      "patient_id",
-      "doctor_id",
-      "status",
-    ].forEach((key) => {
+    /* ================= SAFE FILTERS (USER-DRIVEN ONLY) ================= */
+    ["department_id", "patient_id", "doctor_id"].forEach((key) => {
       if (req.query[key]) {
-        options.where[key] = req.query[key];
+        options.where[Op.and].push({ [key]: req.query[key] });
       }
     });
 
-    /* ========================================================
-       🔍 SEARCH (SAFE FIELDS ONLY)
-    ======================================================== */
-    if (options.search) {
-      options.where[Op.or] = [
-        { notes: { [Op.iLike]: `%${options.search}%` } },
-        { appointment_code: { [Op.iLike]: `%${options.search}%` } },
-      ];
+    if (req.query.status) {
+      const statuses = Array.isArray(req.query.status)
+        ? req.query.status
+        : req.query.status.split(",").map((s) => s.trim());
+      options.where[Op.and].push({
+        status: { [Op.in]: statuses },
+      });
     }
 
-    /* ========================================================
-       📦 QUERY (DISTINCT FOR JOINS)
-    ======================================================== */
+    /* ================= GLOBAL SEARCH ================= */
+    if (options.search) {
+      options.where[Op.and].push({
+        [Op.or]: [
+          { notes: { [Op.iLike]: `%${options.search}%` } },
+          { appointment_code: { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
+    }
+
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Appointment.findAndCountAll({
       where: options.where,
       include: APPOINTMENT_INCLUDES,
@@ -1169,20 +992,16 @@ export const getAllAppointments = async (req, res) => {
       distinct: true,
     });
 
-    /* ========================================================
-       📊 SUMMARY (FILTER-ALIGNED)
-    ======================================================== */
+    /* ================= SUMMARY ================= */
     const summary = await buildDynamicSummary({
       model: Appointment,
       options,
-      statusEnums: Object.values(APPOINTMENT_STATUS),
+      statusEnums: Object.values(AS),
       includeGender: true,
       genderJoin: { model: Patient, as: "patient" },
     });
 
-    /* ========================================================
-       🧾 AUDIT
-    ======================================================== */
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1193,10 +1012,8 @@ export const getAllAppointments = async (req, res) => {
       },
     });
 
-    /* ========================================================
-       ✅ RESPONSE
-    ======================================================== */
-    return success(res, "Appointments loaded", {
+    /* ================= RESPONSE ================= */
+    return success(res, "✅ Appointments loaded", {
       records: rows,
       pagination: {
         total: count,
@@ -1206,14 +1023,13 @@ export const getAllAppointments = async (req, res) => {
       summary,
     });
   } catch (err) {
-    debug.error("list → FAILED", err);
-    return error(res, "Failed to load appointments", err);
+    debug.error("getAllAppointments → FAILED", err);
+    return error(res, "❌ Failed to load appointments", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET APPOINTMENT BY ID
+   📌 GET APPOINTMENT BY ID — MASTER
 ============================================================ */
 export const getAppointmentById = async (req, res) => {
   try {
@@ -1228,16 +1044,30 @@ export const getAppointmentById = async (req, res) => {
     const { id } = req.params;
 
     const where = { id };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (req.user.facility_id) where.facility_id = req.user.facility_id;
+      if (req.user.facility_id) {
+        where.facility_id = req.user.facility_id;
+      }
+    } else {
+      if (req.query.organization_id) {
+        where.organization_id = req.query.organization_id;
+      }
+      if (req.query.facility_id) {
+        where.facility_id = req.query.facility_id;
+      }
     }
 
     const record = await Appointment.findOne({
       where,
       include: APPOINTMENT_INCLUDES,
     });
-    if (!record) return error(res, "Appointment not found", null, 404);
+
+    if (!record) {
+      return error(res, "❌ Appointment not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
@@ -1247,15 +1077,15 @@ export const getAppointmentById = async (req, res) => {
       entity: record,
     });
 
-    return success(res, "Appointment loaded", record);
+    return success(res, "✅ Appointment loaded", record);
   } catch (err) {
-    debug.error("getById → FAILED", err);
-    return error(res, "Failed to load appointment", err);
+    debug.error("getAppointmentById → FAILED", err);
+    return error(res, "❌ Failed to load appointment", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL APPOINTMENTS LITE (?q=)
+   📌 GET ALL APPOINTMENTS LITE — MASTER
 ============================================================ */
 export const getAllAppointmentsLite = async (req, res) => {
   try {
@@ -1270,19 +1100,18 @@ export const getAllAppointmentsLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      status: {
-        [Op.in]: [
-          APPOINTMENT_STATUS.SCHEDULED,
-          APPOINTMENT_STATUS.IN_PROGRESS,
-        ],
-      },
+      status: { [Op.in]: [AS.SCHEDULED, AS.IN_PROGRESS] },
     };
 
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (req.user.facility_id) where.facility_id = req.user.facility_id;
+      if (req.user.facility_id) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
+    /* ================= SEARCH ================= */
     if (q) {
       where[Op.or] = [
         { appointment_code: { [Op.iLike]: `%${q}%` } },
@@ -1304,12 +1133,12 @@ export const getAllAppointmentsLite = async (req, res) => {
       limit: 20,
     });
 
-    const result = rows.map(r => ({
+    const records = rows.map((r) => ({
       id: r.id,
-      code: r.appointment_code,
-      patient: r.patient
-        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
+      label: r.patient
+        ? `${r.patient.pat_no} · ${r.patient.first_name} ${r.patient.last_name}`
         : "",
+      code: r.appointment_code,
       date: r.date_time,
       status: r.status,
     }));
@@ -1318,12 +1147,12 @@ export const getAllAppointmentsLite = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, query: q || null },
+      details: { count: records.length, q: q || null },
     });
 
-    return success(res, "Appointments loaded (lite)", { records: result });
+    return success(res, "✅ Appointments loaded (lite)", { records });
   } catch (err) {
-    debug.error("list_lite → FAILED", err);
-    return error(res, "Failed to load appointments (lite)", err);
+    debug.error("getAllAppointmentsLite → FAILED", err);
+    return error(res, "❌ Failed to load appointments (lite)", err);
   }
 };

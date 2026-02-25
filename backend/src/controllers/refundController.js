@@ -10,74 +10,126 @@ import {
   Organization,
   Facility,
   User,
-  RefundTransaction 
+  RefundTransaction,
 } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { REFUND_STATUS, PAYMENT_STATUS } from "../constants/enums.js"; // ⬅️ fixed: use PAYMENT_STATUS, not PAYMENT_METHODS
+import { validate } from "../utils/validation.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+} from "../utils/role-utils.js";
+
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
+import { REFUND_STATUS, PAYMENT_STATUS } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
 import { FIELD_VISIBILITY_REFUND } from "../constants/fieldVisibility.js";
-import { buildDynamicSummary } from "../utils/summaryHelper.js"; // 🧠 Summary Helper
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
+/* ============================================================
+   🔐 MODULE
+============================================================ */
 const MODULE_KEY = "refund";
 
-// 🔖 Local enum map
+/* ============================================================
+   🔧 LOCAL DEBUG
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("refundController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔖 STATUS MAPS (ENUM-SAFE – MASTER STYLE)
+   ❗ DO NOT HARD-CODE STRINGS
+============================================================ */
 const RS = {
-  PENDING: REFUND_STATUS[0],    // pending
-  APPROVED: REFUND_STATUS[1],   // approved
-  REJECTED: REFUND_STATUS[2],   // rejected
-  PROCESSED: REFUND_STATUS[3],  // processed
-  CANCELLED: REFUND_STATUS[4],  // cancelled
-  REVERSED: REFUND_STATUS[5],   // reversed (new)
+  PENDING:   REFUND_STATUS[0], // 'pending'
+  APPROVED:  REFUND_STATUS[1], // 'approved'
+  REJECTED:  REFUND_STATUS[2], // 'rejected'
+  PROCESSED: REFUND_STATUS[3], // 'processed'
+  CANCELLED: REFUND_STATUS[4], // 'cancelled'
+  REVERSED:  REFUND_STATUS[5], // 'reversed'
+  VOIDED:    REFUND_STATUS[6], // 'voided'
+};
+/* ============================================================
+   🔖 PAYMENT STATUS MAP (ENUM-SAFE – MASTER)
+============================================================ */
+const PS = {
+  PENDING:   PAYMENT_STATUS[0],
+  COMPLETED: PAYMENT_STATUS[1],
+  FAILED:    PAYMENT_STATUS[2],
+  CANCELLED: PAYMENT_STATUS[3],
+  REVERSED:  PAYMENT_STATUS[4],
+  VOIDED:    PAYMENT_STATUS[5],
+  VERIFIED:  PAYMENT_STATUS[6],
 };
 
 /* ============================================================
-   🔧 Helpers
-============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map((r) => r.toLowerCase()).includes("superadmin");
-}
-
-/* ============================================================
-   🔗 Shared includes
+   🔗 SHARED INCLUDES (MASTER PARITY)
 ============================================================ */
 const REFUND_INCLUDES = [
-  { model: Payment, as: "payment", attributes: ["id", "amount", "method", "transaction_ref", "status"] },
-  { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total", "balance"] },
-  { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: RefundTransaction, as: "transactions", attributes: ["id", "amount", "method", "status", "created_at"] },
+  {
+    model: Payment,
+    as: "payment",
+    attributes: ["id", "amount", "method", "transaction_ref", "status"],
+  },
+  {
+    model: Invoice,
+    as: "invoice",
+    attributes: ["id", "invoice_number", "status", "total", "balance"],
+  },
+  {
+    model: Patient,
+    as: "patient",
+    attributes: ["id", "pat_no", "first_name", "last_name"],
+  },
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+  },
+  {
+    model: RefundTransaction,
+    as: "transactions",
+    attributes: ["id", "amount", "method", "status", "created_at"],
+  },
 
-  // 🔹 Audit users
+  // 🔹 audit users
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 
-  // 🔹 Lifecycle audit users
+  // 🔹 lifecycle users
   { model: User, as: "approvedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "rejectedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "processedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "cancelledBy", attributes: ["id", "first_name", "last_name"] },
 ];
-/* ============================================================
-   📋 Joi schema factory – now includes refund "method"
-============================================================ */
+
 function buildRefundSchema(userRole, mode = "create") {
   const base = {
     payment_id: Joi.string().uuid().required(),
-    invoice_id: Joi.string().uuid().required(),
-    patient_id: Joi.string().uuid().required(),
     amount: Joi.number().positive().required(),
-    method: Joi.string()
-      .valid("cash", "card", "bank_transfer", "mobile_money", "cheque")
-      .required(), // ✅ added: refund method required for creation
     reason: Joi.string().min(3).required(),
-    status: Joi.forbidden(), // system-driven
+
+    // ❌ NEVER client-controlled
+    invoice_id: Joi.forbidden(),
+    patient_id: Joi.forbidden(),
+    method: Joi.forbidden(),
+
+    // 🔒 lifecycle controlled
+    status: Joi.forbidden(),
     approved_by_id: Joi.forbidden(),
     rejected_by_id: Joi.forbidden(),
     processed_by_id: Joi.forbidden(),
@@ -86,32 +138,23 @@ function buildRefundSchema(userRole, mode = "create") {
 
   if (mode === "update") {
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
-    base.reason = Joi.string().min(5).optional();
-    base.method = Joi.string()
-      .valid("cash", "card", "bank_transfer", "mobile_money", "cheque")
-      .optional(); // ✅ allow updating method if editable
+    base.reason = Joi.string().min(5).required();
   }
 
-  switch (userRole) {
-    case "superadmin":
-      base.organization_id = Joi.string().uuid().optional();
-      base.facility_id = Joi.string().uuid().optional();
-      break;
-    case "admin":
-    case "facility_head":
-      base.organization_id = Joi.forbidden();
-      base.facility_id = Joi.forbidden();
-      break;
-    default: // staff
-      base.organization_id = Joi.forbidden();
-      base.facility_id = Joi.forbidden();
+  // ✅ tenant resolution is SERVER-SIDE
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().optional();
+    base.facility_id = Joi.string().uuid().allow(null).optional();
+  } else {
+    base.organization_id = Joi.forbidden();
+    base.facility_id = Joi.forbidden();
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 CREATE Refund
+   📌 CREATE Refund (MASTER PARITY – TENANT INHERITED)
 ============================================================ */
 export const createRefund = async (req, res) => {
   const t = await sequelize.transaction();
@@ -124,42 +167,57 @@ export const createRefund = async (req, res) => {
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
-    const schema = buildRefundSchema(role, "create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+    const { value, errors } = validate(
+      buildRefundSchema(role, "create"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
+    /* ================= LOCK PAYMENT (SOURCE OF TRUTH) ================= */
     const payment = await Payment.findByPk(value.payment_id, {
-      include: [
-        { model: Refund, as: "refunds", attributes: ["id", "amount", "status"] },
-      ],
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
+
     if (!payment) {
       await t.rollback();
       return error(res, "❌ Payment not found", null, 404);
     }
-    if (payment.status !== PAYMENT_STATUS[1]) {
+
+    if (payment.status !== PS.COMPLETED) {
       await t.rollback();
       return error(res, "❌ Only completed payments can be refunded", null, 400);
     }
+
     if (payment.is_deposit) {
       await t.rollback();
-      return error(res, "❌ Deposits cannot be refunded directly", null, 400);
+      return error(res, "❌ Deposits cannot be refunded here", null, 400);
     }
 
-    // 🔒 Validate refundable balance
-    const processedRefunds = payment.refunds
-      .filter((r) => r.status === "processed")
-      .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
-    const refundableBalance = parseFloat(payment.amount) - processedRefunds;
+    /* ================= LOAD PROCESSED REFUNDS ================= */
+    const refunds = await Refund.findAll({
+      where: {
+        payment_id: payment.id,
+        status: RS.PROCESSED,
+      },
+      attributes: ["amount"],
+      transaction: t,
+    });
 
-    if (parseFloat(value.amount) > refundableBalance) {
+    const processedRefunds = refunds.reduce(
+      (sum, r) => sum + Number(r.amount || 0),
+      0
+    );
+
+    const refundableBalance =
+      Number(payment.amount || 0) - processedRefunds;
+
+    if (Number(value.amount) > refundableBalance) {
       await t.rollback();
       return error(
         res,
@@ -169,18 +227,15 @@ export const createRefund = async (req, res) => {
       );
     }
 
-    // ✅ Ensure method, organization, facility, and user auditing are saved
-    const refundData = {
-      ...value,
-      method: value.method?.toLowerCase() || "cash",
-      organization_id: value.organization_id || req.user.organization_id,
-      facility_id: value.facility_id || req.user.facility_id,
-      created_by_id: req.user.id,
-    };
-
+    /* ================= APPLY REFUND (TENANT FROM PAYMENT) ================= */
     const { refund } = await financialService.applyRefund({
-      ...refundData,
+      ...value,
+      method: payment.method,
+      organization_id: payment.organization_id,
+      facility_id: payment.facility_id,
+      created_by_id: req.user.id,
       user: req.user,
+      t,
     });
 
     await t.commit();
@@ -196,7 +251,6 @@ export const createRefund = async (req, res) => {
       action: "create",
       entityId: refund.id,
       entity: full,
-      details: refundData,
     });
 
     return success(res, "✅ Refund created", full);
@@ -206,8 +260,9 @@ export const createRefund = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 UPDATE Refund
+   📌 UPDATE Refund (MASTER PARITY – TENANT LOCKED)
 ============================================================ */
 export const updateRefund = async (req, res) => {
   const t = await sequelize.transaction();
@@ -221,27 +276,22 @@ export const updateRefund = async (req, res) => {
     if (!allowed) return;
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const schema = buildRefundSchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (validationError) {
+
+    const { value, errors } = validate(
+      buildRefundSchema(role, "update"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
+    /* ================= LOCK REFUND ================= */
     const record = await Refund.findByPk(req.params.id, {
-      include: [
-        {
-          model: Payment,
-          as: "payment",
-          include: [
-            { model: Refund, as: "refunds", attributes: ["id", "amount", "status"] },
-          ],
-        },
-      ],
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
+
     if (!record) {
       await t.rollback();
       return error(res, "❌ Refund not found", null, 404);
@@ -252,60 +302,65 @@ export const updateRefund = async (req, res) => {
       return error(res, "❌ Processed refunds cannot be updated", null, 400);
     }
 
-    // 🔑 Validate payment change if any
-    let payment = record.payment;
-    if (value.payment_id && value.payment_id !== record.payment_id) {
-      payment = await Payment.findByPk(value.payment_id, {
-        include: [
-          { model: Refund, as: "refunds", attributes: ["id", "amount", "status"] },
-        ],
-        transaction: t,
-      });
-      if (!payment) {
-        await t.rollback();
-        return error(res, "❌ Payment not found", null, 404);
-      }
-      if (payment.status !== PAYMENT_STATUS[1]) {
-        await t.rollback();
-        return error(res, "❌ Only completed payments can be refunded", null, 400);
-      }
-      if (payment.is_deposit) {
-        await t.rollback();
-        return error(res, "❌ Deposits cannot be refunded directly", null, 400);
-      }
+    /* ================= LOCK PAYMENT (TENANT SOURCE) ================= */
+    const payment = await Payment.findByPk(record.payment_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!payment) {
+      await t.rollback();
+      return error(res, "❌ Payment not found", null, 404);
     }
 
-    // 🔎 Require reason if amount changes
-    if (value.amount && parseFloat(value.amount) !== parseFloat(record.amount)) {
-      if (!value.reason) {
-        await t.rollback();
-        return error(res, "❌ Reason required when changing refund amount", null, 400);
-      }
-
-      const processedRefunds = payment.refunds
-        .filter((r) => r.status === "processed" && r.id !== record.id)
-        .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
-      const refundableBalance = parseFloat(payment.amount) - processedRefunds;
-
-      if (parseFloat(value.amount) > refundableBalance) {
-        await t.rollback();
-        return error(
-          res,
-          `❌ Refund amount exceeds refundable balance (${refundableBalance})`,
-          null,
-          400
-        );
-      }
+    if (payment.status !== PS.COMPLETED || payment.is_deposit) {
+      await t.rollback();
+      return error(res, "❌ Invalid payment for refund", null, 400);
     }
 
-    // ✅ Always include method + updated_by_id
-    const updateData = {
-      ...value,
-      method: value.method?.toLowerCase() || record.method,
-      updated_by_id: req.user?.id || null,
-    };
+    /* ================= LOAD OTHER PROCESSED REFUNDS ================= */
+    const refunds = await Refund.findAll({
+      where: {
+        payment_id: payment.id,
+        status: RS.PROCESSED,
+        id: { [Op.ne]: record.id },
+      },
+      attributes: ["amount"],
+      transaction: t,
+    });
 
-    await record.update(updateData, { transaction: t });
+    const processedRefunds = refunds.reduce(
+      (sum, r) => sum + Number(r.amount || 0),
+      0
+    );
+
+    const refundableBalance =
+      Number(payment.amount || 0) - processedRefunds;
+
+    if (
+      value.amount &&
+      Number(value.amount) > refundableBalance
+    ) {
+      await t.rollback();
+      return error(
+        res,
+        `❌ Refund amount exceeds refundable balance (${refundableBalance})`,
+        null,
+        400
+      );
+    }
+
+    /* ================= APPLY UPDATE (TENANT IMMUTABLE) ================= */
+    await record.update(
+      {
+        ...value,
+        organization_id: payment.organization_id,
+        facility_id: payment.facility_id,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
     await t.commit();
 
     const full = await Refund.findOne({
@@ -319,7 +374,6 @@ export const updateRefund = async (req, res) => {
       action: "update",
       entityId: record.id,
       entity: full,
-      details: updateData,
     });
 
     return success(res, "✅ Refund updated", full);
@@ -329,14 +383,11 @@ export const updateRefund = async (req, res) => {
   }
 };
 
-
 /* ============================================================
-   📌 GET ALL Refunds (with Dynamic Summary)
-   — Enterprise Master Pattern (Aligned with Deposits)
+   📌 GET ALL Refunds (MASTER PARITY – PAYMENT/DEPOSIT ALIGNED)
 ============================================================ */
 export const getAllRefunds = async (req, res) => {
   try {
-    // 🔐 Permission Check
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -345,128 +396,176 @@ export const getAllRefunds = async (req, res) => {
     });
     if (!allowed) return;
 
-    // 👤 Role Context
+    /* ================= STRICT PAGINATION (MASTER) ================= */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_REFUND[role] || FIELD_VISIBILITY_REFUND.staff;
 
-    // 🔎 Build Query Options
-    const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-    options.where = options.where || {};
+    /* ================= STRIP UI-ONLY PARAMS (MASTER) ================= */
+    const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
 
-    /* ============================================================
-       📅 Frontend Date Filter Bridge
-    ============================================================ */
-    if (req.query.created_from || req.query.created_to) {
-      const range = {};
-      if (req.query.created_from)
-        range[Op.gte] = new Date(req.query.created_from);
-      if (req.query.created_to) {
-        const end = new Date(req.query.created_to);
-        if (!isNaN(end)) end.setDate(end.getDate() + 1);
-        range[Op.lt] = end;
+    /* ================= BASE QUERY OPTIONS ================= */
+    const options = buildQueryOptions(
+      req,
+      "created_at",
+      "DESC",
+      visibleFields
+    );
+    options.where = { [Op.and]: [] };
+
+    /* ================= DATE RANGE (created_at) ================= */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
       }
-      options.where.created_at = range;
     }
 
-    /* ============================================================
-       🏢 Multi-Tenant Scoping
-    ============================================================ */
+    /* ================= TENANT SCOPE (PAYMENT PARITY) ================= */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facility_head")
-        options.where.facility_id = req.user.facility_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (!isOrgLevelUser(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      } else if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     } else {
-      if (req.query.organization_id)
-        options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    /* ============================================================
-       🎯 Additional Filters (frontend filters)
-    ============================================================ */
-    if (req.query.payment_id) options.where.payment_id = req.query.payment_id;
-    if (req.query.invoice_id) options.where.invoice_id = req.query.invoice_id;
-    if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
-    if (req.query.status) options.where.status = req.query.status;
-    if (req.query.method) options.where.method = req.query.method; // ✅ added
+    /* ================= FILTERS (EXACT MATCH) ================= */
+    if (req.query.payment_id)
+      options.where[Op.and].push({ payment_id: req.query.payment_id });
 
-    /* ============================================================
-       🔍 Search (Reason / Status / Audit Users)
-    ============================================================ */
+    if (req.query.invoice_id)
+      options.where[Op.and].push({ invoice_id: req.query.invoice_id });
+
+    if (req.query.patient_id)
+      options.where[Op.and].push({ patient_id: req.query.patient_id });
+
+    if (req.query.status)
+      options.where[Op.and].push({ status: req.query.status });
+
+    if (req.query.method)
+      options.where[Op.and].push({ method: req.query.method });
+
+    /* ================= GLOBAL SEARCH (ENUM-SAFE) ================= */
     if (options.search) {
       const term = `%${options.search}%`;
-      options.where[Op.or] = [
-        { reason: { [Op.iLike]: term } },
-        { status: { [Op.iLike]: term } },
-        { method: { [Op.iLike]: term } },
-        { "$approvedBy.first_name$": { [Op.iLike]: term } },
-        { "$approvedBy.last_name$": { [Op.iLike]: term } },
-        { "$processedBy.first_name$": { [Op.iLike]: term } },
-        { "$processedBy.last_name$": { [Op.iLike]: term } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { reason: { [Op.iLike]: term } },
+          sequelize.where(
+            sequelize.cast(sequelize.col("Refund.status"), "text"),
+            { [Op.iLike]: term }
+          ),
+          sequelize.where(
+            sequelize.cast(sequelize.col("Refund.method"), "text"),
+            { [Op.iLike]: term }
+          ),
+        ],
+      });
     }
 
-    /* ============================================================
-       📦 Fetch Paginated Results
-    ============================================================ */
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Refund.findAndCountAll({
       where: options.where,
       include: REFUND_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
     });
 
-    /* ============================================================
-       🧠 Lifecycle + Aggregate Summary
-    ============================================================ */
-    let summary = {};
-    try {
-      summary = await buildDynamicSummary({
-        model: Refund,
-        options,
-        statusEnums: Object.values(REFUND_STATUS).filter(Boolean),
-        includeGender: true,
-        genderJoin: { model: Patient, as: "patient" },
+    /* ================= SUMMARY (TENANT-ENFORCED) ================= */
+    const summaryOptions = {
+      ...options,
+      where: { ...options.where },
+    };
+
+    if (!isSuperAdmin(req.user)) {
+      summaryOptions.where.organization_id = req.user.organization_id;
+    } else if (req.query.organization_id) {
+      summaryOptions.where.organization_id = req.query.organization_id;
+    } else {
+      return success(res, "✅ Refunds loaded", {
+        records: rows,
+        pagination: {
+          total: count,
+          page,
+          limit,
+          pageCount: Math.ceil(count / limit),
+        },
+        summary: null,
       });
-    } catch (sumErr) {
-      console.warn("⚠️ Refund summary failed:", sumErr.message);
-      summary = {};
     }
 
-    /* ============================================================
-       🧾 Audit Trail
-    ============================================================ */
+    const summary = await buildDynamicSummary({
+      model: Refund,
+      options: summaryOptions,
+      statusEnums: Object.values(REFUND_STATUS),
+      includeGender: true,
+      genderJoin: { model: Patient, as: "patient" },
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: safeQuery,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
-    /* ============================================================
-       ✅ Unified Response
-    ============================================================ */
     return success(res, "✅ Refunds loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
-      summary, // ← lifecycle + totals + gender breakdown
     });
   } catch (err) {
+    if (err.statusCode === 400) {
+      return error(res, err.message, null, 400);
+    }
     return error(res, "❌ Failed to load refunds", err);
   }
 };
 
 
 /* ============================================================
-   📌 GET Refund by ID
+   📌 GET Refund by ID (MASTER PARITY – TENANT LOCKED)
 ============================================================ */
 export const getRefundById = async (req, res) => {
   try {
@@ -474,27 +573,38 @@ export const getRefundById = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "read",
-      res
+      res,
     });
     if (!allowed) return;
 
     const where = { id: req.params.id };
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
-    // 🔹 Tenant scoping
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      if (!isOrgLevelUser(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    } else {
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    const record = await Refund.findOne({ where, include: REFUND_INCLUDES });
-    if (!record) return error(res, "❌ Refund not found", null, 404);
+    const record = await Refund.findOne({
+      where,
+      include: REFUND_INCLUDES,
+    });
+
+    if (!record) {
+      return error(res, "❌ Refund not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "view",
-      entityId: req.params.id,
+      entityId: record.id,
       entity: record,
     });
 
@@ -504,79 +614,147 @@ export const getRefundById = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 DELETE Refund
+   📌 DELETE Refund (MASTER PARITY – TENANT SAFE)
 ============================================================ */
 export const deleteRefund = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const record = await Refund.findByPk(id, { transaction: t });
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { id: req.params.id };
+
+    if (!isSuperAdmin(req.user)) {
+      where.organization_id = req.user.organization_id;
+      if (req.user?.facility_id) {
+        where.facility_id = req.user.facility_id;
+      }
+    }
+
+    const record = await Refund.findOne({
+      where,
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
     if (!record) {
       await t.rollback();
       return error(res, "❌ Refund not found", null, 404);
     }
 
-    await record.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
+    if (record.status === RS.PROCESSED) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Processed refunds cannot be deleted",
+        null,
+        400
+      );
+    }
+
+    await record.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
     await record.destroy({ transaction: t });
+
     await t.commit();
 
-    const full = await Refund.findOne({ where: { id }, include: REFUND_INCLUDES, paranoid: false });
+    const full = await Refund.findOne({
+      where: { id: record.id },
+      include: REFUND_INCLUDES,
+      paranoid: false,
+    });
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "delete",
-      entityId: id,
+      entityId: record.id,
       entity: full,
     });
 
     return success(res, "✅ Refund deleted", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete refund", err);
   }
 };
+
+
 /* ============================================================
-   📌 GET Refunds Lite
+   📌 GET Refunds Lite (MASTER AUTOCOMPLETE)
 ============================================================ */
 export const getAllRefundsLite = async (req, res) => {
   try {
-    const { q } = req.query;
-    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
-    const where = {};
+    const { q } = req.query;
+    const where = { [Op.and]: [] };
+
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (req.user?.facility_id) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
     }
 
     if (q) {
-      where[Op.or] = [
-        { reason: { [Op.iLike]: `%${q}%` } },
-        { status: { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { reason: { [Op.iLike]: `%${q}%` } },
+          { status: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
     const refunds = await Refund.findAll({
       where,
       attributes: ["id", "amount", "reason", "status", "created_at"],
       include: [
-        { model: Payment, as: "payment", attributes: ["id", "transaction_ref", "method"] },
-        { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
+        {
+          model: Payment,
+          as: "payment",
+          attributes: ["id", "transaction_ref", "method"],
+        },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
       ],
       order: [["created_at", "DESC"]],
       limit: 20,
     });
 
-    const result = refunds.map((r) => ({
+    const records = refunds.map((r) => ({
       id: r.id,
       amount: r.amount,
       status: r.status,
       reason: r.reason,
-      method: r.payment ? r.payment.method : "", // ✅ safe pull from Payment
-      payment: r.payment ? r.payment.transaction_ref : "",
-      patient: r.patient ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}` : "",
+      method: r.payment?.method || "",
+      payment: r.payment?.transaction_ref || "",
+      patient: r.patient
+        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
+        : "",
       created_at: r.created_at,
     }));
 
@@ -584,61 +762,80 @@ export const getAllRefundsLite = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, query: q || null },
+      details: { count: records.length, query: q || null },
     });
 
-    return success(res, "✅ Refunds loaded (lite)", { records: result });
+    return success(res, "✅ Refunds loaded (lite)", { records });
   } catch (err) {
     return error(res, "❌ Failed to load refunds (lite)", err);
   }
 };
+
 
 /* ============================================================
    📌 APPROVE Refund (pending → approved)
 ============================================================ */
 export const approveRefund = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { refund } = await financialService.approveRefund(id, req.user);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "approve",
+      res,
+    });
+    if (!allowed) return;
+
+    const { refund } = await financialService.approveRefund(
+      req.params.id,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "approve",
-      entityId: id,
+      entityId: refund.id,
       entity: refund,
     });
 
     return success(res, "✅ Refund approved", refund);
   } catch (err) {
-    console.error("approveRefund error:", err);
     return error(res, "❌ Failed to approve refund", err);
   }
 };
 
+
 /* ============================================================
-   📌 PROCESS Refund (approved → processed, ledger + invoice)
+   📌 PROCESS Refund (approved → processed)
 ============================================================ */
 export const processRefund = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { refund, invoice } = await financialService.processRefund(id, req.user);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "process",
+      res,
+    });
+    if (!allowed) return;
+
+    const { refund, invoice } =
+      await financialService.processRefund(req.params.id, req.user);
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "process",
-      entityId: id,
+      entityId: refund.id,
       entity: refund,
       details: { invoice },
     });
 
     return success(res, "✅ Refund processed", { refund, invoice });
   } catch (err) {
-    console.error("processRefund error:", err);
     return error(res, "❌ Failed to process refund", err);
   }
 };
+
 
 /* ============================================================
    📌 REVERSE Refund (processed → reversed)
@@ -647,127 +844,150 @@ export const reverseRefund = async (req, res) => {
   try {
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
     if (!["admin", "superadmin"].includes(role)) {
-      return error(res, "❌ Only admin/superadmin can reverse refunds", null, 403);
+      return error(
+        res,
+        "❌ Only admin/superadmin can reverse refunds",
+        null,
+        403
+      );
     }
 
-    const { id } = req.params;
-    const result = await financialService.reverseRefund(id, req.user);
+    const result = await financialService.reverseRefund(
+      req.params.id,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "reverse",
-      entityId: id,
+      entityId: req.params.id,
       entity: result.refund,
       details: { reason: req.body?.reason || "manual reversal" },
     });
 
-    return success(res, result.message || "✅ Refund reversed", result);
+    return success(
+      res,
+      result.message || "✅ Refund reversed",
+      result
+    );
   } catch (err) {
-    console.error("reverseRefund error:", err);
     return error(res, "❌ Failed to reverse refund", err);
   }
 };
+
 
 /* ============================================================
    📌 REJECT Refund (pending → rejected)
 ============================================================ */
 export const rejectRefund = async (req, res) => {
   try {
-    const { id } = req.params;
     const reason = req.body?.reason;
     if (!reason) {
       return error(res, "❌ Reason required to reject refund", null, 400);
     }
 
-    const { refund } = await financialService.rejectRefund(id, reason, req.user);
+    const { refund } = await financialService.rejectRefund(
+      req.params.id,
+      reason,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "reject",
-      entityId: id,
+      entityId: refund.id,
       entity: refund,
     });
 
     return success(res, "✅ Refund rejected", refund);
   } catch (err) {
-    console.error("rejectRefund error:", err);
     return error(res, "❌ Failed to reject refund", err);
   }
 };
+
 
 /* ============================================================
    📌 CANCEL Refund (pending/approved → cancelled)
 ============================================================ */
 export const cancelRefund = async (req, res) => {
   try {
-    const { id } = req.params;
     const reason = req.body?.reason;
     if (!reason) {
       return error(res, "❌ Reason required to cancel refund", null, 400);
     }
 
-    const { refund } = await financialService.cancelRefund(id, reason, req.user);
+    const { refund } = await financialService.cancelRefund(
+      req.params.id,
+      reason,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "cancel",
-      entityId: id,
+      entityId: refund.id,
       entity: refund,
     });
 
     return success(res, "✅ Refund cancelled", refund);
   } catch (err) {
-    console.error("cancelRefund error:", err);
     return error(res, "❌ Failed to cancel refund", err);
   }
 };
+
+
 /* ============================================================
    📌 VOID Refund (any → voided)
 ============================================================ */
 export const voidRefund = async (req, res) => {
   try {
-    const { id } = req.params;
     const reason = req.body?.reason || "manual void";
-    const result = await financialService.voidRefund(id, reason, req.user);
+
+    const result = await financialService.voidRefund(
+      req.params.id,
+      reason,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
-      module: "refund",
+      module: MODULE_KEY,
       action: "void",
-      entityId: id,
+      entityId: result.refund.id,
       entity: result.refund,
       details: { reason },
     });
 
     return success(res, "✅ Refund voided", result.refund);
   } catch (err) {
-    console.error("voidRefund error:", err);
     return error(res, "❌ Failed to void refund", err);
   }
 };
+
 
 /* ============================================================
    📌 RESTORE Refund (voided/reversed → pending)
 ============================================================ */
 export const restoreRefund = async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await financialService.restoreRefund(id, req.user);
+    const result = await financialService.restoreRefund(
+      req.params.id,
+      req.user
+    );
 
     await auditService.logAction({
       user: req.user,
-      module: "refund",
+      module: MODULE_KEY,
       action: "restore",
-      entityId: id,
+      entityId: result.refund.id,
       entity: result.refund,
     });
 
     return success(res, "✅ Refund restored", result.refund);
   } catch (err) {
-    console.error("restoreRefund error:", err);
     return error(res, "❌ Failed to restore refund", err);
   }
 };

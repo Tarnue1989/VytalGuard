@@ -1,13 +1,6 @@
 // 📁 backend/src/controllers/refundDepositController.js
 // ============================================================================
-// 🔹 ENTERPRISE-GRADE DEPOSIT REFUND CONTROLLER
-// Lifecycle:
-// pending → review → approved → processed → reversed → restored
-//          ↘ rejected → restored
-//          ↘ cancelled → restored
-//          ↘ voided → restored
-// 🔹 Full audit trail, tenant scoping, Joi validation, summary engine
-// 🔹 Mirrors refundController.js structure for consistency
+// 🔹 ENTERPRISE-GRADE DEPOSIT REFUND CONTROLLER (MASTER-ALIGNED CORE)
 // ============================================================================
 
 import Joi from "joi";
@@ -20,41 +13,59 @@ import {
   Patient,
   Organization,
   Facility,
-  User
+  User,
 } from "../models/index.js";
+import { validate } from "../utils/validation.js";
+import { buildDynamicSummary } from "../utils/summaryHelper.js";
 
 import { success, error } from "../utils/response.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import {
+  isSuperAdmin,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { refundDepositService } from "../services/refundDepositService.js";
 
 import { FIELD_VISIBILITY_REFUND_DEPOSIT } from "../constants/fieldVisibility.js";
-import { buildQueryOptions } from "../utils/queryHelper.js";
-import { buildDynamicSummary } from "../utils/summaryHelper.js";
-import {
-  DEPOSIT_REFUND_STATUS
-} from "../constants/enums.js";
+import { DEPOSIT_REFUND_STATUS } from "../constants/enums.js";
 
+/* ============================================================
+   🔐 MODULE
+============================================================ */
 const MODULE_KEY = "refund_deposit";
 
-// 🔖 Local enum map
-const RS = DEPOSIT_REFUND_STATUS;
-
-
 /* ============================================================
-   🔧 Helpers
+   🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map((r) => r.toLowerCase()).includes("superadmin");
-}
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("refundDepositController", DEBUG_OVERRIDE);
 
 /* ============================================================
-   🔗 Includes
+   🔖 STATUS MAP (ENUM-SAFE – MASTER STYLE)
+============================================================ */
+const RS = {
+  PENDING:   DEPOSIT_REFUND_STATUS.PENDING,
+  REVIEW:    DEPOSIT_REFUND_STATUS.REVIEW,
+  APPROVED:  DEPOSIT_REFUND_STATUS.APPROVED,
+  PROCESSED: DEPOSIT_REFUND_STATUS.PROCESSED,
+  REJECTED:  DEPOSIT_REFUND_STATUS.REJECTED,
+  CANCELLED: DEPOSIT_REFUND_STATUS.CANCELLED,
+  VOIDED:    DEPOSIT_REFUND_STATUS.VOIDED,
+  REVERSED:  DEPOSIT_REFUND_STATUS.REVERSED,
+  RESTORED:  DEPOSIT_REFUND_STATUS.RESTORED,
+};
+
+/* ============================================================
+   🔗 SHARED INCLUDES (MASTER PARITY)
 ============================================================ */
 const REFUND_DEPOSIT_INCLUDES = [
-  // 🔹 Deposit Info
   {
     model: Deposit,
     as: "deposit",
@@ -62,46 +73,41 @@ const REFUND_DEPOSIT_INCLUDES = [
       "id",
       "amount",
       "remaining_balance",
-      "transaction_ref"
-    ]
+      "transaction_ref",
+      "status",
+    ],
   },
-
-  // 🔹 Patient Info
   {
     model: Patient,
     as: "patient",
-    attributes: [
-      "id",
-      "pat_no",
-      "first_name",
-      "last_name"
-    ]
+    attributes: ["id", "pat_no", "first_name", "last_name"],
   },
-
-  // 🔹 Org & Facility
-  { model: Organization, as: "organization", attributes: ["id", "name"] },
-  { model: Facility, as: "facility", attributes: ["id", "name"] },
-
-  // 🔹 Audit Trail Users (Full Lifecycle)
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+  },
+  {
+    model: Facility,
+    as: "facility",
+    attributes: ["id", "name", "code", "organization_id"],
+  },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
-
   { model: User, as: "approvedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "processedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "reversedBy", attributes: ["id", "first_name", "last_name"] },
-
   { model: User, as: "rejectedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "cancelledBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "voidedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "restoredBy", attributes: ["id", "first_name", "last_name"] },
 ];
 
-
 /* ============================================================
-   📋 Joi Schema (Enterprise Grade)
+   📋 Joi Schema (MASTER-ALIGNED, ROLE-AWARE, SERVICE-CONTROLLED)
 ============================================================ */
-function buildRefundDepositSchema(mode = "create") {
+function buildRefundDepositSchema(userRole, mode = "create") {
   const base = {
     deposit_id: Joi.string().uuid().required(),
     refund_amount: Joi.number().positive().required(),
@@ -110,8 +116,11 @@ function buildRefundDepositSchema(mode = "create") {
       .required(),
     reason: Joi.string().min(3).required(),
 
-    // forbidden – system controlled
+    // 🔒 STRICTLY SERVICE / LEDGER CONTROLLED
     status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
+    patient_id: Joi.forbidden(),
     created_by_id: Joi.forbidden(),
     approved_by_id: Joi.forbidden(),
     processed_by_id: Joi.forbidden(),
@@ -121,19 +130,23 @@ function buildRefundDepositSchema(mode = "create") {
 
   if (mode === "update") {
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
-    base.reason = Joi.string().min(3).optional();
+    base.reason = Joi.string().min(3).required();
   }
 
   return Joi.object(base);
 }
 
 /* ============================================================
-   📌 CREATE Deposit Refund → (status: pending)
+   📌 CREATE Deposit Refund (status → PENDING) — MASTER PARITY
 ============================================================ */
 export const createRefundDeposit = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
+    debug.error("createRefundDeposit → REQUEST", {
+      userId: req.user?.id,
+      depositId: req.body?.deposit_id,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -142,23 +155,50 @@ export const createRefundDeposit = async (req, res) => {
     });
     if (!allowed) return;
 
-    const schema = buildRefundDepositSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
+    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
-    if (validationError) {
+    const { value, errors } = validate(
+      buildRefundDepositSchema(role, "create"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    // ⭐ FIXED: Correct service function name + correct argument names
+    /* ========================================================
+       🔒 LOCK DEPOSIT (SOURCE OF TRUTH — TENANT INHERITANCE)
+    ======================================================== */
+    const deposit = await Deposit.findByPk(value.deposit_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!deposit) {
+      await t.rollback();
+      return error(res, "❌ Deposit not found", null, 404);
+    }
+
+    const orgId = deposit.organization_id;
+    const facilityId = deposit.facility_id || null;
+
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "❌ Deposit has no organization", null, 400);
+    }
+
+    /* ========================================================
+       💰 CREATE REFUND (LEDGER FIRST)
+    ======================================================== */
     const result = await refundDepositService.createRefund({
       deposit_id: value.deposit_id,
       amount: value.refund_amount,
       method: value.method,
       reason: value.reason,
-      user: req.user
+      organization_id: orgId,
+      facility_id: facilityId,
+      user: req.user,
+      t,
     });
 
     await t.commit();
@@ -172,26 +212,28 @@ export const createRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "create",
-      entityId: result.refund.id,
+      entityId: full.id,
       entity: full,
-      details: value,
     });
 
     return success(res, "✅ Deposit refund created (pending)", full);
-
   } catch (err) {
-    if (!t.finished) await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to create deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE Deposit Refund (only pending allowed)
+   📌 UPDATE Deposit Refund (PENDING only) — MASTER PARITY
 ============================================================ */
 export const updateRefundDeposit = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
+    debug.error("updateRefundDeposit → REQUEST", {
+      userId: req.user?.id,
+      refundId: req.params.id,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -200,9 +242,12 @@ export const updateRefundDeposit = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* ========================================================
+       🔒 LOCK REFUND
+    ======================================================== */
     const record = await RefundDeposit.findByPk(req.params.id, {
-      include: REFUND_DEPOSIT_INCLUDES,
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!record) {
@@ -215,22 +260,23 @@ export const updateRefundDeposit = async (req, res) => {
       return error(res, "❌ Only pending refunds can be updated", null, 400);
     }
 
-    const schema = buildRefundDepositSchema("update");
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
+    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
-    if (validationError) {
+    const { value, errors } = validate(
+      buildRefundDepositSchema(role, "update"),
+      req.body
+    );
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
     await record.update(
       {
-        refund_amount: value.refund_amount ?? record.refund_amount,
-        method: value.method?.toLowerCase() ?? record.method,
-        reason: value.reason ?? record.reason,
-        updated_by_id: req.user.id,
+        refund_amount: value.refund_amount,
+        method: value.method,
+        reason: value.reason,
+        updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
@@ -246,25 +292,23 @@ export const updateRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "update",
-      entityId: record.id,
+      entityId: full.id,
       entity: full,
-      details: value,
     });
 
     return success(res, "✅ Deposit refund updated", full);
-
   } catch (err) {
-    if (!t.finished) await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to update deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 APPROVE Deposit Refund (pending → approved)
+   📌 APPROVE Deposit Refund (PENDING → APPROVED) — MASTER
 ============================================================ */
 export const approveRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.approveRefund({
+    const { refund } = await refundDepositService.approveRefund({
       refund_id: req.params.id,
       user: req.user,
     });
@@ -273,74 +317,97 @@ export const approveRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "approve",
-      entityId: req.params.id,
-      entity: result.refund,
+      entityId: refund.id,
+      entity: refund,
     });
 
-    return success(res, "✅ Deposit refund approved", result);
+    return success(res, "✅ Deposit refund approved", refund);
   } catch (err) {
     return error(res, "❌ Failed to approve deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 PROCESS Deposit Refund (approved → processed)
+   📌 PROCESS Deposit Refund (APPROVED → PROCESSED) — MASTER
 ============================================================ */
 export const processRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.processRefund({
-      refund_id: req.params.id,
-      user: req.user,
-    });
+    const { refund, deposit } =
+      await refundDepositService.processRefund({
+        refund_id: req.params.id,
+        user: req.user,
+      });
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "process",
-      entityId: req.params.id,
-      entity: result.refund,
-      details: result.deposit,
+      entityId: refund.id,
+      entity: refund,
+      details: { deposit_id: deposit?.id || null },
     });
 
-    return success(res, "✅ Deposit refund processed", result);
+    return success(res, "✅ Deposit refund processed", {
+      refund,
+      deposit,
+    });
   } catch (err) {
     return error(res, "❌ Failed to process deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 VOID Deposit Refund (pending/approved → voided)
+   📌 VOID Deposit Refund (PENDING / APPROVED → VOIDED) — MASTER
 ============================================================ */
 export const voidRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.voidRefund({
+    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+    if (!["admin", "superadmin"].includes(role)) {
+      return error(
+        res,
+        "❌ Only admin/superadmin can void deposit refunds",
+        null,
+        403
+      );
+    }
+
+    const { refund } = await refundDepositService.voidRefund({
       refund_id: req.params.id,
       user: req.user,
-      reason: req.body?.reason || "manual void"
+      reason: req.body?.reason || "manual void",
     });
 
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "void",
-      entityId: req.params.id,
-      entity: result.refund,
+      entityId: refund.id,
+      entity: refund,
+      details: { reason: req.body?.reason || "manual void" },
     });
 
-    return success(res, "✅ Deposit refund voided", result.refund);
-
+    return success(res, "✅ Deposit refund voided", refund);
   } catch (err) {
     return error(res, "❌ Failed to void deposit refund", err);
   }
 };
 
-
 /* ============================================================
-   📌 REVERSE Deposit Refund (processed → reversed)
+   📌 REVERSE Deposit Refund (PROCESSED → REVERSED) — MASTER
 ============================================================ */
 export const reverseRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.reverseRefund({
+    const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+    if (!["admin", "superadmin"].includes(role)) {
+      return error(
+        res,
+        "❌ Only admin/superadmin can reverse deposit refunds",
+        null,
+        403
+      );
+    }
+
+    const { refund } = await refundDepositService.reverseRefund({
       refund_id: req.params.id,
       user: req.user,
       reason: req.body?.reason || "manual reversal",
@@ -350,22 +417,23 @@ export const reverseRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "reverse",
-      entityId: req.params.id,
-      entity: result.refund,
+      entityId: refund.id,
+      entity: refund,
+      details: { reason: req.body?.reason || "manual reversal" },
     });
 
-    return success(res, "✅ Deposit refund reversed", result);
+    return success(res, "✅ Deposit refund reversed", refund);
   } catch (err) {
     return error(res, "❌ Failed to reverse deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 RESTORE Deposit Refund (voided → pending)
+   📌 RESTORE Deposit Refund (VOIDED / CANCELLED / REJECTED → PENDING)
 ============================================================ */
 export const restoreRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.restoreRefund({
+    const { refund } = await refundDepositService.restoreRefund({
       refund_id: req.params.id,
       user: req.user,
     });
@@ -374,19 +442,18 @@ export const restoreRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "restore",
-      entityId: req.params.id,
-      entity: result.refund,
+      entityId: refund.id,
+      entity: refund,
     });
 
-    return success(res, "✅ Deposit refund restored", result.refund);
+    return success(res, "✅ Deposit refund restored", refund);
   } catch (err) {
     return error(res, "❌ Failed to restore deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL Deposit Refunds (Paginated + Summary)
-   — Enterprise Master Pattern
+   📌 GET ALL Deposit Refunds (MASTER PARITY)
 ============================================================ */
 export const getAllRefundDeposits = async (req, res) => {
   try {
@@ -398,11 +465,20 @@ export const getAllRefundDeposits = async (req, res) => {
     });
     if (!allowed) return;
 
-    // role context & visible fields
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_REFUND_DEPOSIT[role] ||
       FIELD_VISIBILITY_REFUND_DEPOSIT.staff;
+
+    const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
 
     const options = buildQueryOptions(
       req,
@@ -411,133 +487,135 @@ export const getAllRefundDeposits = async (req, res) => {
       visibleFields
     );
 
-    options.where = options.where || {};
+    options.where = { [Op.and]: [] };
 
-    /* ============================================================
-       📅 Date Range Filtering
-    ============================================================ */
-    if (req.query.created_from || req.query.created_to) {
-      const range = {};
-      if (req.query.created_from)
-        range[Op.gte] = new Date(req.query.created_from);
-
-      if (req.query.created_to) {
-        const end = new Date(req.query.created_to);
-        end.setDate(end.getDate() + 1); // inclusive end date
-        range[Op.lt] = end;
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
       }
-      options.where.created_at = range;
     }
 
-    /* ============================================================
-       🏢 Tenant Scoping
-    ============================================================ */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
 
-      if (role === "facility_head") {
-        options.where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
       }
     } else {
-      // allow superadmin filtering
-      if (req.query.organization_id)
-        options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    /* ============================================================
-       🎯 Additional Filters
-    ============================================================ */
-    if (req.query.deposit_id) options.where.deposit_id = req.query.deposit_id;
-    if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
-    if (req.query.status) options.where.status = req.query.status;
-    if (req.query.method) options.where.method = req.query.method;
+    if (req.query.deposit_id)
+      options.where[Op.and].push({ deposit_id: req.query.deposit_id });
 
-    /* ============================================================
-       🔍 Search (Reason / Status / Patient / Method)
-    ============================================================ */
+    if (req.query.patient_id)
+      options.where[Op.and].push({ patient_id: req.query.patient_id });
+
+    if (req.query.status)
+      options.where[Op.and].push({ status: req.query.status });
+
+    if (req.query.method)
+      options.where[Op.and].push({ method: req.query.method });
+
     if (options.search) {
-      const term = `%${options.search}%`;
-
-      options.where[Op.or] = [
-        { reason: { [Op.iLike]: term } },
-        { status: { [Op.iLike]: term } },
-        { method: { [Op.iLike]: term } },
-        { "$patient.first_name$": { [Op.iLike]: term } },
-        { "$patient.last_name$": { [Op.iLike]: term } },
-        { "$patient.pat_no$": { [Op.iLike]: term } },
-      ];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { reason: { [Op.iLike]: `%${options.search}%` } },
+          { method: { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.first_name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.last_name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.pat_no$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
-    /* ============================================================
-       📦 Execute Paginated Query
-    ============================================================ */
     const { count, rows } = await RefundDeposit.findAndCountAll({
       where: options.where,
       include: REFUND_DEPOSIT_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
     });
 
-    /* ============================================================
-       🧠 Build Summary Report (Lifecycle + Totals + Gender)
-    ============================================================ */
-    let summary = {};
-    try {
-      summary = await buildDynamicSummary({
-        model: RefundDeposit,
-        options,
-        statusEnums: DEPOSIT_REFUND_STATUS,
-        includeGender: true,
-        genderJoin: { model: Patient, as: "patient" },
-      });
-    } catch (err) {
-      console.warn("⚠️ Deposit refund summary failed:", err.message);
-      summary = {};
-    }
+    const summary = await buildDynamicSummary({
+      model: RefundDeposit,
+      options,
+      statusEnums: Object.values(RS),
+      includeGender: true,
+      genderJoin: { model: Patient, as: "patient" },
+    });
 
-    /* ============================================================
-       🧾 Audit
-    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: safeQuery,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
-    /* ============================================================
-       ✅ Final Response
-    ============================================================ */
     return success(res, "✅ Deposit refunds loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
-      summary,
     });
   } catch (err) {
+    if (err.statusCode === 400) {
+      return error(res, err.message, null, 400);
+    }
     return error(res, "❌ Failed to load deposit refunds", err);
   }
 };
 
 /* ============================================================
-   📌 GET Deposit Refund by ID
+   📌 GET Deposit Refund by ID (MASTER PARITY – TENANT LOCKED)
 ============================================================ */
 export const getRefundDepositById = async (req, res) => {
   try {
-    const where = { id: req.params.id };
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
-    // tenant scoping
+    const where = { id: req.params.id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
+    } else {
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     const record = await RefundDeposit.findOne({
@@ -545,7 +623,9 @@ export const getRefundDepositById = async (req, res) => {
       include: REFUND_DEPOSIT_INCLUDES,
     });
 
-    if (!record) return error(res, "❌ Deposit refund not found", null, 404);
+    if (!record) {
+      return error(res, "❌ Deposit refund not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
@@ -562,13 +642,22 @@ export const getRefundDepositById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 DELETE Deposit Refund (soft delete)
+   📌 DELETE Deposit Refund (MASTER PARITY – STATUS SAFE)
 ============================================================ */
 export const deleteRefundDeposit = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const record = await RefundDeposit.findByPk(req.params.id, {
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!record) {
@@ -576,16 +665,26 @@ export const deleteRefundDeposit = async (req, res) => {
       return error(res, "❌ Deposit refund not found", null, 404);
     }
 
+    if (record.status === RS.PROCESSED) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Processed deposit refunds cannot be deleted",
+        null,
+        400
+      );
+    }
+
     await record.update(
-      { deleted_by_id: req.user.id },
+      { deleted_by_id: req.user?.id || null },
       { transaction: t }
     );
-
     await record.destroy({ transaction: t });
+
     await t.commit();
 
     const full = await RefundDeposit.findOne({
-      where: { id: req.params.id },
+      where: { id: record.id },
       include: REFUND_DEPOSIT_INCLUDES,
       paranoid: false,
     });
@@ -600,46 +699,78 @@ export const deleteRefundDeposit = async (req, res) => {
 
     return success(res, "✅ Deposit refund deleted", full);
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 GET Deposit Refunds (LITE)
-   — Used for dropdowns and autocomplete
+   📌 GET Deposit Refunds (LITE – MASTER AUTOCOMPLETE)
 ============================================================ */
 export const getAllRefundDepositsLite = async (req, res) => {
   try {
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = {};
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
-    // tenant scoping
+    const where = { [Op.and]: [] };
+
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facility_head") where.facility_id = req.user.facility_id;
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    // keyword search
     if (req.query.q) {
       const term = `%${req.query.q}%`;
-      where[Op.or] = [
-        { reason: { [Op.iLike]: term } },
-        { status: { [Op.iLike]: term } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { reason: { [Op.iLike]: term } },
+          { status: { [Op.iLike]: term } },
+        ],
+      });
     }
 
     const rows = await RefundDeposit.findAll({
       where,
       include: [
-        { model: Deposit, as: "deposit", attributes: ["id"] },
-        { model: Patient, as: "patient", attributes: ["pat_no", "first_name", "last_name"] },
+        {
+          model: Deposit,
+          as: "deposit",
+          attributes: ["id"],
+        },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["pat_no", "first_name", "last_name"],
+        },
       ],
       order: [["created_at", "DESC"]],
       limit: 20,
     });
 
-    const mapped = rows.map((r) => ({
+    const records = rows.map((r) => ({
       id: r.id,
       refund_amount: r.refund_amount,
       method: r.method,
@@ -650,18 +781,28 @@ export const getAllRefundDepositsLite = async (req, res) => {
       created_at: r.created_at,
     }));
 
-    return success(res, "✅ Deposit refunds loaded (lite)", { records: mapped });
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: {
+        count: records.length,
+        query: req.query.q || null,
+      },
+    });
+
+    return success(res, "✅ Deposit refunds loaded (lite)", { records });
   } catch (err) {
     return error(res, "❌ Failed to load deposit refunds (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 REVIEW Deposit Refund (pending → review)
+   📌 REVIEW Deposit Refund (PENDING → REVIEW) — MASTER
 ============================================================ */
 export const reviewRefundDeposit = async (req, res) => {
   try {
-    const result = await refundDepositService.reviewRefund(
+    const { refund } = await refundDepositService.reviewRefund(
       req.params.id,
       req.user
     );
@@ -670,28 +811,32 @@ export const reviewRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "review",
-      entityId: req.params.id,
-      entity: result.refund,
+      entityId: refund.id,
+      entity: refund,
     });
 
-    return success(res, "✅ Deposit refund moved to review", result.refund);
+    return success(res, "✅ Deposit refund moved to review", refund);
   } catch (err) {
     return error(res, "❌ Failed to review deposit refund", err);
   }
 };
 
 /* ============================================================
-   📌 REJECT Deposit Refund (pending/review → rejected)
-   — Requires reason
+   📌 REJECT Deposit Refund (PENDING / REVIEW → REJECTED)
 ============================================================ */
 export const rejectRefundDeposit = async (req, res) => {
   try {
     const reason = req.body?.reason;
-    if (!reason || reason.trim().length < 2) {
-      return error(res, "❌ Reason is required to reject this refund", null, 400);
+    if (!reason || reason.trim().length < 3) {
+      return error(
+        res,
+        "❌ Reason is required to reject this refund",
+        null,
+        400
+      );
     }
 
-    const result = await refundDepositService.rejectRefund(
+    const { refund } = await refundDepositService.rejectRefund(
       req.params.id,
       req.user,
       reason
@@ -701,31 +846,33 @@ export const rejectRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "reject",
-      entityId: req.params.id,
-      entity: result.refund,
-      details: { reason }
+      entityId: refund.id,
+      entity: refund,
+      details: { reason },
     });
 
-    return success(res, "❌ Deposit refund rejected", result.refund);
-
+    return success(res, "❌ Deposit refund rejected", refund);
   } catch (err) {
     return error(res, "❌ Failed to reject deposit refund", err);
   }
 };
 
-
 /* ============================================================
-   📌 CANCEL Deposit Refund (pending/approved → cancelled)
-   — Requires reason
+   📌 CANCEL Deposit Refund (PENDING / APPROVED → CANCELLED)
 ============================================================ */
 export const cancelRefundDeposit = async (req, res) => {
   try {
     const reason = req.body?.reason;
-    if (!reason || reason.trim().length < 2) {
-      return error(res, "❌ Reason is required to cancel this refund", null, 400);
+    if (!reason || reason.trim().length < 3) {
+      return error(
+        res,
+        "❌ Reason is required to cancel this refund",
+        null,
+        400
+      );
     }
 
-    const result = await refundDepositService.cancelRefund(
+    const { refund } = await refundDepositService.cancelRefund(
       req.params.id,
       req.user,
       reason
@@ -735,13 +882,12 @@ export const cancelRefundDeposit = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "cancel",
-      entityId: req.params.id,
-      entity: result.refund,
-      details: { reason }
+      entityId: refund.id,
+      entity: refund,
+      details: { reason },
     });
 
-    return success(res, "🚫 Deposit refund cancelled", result.refund);
-
+    return success(res, "🚫 Deposit refund cancelled", refund);
   } catch (err) {
     return error(res, "❌ Failed to cancel deposit refund", err);
   }

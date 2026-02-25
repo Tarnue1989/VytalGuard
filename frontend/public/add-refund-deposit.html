@@ -1,19 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VytalGuard - Add Deposit Refund</title>
 
-  <meta name="description" content="VytalGuard HMS - Add a Deposit Refund" />
-  <link rel="shortcut icon" href="assets/images/favicon.svg" />
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add a Deposit Refund">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
 
   <!-- CSS -->
-  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css" />
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
   <link rel="stylesheet" href="assets/css/admin-global.css" />
-  <link rel="stylesheet" href="assets/css/main.min.css" />
-  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css" />
-  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
 </head>
 
 <body>
@@ -30,7 +32,9 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Deposit Refunds</li>
-          <li class="breadcrumb-item text-primary">Add Deposit Refund</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">
+            Add Deposit Refund
+          </li>
         </ol>
       </div>
 
@@ -42,134 +46,184 @@
               <div class="card-header">
                 <h5 class="card-title">Add Deposit Refund</h5>
               </div>
-
               <div class="card-body">
 
-              <!-- 📦 Form Container -->
-              <div id="formContainer">
-                <form id="refundDepositForm">
-                  <div class="row gx-3 gy-3">
+                <!-- 📦 Form Container -->
+                <div id="formContainer">
+                  <form id="refundDepositForm" novalidate>
+                    <div class="row gx-4">
 
-                    <!-- Patient (required) -->
-                    <div class="col-lg-3 col-sm-6 position-relative">
-                      <label class="form-label" for="patientInput">
-                        Patient <span class="text-danger">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        class="form-control suggestion-input"
-                        id="patientInput"
-                        placeholder="Search patient..."
-                        autocomplete="off"
-                      />
-                      <input type="hidden" id="patientId" name="patient_id" />
-                      <div id="patientSuggestions" class="suggestions"></div>
-                    </div>
-
-                    <!-- Deposit Select -->
-                    <div class="col-lg-3 col-sm-6">
-                      <label class="form-label" for="depositInput">
-                        Deposit <span class="text-danger">*</span>
-                      </label>
-                      <input type="hidden" id="depositId" name="deposit_id" />
-                      <select id="depositInput" class="form-control">
-                        <option value="">-- Select Deposit --</option>
-                      </select>
-                    </div>
-
-                    <!-- Refund Amount -->
-                    <div class="col-lg-3 col-sm-6">
-                      <label class="form-label" for="refund_amount">
-                        Refund Amount <span class="text-danger">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        id="refund_amount"
-                        name="refund_amount"
-                        class="form-control"
-                      />
-                    </div>
-
-                    <!-- Method -->
-                    <div class="col-lg-3 col-sm-6">
-                      <label class="form-label" for="methodSelect">
-                        Method <span class="text-danger">*</span>
-                      </label>
-                      <select id="methodSelect" class="form-control" name="method">
-                        <option value="">-- Select Method --</option>
-                        <option value="cash">Cash</option>
-                        <option value="card">Card</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="mobile_money">Mobile Money</option>
-                        <option value="cheque">Cheque</option>
-                      </select>
-                    </div>
-
-                    <!-- Reason -->
-                    <div class="col-lg-3 col-sm-6">
-                      <label class="form-label" for="reason">
-                        Reason <span class="text-danger">*</span>
-                      </label>
-                      <textarea
-                        id="reason"
-                        name="reason"
-                        rows="2"
-                        class="form-control"
-                        placeholder="Enter reason for refund"
-                      ></textarea>
-                    </div>
-
-                    <!-- Organization -->
-                    <div class="col-lg-3 col-sm-6 form-group">
-                      <label class="form-label" for="organizationSelect">Organization</label>
-                      <select
-                        id="organizationSelect"
-                        name="organization_id"
-                        class="form-control"
-                      ></select>
-                    </div>
-
-                    <!-- Facility -->
-                    <div class="col-lg-3 col-sm-6 form-group">
-                      <label class="form-label" for="facilitySelect">Facility</label>
-                      <select
-                        id="facilitySelect"
-                        name="facility_id"
-                        class="form-control"
-                      ></select>
-                    </div>
-
-                    <!-- Buttons -->
-                    <div class="col-sm-12">
-                      <div class="d-flex gap-2 justify-content-end">
-                        <button
-                          type="button"
-                          id="cancelRefundDepositBtn"
-                          class="btn btn-outline-secondary"
-                        >
-                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
-                        </button>
-
-                        <button
-                          type="reset"
-                          id="clearRefundDepositBtn"
-                          class="btn btn-warning"
-                        >
-                          <i class="ri-refresh-line me-1"></i> Clear
-                        </button>
-
-                        <button type="submit" class="btn btn-primary">
-                          <i class="ri-save-3-line me-1"></i> Save Refund
-                        </button>
+                      <!-- ================= Identity ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Identity</h6>
+                        <hr />
                       </div>
+
+                      <!-- Patient -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12 position-relative">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="patientInput">
+                            Patient <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            class="form-control suggestion-input"
+                            id="patientInput"
+                            placeholder="Search patient..."
+                            autocomplete="off"
+                          />
+                          <input
+                            type="hidden"
+                            id="patientId"
+                            name="patient_id"
+                          />
+                          <div id="patientSuggestions" class="suggestions"></div>
+                        </div>
+                      </div>
+
+                      <!-- Deposit -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="depositInput">
+                            Deposit <span class="text-danger">*</span>
+                          </label>
+
+                          <select
+                            id="depositInput"
+                            class="form-control"
+                          >
+                            <option value="">— Select Deposit —</option>
+                          </select>
+
+                          <!-- REQUIRED hidden field (JS writes here) -->
+                          <input type="hidden" id="depositId" name="deposit_id" />
+                        </div>
+                      </div>
+
+
+                      <!-- Refund Amount -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="refund_amount">
+                            Refund Amount <span class="text-danger">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            class="form-control"
+                            id="refund_amount"
+                            name="refund_amount"
+                          />
+                        </div>
+                      </div>
+
+                      <!-- Method -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="methodSelect">
+                            Method <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="methodSelect"
+                            name="method"
+                          >
+                            <option value="">— Select Method —</option>
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="mobile_money">Mobile Money</option>
+                            <option value="cheque">Cheque</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Reason -->
+                      <div class="col-xxl-6 col-lg-8 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="reason">
+                            Reason <span class="text-danger">*</span>
+                          </label>
+                          <textarea
+                            class="form-control"
+                            id="reason"
+                            name="reason"
+                            rows="2"
+                            placeholder="Enter reason for refund"
+                          ></textarea>
+                        </div>
+                      </div>
+
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
+                      </div>
+
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="organizationSelect">
+                            Organization <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="organizationSelect"
+                            name="organization_id"
+                          >
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="facilitySelect">
+                            Facility
+                            <span class="text-muted">(optional)</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="facilitySelect"
+                            name="facility_id"
+                          >
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- ================= Actions ================= -->
+                      <div class="col-sm-12">
+                        <div class="d-flex gap-2 justify-content-end">
+                          <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-outline-secondary"
+                          >
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
+                          </button>
+                          <button
+                            type="reset"
+                            id="clearBtn"
+                            class="btn btn-warning"
+                          >
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
+                          </button>
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                          >
+                            <i class="ri-save-3-line me-1"></i>
+                            Save Refund
+                          </button>
+                        </div>
+                      </div>
+
                     </div>
-
-                  </div>
-                </form>
-              </div>
-              <!-- /formContainer -->
-
+                  </form>
+                </div>
+                <!-- /formContainer -->
 
               </div>
             </div>
@@ -201,8 +255,10 @@
   <script src="assets/vendor/daterange/custom-daterange.js"></script>
   <script src="assets/js/custom.js"></script>
 
-  <script type="module"
-          src="/js/modules/refund-deposits/add-refund-deposit.js"></script>
-
+  <!-- Module JS -->
+  <script
+    type="module"
+    src="/js/modules/refund-deposits/add-refund-deposit.js"
+  ></script>
 </body>
 </html>

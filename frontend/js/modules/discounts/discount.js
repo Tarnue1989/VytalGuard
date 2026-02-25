@@ -1,66 +1,53 @@
-// 📦 discounts.js – Enterprise Entry Point (Master Pattern Aligned)
+// 📦 discounts.js – Entry Point (Enterprise-Aligned MASTER Pattern)
 // ============================================================================
-// 🔹 Mirrors deposits.js for unified structure, lifecycle, and RBAC consistency
-// 🔹 Handles both form + list initialization seamlessly and safely
+// 🧭 Master Pattern: deposits.js / consultation.js / department.js / role.js
+// 🔹 Unified initialization entry for the Discount module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 NO lifecycle logic, NO manual wiring, NO API calls
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters + table + pagination)
+// 🧭 Main module init (handles filter, table, card, pagination, summary, export)
 import { initDiscountModule } from "./discount-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
-import { setupActionHandlers } from "./discount-actions.js";
+// ⚙️ Lifecycle + action handlers (side-effect registration ONLY)
+import "./discount-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or column builders)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_DISCOUNT,
   FIELD_ORDER_DISCOUNT,
   FIELD_DEFAULTS_DISCOUNT,
 } from "./discount-constants.js";
 
-// 🛠️ Utilities
+// 🛠 Utilities
 import { showToast, hideLoading } from "../../utils/index.js";
 
 /* ============================================================
-   🚀 Module Boot
+   🚀 DOM-Ready Bootstrap (MASTER SAFE GUARD)
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    const hasForm = document.getElementById("discountForm");
-    const hasList = document.getElementById("discountTableBody");
-
-    // ✅ Initialize if form or list exists
-    if (hasForm || hasList) await initDiscountModule();
-
-    // ✅ If list page → setup action handlers dynamically
-    if (hasList) {
-      const userRole = (localStorage.getItem("userRole") || "staff").toLowerCase();
-      const perms = JSON.parse(localStorage.getItem("permissions") || "[]");
-      const user = { role: userRole, permissions: perms };
-
-      const token = localStorage.getItem("accessToken") || "";
-      const sharedState = { currentEditIdRef: { value: null } };
-      const currentPage = 1;
-      const loadEntries = async () => {};
-      const visibleFields =
-        FIELD_DEFAULTS_DISCOUNT[userRole] || FIELD_DEFAULTS_DISCOUNT.staff;
-
-      setupActionHandlers({
-        entries: window.latestDiscountEntries || [],
-        token,
-        currentPage,
-        loadEntries,
-        visibleFields,
-        sharedState,
-        user,
-      });
+    // 🧩 Initialize only if a Discount form or list container exists
+    if (
+      document.getElementById("discountForm") ||
+      document.getElementById("discountList") ||
+      document.getElementById("discountTableBody")
+    ) {
+      await initDiscountModule();
     }
+
+    // (Optional future expansion – list-only init hook)
+    // if (document.getElementById("discountTableBody")) {
+    //   await initDiscountListModule();
+    // }
+
   } catch (err) {
-    console.error("❌ Failed to initialize discount module", err);
+    console.error("❌ Failed to initialize Discount module", err);
     hideLoading();
-    showToast("❌ Failed to load discount module");
+    showToast("❌ Failed to load Discount module");
   }
 });

@@ -1,28 +1,73 @@
-// 📁 employee-render.js – Entity Card System (Enterprise Master)
+// 📁 employee-render.js – Entity Card System (EMPLOYEE | ENTERPRISE MASTER)
 // ============================================================================
-// 🧭 EXACT PARITY with patient-render.js
-// 🔹 Header → Context → Body → Extras → Audit → Actions
+// 🧭 FULL MASTER PARITY WITH patient-render.js
+// 🔹 Table = flat | Card = RICH + professional
 // 🔹 Field-selector safe
-// 🔹 Audit fields INCLUDED (createdBy / updatedBy / timestamps)
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 FULL audit section (created / updated / deleted)
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
+// 🔹 Media fields (photo / resume / document) handled correctly
 // ============================================================================
 
 import { FIELD_LABELS_EMPLOYEE } from "./employee-constants.js";
+import { calculateAge } from "../../utils/calculateAge.js";
+
 import {
   formatDate,
   formatDateTime,
   initTooltips,
 } from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons
+   🔃 SORTABLE FIELDS (MASTER)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "employee_no",
+  "first_name",
+  "last_name",
+  "gender",
+  "status",
+  "dob",
+  "hire_date",
+  "created_at",
+  "updated_at",
+  "organization",
+  "facility",
+  "department",
+]);
+
+let sortBy = localStorage.getItem("employeeSortBy") || "";
+let sortDir = localStorage.getItem("employeeSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("employeeSortBy", sortBy);
+  localStorage.setItem("employeeSortDir", sortDir);
+
+  window.setEmployeeSort?.(sortBy, sortDir);
+  window.loadEmployeePage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTIONS
 ============================================================ */
 function getEmployeeActionButtons(entry, user) {
   return buildActionButtons({
     module: "employee",
     status: (entry.status || "").toLowerCase(),
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "employees",
@@ -30,7 +75,7 @@ function getEmployeeActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head (UNCHANGED – PARITY)
+   🧱 TABLE HEAD (DYNAMIC + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -42,10 +87,32 @@ export function renderDynamicTableHead(visibleFields) {
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
-      FIELD_LABELS_EMPLOYEE[field] || field.replace(/_/g, " ");
     th.dataset.key = field;
-    if (field === "actions") th.classList.add("actions-cell");
+
+    const label = FIELD_LABELS_EMPLOYEE[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc"
+          ? "ri-arrow-up-line"
+          : "ri-arrow-down-line";
+      }
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
@@ -57,56 +124,65 @@ export function renderDynamicTableHead(visibleFields) {
   colgroup = document.createElement("colgroup");
   visibleFields.forEach(() => {
     const col = document.createElement("col");
-    col.style.width = "150px";
+    col.style.width = "160px";
     colgroup.appendChild(col);
   });
-
   table.prepend(colgroup);
+
   enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadEmployeePage?.(1),
+  });
 }
 
 /* ============================================================
-   🔠 Helpers
+   🔠 HELPERS
 ============================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : "—";
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return (
+    [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ") ||
+    u.full_name ||
+    u.email ||
+    "—"
+  );
 }
 
-function renderFileField(url, type = "file", label = null) {
-  if (!url) return "—";
-  const safeUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
-  const fileName = safeUrl.split("/").pop();
-
-  if (type === "image") {
-    return `
-      <a href="${safeUrl}" target="_blank">
-        <img src="${safeUrl}" class="rounded shadow-sm"
-             style="max-width:60px;" />
-      </a>
-    `;
-  }
-
+function renderImage(url, size = 64) {
+  if (!url) return "";
+  const src = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
   return `
-    <a href="${safeUrl}" target="_blank">
-      <i class="ri-file-2-line me-1"></i>${label || fileName}
+    <a href="${src}" target="_blank">
+      <img src="${src}" class="rounded shadow-sm"
+           style="width:${size}px;height:${size}px;object-fit:cover;" />
     </a>
   `;
 }
 
+function renderFile(url, label) {
+  if (!url) return "—";
+  const src = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
+  const name = src.split("/").pop();
+  return `<a href="${src}" target="_blank">${label || name}</a>`;
+}
+
 /* ============================================================
-   🧩 Field Value Renderer (TABLE + CARD)
+   🧩 VALUE RENDERER (OBJECT SAFE)
 ============================================================ */
 function renderValue(entry, field, viewMode = "card") {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      let cls = "bg-secondary";
-      if (raw === "active") cls = "bg-success";
-      if (raw === "inactive") cls = "bg-warning text-dark";
-      if (raw === "terminated") cls = "bg-danger";
-      return `<span class="badge ${cls}">${raw.toUpperCase()}</span>`;
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "active" ? "bg-success" :
+        s === "inactive" ? "bg-warning text-dark" :
+        s === "terminated" ? "bg-danger" :
+        "bg-secondary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
     case "organization":
@@ -132,157 +208,225 @@ function renderValue(entry, field, viewMode = "card") {
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
     case "photo_path":
-      return viewMode === "table"
-        ? renderFileField(entry.photo_path, "file", "Photo")
-        : renderFileField(entry.photo_path, "image");
+      return viewMode === "table" ? "Photo" : renderImage(entry.photo_path, 80);
 
     case "resume_url":
-      return renderFileField(entry.resume_url, "file", "Resume");
+      return renderFile(entry.resume_url, "Resume");
 
     case "document_url":
-      return renderFileField(entry.document_url, "file", "Document");
+      return renderFile(entry.document_url, "Document");
 
-    default:
-      return entry[field] != null ? String(entry[field]) : "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
+}
+function renderFileLink(url, label = "View File") {
+  if (!url) return "—";
+
+  const href = url.startsWith("/uploads/")
+    ? url
+    : `/uploads/${url}`;
+
+  return `
+    <a href="${href}"
+       target="_blank"
+       rel="noopener"
+       class="text-primary fw-semibold">
+       📎 ${label}
+    </a>
+  `;
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — ENTITY SYSTEM (EMPLOYEE | FINAL)
+   🗂️ EMPLOYEE CARD RENDERER — ENTERPRISE / MASTER
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const has = f => visibleFields.includes(f);
-  const safe = v => (v !== null && v !== undefined && v !== "" ? v : "—");
-
-  const fieldRow = (label, value) => `
-    <div class="entity-field">
-      <span class="entity-label">${label}</span>
-      <span class="entity-value">${safe(value)}</span>
-    </div>
-  `;
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
   const fullName =
     entry.full_name ||
-    [entry.first_name, entry.middle_name, entry.last_name].filter(Boolean).join(" ") ||
+    [entry.first_name, entry.middle_name, entry.last_name]
+      .filter(Boolean)
+      .join(" ") ||
     "Unnamed Employee";
-
-  /* ================= HEADER ================= */
-  const status = (entry.status || "").toLowerCase();
-
-  const header = `
-    <div class="entity-card-header">
-      <div>
-        <div class="entity-secondary">${safe(entry.employee_no)}</div>
-        <div class="entity-primary">${fullName}</div>
-      </div>
-      ${
-        has("status")
-          ? `<span class="entity-status ${status}">
-               ${status.toUpperCase()}
-             </span>`
-          : ""
-      }
-    </div>
-  `;
-
-  /* ================= CONTEXT ================= */
-  const contextItems = [];
-  if (has("organization")) contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
-  if (has("facility")) contextItems.push(`📍 ${safe(entry.facility?.name)}`);
-  if (has("position")) contextItems.push(`🧑‍⚕️ ${safe(entry.position)}`);
-
-  const context = contextItems.length
-    ? `<div class="entity-card-context">
-         ${contextItems.map(v => `<div>${v}</div>`).join("")}
-       </div>`
-    : "";
-
-  /* ================= BODY ================= */
-  const left = [];
-  const right = [];
-
-  if (has("gender")) left.push(fieldRow("Gender", entry.gender));
-  if (has("dob")) left.push(fieldRow("DOB", formatDate(entry.dob)));
-  if (has("department")) left.push(fieldRow("Department", entry.department?.name));
-  if (has("license_no")) left.push(fieldRow("License No.", entry.license_no));
-
-  if (has("phone")) right.push(fieldRow("Phone", entry.phone));
-  if (has("email")) right.push(fieldRow("Email", entry.email));
-  if (has("address")) right.push(fieldRow("Address", entry.address));
-  if (has("photo_path")) right.push(fieldRow("Photo", renderValue(entry, "photo_path")));
-
-  const body = `
-    <div class="entity-card-body">
-      <div>${left.join("")}</div>
-      <div>${right.join("")}</div>
-    </div>
-  `;
-
-  /* ================= AUTO EXTRA ================= */
-  const usedFields = new Set([
-    "employee_no","first_name","middle_name","last_name","full_name",
-    "status","organization","facility","department","position",
-    "gender","dob","license_no",
-    "phone","email","address",
-    "photo_path","resume_url","document_url",
-    "created_at","updated_at","deleted_at",
-    "createdBy","updatedBy","deletedBy",
-    "actions"
-  ]);
-
-  const extraFields = visibleFields
-    .filter(f => !usedFields.has(f))
-    .map(f => fieldRow(FIELD_LABELS_EMPLOYEE[f] || f, renderValue(entry, f)));
-
-  const extrasSection = extraFields.length
-    ? `<details class="entity-notes">
-         <summary>More Details</summary>
-         <div class="entity-card-body">
-           <div>${extraFields.slice(0, Math.ceil(extraFields.length / 2)).join("")}</div>
-           <div>${extraFields.slice(Math.ceil(extraFields.length / 2)).join("")}</div>
-         </div>
-       </details>`
-    : "";
-
-  /* ================= AUDIT ================= */
-  const audit =
-    has("created_at") || has("updated_at")
-      ? `<details class="entity-notes">
-           <summary>Audit</summary>
-           <div class="entity-card-body">
-             <div>
-               ${has("createdBy") ? fieldRow("Created By", renderValue(entry, "createdBy")) : ""}
-               ${has("created_at") ? fieldRow("Created At", renderValue(entry, "created_at")) : ""}
-             </div>
-             <div>
-               ${has("updatedBy") ? fieldRow("Updated By", renderValue(entry, "updatedBy")) : ""}
-               ${has("updated_at") ? fieldRow("Updated At", renderValue(entry, "updated_at")) : ""}
-             </div>
-           </div>
-         </details>`
-      : "";
-
-  /* ================= ACTIONS ================= */
-  const actions = has("actions")
-    ? `<div class="entity-card-footer">
-         ${getEmployeeActionButtons(entry, user)}
-       </div>`
-    : "";
 
   return `
     <div class="entity-card employee-card">
-      ${header}
-      ${context}
-      ${body}
-      ${extrasSection}
-      ${audit}
-      ${actions}
+
+      <!-- ================= HEADER ================= -->
+      <div class="entity-card-header d-flex align-items-center gap-3">
+        ${
+          has("photo_path")
+            ? `<div class="entity-avatar">
+                 ${renderImage(entry.photo_path, 64)}
+               </div>`
+            : ""
+        }
+
+        <div class="entity-header-main flex-grow-1">
+          ${
+            has("employee_no")
+              ? `<div class="entity-secondary">${safe(entry.employee_no)}</div>`
+              : ""
+          }
+          <div class="entity-primary">${safe(fullName)}</div>
+        </div>
+
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">
+                 ${safe(status.toUpperCase())}
+               </span>`
+            : ""
+        }
+      </div>
+
+      <!-- ================= CONTEXT ================= -->
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${safe(entry.organization.name)}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${safe(entry.facility.name)}</div>` : ""}
+        ${entry.department ? `<div>🏢 ${safe(entry.department.name)}</div>` : ""}
+        ${entry.position ? `<div>🧑‍⚕️ ${safe(entry.position)}</div>` : ""}
+        ${
+          entry.dob
+            ? `<div>🎂 DOB: ${formatDate(entry.dob)} • ${calculateAge(entry.dob)}</div>`
+            : ""
+        }
+      </div>
+
+
+      <!-- ================= BODY ================= -->
+      <div class="entity-card-body">
+        ${
+          has("gender")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Gender</span>
+                 <span class="entity-value">${safe(entry.gender)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("phone")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Phone</span>
+                 <span class="entity-value">${safe(entry.phone)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("email")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Email</span>
+                 <span class="entity-value">${safe(entry.email)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("address")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Address</span>
+                 <span class="entity-value">${safe(entry.address)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("license_no")
+            ? `<div class="entity-field">
+                 <span class="entity-label">License</span>
+                 <span class="entity-value">${safe(entry.license_no)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("specialty")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Specialty</span>
+                 <span class="entity-value">${safe(entry.specialty)}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("resume_url")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Resume</span>
+                 <span class="entity-value">${renderFileLink(entry.resume_url, "View Resume")}</span>
+               </div>`
+            : ""
+        }
+
+        ${
+          has("document_url")
+            ? `<div class="entity-field">
+                 <span class="entity-label">Document</span>
+                 <span class="entity-value">${renderFileLink(entry.document_url, "View Document")}</span>
+               </div>`
+            : ""
+        }
+      </div>
+
+      <!-- ================= AUDIT ================= -->
+      <details class="entity-audit">
+        <summary>Audit</summary>
+
+        <div class="entity-card-body">
+          <div class="entity-field">
+            <span class="entity-label">Created By</span>
+            <span class="entity-value">${renderUserName(entry.createdBy)}</span>
+          </div>
+
+          <div class="entity-field">
+            <span class="entity-label">Created At</span>
+            <span class="entity-value">${formatDateTime(entry.created_at)}</span>
+          </div>
+
+          <div class="entity-field">
+            <span class="entity-label">Updated By</span>
+            <span class="entity-value">${renderUserName(entry.updatedBy)}</span>
+          </div>
+
+          <div class="entity-field">
+            <span class="entity-label">Updated At</span>
+            <span class="entity-value">${formatDateTime(entry.updated_at)}</span>
+          </div>
+
+          <div class="entity-field">
+            <span class="entity-label">Deleted By</span>
+            <span class="entity-value">${renderUserName(entry.deletedBy)}</span>
+          </div>
+
+          <div class="entity-field">
+            <span class="entity-label">Deleted At</span>
+            <span class="entity-value">${formatDateTime(entry.deleted_at)}</span>
+          </div>
+        </div>
+      </details>
+
+      <!-- ================= ACTIONS ================= -->
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getEmployeeActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+
     </div>
   `;
 }
 
 /* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("employeeTableBody");
@@ -294,26 +438,27 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   cardContainer.innerHTML = "";
 
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}">No employees found.</td></tr>`;
-      initTooltips(tableBody);
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-center text-muted">
+            No employees found.
+          </td>
+        </tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((field) =>
-          field === "actions"
-            ? `<td class="actions-cell text-center export-ignore">
-                ${getEmployeeActionButtons(entry, user)}
-               </td>`
-            : `<td>${renderValue(entry, field, "table")}</td>`
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getEmployeeActionButtons(e, user)}</td>`
+            : `<td>${renderValue(e, f, "table")}</td>`
         )
         .join("");
       tableBody.appendChild(tr);
@@ -323,11 +468,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted">No employees found.</p>`;
-
+      : `<p class="text-center text-muted">No employees found.</p>`;
     initTooltips(cardContainer);
   }
 
@@ -335,30 +478,27 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT (MASTER)
 ============================================================ */
 let exportHandlersBound = false;
-
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
   exportHandlersBound = true;
 
   const title = "Employees Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
-
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
-
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
+    exportData({ type: "csv", data: entries, title })
+  );
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
+    exportData({ type: "xlsx", data: entries, title })
+  );
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",
       title,
       selector: ".table-container.active, #employeeList.active",
       orientation: "landscape",
-    });
-  });
+    })
+  );
 }

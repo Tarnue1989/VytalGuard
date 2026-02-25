@@ -1,8 +1,11 @@
-// 📦 discount-filter-main.js – Filters + Table/Card (Enterprise Pattern Aligned)
+// 📦 discount-filter-main.js – Enterprise MASTER–ALIGNED (Deposit Parity)
 // ============================================================================
-// 🔹 Mirrors deposit-filter-main.js for unified summary, export, pagination
-// 🔹 Includes Discount Summary (PDF/Excel-ready)
-// 🔹 Handles role-aware org/facility filters and lifecycle-safe reload
+// 🔹 FULLY mirrors deposit-filter-main.js MASTER pattern
+// 🔹 Auto search + auto filters (NO manual Search button)
+// 🔹 UI-only dateRange (single input, NEVER DB column)
+// 🔹 Sorting, pagination, summary, export – unified
+// 🔹 Org / Facility role-aware
+// 🔹 Preserves ALL existing Discount API calls
 // ============================================================================
 
 import {
@@ -10,13 +13,14 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -26,48 +30,58 @@ import {
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./discount-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./discount-render.js";
+
 import { setupActionHandlers } from "./discount-actions.js";
+
 import {
   FIELD_ORDER_DISCOUNT,
   FIELD_DEFAULTS_DISCOUNT,
+  FIELD_LABELS_DISCOUNT,
 } from "./discount-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth + Session
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   👥 Role & Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("discountView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
-window.entries = [];
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
   moduleKey: "discount",
@@ -76,11 +90,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_DISCOUNT,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -88,210 +105,121 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   📊 Discount Summary Renderer (Enterprise Lifecycle-Aligned)
-   ────────────────────────────────────────────────────────────
-   ✅ Matches deposit summary structure & style
-   ✅ Displays all lifecycle statuses
-   ✅ Formats totals as plain numbers (no $)
-   ✅ Currency formatting only for “value”, “amount”, “sum”
+   🔎 FILTER DOM (MASTER)
 ============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
+const qs = (id) => document.getElementById(id);
 
-  const colorMap = {
-    draft: "text-warning",
-    active: "text-info",
-    inactive: "text-muted",
-    finalized: "text-success",
-    voided: "text-secondary",
-    total: "text-dark fw-bold",
-  };
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const dateRange      = qs("dateRange");
 
-  const formatVal = (key, val) => {
-    if (val === null || val === undefined) return 0;
+const filterInvoice            = qs("filterInvoice");
+const filterInvoiceHidden      = qs("filterInvoiceId");
+const filterInvoiceSuggestions = qs("filterInvoiceSuggestions");
 
-    // 🧩 Flatten nested summary objects gracefully
-    if (typeof val === "object" && !Array.isArray(val)) {
-      const parts = Object.entries(val)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(" / ");
-      return parts || "—";
-    }
-
-    const lower = key.toLowerCase();
-
-    // 🔒 Plain numeric totals (not $)
-    const numericTotals = [
-      "total_discounts",
-      "total_records",
-      "total_count",
-      "count",
-      "total"
-    ];
-    if (numericTotals.includes(lower) || lower.endsWith("_count")) {
-      return parseInt(val, 10);
-    }
-
-    // 💰 Format amounts & values as currency
-    const shouldFormatAsCurrency =
-      /amount|value|sum|balance/.test(lower) && !/count|number/.test(lower);
-    if (shouldFormatAsCurrency && !isNaN(val)) {
-      const num = parseFloat(val);
-      return `$${num.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-
-    return val;
-  };
-
-  const keys = Object.keys(summary);
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  // 🧠 Show lifecycle statuses + key totals only
-  const keepKeys = keys.filter((k) =>
-    /(draft|active|inactive|finalized|voided|total|sum|value|count)$/i.test(k)
-  );
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keepKeys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
-
+const filterType   = qs("filterTypeSelect");
+const filterReason = qs("filterReason");
 
 /* ============================================================
-   🔎 Filter DOM
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterInvoice = document.getElementById("filterInvoice");
-const filterInvoiceHidden = document.getElementById("filterInvoiceId");
-const filterInvoiceSuggestions = document.getElementById("filterInvoiceSuggestions");
-
-const filterType = document.getElementById("filterTypeSelect");
-const filterStatus = document.getElementById("filterStatus");
-const filterReason = document.getElementById("filterReason");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-
-const filterFinalizedFrom = document.getElementById("filterFinalizedFrom");
-const filterFinalizedTo = document.getElementById("filterFinalizedTo");
-const filterVoidedFrom = document.getElementById("filterVoidedFrom");
-const filterVoidedTo = document.getElementById("filterVoidedTo");
-
-const filterFinalizedBy = document.getElementById("filterFinalizedBy");
-const filterFinalizedByHidden = document.getElementById("filterFinalizedById");
-const filterFinalizedBySuggestions = document.getElementById("filterFinalizedBySuggestions");
-const filterVoidedBy = document.getElementById("filterVoidedBy");
-const filterVoidedByHidden = document.getElementById("filterVoidedById");
-const filterVoidedBySuggestions = document.getElementById("filterVoidedBySuggestions");
-
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+window.setDiscountSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadDiscountPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination / State
+   📄 PAGINATION
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("discountView") || "table";
-
-const savedLimit = parseInt(localStorage.getItem("discountPageLimit") || "25", 10);
-let getPagination = initPaginationControl("discount", loadEntries, savedLimit);
-
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("discountPageLimit", newLimit);
-    getPagination = initPaginationControl("discount", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+const getPagination = initPaginationControl(
+  "discount",
+  loadEntries,
+  Number(localStorage.getItem("discountPageLimit") || 25)
+);
 
 /* ============================================================
-   📋 Filters Builder
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterType,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    invoice_id: filterInvoiceHidden?.value || "",
-    type: filterType?.value || "",
-    status: filterStatus?.value || "",
-    reason: filterReason?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
-    finalized_from: filterFinalizedFrom?.value || "",
-    finalized_to: filterFinalizedTo?.value || "",
-    voided_from: filterVoidedFrom?.value || "",
-    voided_to: filterVoidedTo?.value || "",
-    finalized_by_id: filterFinalizedByHidden?.value || "",
-    voided_by_id: filterVoidedByHidden?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    type: filterType?.value,
+    reason: filterReason?.value,
+    invoice_id: filterInvoiceHidden?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Discounts (with Summary)
+   📦 LOAD DISCOUNTS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
-    if (filters.finalized_from) q.append("finalized_at[gte]", filters.finalized_from);
-    if (filters.finalized_to) q.append("finalized_at[lte]", filters.finalized_to);
-    if (filters.voided_from) q.append("voided_at[gte]", filters.voided_from);
-    if (filters.voided_to) q.append("voided_at[lte]", filters.voided_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || k.endsWith("_from") || k.endsWith("_to")) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_DISCOUNT.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+    if (f.type)            q.set("type", f.type);
+    if (f.reason)          q.set("reason", f.reason);
+    if (f.invoice_id)      q.set("invoice_id", f.invoice_id);
 
     const res = await authFetch(`/api/discounts?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "DISCOUNTS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -304,13 +232,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load discounts");
   } finally {
     hideLoading();
@@ -318,108 +246,71 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🔘 Filter Buttons Wiring (Fixed Search + Clear)
+   🧭 VIEW TOGGLE
 ============================================================ */
-function clearFilters() {
-  [
-    filterOrg,
-    filterFacility,
-    filterInvoice,
-    filterInvoiceHidden,
-    filterType,
-    filterStatus,
-    filterReason,
-    filterCreatedFrom,
-    filterCreatedTo,
-    filterFinalizedFrom,
-    filterFinalizedTo,
-    filterVoidedFrom,
-    filterVoidedTo,
-    filterFinalizedBy,
-    filterFinalizedByHidden,
-    filterVoidedBy,
-    filterVoidedByHidden,
-  ].forEach((el) => {
-    if (el) el.value = "";
-  });
-
-  if (filterInvoiceSuggestions) filterInvoiceSuggestions.innerHTML = "";
-  if (filterFinalizedBySuggestions) filterFinalizedBySuggestions.innerHTML = "";
-  if (filterVoidedBySuggestions) filterVoidedBySuggestions.innerHTML = "";
-}
-
-if (filterBtn) {
-  filterBtn.addEventListener("click", async () => {
-    await loadEntries(1);
-  });
-}
-
-if (resetFilterBtn) {
-  resetFilterBtn.addEventListener("click", async () => {
-    clearFilters();
-    await loadEntries(1);
-  });
-}
-
-/* ============================================================
-   🧭 View Toggle
-============================================================ */
-const cardViewBtn = document.getElementById("cardViewBtn");
-const tableViewBtn = document.getElementById("tableViewBtn");
-
-cardViewBtn?.addEventListener("click", () => {
-  viewMode = "card";
-  localStorage.setItem("discountView", "card");
-  renderList({ entries, visibleFields, viewMode, user, currentPage });
-});
-
-tableViewBtn?.addEventListener("click", () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("discountView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+qs("cardViewBtn").onclick = () => {
+  viewMode = "card";
+  localStorage.setItem("discountView", "card");
+  syncViewToggleUI({ mode: viewMode });
+  renderList({ entries, visibleFields, viewMode, user, currentPage });
+};
+
+/* ============================================================
+   🔄 RESET FILTERS (MASTER)
+============================================================ */
+qs("resetFilterBtn").onclick = () => {
+  [
+    globalSearch,
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterType,
+    filterReason,
+    filterInvoice,
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
+  filterInvoiceHidden.value = "";
+  loadEntries(1);
+};
+
+/* ============================================================
+   ⬇️ EXPORT (MASTER)
+============================================================ */
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_DISCOUNT),
+    `discounts_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Discounts List",
+    viewMode === "table" ? ".table-container" : "#discountList",
+    "portrait"
+  );
 });
 
 /* ============================================================
-   ⬇️ Export Tools (with Summary)
-============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `discounts_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector = viewMode === "table" ? ".table-container" : "#discountList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
-
-      const summaryEl = document.getElementById("moduleSummary");
-      const summaryHTML = summaryEl
-        ? `<div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
-            <h5 class="fw-bold mb-2">Discount Summary</h5>
-            ${summaryEl.innerHTML}
-          </div>`
-        : "";
-
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Discounts_Report", "#exportWrapper", "portrait", true);
-      setTimeout(() => tempDiv.remove(), 1000);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
-  };
-
-/* ============================================================
-   🚀 Init Discount Module
+   🚀 INIT
 ============================================================ */
 export async function initDiscountModule() {
   renderDynamicTableHead(visibleFields);
-  setupToggleSection("toggleFilterBtn", "filterCollapse", "filterChevron", "discountFilterVisible");
+
+  setupToggleSection(
+    "toggleFilterBtn",
+    "filterCollapse",
+    "filterChevron",
+    "discountFilterVisible"
+  );
 
   setupSuggestionInputDynamic(
     filterInvoice,
@@ -427,74 +318,39 @@ export async function initDiscountModule() {
     "/api/lite/invoices",
     (selected) => {
       filterInvoiceHidden.value = selected?.id || "";
-      filterInvoice.value = selected
-        ? `${selected.label || selected.invoice_number || ""}`
-        : "";
+      filterInvoice.value = selected?.label || "";
+      loadEntries(1); // ✅ IMMEDIATE SEARCH
     },
     "label"
   );
 
-  if (filterFinalizedBy && filterFinalizedBySuggestions)
-    setupSuggestionInputDynamic(filterFinalizedBy, filterFinalizedBySuggestions, "/api/lite/users",
-      (s) => {
-        filterFinalizedByHidden.value = s?.id || "";
-        filterFinalizedBy.value = s ? `${s.first_name || ""} ${s.last_name || ""}` : "";
-      }, "first_name"
-    );
-
-  if (filterVoidedBy && filterVoidedBySuggestions)
-    setupSuggestionInputDynamic(filterVoidedBy, filterVoidedBySuggestions, "/api/lite/users",
-      (s) => {
-        filterVoidedByHidden.value = s?.id || "";
-        filterVoidedBy.value = s ? `${s.first_name || ""} ${s.last_name || ""}` : "";
-      }, "first_name"
-    );
-
-  try {
+  if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      let facilities = await loadFacilitiesLite();
-      facilities.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facilities, "id", "name");
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-      filterOrg?.addEventListener("change", async () => {
-        const selectedOrgId = filterOrg.value;
-        let facs = selectedOrgId
-          ? await loadFacilitiesLite({ organization_id: selectedOrgId })
-          : await loadFacilitiesLite();
-        facs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, facs, "id", "name");
-      });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-      if (filterOrg) {
-        const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-        setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-        filterOrg.disabled = true;
-        filterOrg.value = scopedOrgId || "";
-      }
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(filterFacility, facilities, "id", "name", "-- All Facilities --");
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-  } catch (err) {
-    console.error("❌ preload org/facility failed:", err);
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initDiscountModule().catch((err) => console.error("initDiscountModule failed:", err));
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initDiscountModule)
+  : initDiscountModule();

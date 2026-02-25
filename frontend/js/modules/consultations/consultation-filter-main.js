@@ -1,11 +1,12 @@
 // 📦 consultation-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
 // ============================================================================
-// 🔹 Mirrors department-filter-main.js EXACTLY
+// 🔹 FULLY mirrors deposit-filter-main.js MASTER pattern
 // 🔹 Auto search, auto filters, sorting, pagination
 // 🔹 UI-only dateRange (single input, NEVER DB column)
-// 🔹 Org / Facility fully wired
+// 🔹 Org / Facility fully wired (role-aware)
 // 🔹 Consultation Status fully wired
 // 🔹 Summary + export aligned
+// 🔹 ALL existing Consultation API calls PRESERVED
 // ============================================================================
 
 import {
@@ -107,7 +108,7 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 FILTER DOM
+   🔎 FILTER DOM (MASTER STRUCTURE)
 ============================================================ */
 const qs = (id) => document.getElementById(id);
 
@@ -121,15 +122,15 @@ const filterPatient            = qs("filterPatient");
 const filterPatientHidden      = qs("filterPatientId");
 const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-const filterDoctor            = qs("filterDoctor");
-const filterDoctorHidden      = qs("filterDoctorId");
-const filterDoctorSuggestions = qs("filterDoctorSuggestions");
+const filterDoctor             = qs("filterDoctor");
+const filterDoctorHidden       = qs("filterDoctorId");
+const filterDoctorSuggestions  = qs("filterDoctorSuggestions");
 
-const filterDepartment        = qs("filterDepartment");
-const filterConsultationType  = qs("filterConsultationType");
+const filterDepartment         = qs("filterDepartment");
+const filterConsultationType   = qs("filterConsultationType");
 
 /* ============================================================
-   🔃 SORT BRIDGE
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
 window.setConsultationSort = (field, dir) => {
   sortBy = field;
@@ -149,7 +150,7 @@ const getPagination = initPaginationControl(
 /* ============================================================
    🔎 AUTO SEARCH / FILTERS (MASTER)
 ============================================================ */
-setupAutoSearch(globalSearch, loadEntries);
+globalSearch && setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
@@ -200,15 +201,15 @@ async function loadEntries(page = 1) {
       q.set("sort_order", sortDir);
     }
 
-    if (f.search)                q.set("search", f.search);
-    if (f.dateRange)             q.set("dateRange", f.dateRange);
-    if (f.organization_id)       q.set("organization_id", f.organization_id);
-    if (f.facility_id)           q.set("facility_id", f.facility_id);
-    if (f.status)                q.set("status", f.status);
-    if (f.department_id)         q.set("department_id", f.department_id);
-    if (f.consultation_type_id)  q.set("consultation_type_id", f.consultation_type_id);
-    if (f.patient_id)            q.set("patient_id", f.patient_id);
-    if (f.doctor_id)             q.set("doctor_id", f.doctor_id);
+    if (f.search)               q.set("search", f.search);
+    if (f.dateRange)            q.set("dateRange", f.dateRange);
+    if (f.organization_id)      q.set("organization_id", f.organization_id);
+    if (f.facility_id)          q.set("facility_id", f.facility_id);
+    if (f.status)               q.set("status", f.status);
+    if (f.department_id)        q.set("department_id", f.department_id);
+    if (f.consultation_type_id) q.set("consultation_type_id", f.consultation_type_id);
+    if (f.patient_id)           q.set("patient_id", f.patient_id);
+    if (f.doctor_id)            q.set("doctor_id", f.doctor_id);
 
     const res = await authFetch(`/api/consultations?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -272,7 +273,7 @@ qs("cardViewBtn").onclick = () => {
 };
 
 /* ============================================================
-   🔄 RESET FILTERS
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
   [
@@ -292,7 +293,7 @@ qs("resetFilterBtn").onclick = () => {
 };
 
 /* ============================================================
-   ⬇️ EXPORT
+   ⬇️ EXPORT (MASTER)
 ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
@@ -323,20 +324,19 @@ export async function initConsultationModule() {
     "consultationFilterVisible"
   );
 
-    setupSuggestionInputDynamic(
-      filterPatient,
-      filterPatientSuggestions,
-      "/api/lite/patients",
-      (selected) => {
-        filterPatientHidden.value = selected?.id || "";
-        filterPatient.value = selected?.label || "";
-        loadEntries(1); // ✅ IMMEDIATE SEARCH
-      },
-      "label"
-    );
+  setupSuggestionInputDynamic(
+    filterPatient,
+    filterPatientSuggestions,
+    "/api/lite/patients",
+    (selected) => {
+      filterPatientHidden.value = selected?.id || "";
+      filterPatient.value = selected?.label || "";
+      loadEntries(1);
+    },
+    "label"
+  );
 
-
-  if (userRole.includes("super")) {
+  if (userRole.includes("super") || userRole.includes("admin")) {
     setupSuggestionInputDynamic(
       filterDoctor,
       filterDoctorSuggestions,
@@ -344,7 +344,7 @@ export async function initConsultationModule() {
       (selected) => {
         filterDoctorHidden.value = selected?.id || "";
         filterDoctor.value = selected?.full_name || "";
-        loadEntries(1); // ✅ IMMEDIATE SEARCH
+        loadEntries(1);
       },
       "full_name"
     );

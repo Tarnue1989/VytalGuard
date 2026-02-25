@@ -79,7 +79,7 @@ const sharedState = { currentEditIdRef: { value: null } };
    👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "facility",
+  moduleKey: "facilities",
   userRole,
   defaultFields: FIELD_DEFAULTS_FACILITY,
   allowedFields: FIELD_ORDER_FACILITY,

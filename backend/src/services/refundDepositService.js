@@ -1,6 +1,6 @@
 // 📁 backend/src/services/refundDepositService.js
 // ============================================================================
-// ⭐ ENTERPRISE-GRADE DEPOSIT REFUND SERVICE (FINAL CORRECT VERSION)
+// ⭐ ENTERPRISE-GRADE DEPOSIT REFUND SERVICE (LIFECYCLE + AUDIT SAFE)
 // Lifecycle:
 // pending → review → approved → processed → reversed
 //            ↘ rejected
@@ -12,15 +12,16 @@ import {
   sequelize,
   RefundDeposit,
   Deposit,
-  RefundDepositTransaction   // ✅ CORRECT MODEL
+  RefundDepositTransaction,
 } from "../models/index.js";
 
 import { DEPOSIT_REFUND_STATUS as RS } from "../constants/enums.js";
+import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
 
 export const refundDepositService = {
 
   /* =========================================================================
-     🔹 1️⃣ CREATE (→ pending)
+     1️⃣ CREATE (→ PENDING)
      ========================================================================= */
   async createRefund({ deposit_id, amount, method, reason, user }) {
     return sequelize.transaction(async (t) => {
@@ -57,74 +58,79 @@ export const refundDepositService = {
           reason,
           status: RS.PENDING,
           created_by_id: user.id,
-          reason_log: [
-            { action: "created", reason, user_id: user.id, timestamp: new Date() }
-          ]
         },
-        { transaction: t }
+        { transaction: t, user }
       );
+
+      // ✅ lifecycle + audit
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "created",
+        nextStatus: RS.PENDING,
+        user,
+        reason,
+        t,
+      });
 
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 2️⃣ REVIEW (pending → review)
+     2️⃣ REVIEW (PENDING → REVIEW)
      ========================================================================= */
   async reviewRefund(refund_id, user) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (refund.status !== RS.PENDING)
         throw new Error("Only pending refunds may be moved to review");
 
-      refund.status = RS.REVIEW;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "reviewed",
+        nextStatus: RS.REVIEW,
+        user,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "reviewed", user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 3️⃣ APPROVE (pending / review → approved)
+     3️⃣ APPROVE (PENDING / REVIEW → APPROVED)
      ========================================================================= */
   async approveRefund({ refund_id, user }) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (![RS.PENDING, RS.REVIEW].includes(refund.status))
         throw new Error("Only pending or review refunds can be approved");
 
-      refund.status = RS.APPROVED;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "approved",
+        nextStatus: RS.APPROVED,
+        user,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "approved", user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 4️⃣ PROCESS (approved → processed)
+     4️⃣ PROCESS (APPROVED → PROCESSED)
      ========================================================================= */
   async processRefund({ refund_id, user }) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (refund.status !== RS.APPROVED)
@@ -139,14 +145,14 @@ export const refundDepositService = {
       if (refundAmount > balance)
         throw new Error(`Refund amount exceeds available balance (${balance})`);
 
-      // Update deposit balances
+      // 🔹 update deposit balances
       deposit.remaining_balance = balance - refundAmount;
       deposit.refund_amount =
         Number(deposit.refund_amount ?? 0) + refundAmount;
 
-      await deposit.save({ transaction: t });
+      await deposit.save({ transaction: t, user });
 
-      // ✅ CORRECT: Deposit refund ledger
+      // 🔹 ledger transaction
       await RefundDepositTransaction.create(
         {
           refund_deposit_id: refund.id,
@@ -157,107 +163,102 @@ export const refundDepositService = {
           organization_id: refund.organization_id,
           facility_id: refund.facility_id,
           status: "processed",
-          created_by_id: user.id
+          created_by_id: user.id,
         },
-        { transaction: t }
+        { transaction: t, user }
       );
 
-      refund.status = RS.PROCESSED;
-      refund.updated_by_id = user.id;
-
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "processed", user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "processed",
+        nextStatus: RS.PROCESSED,
+        user,
+        t,
+      });
 
       return { refund, deposit };
     });
   },
 
   /* =========================================================================
-     🔹 5️⃣ REJECT (pending / review → rejected)
+     5️⃣ REJECT (PENDING / REVIEW → REJECTED)
      ========================================================================= */
   async rejectRefund(refund_id, user, reason) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (![RS.PENDING, RS.REVIEW].includes(refund.status))
         throw new Error("Only pending or review refunds can be rejected");
 
-      refund.status = RS.REJECTED;
-      refund.reason = reason || refund.reason;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "rejected",
+        nextStatus: RS.REJECTED,
+        user,
+        reason,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "rejected", reason, user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 6️⃣ CANCEL (pending / approved → cancelled)
+     6️⃣ CANCEL (PENDING / APPROVED → CANCELLED)
      ========================================================================= */
   async cancelRefund(refund_id, user, reason) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (![RS.PENDING, RS.APPROVED].includes(refund.status))
         throw new Error("Only pending or approved refunds can be cancelled");
 
-      refund.status = RS.CANCELLED;
-      refund.reason = reason || refund.reason;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "cancelled",
+        nextStatus: RS.CANCELLED,
+        user,
+        reason,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "cancelled", reason, user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 7️⃣ VOID (any → voided)
+     7️⃣ VOID (ANY → VOIDED)
      ========================================================================= */
   async voidRefund({ refund_id, user, reason }) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
-      refund.status = RS.VOIDED;
-      refund.reason = reason || refund.reason;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "voided",
+        nextStatus: RS.VOIDED,
+        user,
+        reason,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "voided", reason, user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
   },
 
   /* =========================================================================
-     🔹 8️⃣ REVERSE (processed → reversed)
+     8️⃣ REVERSE (PROCESSED → REVERSED)
      ========================================================================= */
   async reverseRefund({ refund_id, user }) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (refund.status !== RS.PROCESSED)
@@ -273,43 +274,41 @@ export const refundDepositService = {
         Number(deposit.refund_amount ?? 0) -
         Number(refund.refund_amount);
 
-      await deposit.save({ transaction: t });
+      await deposit.save({ transaction: t, user });
 
-      refund.status = RS.REVERSED;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "reversed",
+        nextStatus: RS.REVERSED,
+        user,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "reversed", user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund, deposit };
     });
   },
 
   /* =========================================================================
-     🔹 9️⃣ RESTORE (voided / reversed → pending)
+     9️⃣ RESTORE (VOIDED / REVERSED → PENDING)
      ========================================================================= */
   async restoreRefund({ refund_id, user }) {
     return sequelize.transaction(async (t) => {
 
-      const refund = await RefundDeposit.unscoped().findByPk(refund_id, { transaction: t });
+      const refund = await RefundDeposit.findByPk(refund_id, { transaction: t });
       if (!refund) throw new Error("Refund not found");
 
       if (![RS.VOIDED, RS.REVERSED].includes(refund.status))
         throw new Error("Only voided or reversed refunds can be restored");
 
-      refund.status = RS.PENDING;
-      refund.updated_by_id = user.id;
+      await applyLifecycleTransition({
+        entity: refund,
+        action: "restored",
+        nextStatus: RS.PENDING,
+        user,
+        t,
+      });
 
-      refund.reason_log = [
-        ...(refund.reason_log || []),
-        { action: "restored", user_id: user.id, timestamp: new Date() }
-      ];
-
-      await refund.save({ transaction: t, user });
       return { refund };
     });
-  }
+  },
 };

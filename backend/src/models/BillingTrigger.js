@@ -13,6 +13,12 @@ export default (sequelize) => {
         as: "facility",
       });
 
+      // 🔗 AUTHORITATIVE FEATURE LINK
+      BillingTrigger.belongsTo(models.FeatureModule, {
+        foreignKey: "feature_module_id",
+        as: "featureModule",
+      });
+
       BillingTrigger.belongsTo(models.User, {
         foreignKey: "created_by_id",
         as: "createdBy",
@@ -33,17 +39,17 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      /* 🔑 Trigger Identity */
-      module_key: {
-        type: DataTypes.STRING(100),
-        allowNull: false,
-        comment: "kebab-case module key (e.g. lab-request)",
+      /* 🔑 Trigger Identity (FK-DRIVEN) */
+      feature_module_id: {
+        type: DataTypes.UUID,
+        allowNull: false, // ✅ must match DB
+        comment: "Foreign key → feature_modules.id",
       },
 
       trigger_status: {
         type: DataTypes.STRING(50),
         allowNull: false,
-        comment: "status that allows billing (e.g. completed)",
+        comment: "Entity status that allows billing (e.g. completed)",
       },
 
       /* 🏢 Tenant Scope */
@@ -85,7 +91,7 @@ export default (sequelize) => {
       updatedAt: "updated_at",
 
       indexes: [
-        { fields: ["module_key"] },
+        { fields: ["feature_module_id"] },
         { fields: ["trigger_status"] },
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },

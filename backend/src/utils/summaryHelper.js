@@ -958,74 +958,30 @@ export async function buildDynamicSummary({
   }
 
 // ============================================================
-// 5️⃣ Gender breakdown
+// 5️⃣ Gender breakdown (MASTER / CONSULTATION PARITY)
 // ============================================================
 if (includeGender && genderJoin) {
   try {
-    const joinTable =
-      typeof genderJoin.model.getTableName() === "object"
-        ? genderJoin.model.getTableName().tableName
-        : genderJoin.model.getTableName();
-    const joinAlias = genderJoin.as;
-    const foreignKey = genderJoin.foreignKey || `${joinAlias}_id`;
-
-    const whereClauses = [
-      ("deleted_at" in attrs) ? `a.deleted_at IS NULL` : `TRUE`
-    ];
-
-// ============================================================
-// 5️⃣ Gender breakdown (FINAL WORKING FIX)
-// ============================================================
-if (includeGender && genderJoin) {
-  try {
-    const joinTable =
-      typeof genderJoin.model.getTableName() === "object"
-        ? genderJoin.model.getTableName().tableName
-        : genderJoin.model.getTableName();
-
-    const foreignKey =
-      genderJoin.foreignKey || `${genderJoin.as}_id`;
-
-    const whereClauses = [
-      ("deleted_at" in attrs) ? `a.deleted_at IS NULL` : `TRUE`
-    ];
-
-    // ✅ Apply base filters
-    for (const [key, val] of Object.entries(options.where || {})) {
-      if (!val) continue;
-
-      if (val[Op.in]) {
-        whereClauses.push(`a."${key}" IN ('${val[Op.in].join("','")}')`);
-      } else if (val[Op.eq]) {
-        whereClauses.push(`a."${key}" = '${esc(val[Op.eq])}'`);
-      } else {
-        whereClauses.push(`a."${key}" = '${esc(val)}'`);
-      }
-    }
-
-    // 🔥 APPLY LIFECYCLE STATUS (THIS IS THE FIX)
-    if (lifecycleStatusField && normalizedStatuses.length === 1) {
-      whereClauses.push(
-        `a."${lifecycleStatusField}" = '${esc(normalizedStatuses[0])}'`
-      );
-    }
-
-    const whereSQL = `WHERE ${whereClauses.join(" AND ")}`;
-
-    const sql = `
-      SELECT
-        COALESCE(CAST(p.gender AS TEXT), 'Unknown') AS gender,
-        COUNT(DISTINCT p.id) AS count
-      FROM "${tableName}" AS a
-      INNER JOIN "${joinTable}" AS p ON a."${foreignKey}" = p.id
-      ${whereSQL}
-      GROUP BY COALESCE(CAST(p.gender AS TEXT), 'Unknown')
-    `;
-
-    const [rows] = await sequelize.query(sql);
+    const rows = await model.findAll({
+      where: options.where[Op.and]?.length
+        ? { [Op.and]: options.where[Op.and] }
+        : options.where,
+      include: [
+        {
+          model: genderJoin.model,
+          as: genderJoin.as, // MUST be "patient"
+          attributes: [],
+        },
+      ],
+      attributes: [
+        [sequelize.col(`${genderJoin.as}.gender`), "gender"],
+        [sequelize.fn("COUNT", sequelize.col(`${model.name}.id`)), "count"],
+      ],
+      group: [sequelize.col(`${genderJoin.as}.gender`)],
+    });
 
     summary.gender_breakdown = rows.reduce((acc, r) => {
-      acc[r.gender] = Number(r.count || 0);
+      acc[r.get("gender") || "Unknown"] = Number(r.get("count") || 0);
       return acc;
     }, {});
   } catch (err) {
@@ -1033,40 +989,6 @@ if (includeGender && genderJoin) {
     summary.gender_breakdown = {};
   }
 }
-
-
-    const whereSQL = `WHERE ${whereClauses.join(" AND ")}`;
-
-    const sql = `
-      SELECT
-        CAST(p.gender AS TEXT) AS gender,
-        COUNT(DISTINCT p.id) AS count
-      FROM "${tableName}" AS a
-      INNER JOIN "${joinTable}" AS p ON a."${foreignKey}" = p.id
-      ${whereSQL}
-      GROUP BY CAST(p.gender AS TEXT)
-    `;
-
-    const [rows] = await sequelize.query(sql);
-
-    summary.gender_breakdown = rows.reduce((acc, row) => {
-      acc[row.gender || "Unknown"] = parseInt(row.count, 10);
-      return acc;
-    }, {});
-  } catch (err) {
-    console.warn("⚠️ Gender breakdown failed:", err.message);
-    summary.gender_breakdown = {};
-  }
-}
-
-  // ============================================================
-  // 6️⃣ Emergency / Boolean flag summary
-  // ============================================================
-  if ("is_emergency" in attrs) {
-    summary.total_emergency = await model.count({
-      where: { ...options.where, is_emergency: true },
-    });
-  }
 
   // ============================================================
   // 7️⃣ Universal total count (FINAL SAFE VERSION)

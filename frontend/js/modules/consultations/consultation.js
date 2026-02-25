@@ -1,18 +1,19 @@
-// 📦 consultation.js – Entry Point (Enterprise-Aligned Master Pattern)
+// 📦 consultation.js – Entry Point (Enterprise-Aligned MASTER Pattern)
 // ============================================================================
-// 🧭 Master Pattern: department.js / role.js / vitals.js
+// 🧭 Master Pattern: deposits.js / consultation.js / department.js
 // 🔹 Unified initialization entry for the Consultation module
 // 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 FULL parity with deposits.js MASTER
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filter, table, card, form, etc.)
+// 🧭 Main module init (handles filter, table, card, pagination, summary, export)
 import { initConsultationModule } from "./consultation-filter-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, start, complete, etc.)
+// ⚙️ Lifecycle + action handlers (view, edit, delete, start, complete, verify, cancel, void)
 import "./consultation-actions.js";
 
 // 🧩 Constants (exportable for dynamic field selector or columns)
@@ -30,15 +31,16 @@ import { showToast, hideLoading } from "../../utils/index.js";
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize only if the consultation form or list container exists
+    // 🧩 Initialize only if consultation form or list/table container exists
     if (
       document.getElementById("consultationForm") ||
-      document.getElementById("consultationList")
+      document.getElementById("consultationList") ||
+      document.getElementById("consultationTableBody")
     ) {
       await initConsultationModule();
     }
 
-    // (Optional) Future enhancement:
+    // (Optional future expansion – list-only init hook)
     // if (document.getElementById("consultationTableBody")) {
     //   await initConsultationListModule();
     // }

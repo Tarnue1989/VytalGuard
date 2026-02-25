@@ -1,21 +1,61 @@
-// 📦 discount-waiver-render.js – Enterprise Master Pattern Aligned
+// 📦 discount-waiver-render.js – Enterprise MASTER–ALIGNED (Deposit Render Parity)
 // ============================================================================
-// 🔹 Mirrors discount-render.js for unified structure & enterprise behavior
-// 🔹 Supports role-based visibility, tooltips, exports, and STATUS_ACTION_MATRIX
-// 🔹 Preserves all discount-waiver-specific logic and DOM IDs
+// 🧭 FULL MASTER PARITY WITH deposit-render.js
+// 🔹 Table = flat | Card = RICH + structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
 // ============================================================================
 
 import { FIELD_LABELS_DISCOUNT_WAIVER } from "./discount-waiver-constants.js";
+
 import { formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
-/* ============================================================================
-   🎛️ Action Buttons (centralized + permission-driven)
-============================================================================ */
+/* ============================================================
+   🔃 SORTABLE FIELDS (MASTER PARITY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "invoice_id",
+  "patient_id",
+  "type",
+  "percentage",
+  "amount",
+  "applied_total",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("discountWaiverSortBy") || "";
+let sortDir = localStorage.getItem("discountWaiverSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+  localStorage.setItem("discountWaiverSortBy", sortBy);
+  localStorage.setItem("discountWaiverSortDir", sortDir);
+  window.setDiscountWaiverSort?.(sortBy, sortDir);
+  window.loadDiscountWaiverPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTIONS (MASTER MATRIX)
+============================================================ */
 function getDiscountWaiverActionButtons(entry, user) {
   return buildActionButtons({
-    module: "discount_waiver", // maps to STATUS_ACTION_MATRIX.discount_waiver
+    module: "discount_waiver",
     status: (entry.status || "").toLowerCase(),
     entry,
     entryId: entry.id,
@@ -24,82 +64,140 @@ function getDiscountWaiverActionButtons(entry, user) {
   });
 }
 
-/* ============================================================================
-   🧱 Dynamic Table Head Renderer
-============================================================================ */
+/* ============================================================
+   🧱 TABLE HEAD
+============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
+
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent =
+    th.dataset.key = field;
+
+    const label =
       FIELD_LABELS_DISCOUNT_WAIVER[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field)
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadDiscountWaiverPage?.(1),
+  });
 }
 
-/* ============================================================================
-   🔠 Field Render Helpers
-============================================================================ */
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.full_name || "—";
+/* ============================================================
+   🔠 HELPERS
+============================================================ */
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return [u.first_name, u.middle_name, u.last_name]
+    .filter(Boolean)
+    .join(" ") || u.full_name || "—";
 }
 
+function renderPatient(entry) {
+  if (!entry.patient) return "—";
+  const p = entry.patient;
+  return `${p.pat_no || "—"} - ${[p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ")}`;
+}
+
+/* ============================================================
+   🧩 TABLE VALUE RENDERER (OBJECT-SAFE)
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
-      const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
-        pending: "bg-warning text-dark",
-        approved: "bg-success",
-        rejected: "bg-danger",
-        voided: "bg-dark text-light",
-        finalized: "bg-info text-dark",
-        applied: "bg-primary text-light",
-      };
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "pending"
+          ? "bg-warning text-dark"
+          : s === "approved"
+          ? "bg-success"
+          : s === "rejected"
+          ? "bg-danger"
+          : s === "voided"
+          ? "bg-dark text-light"
+          : s === "finalized"
+          ? "bg-info text-dark"
+          : "bg-secondary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
     }
 
     case "organization":
+    case "organization_id":
       return entry.organization?.name || "—";
+
     case "facility":
+    case "facility_id":
       return entry.facility?.name || "—";
+
     case "invoice":
+    case "invoice_id":
       return entry.invoice?.invoice_number || "—";
+
     case "patient":
-      return entry.patient
-        ? `${entry.patient.pat_no} – ${entry.patient.first_name} ${entry.patient.last_name}`
-        : "—";
+    case "patient_id":
+      return renderPatient(entry);
 
     case "type":
-      return entry.type || "—";
-    case "reason":
-      return entry.reason || "—";
+      return safe(entry.type);
+
     case "percentage":
       return entry.percentage != null ? `${entry.percentage}%` : "—";
-    case "amount":
-    case "applied_total": {
-      const val = entry[field];
-      return val != null
-        ? `$${Number(val).toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`
-        : "—";
-    }
 
-    // 🛡️ Audit fields
+    case "amount":
+    case "applied_total":
+      return entry[field] != null
+        ? `$${Number(entry[field]).toFixed(2)}`
+        : "—";
+
+    case "reason":
+      return safe(entry.reason);
+
     case "approvedBy":
     case "rejectedBy":
     case "voidedBy":
@@ -109,7 +207,6 @@ function renderValue(entry, field) {
     case "deletedBy":
       return renderUserName(entry[field]);
 
-    // 🕑 Timestamps
     case "approved_at":
     case "rejected_at":
     case "voided_at":
@@ -119,82 +216,123 @@ function renderValue(entry, field) {
     case "deleted_at":
       return entry[field] ? formatDate(entry[field]) : "—";
 
-    default:
-      return entry[field] ?? "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
-/* ============================================================================
-   🗂️ Card Renderer
-============================================================================ */
+/* ============================================================
+   🗂️ CARD RENDERER — RICH (MASTER)
+============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_DISCOUNT_WAIVER[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getDiscountWaiverActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === "") return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
+  };
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card discount-waiver-card">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient(entry)}</div>
+          <div class="entity-primary">${money(entry.applied_total)}</div>
+        </div>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
+            : ""
+        }
+      </div>
+
+      <div class="entity-card-context">
+        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
+        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
+        ${entry.invoice ? `<div>🧾 ${entry.invoice.invoice_number}</div>` : ""}
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Type", entry.type)}
+        ${row("Percentage", entry.percentage != null ? `${entry.percentage}%` : "")}
+        ${row("Amount", money(entry.amount))}
+        ${row("Applied Total", money(entry.applied_total))}
+        ${row("Reason", entry.reason)}
+      </div>
+
+      <details class="entity-notes">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Approved By", renderUserName(entry.approvedBy))}
+          ${row("Approved At", formatDate(entry.approved_at))}
+          ${row("Rejected By", renderUserName(entry.rejectedBy))}
+          ${row("Rejected At", formatDate(entry.rejected_at))}
+          ${row("Voided By", renderUserName(entry.voidedBy))}
+          ${row("Voided At", formatDate(entry.voided_at))}
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDate(entry.updated_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getDiscountWaiverActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
-/* ============================================================================
-   📋 Main List Renderer
-============================================================================ */
+/* ============================================================
+   📋 LIST RENDERER
+============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("discountWaiverTableBody");
   const cardContainer = document.getElementById("discountWaiverList");
   const tableContainer = document.querySelector(".table-container");
   if (!tableBody || !cardContainer || !tableContainer) return;
 
-  document.getElementById("tableViewBtn")?.classList.toggle("active", viewMode === "table");
-  document.getElementById("cardViewBtn")?.classList.toggle("active", viewMode === "card");
-
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No discount waivers found.</td></tr>`;
-
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No discount waivers found.</td></tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getDiscountWaiverActionButtons(
-                  entry,
-                  user
-                )}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getDiscountWaiverActionButtons(
+                e,
+                user
+              )}</td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -203,41 +341,36 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No discount waivers found.</p>`;
-
+      : `<p class="text-center text-muted">No discount waivers found.</p>`;
     initTooltips(cardContainer);
   }
 
   setupExportHandlers(entries);
 }
 
-/* ============================================================================
-   📤 Export Handlers
-============================================================================ */
+/* ============================================================
+   📤 EXPORT
+============================================================ */
 let exportHandlersBound = false;
 function setupExportHandlers(entries) {
   if (exportHandlersBound) return;
   exportHandlersBound = true;
 
   const title = "Discount Waivers Report";
-
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
-
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
-
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
+  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
+    exportData({ type: "csv", data: entries, title })
+  );
+  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
+    exportData({ type: "xlsx", data: entries, title })
+  );
+  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #discountWaiverList.active",
       orientation: "landscape",
-    });
-  });
+    })
+  );
 }

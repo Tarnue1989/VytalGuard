@@ -1,11 +1,36 @@
 // 📁 backend/src/controllers/patientController.js
+// ============================================================================
+// 🧍 Patient Controller – ENTERPRISE MASTER–ALIGNED
+// ----------------------------------------------------------------------------
+// 🔹 MASTER parity with Consultation Controller
+// 🔹 Strict pagination ready
+// 🔹 Tenant-safe (resolveOrgFacility)
+// 🔹 Role-utils only (no inline role hacks)
+// 🔹 Audit-safe
+// ============================================================================
+
 import Joi from "joi";
 import fs from "fs";
 import path from "path";
 import { Op } from "sequelize";
-import { sequelize, Patient, Facility, User, Organization, Employee } from "../models/index.js";
+import {
+  sequelize,
+  Patient,
+  Facility,
+  User,
+  Organization,
+  Employee,
+} from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateOnlyFields } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { validate } from "../utils/validation.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+
 import {
   GENDER_TYPES,
   DOB_PRECISION,
@@ -13,47 +38,44 @@ import {
   RELIGIONS,
   REGISTRATION_LOG_STATUS,
 } from "../constants/enums.js";
-import { authzService } from "../services/authzService.js";
-import { auditService } from "../services/auditService.js";
+
 import { FIELD_VISIBILITY_PATIENT } from "../constants/fieldVisibility.js";
-import { generatePatientQR } from "../services/qrService.js";
 
 import {
   isSuperAdmin,
-  isOrgLevelUser,
   isFacilityHead,
 } from "../utils/role-utils.js";
 
-import { normalizeDateOnlyFields } from "../utils/date-utils.js";
-import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
-import { makeModuleLogger } from "../utils/debugLogger.js";
-import { validate } from "../utils/validation.js";
+import { authzService } from "../services/authzService.js";
+import { auditService } from "../services/auditService.js";
+import { generatePatientQR } from "../services/qrService.js";
 
 /* ============================================================
-   🔧 LOCAL DEBUG OVERRIDE (PATIENT CONTROLLER)
-   true  = debug ON for this file only
-   false = debug OFF (default / production safe)
+   🔐 MODULE
 ============================================================ */
-const DEBUG_OVERRIDE = true; // 👈 keep OFF normally
+const MODULE_KEY = "patient";
+
+/* ============================================================
+   🔧 DEBUG LOGGER (MASTER STYLE)
+============================================================ */
+const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("patientController", DEBUG_OVERRIDE);
 
 /* ============================================================
-   🔐 ENUM MAPS (ORDER-SAFE, CONTROLLER-LOCAL)
+   🔐 ENUM MAPS (ORDER-SAFE)
 ============================================================ */
 const GENDER = Object.fromEntries(
-  GENDER_TYPES.map(v => [v.toLowerCase(), v])
+  GENDER_TYPES.map((v) => [v.toLowerCase(), v])
 );
 
 const REG_STATUS = Object.fromEntries(
-  REGISTRATION_LOG_STATUS.map(v => [v.toUpperCase(), v])
+  REGISTRATION_LOG_STATUS.map((v) => [v.toUpperCase(), v])
 );
 
 /* ============================================================
    🔃 PATIENT SORT MAP (MODEL-AWARE)
-   - Supports base columns + joined tables
 ============================================================ */
 const PATIENT_SORT_MAP = {
-  // 🧱 Patient table columns
   pat_no: ["pat_no"],
   first_name: ["first_name"],
   last_name: ["last_name"],
@@ -63,18 +85,17 @@ const PATIENT_SORT_MAP = {
   created_at: ["created_at"],
   updated_at: ["updated_at"],
 
-  // 🔗 Joined columns
   organization: [{ model: Organization, as: "organization" }, "name"],
   facility: [{ model: Facility, as: "facility" }, "name"],
 };
 
-// Helper to generate unique patient number per org
+/* ============================================================
+   🔢 GENERATE PATIENT NUMBER (ORG-SCOPED)
+============================================================ */
 async function generateNextPatientNo(orgId) {
-  // get organization code for readability
   const org = await Organization.findByPk(orgId, { attributes: ["code"] });
   const prefix = org?.code ? `PAT-${org.code}-` : "PAT-";
 
-  // find latest patient in this org
   const latest = await Patient.findOne({
     where: { organization_id: orgId },
     order: [["created_at", "DESC"]],
@@ -92,19 +113,18 @@ async function generateNextPatientNo(orgId) {
 }
 
 /* ============================================================
-   🔗 SHARED INCLUDES
-   ============================================================ */
+   🔗 SHARED INCLUDES (MASTER)
+============================================================ */
 const PATIENT_INCLUDES = [
   {
     model: Organization,
     as: "organization",
-    required: true,   // org MUST exist
     attributes: ["id", "name", "code"],
   },
   {
     model: Facility,
     as: "facility",
-    required: false,  // ⭐ CRITICAL: allow NULL facility
+    required: false,
     attributes: ["id", "name", "code", "organization_id"],
   },
   {
@@ -113,79 +133,74 @@ const PATIENT_INCLUDES = [
     required: false,
     attributes: ["id", "first_name", "last_name", "employee_no"],
   },
-  {
-    model: User,
-    as: "createdBy",
-    required: false,
-    attributes: ["id", "first_name", "last_name"],
-  },
-  {
-    model: User,
-    as: "updatedBy",
-    required: false,
-    attributes: ["id", "first_name", "last_name"],
-  },
-  {
-    model: User,
-    as: "deletedBy",
-    required: false,
-    attributes: ["id", "first_name", "last_name"],
-  },
+  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
 
-
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA (Employee-Parity, FINAL)
-   ============================================================ */
+   📋 JOI SCHEMA (MASTER-ALIGNED — JSONB READY)
+============================================================ */
 function buildPatientSchema(user, mode = "create") {
   const base = {
-    // ================= Identity =================
+    /* ================= CORE ================= */
     pat_no: Joi.string().max(50).allow("", null),
+
     first_name: Joi.string().max(120).required(),
     middle_name: Joi.string().max(120).allow("", null),
     last_name: Joi.string().max(120).required(),
+
+    /* ================= DOB ================= */
     date_of_birth: Joi.date().allow(null),
     date_of_birth_precision: Joi.string()
       .valid(...DOB_PRECISION)
       .allow("", null),
+
+    /* ================= DEMOGRAPHICS ================= */
     gender: Joi.string()
       .valid(...GENDER_TYPES)
       .allow("", null),
 
-    // ================= Contact =================
+    marital_status: Joi.string()
+      .valid(...MARITAL_STATUS)
+      .allow("", null),
+
+    religion: Joi.string()
+      .valid(...RELIGIONS)
+      .allow("", null),
+
+    profession: Joi.string().max(120).allow("", null),
+
+    /* ================= CONTACT ================= */
     phone_number: Joi.string().allow("", null),
     email_address: Joi.string().email().allow("", null),
     home_address: Joi.string().allow("", null),
 
-    // ================= Demographics =================
-    marital_status: Joi.string()
-      .valid(...MARITAL_STATUS)
-      .allow("", null),
-    religion: Joi.string()
-      .valid(...RELIGIONS)
-      .allow("", null),
-    profession: Joi.string().max(120).allow("", null),
-
-    // ================= Identifiers =================
+    /* ================= IDENTIFIERS ================= */
     national_id: Joi.string().max(50).allow("", null),
     insurance_number: Joi.string().max(50).allow("", null),
     passport_number: Joi.string().max(50).allow("", null),
 
-    // ================= Emergency =================
-    emergency_contact_name: Joi.string().allow("", null),
-    emergency_contact_phone: Joi.string().allow("", null),
+    /* ================= 🚨 EMERGENCY CONTACTS (JSONB) ================= */
+    emergency_contacts: Joi.array()
+      .items(
+        Joi.object({
+          name: Joi.string().max(120).allow("", null),
+          phone: Joi.string().max(50).allow("", null),
+        })
+      )
+      .allow(null),
 
-    // ================= Notes =================
+    /* ================= MISC ================= */
     notes: Joi.string().allow("", null),
 
-    // ================= Registration =================
     employee_id: Joi.string().uuid().allow("", null),
 
-    // ================= System =================
-    organization_id: Joi.forbidden(), // 🔒 derived from session
-    facility_id: Joi.string().uuid().allow("", null),
+    /* ================= TENANT ================= */
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
 
-    // ================= File Flags =================
+    /* ================= MEDIA FLAGS ================= */
     remove_photo: Joi.alternatives().try(
       Joi.boolean(),
       Joi.string().valid("true", "false")
@@ -196,20 +211,14 @@ function buildPatientSchema(user, mode = "create") {
     ),
   };
 
-  /* ============================================================
-     🔓 SUPER ADMIN OVERRIDE (EXACT Employee parity)
-     ============================================================ */
   if (isSuperAdmin(user)) {
     base.organization_id = Joi.string().uuid().allow("", null);
     base.facility_id = Joi.string().uuid().allow("", null);
   }
 
-  /* ============================================================
-     ✏️ UPDATE MODE (all fields optional)
-     ============================================================ */
   if (mode === "update") {
-    Object.keys(base).forEach((key) => {
-      base[key] = base[key].optional();
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
     });
   }
 
@@ -217,40 +226,49 @@ function buildPatientSchema(user, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE + UPDATE PATIENT (Enterprise-Aligned, Employee-Parity)
-   ============================================================ */
-/* ============================
-   CREATE PATIENT
-============================ */
+   📌 CREATE PATIENT — MASTER (FINAL)
+============================================================ */
 export const createPatient = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "create",
       res,
     });
     if (!allowed) return;
 
-    /* ================= DEBUG: INCOMING ================= */
-    debug.log("create → incoming body", req.body);
+    /* ===== JSONB PARSE (MULTIPART SAFE) ===== */
+    if (typeof req.body.emergency_contacts === "string") {
+      try {
+        req.body.emergency_contacts = JSON.parse(req.body.emergency_contacts);
+      } catch {
+        return error(res, "Validation failed", [
+          { field: "emergency_contacts", message: "Invalid JSON format" },
+        ], 400);
+      }
+    }
 
-    /* ================= VALIDATION ================= */
+    /* ===== STRIP FILE-ONLY FIELDS ===== */
+    delete req.body.photo_path;
+    delete req.body.qr_code_path;
+
+    /* ===== STRIP TENANT FIELDS (NON-SA) ===== */
+    if (!isSuperAdmin(req.user)) {
+      delete req.body.organization_id;
+      delete req.body.facility_id;
+    }
+
     const { value, errors } = validate(
       buildPatientSchema(req.user, "create"),
       req.body
     );
-
     if (errors) {
-      debug.warn("create → validation error", errors);
       await t.rollback();
-      return res.status(400).json({ success: false, errors });
+      return error(res, "Validation failed", errors, 400);
     }
 
-    debug.log("create → validated value", value);
-
-    /* ================= NORMALIZATION ================= */
     normalizeDateOnlyFields(value, ["date_of_birth"]);
 
     if (typeof value.email_address === "string") {
@@ -260,39 +278,21 @@ export const createPatient = async (req, res) => {
       value.phone_number = value.phone_number.trim() || null;
     }
 
-    /* ================= ORG / FACILITY ================= */
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
 
-    debug.log("create → resolved scope", {
-      organization_id: orgId,
-      facility_id: facilityId,
-    });
-
     if (!orgId) {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        errors: [{ field: "organization_id", message: "Organization is required" }],
-      });
+      return error(res, "Organization is required", null, 400);
     }
 
-    /* ================= PATIENT NUMBER ================= */
     if (!value.pat_no || value.pat_no.trim() === "") {
       value.pat_no = await generateNextPatientNo(orgId);
     }
 
-    /* ================= FINAL PAYLOAD ================= */
-    debug.log("create → final payload", {
-      ...value,
-      organization_id: orgId,
-      facility_id: facilityId,
-    });
-
-    /* ================= CREATE ================= */
     const created = await Patient.create(
       {
         ...value,
@@ -308,8 +308,6 @@ export const createPatient = async (req, res) => {
 
     await t.commit();
 
-    debug.log("create → committed", { patientId: created.id });
-
     const full = await Patient.findOne({
       where: { id: created.id },
       include: PATIENT_INCLUDES,
@@ -317,7 +315,7 @@ export const createPatient = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "create",
       entityId: created.id,
       entity: full,
@@ -325,22 +323,21 @@ export const createPatient = async (req, res) => {
 
     return success(res, "✅ Patient created", full);
   } catch (err) {
-    debug.error("create → ERROR", err);
     await t.rollback();
-    throw err;
+    debug.error("createPatient → FAILED", err);
+    return error(res, "❌ Failed to create patient", err);
   }
 };
 
-
-/* ============================
-   UPDATE PATIENT (FINAL – UPLOAD + REMOVE FIXED)
-============================ */
+/* ============================================================
+   📌 UPDATE PATIENT — MASTER (FINAL)
+============================================================ */
 export const updatePatient = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
@@ -348,22 +345,45 @@ export const updatePatient = async (req, res) => {
 
     const { id } = req.params;
 
-    /* ================= DEBUG ================= */
-    debug.log("update → incoming body", req.body);
-    debug.log("update → incoming files", req.files);
+    /* ===== JSONB PARSE (MULTIPART SAFE) ===== */
+    if (typeof req.body.emergency_contacts === "string") {
+      try {
+        req.body.emergency_contacts = JSON.parse(req.body.emergency_contacts);
+      } catch {
+        return error(
+          res,
+          "Validation failed",
+          [{ field: "emergency_contacts", message: "Invalid JSON format" }],
+          400
+        );
+      }
+    }
 
-    /* ================= VALIDATION ================= */
+    /* ===== STRIP FILE-ONLY FIELDS ===== */
+    delete req.body.photo_path;
+    delete req.body.qr_code_path;
+
+    /* ===== STRIP TENANT FIELDS (NON-SA) ===== */
+    if (!isSuperAdmin(req.user)) {
+      delete req.body.organization_id;
+      delete req.body.facility_id;
+    }
+
     const { value, errors } = validate(
       buildPatientSchema(req.user, "update"),
       req.body
     );
-
     if (errors) {
       await t.rollback();
-      return res.status(400).json({ success: false, errors });
+      return error(res, "Validation failed", errors, 400);
     }
 
     normalizeDateOnlyFields(value, ["date_of_birth"]);
+
+    /* ===== UNIQUE-SAFE NORMALIZATION ===== */
+    ["phone_number", "email_address"].forEach((field) => {
+      if (value[field] === "") value[field] = null;
+    });
 
     if (typeof value.email_address === "string") {
       value.email_address = value.email_address.trim().toLowerCase() || null;
@@ -372,10 +392,13 @@ export const updatePatient = async (req, res) => {
       value.phone_number = value.phone_number.trim() || null;
     }
 
-    /* ================= LOAD PATIENT ================= */
+    /* ===== LOAD PATIENT ===== */
     const where = { id };
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+      if (isFacilityHead(req.user)) {
+        where.facility_id = req.user.facility_id;
+      }
     }
 
     const patient = await Patient.findOne({ where, transaction: t });
@@ -384,38 +407,43 @@ export const updatePatient = async (req, res) => {
       return error(res, "Patient not found", null, 404);
     }
 
-    debug.log("update → before", patient.toJSON());
+    /* ========================================================
+       🆔 FIX #1: PROTECT pat_no (NOT NULL)
+    ======================================================== */
+    if (!value.pat_no || value.pat_no.trim() === "") {
+      value.pat_no = patient.pat_no;
+    }
 
-    /* ================= REMOVE FLAGS ================= */
-    ["remove_photo", "remove_qr_code"].forEach(flag => {
+    /* ========================================================
+       🧭 FIX #2: PRESERVE registration_status
+    ======================================================== */
+    if (!("registration_status" in value)) {
+      value.registration_status = patient.registration_status;
+    }
+
+    /* ===== REMOVE FLAGS ===== */
+    ["remove_photo", "remove_qr_code"].forEach((flag) => {
       if (value[flag] === "true") value[flag] = true;
       if (value[flag] === "false") value[flag] = false;
     });
 
-    if (value.remove_photo === true) {
-      value.photo_path = null;
-    }
-
-    if (value.remove_qr_code === true) {
-      value.qr_code_path = null;
-    }
+    if (value.remove_photo === true) value.photo_path = null;
+    if (value.remove_qr_code === true) value.qr_code_path = null;
 
     delete value.remove_photo;
     delete value.remove_qr_code;
 
-    /* ================= FILE UPLOAD (✅ CORRECT FIELD NAME) ================= */
     if (req.files?.photo_path?.[0]) {
       value.photo_path = `/uploads/patients/${req.files.photo_path[0].filename}`;
     }
 
-    /* ================= ORG / FACILITY ================= */
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
 
-    /* ================= UPDATE ================= */
+    /* ===== UPDATE ===== */
     await patient.update(
       {
         ...value,
@@ -426,9 +454,7 @@ export const updatePatient = async (req, res) => {
       { transaction: t }
     );
 
-    debug.log("update → after", patient.toJSON());
-
-    /* ================= QR AUTO-REGEN ================= */
+    /* ===== QR AUTO-REGEN ===== */
     if (
       !patient.qr_code_path ||
       (value.pat_no && value.pat_no !== patient.pat_no)
@@ -442,7 +468,6 @@ export const updatePatient = async (req, res) => {
 
     await t.commit();
 
-    /* ================= RELOAD FULL ================= */
     const full = await Patient.findOne({
       where: { id },
       include: PATIENT_INCLUDES,
@@ -450,7 +475,7 @@ export const updatePatient = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "update",
       entityId: id,
       entity: full,
@@ -459,28 +484,22 @@ export const updatePatient = async (req, res) => {
     return success(res, "✅ Patient updated", full);
   } catch (err) {
     await t.rollback();
-    debug.error("update → FAILED", err);
+    debug.error("updatePatient → FAILED", err);
     return error(res, "❌ Failed to update patient", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE PATIENT STATUS
-   ============================================================ */
+   📌 TOGGLE PATIENT STATUS — MASTER (EXPLICIT + AUDIT-SAFE)
+============================================================ */
 export const togglePatientStatus = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "update",
       res,
-    });
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "update",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
     });
     if (!allowed) return;
 
@@ -490,133 +509,161 @@ export const togglePatientStatus = async (req, res) => {
     const where = { id };
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
     }
 
-    const patient = await Patient.findOne({ where });
-    if (!patient) return error(res, "Patient not found", null, 404);
-
-    /* ================= STATUS TOGGLE ================= */
-    const newStatus =
-      patient.registration_status === REG_STATUS.ACTIVE
-        ? REG_STATUS.CANCELLED
-        : REG_STATUS.ACTIVE;
-
-    await patient.update({
-      registration_status: newStatus,
-      updated_by_id: req.user?.id || null,
+    const patient = await Patient.findOne({
+      where,
+      transaction: t,
     });
+
+    if (!patient) {
+      await t.rollback();
+      return error(res, "Patient not found", null, 404);
+    }
+
+    /* ================= STATUS TRANSITION ================= */
+    const currentStatus = patient.registration_status;
+
+    let nextStatus = null;
+
+    if (currentStatus === REG_STATUS.ACTIVE) {
+      nextStatus = REG_STATUS.CANCELLED;
+    } else if (currentStatus === REG_STATUS.CANCELLED) {
+      nextStatus = REG_STATUS.ACTIVE;
+    } else {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Invalid patient status transition",
+        { from: currentStatus },
+        400
+      );
+    }
+
+    /* ================= UPDATE ================= */
+    await patient.update(
+      {
+        registration_status: nextStatus,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
 
     const full = await Patient.findOne({
       where: { id },
       include: PATIENT_INCLUDES,
     });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       entity: full,
       details: {
-        from: patient.registration_status,
-        to: newStatus,
+        from: currentStatus,
+        to: nextStatus,
       },
     });
 
-    return success(res, `Patient status set to ${newStatus}`, full);
+    return success(
+      res,
+      `✅ Patient status changed from ${currentStatus} to ${nextStatus}`,
+      full
+    );
   } catch (err) {
-    debug.error("toggle_status → FAILED", err);
-    return error(res, "Failed to toggle patient status", err);
+    await t.rollback();
+    debug.error("togglePatientStatus → FAILED", err);
+    return error(res, "❌ Failed to update patient status", err);
   }
 };
-
 /* ============================================================
-   📌 GET ALL PATIENTS (Enterprise-Aligned + Summary)
+   📌 GET ALL PATIENTS — MASTER (STRICT + FILTERS + SORT + SUMMARY)
 ============================================================ */
 export const getAllPatients = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
-
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "read",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
-    });
-
     if (!allowed) return;
 
-    /* ============================================================
-       🔃 EXTRACT SORTING (CRITICAL FIX)
-       - Prevents sortBy / sortDir from becoming WHERE filters
-    ============================================================ */
+    /* ================= STRICT PAGINATION ================= */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
+    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    const visibleFields =
+      FIELD_VISIBILITY_PATIENT[role] ||
+      FIELD_VISIBILITY_PATIENT.staff;
+
+    /* ======================================================
+       🔧 SORT BRIDGE (FRONTEND + LEGACY SAFE)
+    ====================================================== */
     const {
+      sort_by,
+      sort_order,
       sortBy,
-      sortDir = "asc",
+      sortDir,
+      registration_status,
+      gender,
+      organization_id,
+      facility_id,
+      dateRange,
       ...safeQuery
     } = req.query;
 
-    const safeReq = {
-      ...req,
-      query: safeQuery,
-    };
+    const finalSortBy = sortBy || sort_by;
+    const finalSortDir = sortDir || sort_order;
 
-    /* ============================================================
-       👁️ FIELD VISIBILITY
-    ============================================================ */
-    const roleKey = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const visibleFields =
-      FIELD_VISIBILITY_PATIENT[roleKey] || FIELD_VISIBILITY_PATIENT.staff;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
 
-    /* ============================================================
-       🧠 BASE QUERY OPTIONS (FILTERS, PAGINATION, SEARCH)
-    ============================================================ */
+    /* ================= BASE QUERY OPTIONS ================= */
     const options = buildQueryOptions(
-      safeReq,
+      req,
       "last_name",
       "ASC",
       visibleFields
     );
 
-    /* ============================================================
-       🔐 TENANT SCOPE
-    ============================================================ */
+    options.where = { [Op.and]: [] };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
-      options.where = {
-        ...(options.where || {}),
+      options.where[Op.and].push({
         organization_id: req.user.organization_id,
-      };
+      });
 
       if (isFacilityHead(req.user)) {
-        options.where.facility_id = req.user.facility_id;
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (organization_id) {
+        options.where[Op.and].push({ organization_id });
+      }
+      if (facility_id) {
+        options.where[Op.and].push({ facility_id });
       }
     }
 
-    /* ============================================================
-       🌐 GLOBAL FILTER (ID OVERRIDE)
-    ============================================================ */
-    if (safeQuery.global) {
-      options.where = {
-        ...(options.where || {}),
-        id: safeQuery.global,
-      };
-    }
-
-    /* ============================================================
-       🔍 TEXT SEARCH
-    ============================================================ */
-    if (options.search && !safeQuery.global) {
-      options.where = {
-        ...(options.where || {}),
+    /* ================= SEARCH ================= */
+    if (options.search) {
+      options.where[Op.and].push({
         [Op.or]: [
           { first_name: { [Op.iLike]: `%${options.search}%` } },
           { last_name: { [Op.iLike]: `%${options.search}%` } },
@@ -625,164 +672,150 @@ export const getAllPatients = async (req, res) => {
           { phone_number: { [Op.iLike]: `%${options.search}%` } },
           { email_address: { [Op.iLike]: `%${options.search}%` } },
         ],
-      };
+      });
     }
 
-    /* ============================================================
-       🔃 SORT (MODEL-AWARE, SAFE)
-       - Supports Patient + Organization + Facility
-    ============================================================ */
-    let order =
-      options.order?.length ? options.order : [["last_name", "ASC"]];
-
-    if (sortBy && PATIENT_SORT_MAP[sortBy]) {
-      const direction =
-        String(sortDir).toUpperCase() === "DESC" ? "DESC" : "ASC";
-
-      order = [[
-        ...PATIENT_SORT_MAP[sortBy],
-        direction,
-      ]];
+    /* ================= STATUS FILTER ================= */
+    if (registration_status) {
+      options.where[Op.and].push({
+        registration_status: registration_status.toLowerCase(),
+      });
     }
 
-    /* ============================================================
-       📋 LIST QUERY
-    ============================================================ */
+    /* ================= GENDER FILTER ================= */
+    if (gender) {
+      options.where[Op.and].push({
+        gender: gender.toLowerCase(),
+      });
+    }
+
+    /* ================= DATE RANGE ================= */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      options.where[Op.and].push({
+        created_at: { [Op.between]: [start, end] },
+      });
+    }
+
+    /* ================= SORT ================= */
+    let order = options.order;
+    if (finalSortBy && PATIENT_SORT_MAP[finalSortBy]) {
+      const dir =
+        String(finalSortDir).toUpperCase() === "DESC" ? "DESC" : "ASC";
+      order = [[...PATIENT_SORT_MAP[finalSortBy], dir]];
+    }
+
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Patient.findAndCountAll({
       where: options.where,
       include: PATIENT_INCLUDES,
       order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
-      subQuery: false,
     });
 
-/* ============================================================
-   📊 SUMMARY (ENUM-SAFE + GROUPED)
-============================================================ */
-const baseWhere = { ...(options.where || {}) };
+    /* ================= SUMMARY (ENTERPRISE-CORRECT) ================= */
+    const summary = {
+      total: count,
+      active: 0,
+      cancelled: 0,
+      male: 0,
+      female: 0,
+    };
 
-/* ---------- TOTAL ---------- */
-const total = await Patient.count({ where: baseWhere });
+    /* ---- status counts (page-safe) ---- */
+    rows.forEach((p) => {
+      if (p.registration_status === "active") summary.active++;
+      if (p.registration_status === "cancelled") summary.cancelled++;
+    });
 
-/* ---------- GENDER SUMMARY ---------- */
-const genderRows = await Patient.findAll({
-  attributes: [
-    "gender",
-    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-  ],
-  where: baseWhere,
-  group: ["gender"],
-  raw: true,
-});
+    /* ---- gender counts (FULL DATASET, FILTER-SAFE) ---- */
+    const genderCounts = await Patient.findAll({
+      where: options.where,
+      attributes: [
+        "gender",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["gender"],
+    });
 
-const genderMap = Object.fromEntries(
-  genderRows.map(r => [r.gender, Number(r.count)])
-);
+    genderCounts.forEach((g) => {
+      if (g.gender === "male") summary.male = Number(g.get("count"));
+      if (g.gender === "female") summary.female = Number(g.get("count"));
+    });
 
-/* ---------- STATUS SUMMARY ---------- */
-const statusRows = await Patient.findAll({
-  attributes: [
-    "registration_status",
-    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-  ],
-  where: baseWhere,
-  group: ["registration_status"],
-  raw: true,
-});
-
-const statusMap = Object.fromEntries(
-  statusRows.map(r => [r.registration_status, Number(r.count)])
-);
-
-/* ---------- FINAL SUMMARY ---------- */
-const summary = {
-  total,
-
-  gender: {
-    male: genderMap[GENDER.male] || 0,
-    female: genderMap[GENDER.female] || 0,
-  },
-
-  status: {
-    active: statusMap[REG_STATUS.ACTIVE] || 0,
-    cancelled: statusMap[REG_STATUS.CANCELLED] || 0,
-  },
-};
-
-    /* ============================================================
-       🧾 AUDIT
-    ============================================================ */
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "list",
       details: {
-        query: req.query,
+        query: safeQuery,
         returned: count,
-        summary,
+        pagination: { page, limit },
       },
     });
 
-    /* ============================================================
-       ✅ RESPONSE
-    ============================================================ */
     return success(res, "✅ Patients loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
-      summary,
     });
   } catch (err) {
-    debug.error("list → FAILED", err);
+    debug.error("getAllPatients → FAILED", err);
     return error(res, "❌ Failed to load patients", err);
   }
 };
 
 /* ============================================================
-   📌 GET PATIENT BY ID
-   ============================================================ */
+   📌 GET PATIENT BY ID — MASTER
+============================================================ */
 export const getPatientById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "read",
       res,
-    });
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "read",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
     });
     if (!allowed) return;
 
     const { id } = req.params;
 
-    /* ================= TENANT SCOPE ================= */
     const where = { id };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
+    } else {
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
     const patient = await Patient.findOne({
       where,
       include: PATIENT_INCLUDES,
     });
-    if (!patient) return error(res, "❌ Patient not found", null, 404);
+
+    if (!patient) {
+      return error(res, "❌ Patient not found", null, 404);
+    }
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "view",
       entityId: id,
       entity: patient,
@@ -790,37 +823,32 @@ export const getPatientById = async (req, res) => {
 
     return success(res, "✅ Patient loaded", patient);
   } catch (err) {
-    debug.error("getById → FAILED", err);
+    debug.error("getPatientById → FAILED", err);
     return error(res, "❌ Failed to load patient", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL PATIENTS LITE WITH CONTACT
-   ============================================================ */
+   📌 GET ALL PATIENTS LITE WITH CONTACT — MASTER
+============================================================ */
 export const getAllPatientsLiteWithContact = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "read",
       res,
-    });
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "read",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
     });
     if (!allowed) return;
 
     const { q } = req.query;
 
-    /* ================= TENANT SCOPE ================= */
     const where = { deleted_at: null };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
@@ -838,7 +866,7 @@ export const getAllPatientsLiteWithContact = async (req, res) => {
       ];
     }
 
-    const patients = await Patient.findAll({
+    const rows = await Patient.findAll({
       where,
       attributes: [
         "id",
@@ -864,7 +892,7 @@ export const getAllPatientsLiteWithContact = async (req, res) => {
       limit: 20,
     });
 
-    const result = patients.map((p) => ({
+    const records = rows.map((p) => ({
       id: p.id,
       pat_no: p.pat_no,
       full_name: [p.first_name, p.middle_name, p.last_name]
@@ -878,47 +906,41 @@ export const getAllPatientsLiteWithContact = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "list_lite_contact",
-      details: { count: result.length, query: q || null },
+      details: { count: records.length, q: q || null },
     });
 
     return success(res, "✅ Patients loaded (lite + contact)", {
-      records: result,
+      records,
     });
   } catch (err) {
-    debug.error("list_lite_contact → FAILED", err);
+    debug.error("getAllPatientsLiteWithContact → FAILED", err);
     return error(res, "❌ Failed to load patients (lite + contact)", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET ALL PATIENTS LITE (ID + NAME)
-   ============================================================ */
+   📌 GET ALL PATIENTS LITE — MASTER
+============================================================ */
 export const getAllPatientsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "read",
       res,
-    });
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "read",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
     });
     if (!allowed) return;
 
     const { q } = req.query;
 
-    /* ================= TENANT SCOPE ================= */
     const where = { deleted_at: null };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
@@ -934,7 +956,7 @@ export const getAllPatientsLite = async (req, res) => {
       ];
     }
 
-    const patients = await Patient.findAll({
+    const rows = await Patient.findAll({
       where,
       attributes: ["id", "pat_no", "first_name", "middle_name", "last_name"],
       order: [
@@ -952,7 +974,7 @@ export const getAllPatientsLite = async (req, res) => {
       limit: 20,
     });
 
-    const result = patients.map((p) => {
+    const records = rows.map((p) => {
       const fullName = [p.first_name, p.middle_name, p.last_name]
         .filter(Boolean)
         .join(" ")
@@ -969,58 +991,57 @@ export const getAllPatientsLite = async (req, res) => {
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "list_lite",
-      details: { query: q || null, count: result.length },
+      details: { q: q || null, count: records.length },
     });
 
-    return success(res, "✅ Patients loaded (lite)", { records: result });
+    return success(res, "✅ Patients loaded (lite)", { records });
   } catch (err) {
-    debug.error("list_lite → FAILED", err);
+    debug.error("getAllPatientsLite → FAILED", err);
     return error(res, "❌ Failed to load patients (lite)", err);
   }
 };
 
 
 /* ============================================================
-   📌 DELETE PATIENT (Soft Delete + File Cleanup)
-   ============================================================ */
+   📌 DELETE PATIENT — MASTER (SOFT DELETE + FILE CLEANUP)
+============================================================ */
 export const deletePatient = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "delete",
       res,
-    });
-    debug.log("PERMISSION CHECK", {
-      module: "patient",
-      action: "delete",
-      allowed,
-      userId: req.user?.id,
-      roles: req.user?.roleNames,
     });
     if (!allowed) return;
 
     const { id } = req.params;
 
-    /* ================= TENANT SCOPE ================= */
     const where = { id };
+
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
     }
 
-    const patient = await Patient.findOne({ where, transaction: t });
+    const patient = await Patient.findOne({
+      where,
+      transaction: t,
+    });
+
     if (!patient) {
       await t.rollback();
-      return error(res, "Patient not found", null, 404);
+      return error(res, "❌ Patient not found", null, 404);
     }
 
-    /* ================= FILE CLEANUP ================= */
+    /* ================= FILE CLEANUP (NON-BLOCKING) ================= */
     try {
       if (patient.photo_path) {
         fs.unlinkSync(path.join(process.cwd(), patient.photo_path));
@@ -1029,8 +1050,9 @@ export const deletePatient = async (req, res) => {
         fs.unlinkSync(path.join(process.cwd(), patient.qr_code_path));
       }
     } catch (fileErr) {
-      // Do not block deletion if files are missing
-      debug.warn("File cleanup error", { message: fileErr.message });
+      debug.warn("deletePatient → file cleanup warning", {
+        message: fileErr.message,
+      });
     }
 
     /* ================= SOFT DELETE ================= */
@@ -1038,6 +1060,7 @@ export const deletePatient = async (req, res) => {
       { deleted_by_id: req.user?.id || null },
       { transaction: t }
     );
+
     await patient.destroy({ transaction: t });
 
     await t.commit();
@@ -1045,21 +1068,25 @@ export const deletePatient = async (req, res) => {
     const full = await Patient.findOne({
       where: { id },
       include: PATIENT_INCLUDES,
-      paranoid: false, // include soft-deleted
+      paranoid: false,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "patient",
+      module_key: MODULE_KEY,
       action: "delete",
       entityId: id,
       entity: full,
     });
 
-    return success(res, "✅ Patient deleted (files cleaned up)", full);
+    return success(
+      res,
+      "✅ Patient deleted (soft delete, files cleaned up)",
+      full
+    );
   } catch (err) {
-    debug.error("delete → FAILED", err);
     await t.rollback();
+    debug.error("deletePatient → FAILED", err);
     return error(res, "❌ Failed to delete patient", err);
   }
 };

@@ -20,7 +20,7 @@ import {
   Invoice,
   InvoiceItem,
 } from "../models/index.js";
-
+import { validatePaginationStrict } from "../utils/query-utils.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
@@ -115,6 +115,9 @@ function buildDiscountSchema(userRole, mode = "create") {
 ============================================================ */
 export const getAllDiscounts = async (req, res) => {
   try {
+    /* ========================================================
+       🔐 AUTHORIZATION (MASTER)
+    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -123,40 +126,87 @@ export const getAllDiscounts = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* ========================================================
+       🔎 STRICT PAGINATION (MASTER)
+    ======================================================== */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_DISCOUNT[role] || FIELD_VISIBILITY_DISCOUNT.staff;
 
-    const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
+    /* ========================================================
+       🧹 STRIP UI-ONLY PARAMS (MASTER)
+    ======================================================== */
+    const { dateRange, ...safeQuery } = req.query;
+    req.query = safeQuery;
 
-    delete options.filters?.dateRange;
+    const options = buildQueryOptions(
+      req,
+      "created_at",
+      "DESC",
+      visibleFields
+    );
 
+    options.limit = limit;
+    options.offset = offset;
     options.where = { [Op.and]: [] };
 
-    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    /* ========================================================
+       📅 DATE RANGE (created_at)
+    ======================================================== */
     if (dateRange) {
-      options.where[Op.and].push({
-        created_at: { [Op.between]: [dateRange.start, dateRange.end] },
-      });
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
+      }
     }
 
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      options.where[Op.and].push({ organization_id: req.user.organization_id });
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
       if (!isOrgLevelUser(req.user)) {
-        options.where[Op.and].push({ facility_id: req.user.facility_id });
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
       }
     } else {
-      if (req.query.organization_id)
-        options.where[Op.and].push({ organization_id: req.query.organization_id });
-      if (req.query.facility_id)
-        options.where[Op.and].push({ facility_id: req.query.facility_id });
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
-    if (req.query.status)
+    /* ========================================================
+       🎯 FILTERS (EXACT MATCH)
+    ======================================================== */
+    if (req.query.status) {
       options.where[Op.and].push({ status: req.query.status });
-    if (req.query.type)
-      options.where[Op.and].push({ type: req.query.type });
+    }
 
+    if (req.query.type) {
+      options.where[Op.and].push({ type: req.query.type });
+    }
+
+    /* ========================================================
+       🔍 GLOBAL SEARCH (SAFE)
+    ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -166,39 +216,70 @@ export const getAllDiscounts = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       🗂️ MAIN QUERY
+    ======================================================== */
     const { count, rows } = await Discount.findAndCountAll({
       where: options.where,
       include: DISCOUNT_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
     });
 
-    const summary = await buildDynamicSummary({
-      model: Discount,
-      baseWhere: options.where,
-      statusEnums: Object.values(DS),
+    /* ========================================================
+       🔢 SUMMARY (FULL DATASET – PAGINATION SAFE)
+    ======================================================== */
+    const summary = { total: count };
+
+    const statusCounts = await Discount.findAll({
+      where: options.where,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
     });
 
+    Object.values(DS).forEach((status) => {
+      const found = statusCounts.find((s) => s.status === status);
+      summary[status] = found ? Number(found.get("count")) : 0;
+    });
+
+
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: safeQuery,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE (MASTER CONTRACT)
+    ======================================================== */
     return success(res, "✅ Discounts loaded", {
       records: rows,
       summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
     });
   } catch (err) {
     debug.error("getAllDiscounts → FAILED", err);
+    if (err.statusCode === 400) {
+      return error(res, err.message, null, 400);
+    }
     return error(res, "❌ Failed to load discounts", err);
   }
 };
