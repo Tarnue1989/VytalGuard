@@ -9,6 +9,16 @@
 // 🔹 100% ID-safe and controller-aligned
 // ============================================================================
 
+/* ============================================================
+   🔒 PREVENT BFCACHE RESTORE (ROOT FIX)
+   Ensures form never reopens with stale data after navigation
+============================================================ */
+window.addEventListener("pageshow", function (event) {
+  if (event.persisted) {
+    window.location.reload();
+  }
+});
+
 import {
   initPageGuard,
   autoPagePermissionKey,
@@ -49,25 +59,22 @@ const clearBtn = document.getElementById("clearBtn");
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
+
   if (form) form.reset();
 
-  // Clear cached edit state
   sessionStorage.removeItem("labRequestEditId");
   sessionStorage.removeItem("labRequestEditPayload");
 
-  // Clear text inputs
   ["notes", "request_date", "itemNotes"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Clear dropdowns
   ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Clear suggestion inputs + hidden values
   [
     "patientSearch",
     "doctorSearch",
@@ -82,14 +89,8 @@ function resetForm() {
     }
   });
 
-  // Reset emergency checkbox
   const emergencyCheck = document.getElementById("is_emergency");
   if (emergencyCheck) emergencyCheck.checked = false;
-
-  // NOTE:
-  // Pill state is intentionally NOT force-mutated here.
-  // The form module owns pill state and exposes render helpers.
-  // This mirrors Consultation MASTER separation of concerns.
 }
 
 /* ============================================================
@@ -108,7 +109,6 @@ function hideForm() {
   localStorage.setItem("labRequestFormVisible", "false");
 }
 
-// 🔗 Expose globally (MASTER parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
@@ -138,17 +138,31 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder (FORM-ONLY MODE)
+   📦 Loader Placeholder
 ============================================================ */
 async function loadEntries() {
-  return; // handled by list page
+  return;
 }
 
 /* ============================================================
-   🚀 Init Entrypoint (MASTER)
+   🚀 Init Entrypoint (MASTER SAFE)
 ============================================================ */
 export async function initLabRequestModule() {
-  showForm(); // form-only mode (MASTER parity)
+
+  /* ============================================================
+     🔒 MODE DETERMINED STRICTLY BY URL
+  ============================================================ */
+  const urlParams = new URLSearchParams(window.location.search);
+  const editIdFromUrl = urlParams.get("id");
+
+  sharedState.currentEditIdRef.value = editIdFromUrl || null;
+
+  if (!editIdFromUrl) {
+    sessionStorage.removeItem("labRequestEditId");
+    sessionStorage.removeItem("labRequestEditPayload");
+  }
+
+  showForm();
 
   if (form) {
     setupLabRequestFormSubmission({
@@ -162,7 +176,9 @@ export async function initLabRequestModule() {
 
   localStorage.setItem("labRequestPanelVisible", "false");
 
-  // Normalize role for field defaults
+  /* ============================================================
+     🎛 Normalize role for field defaults
+  ============================================================ */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -179,8 +195,8 @@ export async function initLabRequestModule() {
 }
 
 /* ============================================================
-   🔁 Sync Stub (MASTER)
+   🔁 Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // reserved for future reactive syncing
+  // reserved
 }

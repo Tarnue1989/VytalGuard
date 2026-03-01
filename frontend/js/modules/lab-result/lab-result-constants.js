@@ -1,27 +1,33 @@
-/* ============================================================
-   💉 LAB RESULT – Field Labels, Order & Visibility
-   ------------------------------------------------------------
-   Fully aligned with Master Pattern (EKG / Central Stock).
-   Includes consistent structure, naming, permissions,
-   and UI logic (tooltip-ready, role-based visibility).
-============================================================ */
+// 📁 lab-result-constants.js – Enterprise MASTER–ALIGNED (Patient Parity)
+// ============================================================================
+// 🔹 Pattern Source: patient-constants.js (Enterprise MASTER)
+// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
+// 🔹 100% ID retention (safe for existing HTML + JS modules)
+// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
+// 🔹 Backend-safe: aligned with labResultController search, status, audit logic
+// ============================================================================
 
+/* ============================================================
+   🏷️ FIELD LABELS (Enterprise Standard)
+============================================================ */
 export const FIELD_LABELS_LAB_RESULT = {
-  // 🔹 Core Links
+  // 🏢 Organizational Scope
   organization: "Organization",
   facility: "Facility",
+
+  // 👤 Linked Entities
   department: "Department",
   patient: "Patient",
   doctor: "Doctor",
   consultation: "Consultation",
-  registrationLog: "Registration Log",
+  registration_log: "Registration Log",
 
-  // 🔹 Lab Associations
-  labRequest: "Linked Lab Request",
-  labRequestItem: "Lab Request Item",
-  labTest: "Lab Test",
+  // 🧪 Lab Associations
+  lab_request: "Linked Lab Request",
+  lab_request_item: "Lab Request Item",
+  lab_test: "Lab Test",
 
-  // 🔹 Result Data
+  // 📊 Result Data
   result: "Result",
   notes: "Notes",
   doctor_notes: "Doctor Notes",
@@ -29,42 +35,42 @@ export const FIELD_LABELS_LAB_RESULT = {
   attachment_url: "Attachment (File)",
   status: "Status",
 
-  // 🔹 Audit Trail
+  // 🧾 Audit Trail
   enteredBy: "Entered By",
   reviewedBy: "Reviewed By",
   verifiedBy: "Verified By",
   createdBy: "Created By",
-  updatedBy: "Updated By",
-  deletedBy: "Deleted By",
-
-  // 🔹 Time Stamps
   created_at: "Created At",
+  updatedBy: "Updated By",
   updated_at: "Updated At",
+  deletedBy: "Deleted By",
   deleted_at: "Deleted At",
 
-  // 🔹 UI
+  // ⚙️ UI
   actions: "Actions",
 };
 
 /* ============================================================
-   📋 FIELD ORDER (Universal Ordering)
+   📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_LAB_RESULT = [
-  // 🔹 Primary Hierarchy
+  // 🔹 Organizational Scope
   "organization",
   "facility",
+
+  // 🔹 Primary Hierarchy
   "department",
   "patient",
   "doctor",
   "consultation",
-  "registrationLog",
+  "registration_log",
 
   // 🔹 Linked Entities
-  "labRequest",
-  "labRequestItem",
-  "labTest",
+  "lab_request",
+  "lab_request_item",
+  "lab_test",
 
-  // 🔹 Core Data
+  // 🔹 Core Result Data
   "result",
   "notes",
   "doctor_notes",
@@ -83,17 +89,12 @@ export const FIELD_ORDER_LAB_RESULT = [
   "deletedBy",
   "deleted_at",
 
-  // 🔹 UI Controls
+  // 🔹 System
   "actions",
 ];
 
 /* ============================================================
-   👥 ROLE-BASED FIELD VISIBILITY DEFAULTS
-   ------------------------------------------------------------
-   Each role inherits master visibility logic:
-   - Admin / Superadmin → Full
-   - OrgOwner / FacilityHead → Operational + Linked
-   - Staff → Minimal clinical & visible results only
+   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
 export const FIELD_DEFAULTS_LAB_RESULT = {
   superadmin: FIELD_ORDER_LAB_RESULT,
@@ -106,10 +107,10 @@ export const FIELD_DEFAULTS_LAB_RESULT = {
     "patient",
     "doctor",
     "consultation",
-    "registrationLog",
-    "labRequest",
-    "labRequestItem",
-    "labTest",
+    "registration_log",
+    "lab_request",
+    "lab_request_item",
+    "lab_test",
     "result",
     "notes",
     "doctor_notes",
@@ -131,10 +132,10 @@ export const FIELD_DEFAULTS_LAB_RESULT = {
     "patient",
     "doctor",
     "consultation",
-    "registrationLog",
-    "labRequest",
-    "labRequestItem",
-    "labTest",
+    "registration_log",
+    "lab_request",
+    "lab_request_item",
+    "lab_test",
     "result",
     "notes",
     "doctor_notes",
@@ -154,13 +155,77 @@ export const FIELD_DEFAULTS_LAB_RESULT = {
     "facility",
     "patient",
     "doctor",
-    "labRequest",
-    "labRequestItem",
-    "labTest",
+    "lab_request",
+    "lab_request_item",
+    "lab_test",
     "result",
     "notes",
     "result_date",
     "status",
     "actions",
   ],
+};
+
+/* ============================================================
+   🧠 FIELD GROUPS (Enterprise Optional Extension)
+============================================================ */
+export const FIELD_GROUPS_LAB_RESULT = {
+  org_scope: ["organization", "facility"],
+
+  hierarchy: [
+    "department",
+    "patient",
+    "doctor",
+    "consultation",
+    "registration_log",
+  ],
+
+  associations: [
+    "lab_request",
+    "lab_request_item",
+    "lab_test",
+  ],
+
+  result_data: [
+    "result",
+    "notes",
+    "doctor_notes",
+    "result_date",
+    "attachment_url",
+    "status",
+  ],
+
+  audit: [
+    "enteredBy",
+    "reviewedBy",
+    "verifiedBy",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+  ],
+
+  system: [
+    "deletedBy",
+    "deleted_at",
+    "actions",
+  ],
+};
+
+/* ============================================================
+   ⚙️ MODULE METADATA (Enterprise UI Context)
+============================================================ */
+export const MODULE_KEY_LAB_RESULT = "lab_result";
+export const MODULE_LABEL_LAB_RESULT = "Lab Result";
+
+/* ============================================================
+   📦 EXPORT (Unified)
+============================================================ */
+export default {
+  FIELD_LABELS_LAB_RESULT,
+  FIELD_ORDER_LAB_RESULT,
+  FIELD_DEFAULTS_LAB_RESULT,
+  FIELD_GROUPS_LAB_RESULT,
+  MODULE_KEY_LAB_RESULT,
+  MODULE_LABEL_LAB_RESULT,
 };

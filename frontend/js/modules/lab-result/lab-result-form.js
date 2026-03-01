@@ -1,9 +1,12 @@
-// 📦 lab-result-form.js – Secure & Role-Aware Lab Result Form (Enterprise-Aligned)
-// ============================================================
-// 💉 Follows Consultation Master Pattern
-// Includes full permission handling, form safety, suggestion inputs,
-// multi-result pill handling, and secure edit/add workflows.
-// ============================================================
+// 📦 lab-result-form.js – Secure & Role-Aware Lab Result Form (ENTERPRISE MASTER)
+// ============================================================================
+// 🔹 Rule-driven validation (LAB_RESULT_FORM_RULES)
+// 🔹 Role-aware org/fac handling (tenant safe)
+// 🔹 Patient → Lab Request engine restored
+// 🔹 Multi-result pill engine restored
+// 🔹 Safe file upload + removal flags
+// 🔹 Controller-faithful submission
+// ============================================================================
 
 import {
   showToast,
@@ -13,14 +16,23 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
+
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadDepartmentsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
+
+import { LAB_RESULT_FORM_RULES } from "./lab-result.form.rules.js";
 
 /* ============================================================
    🔧 Helpers
@@ -28,465 +40,599 @@ import {
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
 }
+
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
   if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
   try {
     return JSON.stringify(msg);
   } catch {
     return fallback;
   }
 }
+
 function normalizeUUID(val) {
   return val && val.trim() !== "" ? val : null;
 }
+
 function normalizeDate(val) {
   if (!val) return null;
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  return d.toISOString().slice(0, 10);
 }
 
 /* ============================================================
-   📂 File Preview Helper
-============================================================ */
-function setupFilePreview(inputId, previewId, removeBtnId, fieldName) {
-  const input = document.getElementById(inputId);
-  const preview = document.getElementById(previewId);
-  const removeBtn = document.getElementById(removeBtnId);
-  const flag = document.getElementById(`remove_${fieldName}`);
-
-  if (!input || !preview || !removeBtn) return;
-
-  input.addEventListener("change", () => {
-    const file = input.files[0];
-    if (!file) return;
-    preview.innerHTML = `<a href="${URL.createObjectURL(file)}" target="_blank">${file.name}</a>`;
-    removeBtn.classList.remove("hidden");
-    if (flag) flag.value = "false";
-  });
-
-  removeBtn.addEventListener("click", () => {
-    input.value = "";
-    preview.innerHTML = "";
-    removeBtn.classList.add("hidden");
-    if (flag) flag.value = "true";
-  });
-}
-
-/* ============================================================
-   💊 Pill System – Multi-Result Support
+   💊 Pill Engine
 ============================================================ */
 let selectedResults = [];
 let pillsContainer;
 
-export function getLabResultFormState() {
-  return { selectedResults, renderResultPills };
-}
-
 function renderResultPills() {
   if (!pillsContainer) return;
+
   pillsContainer.innerHTML = "";
 
   if (!selectedResults.length) {
-    pillsContainer.innerHTML = `<p class="text-muted">No lab results added yet.</p>`;
-  } else {
-    selectedResults.forEach((res, idx) => {
-      const pill = document.createElement("div");
-      pill.className = "pill";
-      const fileDisplay = res.file
-        ? `<a href="${URL.createObjectURL(res.file)}" target="_blank" class="badge bg-light text-primary ms-1">📎 ${res.file.name}</a>`
-        : res.attachment_url
-        ? `<a href="${res.attachment_url}" target="_blank" class="badge bg-light text-primary ms-1">📎 ${res.attachment_url.split("/").pop()}</a>`
-        : "";
-
-      pill.innerHTML = `
-        <strong>${res.test || "Test"}</strong> – ${res.result || "—"}
-        | Date: ${res.result_date || "—"}
-        | Patient: ${res.patient_label || "—"}
-        ${fileDisplay}
-        <button type="button" class="btn btn-sm btn-link pill-edit" data-idx="${idx}" title="Edit">
-          <i class="ri-pencil-line"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-link text-danger pill-remove" data-idx="${idx}" title="Remove">
-          <i class="ri-close-line"></i>
-        </button>
-      `;
-      pillsContainer.appendChild(pill);
-    });
-
-    // ✏️ Edit pill
-    pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = btn.dataset.idx;
-        const item = selectedResults[idx];
-        document.getElementById("result").value = item.result || "";
-        document.getElementById("notes").value = item.notes || "";
-        document.getElementById("doctor_notes").value = item.doctor_notes || "";
-        document.getElementById("result_date").value = normalizeDate(item.result_date);
-
-        const labReqItemSelect = document.getElementById("labRequestItemSelect");
-        if (labReqItemSelect) labReqItemSelect.value = item.lab_request_item_id || "";
-
-        selectedResults.splice(idx, 1);
-        renderResultPills();
-
-        const addBtn = document.getElementById("addResultBtn");
-        addBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Result`;
-        addBtn.dataset.mode = "edit";
-      });
-    });
-
-    // ❌ Remove pill
-    pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        selectedResults.splice(btn.dataset.idx, 1);
-        renderResultPills();
-      });
-    });
+    pillsContainer.innerHTML =
+      `<p class="text-muted">No lab results added yet.</p>`;
+    return;
   }
 
-  // Dynamic submit label
-  const submitBtn = document.querySelector("button[type=submit]");
-  if (submitBtn && !submitBtn.dataset.editMode) {
-    submitBtn.innerHTML =
-      selectedResults.length <= 1
-        ? `<i class="ri-save-3-line me-1"></i> Submit`
-        : `<i class="ri-save-3-line me-1"></i> Submit All`;
-  }
+  selectedResults.forEach((item, index) => {
+    const div = document.createElement("div");
+    div.className = "pill";
+    div.innerHTML = `
+      <strong>${item.test || "Test"}</strong> – ${item.result || "—"}
+      <button type="button"
+        class="btn btn-sm btn-link text-danger remove-pill"
+        data-index="${index}">
+        <i class="ri-close-line"></i>
+      </button>
+    `;
+    pillsContainer.appendChild(div);
+  });
+
+  pillsContainer.querySelectorAll(".remove-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedResults.splice(btn.dataset.index, 1);
+      renderResultPills();
+    });
+  });
+}
+
+export function getLabResultFormState() {
+  return { selectedResults };
 }
 
 /* ============================================================
-   🚀 Setup Lab Result Form Submission
+   🚀 MAIN SETUP
 ============================================================ */
 export async function setupLabResultFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
 
-  const itemId = getQueryParam("id") || sessionStorage.getItem("labResultEditId");
-  const isEdit = !!itemId;
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+  const itemId =
+    sessionStorage.getItem("labResultEditId") || getQueryParam("id");
+  const isEdit = Boolean(itemId);
+  if (isEdit) {
+    // Change title
+    const titleEl = document.querySelector(".card-title");
+    if (titleEl) titleEl.textContent = "Edit Lab Result";
 
-  const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
-  const cancelBtn = document.getElementById("cancelBtn");
-  const clearBtn = document.getElementById("clearBtn");
-
-  const setUI = (mode = "add") => {
-    if (mode === "edit") {
-      titleEl && (titleEl.textContent = "Edit Lab Result");
-      submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Lab Result`;
-    } else {
-      titleEl && (titleEl.textContent = "Add Lab Result");
-      submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Lab Result`;
+    // Change submit button text
+    const submitBtn = form.querySelector("button[type=submit]");
+    if (submitBtn) {
+      submitBtn.innerHTML =
+        `<i class="ri-save-3-line me-1"></i> Update Lab Result`;
     }
-  };
-  setUI(isEdit ? "edit" : "add");
 
-  /* -------------------- DOM Refs -------------------- */
+    // Hide multi-result section
+    document.getElementById("addResultBtn")?.classList.add("hidden");
+    document.getElementById("resultPillsContainer")?.classList.add("hidden");
+  }
+  const userRole =
+    (localStorage.getItem("userRole") || "").toLowerCase();
+
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
-  const deptSelect = document.getElementById("departmentIdHidden");
-  const labReqSelect = document.getElementById("labRequestSelect");
-  const labReqItemSelect = document.getElementById("labRequestItemSelect");
-  const patientInput = document.getElementById("patientSearch");
-  const patientHidden = document.getElementById("patientId");
-  const patientSuggestions = document.getElementById("patientSearchSuggestions");
-  const doctorInput = document.getElementById("doctorSearch");
-  const doctorHidden = document.getElementById("doctorId");
-  const resultInput = document.getElementById("result");
-  const notesInput = document.getElementById("notes");
-  const doctorNotesInput = document.getElementById("doctor_notes");
-  const resultDateInput = document.getElementById("result_date");
-  const fileInput = document.getElementById("attachmentInput");
-  const addResultBtn = document.getElementById("addResultBtn");
-  pillsContainer = document.getElementById("resultPillsContainer");
 
   /* ============================================================
-     Prefill Dropdowns & Suggestions
+     🔐 Org / Facility
   ============================================================ */
   try {
-    const orgs = await loadOrganizationsLite();
-    setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-    const facs = await loadFacilitiesLite({}, true);
-    setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    const depts = await loadDepartmentsLite({}, true);
-    setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
-
-    // Role-aware dropdown visibility
     if (userRole.includes("super")) {
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      orgSelect.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      orgSelect.closest(".form-group")?.classList.add("hidden");
-      facSelect.closest(".form-group")?.classList.add("hidden");
-    }
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-    setupSuggestionInputDynamic(
-      patientInput,
-      patientSuggestions,
-      "/api/lite/patients",
-      async (selected) => {
-        patientHidden.value = selected?.id || "";
-        patientInput.value =
-          selected.label ||
-          `${selected.pat_no || ""} - ${selected.full_name || ""}`.trim();
-        await reloadLabRequests(selected.id);
-      },
-      "label"
-    );
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+      };
+
+      await reloadFacilities();
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+    } else {
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+    }
   } catch (err) {
-    console.error("❌ Prefill error:", err);
-    showToast("❌ Failed to load reference data");
+    console.error(err);
+    showToast("❌ Failed to load organization/facility data");
   }
 
   /* ============================================================
-     🧩 Lab Request Reload + Item Handling (Full Prefill)
+     🧩 Patient → Lab Request Engine
   ============================================================ */
+  const patientInput = document.getElementById("patientSearch");
+  const patientHidden = document.getElementById("patientId");
+  const patientSuggestions = document.getElementById(
+    "patientSearchSuggestions"
+  );
+  const labReqSelect = document.getElementById("labRequestSelect");
+  const labReqItemSelect = document.getElementById(
+    "labRequestItemSelect"
+  );
+  const resultInput = document.getElementById("result");
+  const notesInput = document.getElementById("notes");
+  const doctorNotesInput =
+    document.getElementById("doctor_notes");
+  const resultDateInput =
+    document.getElementById("result_date");
+  const fileInput = document.getElementById("attachmentInput");
+  const addResultBtn =
+    document.getElementById("addResultBtn");
+
   async function reloadLabRequests(patientId) {
-    labReqSelect.innerHTML = `<option value="">Loading pending requests...</option>`;
-    labReqItemSelect.innerHTML = `<option value="">-- Select Test Item --</option>`;
+    labReqSelect.innerHTML =
+      `<option value="">Loading pending requests...</option>`;
+    labReqItemSelect.innerHTML =
+      `<option value="">-- Select Test Item --</option>`;
 
     try {
-      const res = await authFetch(`/api/lite/lab-requests?patient_id=${patientId}&status=pending`);
-      const data = await res.json().catch(() => ({}));
-      const recs = data?.data?.records || [];
+      const orgId =
+        document.getElementById("organizationSelect")?.value || "";
+      const facId =
+        document.getElementById("facilitySelect")?.value || "";
 
-      if (!recs.length) {
-        labReqSelect.innerHTML = `<option value="">— No pending lab requests —</option>`;
+      // 🔒 Tenant safety guard
+      if (!orgId || !facId) {
+        labReqSelect.innerHTML =
+          `<option value="">— Select organization & facility first —</option>`;
+        return;
+      }
+
+      const queryParams = new URLSearchParams({
+        patient_id: patientId,
+        organization_id: orgId,
+        facility_id: facId,
+      });
+
+      // Only restrict to pending in CREATE mode
+      if (!isEdit) {
+        queryParams.append("status", "pending");
+      }
+
+      const res = await authFetch(
+        `/api/lite/lab-requests?${queryParams.toString()}`
+      );
+
+      const data = await res.json().catch(() => ({}));
+      const records = data?.data?.records || [];
+
+      if (!records.length) {
+        labReqSelect.innerHTML =
+          `<option value="">— No pending lab requests —</option>`;
         return;
       }
 
       labReqSelect.innerHTML =
         `<option value="">— Select Pending Request —</option>` +
-        recs
+        records
           .map(
             (r) =>
               `<option value="${r.id}">
-                ${r.label || `Request on ${new Date(r.date).toLocaleDateString()} (${r.status})`}
+                ${r.label ||
+                  `Request on ${new Date(r.date).toLocaleDateString()} (${r.status})`}
+              </option>`
+          )
+          .join("");
+  labReqSelect.onchange = async (e) => {
+    await loadLabRequestItems(e.target.value);
+  };
+    } catch (err) {
+      console.error("❌ Lab request load failed:", err);
+      labReqSelect.innerHTML =
+        `<option value="">— Error loading lab requests —</option>`;
+    }
+  }
+
+  setupSuggestionInputDynamic(
+    patientInput,
+    patientSuggestions,
+    "/api/lite/patients",
+    async (selected) => {
+      patientHidden.value = selected?.id || "";
+      patientInput.value =
+        selected.label ||
+        `${selected.pat_no || ""} - ${selected.full_name || ""}`.trim();
+
+      await reloadLabRequests(selected.id);
+    },
+    "label"
+  );
+  // 🔁 PREFILL (EDIT MODE)
+  if (isEdit && itemId) {
+    await loadExistingLabResult(itemId);
+  }
+  // Attach validation AFTER prefill is complete
+  enableLiveValidation(form);
+  /* ============================================================
+     ➕ Add Result Button
+  ============================================================ */
+  pillsContainer =
+    document.getElementById("resultPillsContainer");
+
+  addResultBtn?.addEventListener("click", () => {
+    const labReqItemId = labReqItemSelect.value?.trim();
+    const resultVal = resultInput.value?.trim();
+
+    if (!patientHidden.value)
+      return showToast("❌ Select a patient first");
+    if (!labReqSelect.value)
+      return showToast("❌ Select a lab request");
+    if (!labReqItemId)
+      return showToast("❌ Select a test item");
+    if (!resultVal)
+      return showToast("❌ Enter result value");
+
+    if (
+      selectedResults.some(
+        (r) => r.lab_request_item_id === labReqItemId
+      )
+    ) {
+      return showToast("⚠️ This test item already added");
+    }
+
+    selectedResults.push({
+      patient_id: patientHidden.value,
+      lab_request_id: labReqSelect.value,
+      lab_request_item_id: labReqItemId,
+      doctor_id:
+        document.getElementById("doctorId").value || null,
+      result: resultVal,
+      notes: notesInput.value || "",
+      doctor_notes: doctorNotesInput.value || "",
+      result_date:
+        resultDateInput.value ||
+        new Date().toISOString().slice(0, 10),
+      file: fileInput.files?.[0] || null,
+      test:
+        labReqItemSelect.options[
+          labReqItemSelect.selectedIndex
+        ]?.text || "",
+    });
+
+    resultInput.value = "";
+    notesInput.value = "";
+    doctorNotesInput.value = "";
+    fileInput.value = "";
+
+    renderResultPills();
+    showToast("✅ Result added");
+  });
+  async function loadLabRequestItems(labRequestId) {
+    labReqItemSelect.innerHTML =
+      `<option value="">Loading test items...</option>`;
+
+    if (!labRequestId) {
+      labReqItemSelect.innerHTML =
+        `<option value="">-- Select Test Item --</option>`;
+      return;
+    }
+
+    try {
+      const orgId =
+        document.getElementById("organizationSelect")?.value || "";
+      const facId =
+        document.getElementById("facilitySelect")?.value || "";
+
+      const res = await authFetch(
+        `/api/lite/lab-request-items?lab_request_id=${labRequestId}&organization_id=${orgId}&facility_id=${facId}`
+      );
+
+      const data = await res.json().catch(() => ({}));
+      const items = data?.data?.records || [];
+
+      if (!items.length) {
+        labReqItemSelect.innerHTML =
+          `<option value="">— No test items —</option>`;
+        return;
+      }
+
+      labReqItemSelect.innerHTML =
+        `<option value="">-- Select Test Item --</option>` +
+        items
+          .map(
+            (it) =>
+              `<option value="${it.id}">
+                ${it.test || "Unnamed Test"}
               </option>`
           )
           .join("");
 
-      labReqSelect.onchange = (e) => {
-        const selectedId = e.target.value;
-        labReqItemSelect.innerHTML = `<option value="">Loading test items...</option>`;
-
-        if (!selectedId) {
-          labReqItemSelect.innerHTML = `<option value="">-- Select Test Item --</option>`;
-          return;
-        }
-
-        const selectedRequest = recs.find((r) => r.id === selectedId);
-        const items = selectedRequest?.items || [];
-        if (!items.length) {
-          labReqItemSelect.innerHTML = `<option value="">— No test items —</option>`;
-        } else {
-          labReqItemSelect.innerHTML =
-            `<option value="">-- Select Test Item --</option>` +
-            items
-              .map(
-                (it) =>
-                  `<option value="${it.id}" data-lab-test-id="${it.lab_test_id}">
-                    ${it.test || "Unnamed Test"}
-                  </option>`
-              )
-              .join("");
-        }
-
-        // ✅ Prefill standard fields
-        document.getElementById("doctorSearch").value = selectedRequest.doctor_name || "";
-        document.getElementById("doctorId").value = selectedRequest.doctor_id || "";
-        document.getElementById("departmentField").value = selectedRequest.department_name || "";
-        document.getElementById("departmentIdHidden").value = selectedRequest.department_id || "";
-        document.getElementById("consultationField").value =
-          selectedRequest.consultation_date
-            ? new Date(selectedRequest.consultation_date).toLocaleDateString()
-            : "—";
-        document.getElementById("consultationId").value = selectedRequest.consultation_id || "";
-        document.getElementById("registrationLogField").value =
-          selectedRequest.registration_log_code || "";
-        document.getElementById("registrationLogId").value = selectedRequest.registration_log_id || "";
-
-        // ✅ Prefill Doctor Notes (readonly) from lab request notes
-        const doctorNotesInput = document.getElementById("doctor_notes");
-        if (doctorNotesInput) {
-          doctorNotesInput.value = selectedRequest?.notes || "";
-        }
-
-        // ✅ Clear Technician Notes (editable)
-        const techNotesInput = document.getElementById("notes");
-        if (techNotesInput) techNotesInput.value = "";
-      };
     } catch (err) {
-      console.error("❌ Error loading lab requests:", err);
-      labReqSelect.innerHTML = `<option value="">— Error loading lab requests —</option>`;
+      console.error("❌ Failed loading test items:", err);
+      labReqItemSelect.innerHTML =
+        `<option value="">— Error loading items —</option>`;
     }
   }
+  async function loadExistingLabResult(id) {
+    try {
+      showLoading();
 
-  /* ============================================================
-     ➕ Add / Update Result → Pills
-  ============================================================ */
-  addResultBtn?.addEventListener("click", () => {
-    const mode = addResultBtn.dataset.mode || "add";
-    const patientId = patientHidden.value?.trim();
-    const labReqId = labReqSelect.value?.trim();
-    const labReqItemId = labReqItemSelect.value?.trim();
-    const doctorId = doctorHidden.value?.trim();
-    const result = resultInput.value?.trim();
-    const notes = notesInput.value?.trim();
-    const doctorNotes = doctorNotesInput.value?.trim();
-    const resultDate = resultDateInput.value || new Date().toISOString().split("T")[0];
-    const file = fileInput.files?.[0] || null;
+      const res = await authFetch(`/api/lab-results/${id}`);
+      const json = await res.json().catch(() => ({}));
 
-    if (!patientId) return showToast("❌ Please select a patient first");
-    if (!labReqId) return showToast("❌ Please select a pending request");
-    if (!labReqItemId) return showToast("❌ Please select a test item");
+      if (!res.ok) {
+        throw new Error(json?.message || "Failed to load lab result");
+      }
 
-    // ✅ prevent duplicate items
-    if (mode === "add" && selectedResults.some((r) => r.lab_request_item_id === labReqItemId)) {
-      return showToast("⚠️ This test item has already been added");
+      const record = json?.data || json;
+      if (!record) throw new Error("Lab result not found");
+
+      /* =====================================================
+        🔐 ORG / FAC PREFILL (SUPERADMIN SAFE)
+      ===================================================== */
+      if (record.organization_id && orgSelect) {
+        orgSelect.value = record.organization_id;
+
+        if (userRole.includes("super")) {
+          const facilities = await loadFacilitiesLite(
+            { organization_id: record.organization_id },
+            true
+          );
+
+          setupSelectOptions(
+            facSelect,
+            facilities,
+            "id",
+            "name",
+            "-- Select Facility --"
+          );
+        }
+      }
+
+      if (record.facility_id && facSelect) {
+        facSelect.value = record.facility_id;
+      }
+
+      /* =====================================================
+        👤 PATIENT PREFILL
+      ===================================================== */
+      if (record.patient) {
+        patientHidden.value = record.patient.id;
+        patientInput.value =
+          `${record.patient.pat_no} - ${record.patient.first_name} ${record.patient.last_name}`;
+      }
+
+      /* =====================================================
+        🧪 LOAD LAB REQUESTS FOR PATIENT
+      ===================================================== */
+      // Ensure current lab request exists in dropdown (even if not returned by lite endpoint)
+      if (record.lab_request_id) {
+        const exists = Array.from(labReqSelect.options).some(
+          (opt) => opt.value === record.lab_request_id
+        );
+
+        if (!exists) {
+          const option = document.createElement("option");
+          option.value = record.lab_request_id;
+
+          // Use readable values from record
+          const readableLabel =
+            record.lab_request?.label ||
+            record.lab_request?.test ||
+            `Request on ${new Date(record.created_at).toLocaleDateString()}`;
+
+          option.textContent = readableLabel;
+
+          labReqSelect.appendChild(option);
+        }
+      }
+      /* =====================================================
+        🧾 SELECT LAB REQUEST
+      ===================================================== */
+      if (record.lab_request_id) {
+
+        // Wait one tick to ensure options are fully rendered
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        labReqSelect.value = record.lab_request_id;
+
+        // Force change event so DOM locks selection
+        labReqSelect.dispatchEvent(new Event("change"));
+
+        await loadLabRequestItems(record.lab_request_id);
+      }
+      /* =====================================================
+        🧬 SELECT LAB REQUEST ITEM
+      ===================================================== */
+      if (record.lab_request_item_id) {
+        labReqItemSelect.value = record.lab_request_item_id;
+      }
+
+      /* =====================================================
+        📝 RESULT FIELDS
+      ===================================================== */
+      resultInput.value = record.result || "";
+      notesInput.value = record.notes || "";
+      doctorNotesInput.value = record.doctor_notes || "";
+
+      if (record.result_date) {
+        resultDateInput.value = record.result_date.slice(0, 10);
+      }
+
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "❌ Failed to prefill lab result");
+    } finally {
+      hideLoading();
     }
-
-    const labReqLabel = labReqSelect.options[labReqSelect.selectedIndex]?.text || "";
-    const labItemLabel = labReqItemSelect.options[labReqItemSelect.selectedIndex]?.text || "";
-
-    const newResult = {
-      patient_id: patientId,
-      lab_request_id: labReqId,
-      lab_request_item_id: labReqItemId,
-      doctor_id: doctorId || null,
-      result: result || "",
-      notes: notes || "",
-      doctor_notes: doctorNotes || "",
-      result_date: resultDate,
-      organization_id: orgSelect?.value || null,
-      facility_id: facSelect?.value || null,
-      department_id: deptSelect?.value || null,
-      patient_label: patientInput.value,
-      test: labItemLabel,
-      request_label: labReqLabel,
-      file,
-    };
-
-    selectedResults.push(newResult);
-
-    // reset inputs
-    resultInput.value = "";
-    notesInput.value = "";
-    doctorNotesInput.value = "";
-    labReqItemSelect.value = "";
-    fileInput.value = "";
-    document.getElementById("attachmentPreview").innerHTML = "";
-    document.getElementById("removeAttachmentBtn").classList.add("hidden");
-
-    addResultBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Result`;
-    addResultBtn.dataset.mode = "add";
-
-    renderResultPills();
-    showToast(mode === "edit" ? "✅ Updated result" : `✅ Added ${labItemLabel} to results`);
-  });
-
+  }
   /* ============================================================
-     💾 Submit Handler
+     🛡️ Validation + Submit
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of LAB_RESULT_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when())
+        continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (rule.id === "resultPillsContainer") continue;
+
+      if (!el || !el.value || el.value.trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (!isEdit && !selectedResults.length) {
+      errors.push({
+        field: "resultPillsContainer",
+        message:
+          "Add at least one lab result before submitting",
+      });
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix highlighted fields");
+      return;
+    }
+
     try {
       showLoading();
-      let url = "/api/lab-results";
-      let method = "POST";
-      let payload;
 
-      if (isEdit && itemId) {
-        url = `/api/lab-results/${itemId}`;
-        method = "PUT";
-        payload = {
-          patient_id: normalizeUUID(patientHidden.value),
-          lab_request_id: normalizeUUID(labReqSelect.value),
-          lab_request_item_id: normalizeUUID(labReqItemSelect.value),
-          doctor_id: normalizeUUID(doctorHidden.value),
-          result: resultInput.value || "",
-          notes: notesInput.value || "",
-          doctor_notes: doctorNotesInput.value || "",
-          result_date: normalizeDate(resultDateInput.value) || new Date().toISOString(),
-          organization_id: normalizeUUID(orgSelect?.value),
-          facility_id: normalizeUUID(facSelect?.value),
-          department_id: normalizeUUID(deptSelect?.value),
-        };
-      } else {
-        if (!selectedResults.length)
-          return showToast("❌ Add at least one lab result before submitting");
-        payload = selectedResults.length === 1 ? selectedResults[0] : selectedResults;
-      }
+      const method = isEdit ? "PUT" : "POST";
+      const url = isEdit
+        ? `/api/lab-results/${itemId}`
+        : `/api/lab-results`;
 
       const formData = new FormData();
-      if (Array.isArray(payload)) {
-        payload.forEach((item, i) => {
-          Object.entries(item).forEach(([k, v]) => {
-            if (k !== "file" && v != null) formData.append(`results[${i}][${k}]`, v);
-          });
-          if (item.file) formData.append(`results[${i}][attachment]`, item.file);
-        });
-      } else {
-        Object.entries(payload).forEach(([k, v]) => {
-          if (k !== "file" && v != null) formData.append(k, v);
-        });
-        if (fileInput.files[0]) formData.append("attachment", fileInput.files[0]);
-      }
-
-      const res = await authFetch(url, { method, body: formData });
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
-
-      showToast(isEdit ? "✅ Lab result updated" : "✅ Lab results added");
 
       if (isEdit) {
-        sessionStorage.removeItem("labResultEditId");
-        sessionStorage.removeItem("labResultEditPayload");
-        window.location.href = "/lab-results-list.html";
+        formData.append(
+          "patient_id",
+          normalizeUUID(patientHidden.value)
+        );
+        formData.append(
+          "lab_request_id",
+          normalizeUUID(labReqSelect.value)
+        );
+        formData.append(
+          "lab_request_item_id",
+          normalizeUUID(labReqItemSelect.value)
+        );
+        const doctorVal = normalizeUUID(
+          document.getElementById("doctorId").value
+        );
+
+        if (doctorVal) {
+          formData.append("doctor_id", doctorVal);
+        }
+        formData.append("result", resultInput.value);
+        formData.append("notes", notesInput.value);
+        formData.append(
+          "doctor_notes",
+          doctorNotesInput.value
+        );
+        formData.append(
+          "result_date",
+          normalizeDate(resultDateInput.value)
+        );
       } else {
-        selectedResults = [];
-        renderResultPills();
-        form.reset();
+      selectedResults.forEach((item, i) => {
+        const orgId = orgSelect?.value || null;
+        const facId = facSelect?.value || null;
+
+        Object.entries(item).forEach(([k, v]) => {
+          if (k !== "file" && v != null) {
+            formData.append(`results[${i}][${k}]`, v);
+          }
+        });
+
+        // 🔐 REQUIRED FOR SUPERADMIN
+        if (orgId) {
+          formData.append(`results[${i}][organization_id]`, orgId);
+        }
+
+        if (facId) {
+          formData.append(`results[${i}][facility_id]`, facId);
+        }
+
+        if (item.file) {
+          formData.append(`results[${i}][attachment]`, item.file);
+        }
+      });
       }
+
+      const res = await authFetch(url, {
+        method,
+        body: formData,
+      });
+
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        applyServerErrors(form, result?.errors);
+        throw new Error(
+          normalizeMessage(result, "Submission failed")
+        );
+      }
+
+      showToast(
+        isEdit
+          ? "✅ Lab result updated"
+          : "✅ Lab results added"
+      );
+
+      window.location.href = "/lab-results-list.html";
     } catch (err) {
-      console.error("❌ Submission error:", err);
-      showToast(err.message || "❌ Failed to submit lab result");
+      console.error(err);
+      showToast(err.message || "❌ Submission failed");
     } finally {
       hideLoading();
     }
   };
-
-  /* ============================================================
-     🚪 Cancel / Clear
-  ============================================================ */
-  cancelBtn?.addEventListener("click", () => {
-    window.location.href = "/lab-results-list.html";
-  });
-  clearBtn?.addEventListener("click", () => {
-    form.reset();
-    selectedResults = [];
-    renderResultPills();
-    addResultBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Result`;
-    addResultBtn.dataset.mode = "add";
-    setUI("add");
-  });
-
-  setupFilePreview("attachmentInput", "attachmentPreview", "removeAttachmentBtn", "attachment");
-}
+} 

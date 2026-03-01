@@ -1,4 +1,3 @@
-// 📦 labrequest-form.js
 // ============================================================================
 // 🧭 Secure & Role-Aware Lab Request Form (ENTERPRISE MASTER PARITY)
 // 🔹 MASTER parity with consultation-form.js
@@ -31,12 +30,6 @@ import {
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
-/* ============================================================
-   🧩 Helpers (MASTER)
-============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
 
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
@@ -76,6 +69,7 @@ function buildPersonName(obj) {
 let selectedTests = [];
 let pillsContainer = null;
 let editingIndex = null;
+let addItemBtn = null;
 
 function validateLabRequestItem(obj) {
   if (!obj.lab_test_id) {
@@ -110,41 +104,64 @@ function renderItemPills() {
   });
 
   pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.onclick = () => {
       const idx = Number(btn.dataset.idx);
       const test = selectedTests[idx];
-      document.getElementById("labTestSearch").dataset.value = test.lab_test_id;
-      document.getElementById("labTestSearch").value = test.lab_test_name || "";
-      document.getElementById("itemNotes").value = test.notes || "";
+
+      document.getElementById("labTestSearch").dataset.value =
+        test.lab_test_id;
+      document.getElementById("labTestSearch").value =
+        test.lab_test_name || "";
+      document.getElementById("itemNotes").value =
+        test.notes || "";
+
       editingIndex = idx;
-    });
+
+      if (addItemBtn) {
+        addItemBtn.innerHTML =
+          `<i class="ri-save-3-line me-1"></i> Update Test`;
+      }
+    };
   });
 
   pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.onclick = () => {
       const idx = Number(btn.dataset.idx);
+
       selectedTests.splice(idx, 1);
+
+      if (editingIndex === idx) {
+        editingIndex = null;
+        if (addItemBtn) {
+          addItemBtn.innerHTML =
+            `<i class="ri-add-line me-1"></i> Add Test`;
+        }
+      }
+
       renderItemPills();
-    });
+    };
   });
 }
 
 /* ============================================================
    🚀 Main Setup
 ============================================================ */
-export async function setupLabRequestFormSubmission({ form }) {
+export async function setupLabRequestFormSubmission({
+  form,
+  sharedState,
+}) {
   initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
   enableLiveValidation(form);
 
-  const requestId = getQueryParam("id");
+  const requestId = sharedState?.currentEditIdRef?.value;
   const isEdit = Boolean(requestId);
 
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
-  const addItemBtn = document.getElementById("addItemBtn");
+  addItemBtn = document.getElementById("addItemBtn");
 
   pillsContainer = document.getElementById("requestPillsContainer");
 
@@ -349,6 +366,8 @@ addItemBtn?.addEventListener("click", () => {
       ...obj,
     };
     editingIndex = null;
+    addItemBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Test`;
   } else {
     selectedTests.push(obj);
   }
@@ -411,20 +430,39 @@ addItemBtn?.addEventListener("click", () => {
           normalizeMessage(result, `❌ Server error (${res.status})`)
         );
 
-      showToast(
-        isEdit
-          ? "✅ Lab Request updated"
-          : "✅ Lab Request created"
-      );
+        showToast(
+          isEdit
+            ? "✅ Lab Request updated"
+            : "✅ Lab Request created"
+        );
 
-      if (isEdit) {
-        window.location.href = "/lab-requests-list.html";
-      } else {
-        form.reset();
-        selectedTests = [];
-        renderItemPills();
-        setUI("add");
-      }
+        if (isEdit) {
+          // 🔁 Redirect only on edit
+          window.location.href = "/lab-requests-list.html";
+        } else {
+          // 🔒 Stay on page after create (NO REDIRECT)
+          form.reset();
+
+          selectedTests = [];
+          editingIndex = null;
+
+          renderItemPills();
+          setUI("add");
+
+          // Reset suggestion dataset values
+          [
+            patientInput,
+            doctorInput,
+            consultationInput,
+            regLogInput,
+            labTestInput,
+          ].forEach((el) => {
+            if (el) el.dataset.value = "";
+          });
+
+          // Reset date to today
+          requestDateInput.value = normalizeDate(new Date());
+        }
     } catch (err) {
       showToast(err.message || "❌ Submission error");
     } finally {
@@ -445,5 +483,8 @@ addItemBtn?.addEventListener("click", () => {
     selectedTests = [];
     renderItemPills();
     setUI("add");
+    editingIndex = null;
+    addItemBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Test`;
   });
 }
