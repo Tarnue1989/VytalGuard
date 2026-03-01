@@ -1,4 +1,6 @@
-import { Sequelize } from "sequelize";
+import { getSequelize } from "../config/database.js";
+
+const sequelize = getSequelize();
 
 // 📦 Core Models
 import OrganizationModel from "./Organization.js";
@@ -102,31 +104,6 @@ import SystemAuditLogModel from "./SystemAuditLog.js";
 import PermissionModel from "./Permission.js";
 import RolePermissionModel from "./RolePermission.js";
 
-
-// 🛠 Create Sequelize instance
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  throw new Error("❌ DATABASE_URL is not defined");
-}
-
-// 🔐 ENV-AWARE SSL (authoritative)
-const isProduction = process.env.NODE_ENV === "production";
-
-const sequelize = new Sequelize(databaseUrl, {
-  dialect: "postgres",
-  logging: false,
-  dialectOptions: isProduction
-    ? {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false, // Render / managed PG
-        },
-      }
-    : {
-        ssl: false, // LOCAL Postgres — no SSL
-      },
-});
 
 // 🏗 Initialize models
 const models = {
