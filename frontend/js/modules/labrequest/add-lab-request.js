@@ -3,7 +3,7 @@
 // 🧭 Mirrors consultation-main.js / add-deposit.js EXACTLY
 // 🔹 Auth guard + logout watcher
 // 🔹 Form reset orchestration
-// 🔹 Edit session coordination
+// 🔹 Edit session coordination (SESSION-DRIVEN)
 // 🔹 Delegates ALL business logic (including pills) to lab-request-form.js
 // 🔹 NO data loaders, NO API calls, NO RBAC branching here
 // ============================================================================
@@ -67,7 +67,7 @@ function resetForm() {
   });
 
   // Clear selects (if present)
-  ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
+  ["departmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -76,10 +76,11 @@ function resetForm() {
   const emergencyCheck = document.getElementById("is_emergency");
   if (emergencyCheck) emergencyCheck.checked = false;
 
-  // Reset pills container UI (pill state itself is owned by form file)
+  // Reset pills UI (pill state itself owned by form file)
   const pillsContainer = document.getElementById("requestPillsContainer");
   if (pillsContainer)
-    pillsContainer.innerHTML = `<p class="text-muted">No lab tests added yet.</p>`;
+    pillsContainer.innerHTML =
+      `<p class="text-muted">No lab tests added yet.</p>`;
 
   // Reset UI labels
   const titleEl = document.querySelector(".card-title");
@@ -87,7 +88,8 @@ function resetForm() {
 
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit Lab Request`;
+    submitBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Submit Lab Request`;
 }
 
 /* ============================================================
@@ -96,7 +98,17 @@ function resetForm() {
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // Wire form logic (ALL business logic lives there)
+  /* ------------------------------------------------------------
+     🧠 SESSION-DRIVEN EDIT COORDINATION (MASTER FIX)
+  ------------------------------------------------------------ */
+  const editId = sessionStorage.getItem("labRequestEditId");
+  if (editId) {
+    sharedState.currentEditIdRef.value = editId;
+  }
+
+  /* ------------------------------------------------------------
+     🔗 Wire Form Logic (ALL business logic lives in form file)
+  ------------------------------------------------------------ */
   setupLabRequestFormSubmission({
     form,
     token,

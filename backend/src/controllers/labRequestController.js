@@ -71,7 +71,7 @@ import { billingService } from "../services/billingService.js";
 ============================================================ */
 import { makeModuleLogger } from "../utils/debugLogger.js";
 
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("labRequestController", DEBUG_OVERRIDE);
 
 /* ============================================================
@@ -173,7 +173,7 @@ function buildLabRequestSchema(mode = "create") {
   return Joi.object(base);
 }
 /* ============================================================
-   📌 CREATE LAB REQUEST(S) — MASTER / CONSULTATION PARITY
+   📌 CREATE LAB REQUEST — MASTER / CONSULTATION PARITY (DEBUG SAFE)
 ============================================================ */
 export const createLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
@@ -187,6 +187,8 @@ export const createLabRequests = async (req, res) => {
     });
     if (!allowed) return;
 
+    debug.log("createLabRequests → RAW BODY", req.body);
+
     /* ================= PAYLOAD NORMALIZATION ================= */
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
     if (!payloads.length) {
@@ -199,7 +201,6 @@ export const createLabRequests = async (req, res) => {
 
     /* ================= PROCESS PAYLOADS ================= */
     for (const [idx, payload] of payloads.entries()) {
-      /* ---------- VALIDATION ---------- */
       const { value, errors } = validate(
         buildLabRequestSchema("create"),
         payload
@@ -210,6 +211,8 @@ export const createLabRequests = async (req, res) => {
         continue;
       }
 
+      debug.log("createLabRequests → VALIDATED VALUE", value);
+
       /* ---------- TENANT RESOLUTION ---------- */
       const { orgId, facilityId } = await resolveOrgFacility({
         user: req.user,
@@ -217,7 +220,7 @@ export const createLabRequests = async (req, res) => {
         body: payload,
       });
 
-      /* ---------- AUTO-LINK CLINICAL CONTEXT (FIX 1) ---------- */
+      /* ---------- AUTO-LINK CLINICAL ---------- */
       const resolved = await resolveClinicalLinks({
         value,
         user: req.user,
@@ -226,7 +229,7 @@ export const createLabRequests = async (req, res) => {
         transaction: t,
       });
 
-      /* ---------- DOCTOR ENFORCEMENT (FIX 2) ---------- */
+      /* ---------- DOCTOR ENFORCEMENT ---------- */
       if (!isSuperAdmin(req.user) && !resolved.doctor_id) {
         resolved.doctor_id = req.user.employee_id;
       }
@@ -239,7 +242,6 @@ export const createLabRequests = async (req, res) => {
         continue;
       }
 
-      /* ---------- HARD REQUIREMENT: REGISTRATION LOG ---------- */
       if (!resolved.registration_log_id) {
         skipped.push({
           index: idx,
@@ -248,10 +250,30 @@ export const createLabRequests = async (req, res) => {
         continue;
       }
 
+      /* ================= DUPLICATE TEST CHECK ================= */
+      const seen = new Set();
+      for (const item of resolved.items) {
+        if (seen.has(item.lab_test_id)) {
+          skipped.push({
+            index: idx,
+            reason: `Duplicate lab_test_id in payload: ${item.lab_test_id}`,
+          });
+          continue;
+        }
+        seen.add(item.lab_test_id);
+      }
+
       /* ---------- CREATE LAB REQUEST ---------- */
       const request = await LabRequest.create(
         {
-          ...resolved,
+          patient_id: resolved.patient_id,
+          doctor_id: resolved.doctor_id,
+          department_id: resolved.department_id,
+          consultation_id: resolved.consultation_id,
+          registration_log_id: resolved.registration_log_id,
+          request_date: resolved.request_date,
+          notes: resolved.notes,
+          is_emergency: resolved.is_emergency,
           status: LRS.DRAFT,
           organization_id: orgId,
           facility_id: facilityId,
@@ -260,18 +282,31 @@ export const createLabRequests = async (req, res) => {
         { transaction: t }
       );
 
-      /* ---------- CREATE ITEMS ---------- */
-      const items = resolved.items.map((it) => ({
-        lab_request_id: request.id,
-        lab_test_id: it.lab_test_id,
-        notes: it.notes || null,
-        status: request.status,
-        organization_id: orgId,
-        facility_id: facilityId,
-        created_by_id: req.user?.id || null,
-      }));
+      debug.log("createLabRequests → CREATED REQUEST", request.id);
 
-      await LabRequestItem.bulkCreate(items, { transaction: t });
+      /* ---------- CREATE ITEMS SAFE ---------- */
+      const uniqueItems = [...seen].map((lab_test_id) => {
+        const original = resolved.items.find(
+          (i) => i.lab_test_id === lab_test_id
+        );
+
+        return {
+          lab_request_id: request.id,
+          lab_test_id,
+          notes: original?.notes || null,
+          status: request.status,
+          organization_id: orgId,
+          facility_id: facilityId,
+          created_by_id: req.user?.id || null,
+        };
+      });
+
+      debug.log("createLabRequests → ITEMS TO INSERT", uniqueItems);
+
+      await LabRequestItem.bulkCreate(uniqueItems, {
+        transaction: t,
+        validate: true,
+      });
 
       createdIds.push(request.id);
     }
@@ -286,7 +321,6 @@ export const createLabRequests = async (req, res) => {
         })
       : [];
 
-    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
@@ -303,14 +337,24 @@ export const createLabRequests = async (req, res) => {
     });
   } catch (err) {
     await t.rollback();
-    debug.error("createLabRequests → FAILED", err);
+
+    debug.error("createLabRequests → FAILED", {
+      name: err.name,
+      message: err.message,
+      fields: err.errors?.map(e => ({
+        field: e.path,
+        message: e.message,
+        value: e.value,
+      })),
+      stack: err.stack,
+    });
+
     return error(res, "❌ Failed to create lab requests", err);
   }
 };
 
-
 /* ============================================================
-   📌 UPDATE LAB REQUEST — MASTER / CONSULTATION PARITY
+   📌 UPDATE LAB REQUEST — MASTER / CONSULTATION PARITY (DEBUG SAFE)
 ============================================================ */
 export const updateLabRequest = async (req, res) => {
   const t = await sequelize.transaction();
@@ -324,30 +368,36 @@ export const updateLabRequest = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* ================= DEBUG: RAW BODY ================= */
+    debug.log("updateLabRequest → RAW BODY", req.body);
+
     /* ================= VALIDATION ================= */
     const { value, errors } = validate(
       buildLabRequestSchema("update"),
       req.body
     );
+
     if (errors) {
+      debug.warn("updateLabRequest → JOI VALIDATION FAILED", errors);
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= TENANT RESOLUTION (FIX 3) ================= */
+    debug.log("updateLabRequest → VALIDATED VALUE", value);
+
+    /* ================= TENANT RESOLUTION ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       body: value,
     });
 
-    /* ================= LOAD RECORD (TENANT SAFE) ================= */
+    /* ================= LOCK PARENT ================= */
     const record = await LabRequest.findOne({
       where: {
         id: req.params.id,
         organization_id: orgId,
         ...(facilityId ? { facility_id: facilityId } : {}),
       },
-      include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -366,63 +416,99 @@ export const updateLabRequest = async (req, res) => {
       return error(res, "Finalized lab request cannot be edited", null, 400);
     }
 
-    /* ================= DOCTOR LOCK (MASTER) ================= */
+    /* ================= LOAD ITEMS ================= */
+    const existingItems = await LabRequestItem.findAll({
+      where: { lab_request_id: record.id },
+      transaction: t,
+    });
+
+    /* ================= DOCTOR ENFORCEMENT ================= */
     if (!isSuperAdmin(req.user) && !value.doctor_id) {
       value.doctor_id = req.user.employee_id;
     }
 
-    /* ================= UPDATE REQUEST ================= */
-    await record.update(
-      {
-        ...value,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
+    /* ================= SAFE UPDATE PAYLOAD ================= */
+    const updatePayload = {};
 
-    /* ================= ITEM DIFF SYNC ================= */
+    [
+      "patient_id",
+      "doctor_id",
+      "department_id",
+      "consultation_id",
+      "registration_log_id",
+      "request_date",
+      "notes",
+      "is_emergency",
+    ].forEach((field) => {
+      if (value[field] !== undefined) {
+        updatePayload[field] = value[field];
+      }
+    });
+
+    updatePayload.updated_by_id = req.user?.id || null;
+
+    debug.log("updateLabRequest → UPDATE PAYLOAD", updatePayload);
+
+    /* ================= UPDATE ================= */
+    await record.update(updatePayload, { transaction: t });
+
+    /* ================= ITEM SYNC ================= */
     if (Array.isArray(value.items)) {
-      const existing = new Map(record.items.map((i) => [i.id, i]));
+      const existingMap = new Map(
+        existingItems.map(i => [i.lab_test_id, i])
+      );
+
+      const incomingTestIds = new Set();
 
       for (const it of value.items) {
-        /* ---- DELETE ITEM ---- */
-        if (it._delete && it.id && existing.has(it.id)) {
-          const item = existing.get(it.id);
+        incomingTestIds.add(it.lab_test_id);
 
-          await item.update(
-            {
-              status: LRS.CANCELLED,
-              deleted_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
+        const existing = existingMap.get(it.lab_test_id);
 
-          await billingService.voidCharges({
-            module_key: MODULE_KEY,
-            entityId: item.id,
-            user: req.user,
-            transaction: t,
-          });
-          continue;
-        }
+    /* ================= UPDATE EXISTING ================= */
+    if (existing) {
 
-        /* ---- UPDATE ITEM ---- */
-        if (it.id && existing.has(it.id)) {
-          const current = existing.get(it.id);
+      /* ---------- DELETE ---------- */
+      if (it._delete) {
+        await existing.update(
+          {
+            status: LRS.CANCELLED,
+            deleted_by_id: req.user?.id || null,
+            updated_by_id: req.user?.id || null,
+          },
+          { transaction: t }
+        );
 
-          await current.update(
-            {
-              lab_test_id: it.lab_test_id || current.lab_test_id,
-              notes: it.notes ?? current.notes,
-              updated_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-          continue;
-        }
+        await billingService.voidCharges({
+          module_key: MODULE_KEY,
+          entityId: existing.id,
+          user: req.user,
+          transaction: t,
+        });
 
-        /* ---- ADD NEW ITEM ---- */
-        if (it.lab_test_id) {
+        continue;
+      }
+
+      /* ---------- RESTORE (if previously cancelled/voided) ---------- */
+      const restoreStatuses = [LRS.CANCELLED, LRS.VOIDED];
+
+      const updateData = {
+        notes: it.notes ?? existing.notes,
+        updated_by_id: req.user?.id || null,
+      };
+
+      if (restoreStatuses.includes(existing.status)) {
+        updateData.status = record.status;   // 🔥 restore to parent status
+        updateData.deleted_by_id = null;     // 🔥 clear soft-delete marker
+      }
+
+      await existing.update(updateData, { transaction: t });
+
+      continue;
+    }
+
+        /* ================= CREATE NEW ================= */
+        if (!it._delete) {
           await LabRequestItem.create(
             {
               lab_request_id: record.id,
@@ -437,17 +523,34 @@ export const updateLabRequest = async (req, res) => {
           );
         }
       }
-    }
 
+      /* ================= REMOVE MISSING ================= */
+      for (const existing of existingItems) {
+        if (!incomingTestIds.has(existing.lab_test_id)) {
+          await existing.update(
+            {
+              status: LRS.CANCELLED,
+              deleted_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+
+          await billingService.voidCharges({
+            module_key: MODULE_KEY,
+            entityId: existing.id,
+            user: req.user,
+            transaction: t,
+          });
+        }
+      }
+    }
     await t.commit();
 
-    /* ================= LOAD FULL ================= */
     const full = await LabRequest.findOne({
       where: { id: record.id },
       include: LAB_REQUEST_INCLUDES,
     });
 
-    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
@@ -459,12 +562,24 @@ export const updateLabRequest = async (req, res) => {
     return success(res, "✅ Lab Request updated", full);
   } catch (err) {
     await t.rollback();
-    debug.error("updateLabRequest → FAILED", err);
-    return error(res, "❌ Failed to update lab request", err);
+
+    debug.error("updateLabRequest → FAILED", {
+      name: err.name,
+      message: err.message,
+      fields: err.errors?.map((e) => ({
+        field: e.path,
+        message: e.message,
+        value: e.value,
+      })),
+      stack: err.stack,
+    });
+
+    return error(res, "❌ Failed to update lab request", {
+      message: err.message,
+      details: err.errors || null,
+    });
   }
 };
-
-
 /* ============================================================
    📌 GET LAB REQUEST BY ID — MASTER
 ============================================================ */
@@ -713,7 +828,7 @@ export const getAllLabRequests = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL LAB REQUESTS — LITE (MASTER)
+   📌 GET ALL LAB REQUESTS — LITE (MASTER SAFE — FIXED)
 ============================================================ */
 export const getAllLabRequestsLite = async (req, res) => {
   try {
@@ -729,11 +844,21 @@ export const getAllLabRequestsLite = async (req, res) => {
     /* ================= QUERY PARAMS ================= */
     const { q, patient_id, status } = req.query;
 
-    /* ================= TENANT RESOLUTION ================= */
+    /* ================= TENANT RESOLUTION (FIXED) ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
-      query: req.query,
+      value: req.query,
+      body: req.query,
     });
+
+    if (!orgId) {
+      return error(
+        res,
+        "resolveOrgFacility: organization_id unresolved",
+        null,
+        400
+      );
+    }
 
     /* ================= WHERE ================= */
     const where = {
@@ -785,7 +910,7 @@ export const getAllLabRequestsLite = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL LAB REQUEST ITEMS — LITE (MASTER)
+   📌 GET ALL LAB REQUEST ITEMS — LITE (MASTER SAFE — FIXED)
 ============================================================ */
 export const getAllLabRequestItemsLite = async (req, res) => {
   try {
@@ -800,15 +925,26 @@ export const getAllLabRequestItemsLite = async (req, res) => {
 
     /* ================= PARAMS ================= */
     const { lab_request_id, status } = req.query;
+
     if (!lab_request_id) {
       return error(res, "lab_request_id is required", null, 400);
     }
 
-    /* ================= TENANT RESOLUTION ================= */
+    /* ================= TENANT RESOLUTION (FIXED) ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
-      query: req.query,
+      value: req.query,
+      body: req.query,
     });
+
+    if (!orgId) {
+      return error(
+        res,
+        "resolveOrgFacility: organization_id unresolved",
+        null,
+        400
+      );
+    }
 
     /* ================= WHERE ================= */
     const where = {
@@ -1137,7 +1273,6 @@ export const completeLabRequests = async (req, res) => {
 export const cancelLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
@@ -1146,7 +1281,6 @@ export const cancelLabRequests = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= IDS ================= */
     const ids = Array.isArray(req.body?.ids)
       ? req.body.ids
       : [req.params.id];
@@ -1156,13 +1290,12 @@ export const cancelLabRequests = async (req, res) => {
       return error(res, "At least one ID is required", null, 400);
     }
 
-    /* ================= TENANT ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       query: req.query,
     });
 
-    /* ================= LOAD ================= */
+    /* 🔒 LOCK PARENT ONLY (NO INCLUDE) */
     const requests = await LabRequest.findAll({
       where: {
         id: { [Op.in]: ids },
@@ -1170,7 +1303,6 @@ export const cancelLabRequests = async (req, res) => {
         ...(facilityId ? { facility_id: facilityId } : {}),
         status: { [Op.in]: [LRS.PENDING, LRS.IN_PROGRESS] },
       },
-      include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -1180,10 +1312,17 @@ export const cancelLabRequests = async (req, res) => {
       return error(res, "No cancellable lab requests found", null, 404);
     }
 
+    const requestIds = requests.map(r => r.id);
+
+    /* 📦 LOAD ITEMS SEPARATELY */
+    const items = await LabRequestItem.findAll({
+      where: { lab_request_id: { [Op.in]: requestIds } },
+      transaction: t,
+    });
+
     const updated = [];
     const skipped = [];
 
-    /* ================= PROCESS ================= */
     for (const r of requests) {
       await r.update(
         {
@@ -1193,7 +1332,9 @@ export const cancelLabRequests = async (req, res) => {
         { transaction: t }
       );
 
-      for (const item of r.items || []) {
+      const requestItems = items.filter(i => i.lab_request_id === r.id);
+
+      for (const item of requestItems) {
         await billingService.voidCharges({
           module_key: MODULE_KEY,
           entityId: item.id,
@@ -1231,14 +1372,12 @@ export const cancelLabRequests = async (req, res) => {
     return error(res, "Failed to cancel lab requests", err);
   }
 };
-
 /* ============================================================
    📌 VOID LAB REQUEST(S) (any → voided) — ADMIN ONLY
 ============================================================ */
 export const voidLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
@@ -1247,7 +1386,6 @@ export const voidLabRequests = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= IDS ================= */
     const ids = Array.isArray(req.body?.ids)
       ? req.body.ids
       : [req.params.id];
@@ -1257,13 +1395,12 @@ export const voidLabRequests = async (req, res) => {
       return error(res, "At least one ID is required", null, 400);
     }
 
-    /* ================= TENANT ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       query: req.query,
     });
 
-    /* ================= LOAD ================= */
+    /* 🔒 LOCK PARENT ONLY (NO INCLUDE) */
     const requests = await LabRequest.findAll({
       where: {
         id: { [Op.in]: ids },
@@ -1271,7 +1408,6 @@ export const voidLabRequests = async (req, res) => {
         ...(facilityId ? { facility_id: facilityId } : {}),
         status: { [Op.ne]: LRS.VERIFIED },
       },
-      include: [{ model: LabRequestItem, as: "items" }],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -1281,10 +1417,17 @@ export const voidLabRequests = async (req, res) => {
       return error(res, "No voidable lab requests found", null, 404);
     }
 
+    const requestIds = requests.map(r => r.id);
+
+    /* 📦 LOAD ITEMS SEPARATELY */
+    const items = await LabRequestItem.findAll({
+      where: { lab_request_id: { [Op.in]: requestIds } },
+      transaction: t,
+    });
+
     const updated = [];
     const skipped = [];
 
-    /* ================= PROCESS ================= */
     for (const r of requests) {
       await r.update(
         {
@@ -1294,7 +1437,9 @@ export const voidLabRequests = async (req, res) => {
         { transaction: t }
       );
 
-      for (const item of r.items || []) {
+      const requestItems = items.filter(i => i.lab_request_id === r.id);
+
+      for (const item of requestItems) {
         await billingService.voidCharges({
           module_key: MODULE_KEY,
           entityId: item.id,
@@ -1332,7 +1477,6 @@ export const voidLabRequests = async (req, res) => {
     return error(res, "Failed to void lab requests", err);
   }
 };
-
 /* ============================================================
    📌 SUBMIT LAB REQUEST(S) (draft → pending)
 ============================================================ */

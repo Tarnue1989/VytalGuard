@@ -1,49 +1,52 @@
-/* Force pill container override */
-#itemPillsContainer .pill {
-  border-radius: 20px !important;
-  padding: 6px 12px !important;
-  margin: 4px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  background-color: #f1f3f5 !important;
-  font-size: 0.9rem !important;
+/* ============================================================
+   💊 Global Pill Style – Enterprise Standard
+============================================================ */
+
+.pill {
+  border-radius: 20px;
+  padding: 6px 12px;
+  margin: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #f1f3f5;
+  font-size: 0.9rem;
   position: relative;
 }
 
-/* Hide buttons by default */
-#itemPillsContainer .pill .pill-edit,
-#itemPillsContainer .pill .pill-remove {
+/* Hide edit/remove buttons by default */
+.pill .pill-edit,
+.pill .pill-remove {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
-  display: inline-flex !important;   /* ✅ force them to render */
+  display: inline-flex;
   align-items: center;
 }
 
 /* Show buttons on hover */
-#itemPillsContainer .pill:hover .pill-edit,
-#itemPillsContainer .pill:hover .pill-remove {
+.pill:hover .pill-edit,
+.pill:hover .pill-remove {
   opacity: 1;
   visibility: visible;
 }
 
 /* Edit button */
-#itemPillsContainer .pill .pill-edit {
-  color: #0d6efd !important;
-  margin-left: 6px !important;
-  cursor: pointer !important;
+.pill .pill-edit {
+  color: #0d6efd;
+  margin-left: 6px;
+  cursor: pointer;
 }
-#itemPillsContainer .pill .pill-edit:hover {
-  color: #0a58ca !important;
+.pill .pill-edit:hover {
+  color: #0a58ca;
 }
 
 /* Remove button */
-#itemPillsContainer .pill .pill-remove {
-  color: #dc3545 !important;
-  margin-left: 4px !important;
-  cursor: pointer !important;
+.pill .pill-remove {
+  color: #dc3545;
+  margin-left: 4px;
+  cursor: pointer;
 }
-#itemPillsContainer .pill .pill-remove:hover {
-  color: #a71d2a !important;
+.pill .pill-remove:hover {
+  color: #a71d2a;
 }

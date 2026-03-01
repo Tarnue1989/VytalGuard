@@ -958,7 +958,7 @@ export async function buildDynamicSummary({
   }
 
 // ============================================================
-// 5️⃣ Gender breakdown (MASTER / CONSULTATION PARITY)
+// 5️⃣ Gender breakdown (MASTER / CONSULTATION PARITY — FIXED)
 // ============================================================
 if (includeGender && genderJoin) {
   try {
@@ -975,13 +975,23 @@ if (includeGender && genderJoin) {
       ],
       attributes: [
         [sequelize.col(`${genderJoin.as}.gender`), "gender"],
-        [sequelize.fn("COUNT", sequelize.col(`${model.name}.id`)), "count"],
+        [
+          sequelize.fn(
+            "COUNT",
+            sequelize.fn(
+              "DISTINCT",
+              sequelize.col(`${genderJoin.as}.id`)
+            )
+          ),
+          "count",
+        ],
       ],
       group: [sequelize.col(`${genderJoin.as}.gender`)],
+      raw: true,
     });
 
     summary.gender_breakdown = rows.reduce((acc, r) => {
-      acc[r.get("gender") || "Unknown"] = Number(r.get("count") || 0);
+      acc[r.gender || "Unknown"] = Number(r.count || 0);
       return acc;
     }, {});
   } catch (err) {
@@ -989,7 +999,6 @@ if (includeGender && genderJoin) {
     summary.gender_breakdown = {};
   }
 }
-
   // ============================================================
   // 7️⃣ Universal total count (FINAL SAFE VERSION)
   // ============================================================

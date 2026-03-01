@@ -296,11 +296,10 @@ export async function setupCentralStockFormSubmission({
     e.preventDefault();
     clearFormErrors(form);
 
-    if (!selectedItems.length && !isEdit) {
+    if (!selectedItems.length) {
       showToast("❌ No stock item to submit");
       return;
     }
-
     try {
       showLoading();
 
