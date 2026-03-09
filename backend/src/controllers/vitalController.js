@@ -36,7 +36,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("vitalController", DEBUG_OVERRIDE);
 
-const MODULE_KEY = "vital";
+const MODULE_KEY = "vitals";
 
 /* ============================================================
    🔖 STATUS MAP (ENUM-DRIVEN)
@@ -168,18 +168,31 @@ export const createVital = async (req, res) => {
       buildVitalSchema(req.user, "create"),
       req.body
     );
+
     if (errors) {
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
 
+    /* ================= TENANT SAFETY (MATCH PATIENT) ================= */
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Organization is required", null, 400);
+    }
+
+    if (!facilityId) {
+      await t.rollback();
+      return error(res, "Facility is required", null, 400);
+    }
+
     value._currentUser = req.user;
+
     await resolveClinicalLinks(value, orgId, facilityId, t);
 
     const created = await Vital.create(
@@ -214,7 +227,6 @@ export const createVital = async (req, res) => {
     return error(res, "Failed to create vital", err);
   }
 };
-
 /* ============================================================
    📌 UPDATE VITAL (LOCKED STATES)
 ============================================================ */
@@ -235,12 +247,17 @@ export const updateVital = async (req, res) => {
       buildVitalSchema(req.user, "update"),
       req.body
     );
+
     if (errors) {
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
-    const record = await Vital.findOne({ where: { id }, transaction: t });
+    const record = await Vital.findOne({
+      where: { id },
+      transaction: t,
+    });
+
     if (!record) {
       await t.rollback();
       return error(res, "Vital not found", null, 404);
@@ -256,13 +273,25 @@ export const updateVital = async (req, res) => {
       );
     }
 
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
 
+    /* ================= TENANT SAFETY ================= */
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Organization is required", null, 400);
+    }
+
+    if (!facilityId) {
+      await t.rollback();
+      return error(res, "Facility is required", null, 400);
+    }
+
     value._currentUser = req.user;
+
     await resolveClinicalLinks(value, orgId, facilityId, t);
 
     await record.update(
@@ -296,7 +325,6 @@ export const updateVital = async (req, res) => {
     return error(res, "Failed to update vital", err);
   }
 };
-
 /* ============================================================
    📌 VOID VITAL (any → voided, MASTER-ALIGNED)
 ============================================================ */
@@ -348,7 +376,7 @@ export const voidVital = async (req, res) => {
     );
 
     await billingService.voidCharges({
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       entityId: record.id,
       user: {
         ...req.user,
@@ -375,7 +403,6 @@ export const voidVital = async (req, res) => {
     return error(res, "Failed to void vital", err);
   }
 };
-
 /* ============================================================
    📌 START VITAL (open → in_progress)
 ============================================================ */
@@ -458,31 +485,24 @@ export const completeVital = async (req, res) => {
     const oldStatus = record.status;
 
     await record.update(
-      { status: VS.COMPLETED, updated_by_id: req.user?.id || null },
+      {
+        status: VS.COMPLETED,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
 
-    const existing = await InvoiceItem.findOne({
-      where: {
-        module: MODULE_KEY,
-        entity_id: record.id,
-        status: "applied",
+    /* 🔹 Trigger billing (billingService handles duplicates) */
+    await billingService.triggerAutoBilling({
+      module_key: MODULE_KEY,
+      entity: record,
+      user: {
+        ...req.user,
+        organization_id: record.organization_id,
+        facility_id: record.facility_id,
       },
       transaction: t,
     });
-
-    if (!existing) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: record,
-        user: {
-          ...req.user,
-          organization_id: record.organization_id,
-          facility_id: record.facility_id,
-        },
-        transaction: t,
-      });
-    }
 
     await t.commit();
 
@@ -501,6 +521,7 @@ export const completeVital = async (req, res) => {
     return error(res, "Failed to complete vital", err);
   }
 };
+
 
 /* ============================================================
    📌 VERIFY VITAL (completed → verified)
@@ -541,27 +562,17 @@ export const verifyVital = async (req, res) => {
       { transaction: t }
     );
 
-    const existing = await InvoiceItem.findOne({
-      where: {
-        module: MODULE_KEY,
-        entity_id: record.id,
-        status: "applied",
+    /* 🔹 Trigger billing (billingService prevents duplicates) */
+    await billingService.triggerAutoBilling({
+      module_key: MODULE_KEY,
+      entity: record,
+      user: {
+        ...req.user,
+        organization_id: record.organization_id,
+        facility_id: record.facility_id,
       },
       transaction: t,
     });
-
-    if (!existing) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: record,
-        user: {
-          ...req.user,
-          organization_id: record.organization_id,
-          facility_id: record.facility_id,
-        },
-        transaction: t,
-      });
-    }
 
     await t.commit();
 
