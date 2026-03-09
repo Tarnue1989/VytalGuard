@@ -50,14 +50,22 @@ const normalizeUUID = (v) =>
 
 const normalizeDateTime = (val) => {
   if (!val) return null;
-  const d = new Date(val);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
+  return val; // keep local datetime from input
 };
 
-const toLocalInput = (val) =>
-  val ? new Date(val).toISOString().slice(0, 16) : "";
+const toLocalInput = (val) => {
+  if (!val) return "";
 
+  const d = new Date(val);
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
 /* ============================================================
    🛡️ RULE VALIDATION (EKG MASTER PARITY)
 ============================================================ */
