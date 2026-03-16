@@ -55,7 +55,7 @@ export default (sequelize) => {
       invoice_id: { type: DataTypes.UUID, allowNull: true },
 
       // ⚡ Full datetime
-      request_date: { type: DataTypes.DATE, allowNull: false },
+      request_date: { type: DataTypes.DATEONLY, allowNull: false },
 
       // Lifecycle
       status: {

@@ -16,6 +16,7 @@ import {
   formatDate,
   formatDateTime,
   initTooltips,
+  formatClinicalDate,
 } from "../../utils/ui-utils.js";
 
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
@@ -166,7 +167,7 @@ function renderValue(entry, field) {
       return renderUserName(entry.deletedBy);
 
     case "request_date":
-      return entry.request_date ? formatDate(entry.request_date) : "—";
+      return formatClinicalDate(entry.request_date);
 
     case "created_at":
     case "updated_at":
@@ -307,7 +308,7 @@ export function renderCard(entry, visibleFields, user) {
 
       <!-- ================= CORE ================= -->
       <div class="entity-card-body">
-        ${row("Request Date", formatDate(entry.request_date))}
+        ${row("Request Date", formatClinicalDate(entry.request_date))}
         ${row("Emergency", yesNo(entry.is_emergency))}
         ${row("Status", status.toUpperCase())}
       </div>

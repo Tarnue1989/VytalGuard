@@ -50,6 +50,7 @@ import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { generatePatientQR } from "../services/qrService.js";
 
+
 /* ============================================================
    🔐 MODULE
 ============================================================ */
@@ -58,9 +59,20 @@ const MODULE_KEY = "patient";
 /* ============================================================
    🔧 DEBUG LOGGER (MASTER STYLE)
 ============================================================ */
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("patientController", DEBUG_OVERRIDE);
 
+
+/* ============================================================
+   🔧 ENUM NORMALIZER (EMPTY STRING → NULL)
+============================================================ */
+function normalizeEnumFields(value, enumFields) {
+  enumFields.forEach((field) => {
+    if (value[field] === "") {
+      value[field] = null;
+    }
+  });
+}
 /* ============================================================
    🔐 ENUM MAPS (ORDER-SAFE)
 ============================================================ */
@@ -88,6 +100,7 @@ const PATIENT_SORT_MAP = {
   organization: [{ model: Organization, as: "organization" }, "name"],
   facility: [{ model: Facility, as: "facility" }, "name"],
 };
+
 
 /* ============================================================
    🔢 GENERATE PATIENT NUMBER (ORG-SCOPED)
@@ -270,7 +283,11 @@ export const createPatient = async (req, res) => {
     }
 
     normalizeDateOnlyFields(value, ["date_of_birth"]);
-
+    normalizeEnumFields(value, [
+      "gender",
+      "marital_status",
+      "religion"
+    ]);
     if (typeof value.email_address === "string") {
       value.email_address = value.email_address.trim().toLowerCase() || null;
     }
@@ -293,6 +310,44 @@ export const createPatient = async (req, res) => {
       value.pat_no = await generateNextPatientNo(orgId);
     }
 
+    /* ===== DUPLICATE CHECK (PHONE / EMAIL) ===== */
+    const existingPatient = await Patient.findOne({
+      where: {
+        organization_id: orgId,
+        [Op.or]: [
+          value.phone_number ? { phone_number: value.phone_number } : null,
+          value.email_address ? { email_address: value.email_address } : null,
+        ].filter(Boolean),
+      },
+    });
+
+    if (existingPatient) {
+      await t.rollback();
+
+      if (
+        value.phone_number &&
+        existingPatient.phone_number === value.phone_number
+      ) {
+        return error(
+          res,
+          "Patient with this phone number already exists in this organization",
+          null,
+          409
+        );
+      }
+
+      if (
+        value.email_address &&
+        existingPatient.email_address === value.email_address
+      ) {
+        return error(
+          res,
+          "Patient with this email already exists in this organization",
+          null,
+          409
+        );
+      }
+    }
     const created = await Patient.create(
       {
         ...value,
@@ -379,7 +434,11 @@ export const updatePatient = async (req, res) => {
     }
 
     normalizeDateOnlyFields(value, ["date_of_birth"]);
-
+    normalizeEnumFields(value, [
+      "gender",
+      "marital_status",
+      "religion"
+    ]);
     /* ===== UNIQUE-SAFE NORMALIZATION ===== */
     ["phone_number", "email_address"].forEach((field) => {
       if (value[field] === "") value[field] = null;

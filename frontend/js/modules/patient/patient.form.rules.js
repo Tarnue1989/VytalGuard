@@ -12,12 +12,12 @@ export const PATIENT_FORM_RULES = [
   { id: "date_of_birth", message: "Date of Birth is required", when: () => true },
 
   /* ===== Contact ===== */
-  { id: "phone_number", message: "Phone number is required", when: () => true },
+  { id: "phone_number", message: "Phone number is required", when: () => false },
   { id: "email_address", message: "Email is required", when: () => false },
   { id: "home_address", message: "Address is required", when: () => false },
 
   /* ===== Social & Identifiers ===== */
-  { id: "marital_status", message: "Marital status is required", when: () => true },
+  { id: "marital_status", message: "Marital status is required", when: () => false },
   { id: "religion", message: "Religion is required", when: () => false },
   { id: "profession", message: "Profession is required", when: () => false },
   { id: "national_id", message: "National ID is required", when: () => false },

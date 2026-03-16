@@ -318,6 +318,18 @@ export function formatDateTime(dateStr) {
   });
 }
 
+export function formatClinicalDate(dateStr) {
+  if (!dateStr) return "—";
+
+  const [year, month, day] = dateStr.split("-");
+
+  const months = [
+    "Jan.", "Feb.", "Mar.", "Apr.", "May", "Jun.",
+    "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec."
+  ];
+
+  return `${months[Number(month) - 1]} ${Number(day)}, ${year}`;
+}
 // ============================================================
 // 💵 Global Currency Formatter
 // ------------------------------------------------------------
