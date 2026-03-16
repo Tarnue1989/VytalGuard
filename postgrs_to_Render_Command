@@ -1,0 +1,5 @@
+
+type command in command peompt to auto sysc the entire db to render
+
+cd C:\VytalGuard
+sync-db-to-render.bat
