@@ -271,7 +271,9 @@ export const createLabRequests = async (req, res) => {
           department_id: resolved.department_id,
           consultation_id: resolved.consultation_id,
           registration_log_id: resolved.registration_log_id,
-          request_date: resolved.request_date,
+          request_date: resolved.request_date
+            ? new Date(resolved.request_date).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
           notes: resolved.notes,
           is_emergency: resolved.is_emergency,
           status: LRS.DRAFT,
@@ -440,9 +442,17 @@ export const updateLabRequest = async (req, res) => {
       "notes",
       "is_emergency",
     ].forEach((field) => {
+
+      if (field === "request_date" && value.request_date) {
+        updatePayload.request_date =
+          new Date(value.request_date).toISOString().split("T")[0];
+        return;
+      }
+
       if (value[field] !== undefined) {
         updatePayload[field] = value[field];
       }
+
     });
 
     updatePayload.updated_by_id = req.user?.id || null;

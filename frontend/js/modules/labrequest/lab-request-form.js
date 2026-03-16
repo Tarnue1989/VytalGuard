@@ -49,11 +49,16 @@ function normalizeUUID(val) {
 
 function normalizeDate(val) {
   if (!val) return null;
+
+  // If already YYYY-MM-DD (from input[type=date]) return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    return val;
+  }
+
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+
+  return d.toISOString().split("T")[0];
 }
 
 function buildPersonName(obj) {
@@ -343,7 +348,7 @@ export async function setupLabRequestFormSubmission({
       hideLoading();
     }
   } else {
-    requestDateInput.value = normalizeDate(new Date());
+    requestDateInput.value = new Date().toISOString().split("T")[0];
     renderItemPills();
   }
 
@@ -403,7 +408,7 @@ addItemBtn?.addEventListener("click", () => {
       department_id: normalizeUUID(deptSelect.value),
       consultation_id: normalizeUUID(consultationInput.dataset.value),
       registration_log_id: normalizeUUID(regLogInput.dataset.value),
-      request_date: normalizeDate(requestDateInput.value),
+      request_date: requestDateInput.value,
       notes: notesInput.value || null,
       is_emergency: !!emergencyInput.checked,
       items: selectedTests.map((t) => ({
@@ -461,7 +466,7 @@ addItemBtn?.addEventListener("click", () => {
           });
 
           // Reset date to today
-          requestDateInput.value = normalizeDate(new Date());
+          requestDateInput.value = new Date().toISOString().split("T")[0];
         }
     } catch (err) {
       showToast(err.message || "❌ Submission error");
