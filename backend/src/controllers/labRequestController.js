@@ -1183,7 +1183,6 @@ export const deleteLabRequests = async (req, res) => {
 export const completeLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
@@ -1192,7 +1191,6 @@ export const completeLabRequests = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= IDS ================= */
     const ids = Array.isArray(req.body?.ids)
       ? req.body.ids
       : [req.params.id];
@@ -1202,13 +1200,11 @@ export const completeLabRequests = async (req, res) => {
       return error(res, "At least one ID is required", null, 400);
     }
 
-    /* ================= TENANT ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       query: req.query,
     });
 
-    /* ================= LOAD ================= */
     const requests = await LabRequest.findAll({
       where: {
         id: { [Op.in]: ids },
@@ -1228,7 +1224,6 @@ export const completeLabRequests = async (req, res) => {
     const updated = [];
     const skipped = [];
 
-    /* ================= PROCESS ================= */
     for (const r of requests) {
       const resultCount = await LabResult.count({
         where: { lab_request_id: r.id },
@@ -1253,6 +1248,14 @@ export const completeLabRequests = async (req, res) => {
         { where: { lab_request_id: r.id }, transaction: t }
       );
 
+      // 🔥 ENTERPRISE BILLING (ITEM-LEVEL)
+      await billingService.billLabRequestItems({
+        feature_module_id: r.feature_module_id,
+        labRequest: r,
+        user: req.user,
+        transaction: t,
+      });
+
       updated.push(r.id);
     }
 
@@ -1275,6 +1278,107 @@ export const completeLabRequests = async (req, res) => {
     await t.rollback();
     debug.error("completeLabRequests → FAILED", err);
     return error(res, "Failed to complete lab requests", err);
+  }
+};
+/* ============================================================
+   📌 VERIFY LAB REQUEST(S) (completed → verified) — ADMIN ONLY
+============================================================ */
+export const verifyLabRequests = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "verify",
+      res,
+    });
+    if (!allowed) return;
+
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
+      await t.rollback();
+      return error(res, "At least one ID is required", null, 400);
+    }
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const requests = await LabRequest.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: LRS.COMPLETED,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!requests.length) {
+      await t.rollback();
+      return error(res, "No completed lab requests found", null, 404);
+    }
+
+    const updated = [];
+    const skipped = [];
+
+    for (const r of requests) {
+      const unverified = await LabResult.count({
+        where: {
+          lab_request_id: r.id,
+          status: { [Op.ne]: "verified" },
+        },
+        transaction: t,
+      });
+
+      if (unverified) {
+        skipped.push({ id: r.id, reason: "Unverified results remain" });
+        continue;
+      }
+
+      await r.update(
+        {
+          status: LRS.VERIFIED,
+          updated_by_id: req.user.id,
+        },
+        { transaction: t }
+      );
+
+      await LabRequestItem.update(
+        { status: LRS.VERIFIED },
+        { where: { lab_request_id: r.id }, transaction: t }
+      );
+
+      // 🔥 SAFETY BILLING (NO DUPLICATE IF SERVICE IS SAFE)
+      await billingService.billLabRequestItems({
+        feature_module_id: r.feature_module_id,
+        labRequest: r,
+        user: req.user,
+        transaction: t,
+      });
+
+      updated.push(r.id);
+    }
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: ids.length > 1 ? "bulk_verify" : "verify",
+      details: { updated, skipped },
+    });
+
+    return success(res, "Lab requests verified", { updated, skipped });
+  } catch (err) {
+    await t.rollback();
+    debug.error("verifyLabRequests → FAILED", err);
+    return error(res, "Failed to verify lab requests", err);
   }
 };
 /* ============================================================
@@ -1489,6 +1593,7 @@ export const voidLabRequests = async (req, res) => {
 };
 /* ============================================================
    📌 SUBMIT LAB REQUEST(S) (draft → pending)
+   🔥 BILLING AT PENDING (ITEM-LEVEL — FIXED)
 ============================================================ */
 export const submitLabRequests = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1536,137 +1641,71 @@ export const submitLabRequests = async (req, res) => {
     }
 
     const updated = [];
-
-    /* ================= PROCESS ================= */
-    for (const r of requests) {
-      await r.update(
-        {
-          status: LRS.PENDING,
-          updated_by_id: req.user.id,
-        },
-        { transaction: t }
-      );
-
-      await LabRequestItem.update(
-        { status: LRS.PENDING },
-        { where: { lab_request_id: r.id }, transaction: t }
-      );
-
-      updated.push(r.id);
-    }
-
-    await t.commit();
-
-    await auditService.logAction({
-      user: req.user,
-      module_key: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_submit" : "submit",
-      details: { updated },
-    });
-
-    return success(res, "Lab requests submitted", { updated });
-  } catch (err) {
-    await t.rollback();
-    debug.error("submitLabRequests → FAILED", err);
-    return error(res, "Failed to submit lab requests", err);
-  }
-};
-
-/* ============================================================
-   📌 VERIFY LAB REQUEST(S) (completed → verified) — ADMIN ONLY
-============================================================ */
-export const verifyLabRequests = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    /* ================= PERMISSION ================= */
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module_key: MODULE_KEY,
-      action: "verify",
-      res,
-    });
-    if (!allowed) return;
-
-    /* ================= IDS ================= */
-    const ids = Array.isArray(req.body?.ids)
-      ? req.body.ids
-      : [req.params.id];
-
-    if (!ids.length) {
-      await t.rollback();
-      return error(res, "At least one ID is required", null, 400);
-    }
-
-    /* ================= TENANT ================= */
-    const { orgId, facilityId } = await resolveOrgFacility({
-      user: req.user,
-      query: req.query,
-    });
-
-    /* ================= LOAD ================= */
-    const requests = await LabRequest.findAll({
-      where: {
-        id: { [Op.in]: ids },
-        organization_id: orgId,
-        ...(facilityId ? { facility_id: facilityId } : {}),
-        status: LRS.COMPLETED,
-      },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-
-    if (!requests.length) {
-      await t.rollback();
-      return error(res, "No completed lab requests found", null, 404);
-    }
-
-    const updated = [];
     const skipped = [];
 
     /* ================= PROCESS ================= */
     for (const r of requests) {
-      const unverified = await LabResult.count({
-        where: {
-          lab_request_id: r.id,
-          status: { [Op.ne]: "verified" },
-        },
-        transaction: t,
-      });
+      try {
+        /* ---------- UPDATE STATUS ---------- */
+        await r.update(
+          {
+            status: LRS.PENDING,
+            updated_by_id: req.user.id,
+          },
+          { transaction: t }
+        );
 
-      if (unverified) {
-        skipped.push({ id: r.id, reason: "Unverified results remain" });
-        continue;
+        await LabRequestItem.update(
+          { status: LRS.PENDING },
+          { where: { lab_request_id: r.id }, transaction: t }
+        );
+
+        /* ============================================================
+           🔥 BILLING (FIXED → ITEM-LEVEL)
+        ============================================================ */
+        await billingService.billLabRequestItems({
+          labRequest: r,
+          user: {
+            ...req.user,
+            organization_id: orgId,
+            facility_id: facilityId,
+          },
+          transaction: t,
+        });
+
+        updated.push(r.id);
+      } catch (innerErr) {
+        skipped.push({
+          id: r.id,
+          reason: innerErr.message || "Submit/Billing failed",
+        });
       }
-
-      await r.update(
-        {
-          status: LRS.VERIFIED,
-          updated_by_id: req.user.id,
-        },
-        { transaction: t }
-      );
-
-      await LabRequestItem.update(
-        { status: LRS.VERIFIED },
-        { where: { lab_request_id: r.id }, transaction: t }
-      );
-
-      updated.push(r.id);
     }
 
     await t.commit();
 
+    /* ================= LOAD UPDATED ================= */
+    const records = await LabRequest.findAll({
+      where: { id: { [Op.in]: updated } },
+      include: LAB_REQUEST_INCLUDES,
+    });
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_verify" : "verify",
+      action: ids.length > 1 ? "bulk_submit" : "submit",
       details: { updated, skipped },
     });
 
-    return success(res, "Lab requests verified", { updated, skipped });
+    return success(res, "Lab requests submitted", {
+      records,
+      updated,
+      skipped,
+    });
   } catch (err) {
     await t.rollback();
-    debug.error("verifyLabRequests → FAILED", err);
-    return error(res, "Failed to verify lab requests", err);
+    debug.error("submitLabRequests → FAILED", err);
+    return error(res, "Failed to submit lab requests", err);
   }
 };
