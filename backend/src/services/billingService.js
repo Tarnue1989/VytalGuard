@@ -439,94 +439,131 @@ export const billingService = {
   },
 
   /* ============================================================
-     5️⃣ BILL PHARMACY TRANSACTION (FK SAFE)
+      5️⃣ BILL PRESCRIPTION ITEMS (REQUIRED)
   ============================================================ */
-  async billPharmacyTransaction({
-    pharmacyTransaction,
+  async billPrescriptionItems({
+    prescription,
     user,
-    sequelizeTransaction,
+    transaction,
   }) {
-    if (!pharmacyTransaction.feature_module_id) {
-      throw new Error(
-        "billPharmacyTransaction requires feature_module_id"
-      );
-    }
+    const feature_module_id = await resolveFeatureModuleId({
+      module_key: "prescriptions",
+    });
 
     const { orgId, facilityId } = await resolveOrgFacility({
       user,
-      body: pharmacyTransaction,
+      body: prescription,
     });
 
+    /* 🔐 TRIGGER GATE */
     const allowed = await shouldTriggerBillingDB({
-      feature_module_id: pharmacyTransaction.feature_module_id,
-      status: pharmacyTransaction.status,
+      feature_module_id,
+      status: prescription.status,
       organization_id: orgId,
       facility_id: facilityId,
     });
 
-    if (!allowed || !pharmacyTransaction.patient_id) return null;
+    if (!allowed) return null;
 
-    const presItem = await sequelize.models.PrescriptionItem.findByPk(
-      pharmacyTransaction.prescription_item_id,
-      {
-        include: [{ model: BillableItem, as: "billableItem" }],
-        transaction: sequelizeTransaction,
-      }
-    );
+    const items = await sequelize.models.PrescriptionItem.findAll({
+      where: { prescription_id: prescription.id },
+      include: [{ model: BillableItem, as: "billableItem" }],
+      transaction,
+    });
 
-    if (!presItem?.billableItem || presItem.dispensed_qty <= 0) return null;
+    if (!items.length) return null;
 
-    const qty = Number(presItem.dispensed_qty);
-    const price = Number(presItem.billableItem.price || 0);
-    if (Number.isNaN(price)) return null;
-
-    const taxRate = presItem.billableItem.taxable ? getTaxRate("GST") : 0;
-
+    /* 🧾 INVOICE */
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: pharmacyTransaction.patient_id,
+        patient_id: prescription.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
+        status: ["draft", "issued", "unpaid", "partial"],
         is_locked: false,
       },
-      transaction: sequelizeTransaction,
+      transaction,
     });
 
     if (!invoice) {
       invoice = await Invoice.create(
         {
-          patient_id: pharmacyTransaction.patient_id,
+          patient_id: prescription.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
           status: "draft",
           currency: "USD",
           created_by_id: user.id,
         },
-        { transaction: sequelizeTransaction }
+        { transaction }
       );
     }
 
-    await InvoiceItem.create(
-      {
-        invoice_id: invoice.id,
-        billable_item_id: presItem.billableItem.id,
-        organization_id: orgId,
-        facility_id: facilityId,
-        description: presItem.billableItem.name,
-        unit_price: price,
-        quantity: qty,
-        tax_amount: price * qty * (taxRate / 100),
-        total_price: price * qty,
-        net_amount: price * qty * (1 + taxRate / 100),
-        feature_module_id: pharmacyTransaction.feature_module_id,
-        entity_id: pharmacyTransaction.id,
-        created_by_id: user.id,
-        status: "applied",
-      },
-      { transaction: sequelizeTransaction }
-    );
+    let billedCount = 0;
 
-    await recalcInvoice(invoice.id, sequelizeTransaction);
-    return { invoice };
+    for (const item of items) {
+      if (!item.billableItem) continue;
+
+      /* 🔒 DUPLICATE CHECK */
+      const existing = await InvoiceItem.findOne({
+        where: {
+          feature_module_id,
+          entity_id: item.id,
+          status: "applied",
+        },
+        transaction,
+      });
+
+      if (existing) continue;
+
+      const price = Number(item.billableItem.price || 0);
+      if (Number.isNaN(price)) continue;
+
+      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+
+      const invItem = await InvoiceItem.create(
+        {
+          invoice_id: invoice.id,
+          billable_item_id: item.billableItem.id,
+          organization_id: orgId,
+          facility_id: facilityId,
+          description: item.billableItem.name,
+          unit_price: price,
+          quantity: item.quantity || 1,
+          tax_amount: price * (taxRate / 100),
+          total_price: price,
+          net_amount: price * (1 + taxRate / 100),
+          feature_module_id,
+          entity_id: item.id,
+          created_by_id: user.id,
+          status: "applied",
+        },
+        { transaction }
+      );
+
+      await item.update(
+        {
+          invoice_item_id: invItem.id,
+          billed: true,
+        },
+        { transaction }
+      );
+
+      billedCount++;
+    }
+
+    if (billedCount > 0) {
+      await prescription.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
+
+      await recalcInvoice(invoice.id, transaction);
+    }
+
+    return { invoice, billedCount };
   },
 };
