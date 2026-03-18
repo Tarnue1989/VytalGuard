@@ -196,7 +196,7 @@ export const billingService = {
   },
 
   /* ============================================================
-     2️⃣ BILL LAB REQUEST ITEMS (FK SAFE)
+    2️⃣ BILL LAB REQUEST ITEMS (ENTERPRISE FIXED)
   ============================================================ */
   async billLabRequestItems({
     feature_module_id,
@@ -204,15 +204,34 @@ export const billingService = {
     user,
     transaction,
   }) {
-    if (!feature_module_id) {
-      throw new Error("billLabRequestItems requires feature_module_id");
-    }
-
+    feature_module_id = await resolveFeatureModuleId({
+      feature_module_id,
+      module_key: "lab_requests",
+    });
     const { orgId, facilityId } = await resolveOrgFacility({
       user,
       body: labRequest,
     });
 
+    /* ============================================================
+      🔐 TRIGGER GATE (DB-DRIVEN)
+    ============================================================ */
+    const allowed = await shouldTriggerBillingDB({
+      feature_module_id,
+      status: labRequest.status,
+      organization_id: orgId,
+      facility_id: facilityId,
+    });
+
+    if (!allowed) {
+      logger.warn("[billingService] 🚫 Lab billing blocked by trigger");
+      return null;
+    }
+
+
+    /* ============================================================
+      📦 LOAD ITEMS
+    ============================================================ */
     const items = await LabRequestItem.findAll({
       where: { lab_request_id: labRequest.id },
       include: [{ model: BillableItem, as: "labTest" }],
@@ -221,11 +240,17 @@ export const billingService = {
 
     if (!items.length) return null;
 
+    /* ============================================================
+      🧾 INVOICE (SAFE REUSE)
+    ============================================================ */
+    const allowedStatuses = ["draft", "issued", "unpaid", "partial"];
+
     let invoice = await Invoice.findOne({
       where: {
         patient_id: labRequest.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
+        status: allowedStatuses,
         is_locked: false,
       },
       transaction,
@@ -239,20 +264,62 @@ export const billingService = {
           facility_id: facilityId,
           status: "draft",
           currency: "USD",
+          total: 0,
+          total_paid: 0,
+          balance: 0,
           created_by_id: user.id,
         },
         { transaction }
       );
     }
 
+    /* ============================================================
+      💲 PROCESS ITEMS
+    ============================================================ */
+    let billedCount = 0;
+    logger.info(
+      `[billingService] 🧪 Processing ${items.length} lab items for request=${labRequest.id}`
+    );
     for (const li of items) {
+      // 🔒 Skip already billed (CRITICAL FIX)
+      if (li.billed) {
+        logger.warn(`[billingService] ⚠️ Already billed, skipped item=${li.id}`);
+        continue;
+      }
+
       if (!li.labTest) continue;
 
-      let price = Number(li.labTest.price || 0);
+      logger.info(
+        `[billingService] ➕ Billing lab item ${li.id} (${li.labTest.name})`
+      );
+
+      const price = Number(li.labTest.price || 0);
+
+      if (Number.isNaN(price)) {
+        logger.error(
+          `[billingService] ❌ Invalid price for lab item ${li.id}`
+        );
+        continue;
+      }
       if (Number.isNaN(price)) continue;
 
       const taxRate = li.labTest.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
+
+      /* 🔒 ITEM-LEVEL DUPLICATE */
+      const existingItem = await InvoiceItem.findOne({
+        where: {
+          feature_module_id,
+          entity_id: li.id,
+          status: "applied",
+        },
+        transaction,
+      });
+
+      if (existingItem) {
+        logger.warn("[billingService] ⚠️ Duplicate lab item skipped");
+        continue;
+      }
 
       const invItem = await InvoiceItem.create(
         {
@@ -274,11 +341,38 @@ export const billingService = {
         { transaction }
       );
 
-      await li.update({ invoice_item_id: invItem.id }, { transaction });
+      /* 🔗 LINK BACK */
+      await li.update(
+        {
+          invoice_item_id: invItem.id,
+          billed: true,
+        },
+        { transaction }
+      );
+
+      billedCount++;
     }
 
-    await recalcInvoice(invoice.id, transaction);
-    return { invoice };
+    /* ============================================================
+      🧾 FINALIZE
+    ============================================================ */
+    if (billedCount > 0) {
+      await labRequest.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
+
+      await recalcInvoice(invoice.id, transaction);
+    }
+
+    logger.info(
+      `[billingService] ✅ Lab billing complete | request=${labRequest.id} items=${billedCount}`
+    );
+
+    return { invoice, billedCount };
   },
 
   /* ============================================================
