@@ -1,5 +1,5 @@
 // 📁 backend/src/services/billingService.js
-
+import { Op } from "sequelize";
 import {
   sequelize,
   AutoBillingRule,
@@ -376,7 +376,7 @@ export const billingService = {
   },
 
   /* ============================================================
-    3️⃣ VOID CHARGES (FK SAFE + module_key SUPPORT)
+    3️⃣ VOID CHARGES (FIXED + PAYMENT SAFE + MATCHES PRESCRIPTIONS)
   ============================================================ */
   async voidCharges({
     feature_module_id,
@@ -391,17 +391,63 @@ export const billingService = {
       module_key,
     });
 
+    /* ================= FETCH ITEMS (FIXED) ================= */
     const items = await InvoiceItem.findAll({
-      where: {
-        feature_module_id,
-        entity_id: entityId,
-        status: "applied",
-      },
+    where: {
+      entity_id: entityId,
+      status: { [Op.notIn]: ["voided"] },
+    },
+      include: [
+        {
+          model: Invoice,
+          as: "invoice",
+          attributes: ["id", "total_paid", "status"],
+        },
+      ],
       transaction,
     });
 
+    // 🔍 DEBUG (remove later if you want)
+    console.log("====== VOID CHARGES DEBUG ======");
+    console.log("entityId:", entityId);
+    console.log("module_key:", module_key);
+    console.log("feature_module_id:", feature_module_id);
+
+    // 🔎 RAW (no module filter)
+    const rawItems = await InvoiceItem.findAll({
+      where: { entity_id: entityId },
+      transaction,
+    });
+    console.log("RAW match:", rawItems.length);
+
+    // 🔎 FILTERED (current query)
+    console.log("FILTERED match:", items.length);
+
+    // 🔎 Show module IDs in DB
+    if (rawItems.length) {
+      console.log(
+        "RAW feature_module_ids:",
+        rawItems.map(i => i.feature_module_id)
+      );
+    }
+    /* ================= NO ITEMS → SAFE SKIP ================= */
+    // ✅ Do NOT throw (matches lab behavior but still safe)
     if (!items.length) return [];
 
+    /* ================= PAYMENT SAFETY ================= */
+    for (const item of items) {
+      const invoice = item.invoice;
+
+      if (!invoice) continue;
+
+      if ((invoice.total_paid || 0) > 0) {
+        throw new Error(
+          `Cannot void billing: invoice ${invoice.id} has payment(s)`
+        );
+      }
+    }
+
+    /* ================= VOID ITEMS ================= */
     for (const item of items) {
       await item.update(
         {
@@ -412,14 +458,15 @@ export const billingService = {
       );
     }
 
-    const invoiceIds = [...new Set(items.map(i => i.invoice_id))];
+    /* ================= RECALCULATE INVOICES ================= */
+    const invoiceIds = [...new Set(items.map((i) => i.invoice_id))];
+
     for (const id of invoiceIds) {
       await recalcInvoice(id, transaction);
     }
 
     return items;
   },
-
 
   /* ============================================================
      4️⃣ GET INVOICES BY PATIENT (READ)

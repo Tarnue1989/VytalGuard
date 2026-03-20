@@ -11,6 +11,26 @@
 
 import { getOrgInfo } from "../modules/shared/org-config.js";
 
+/* ============================================================
+   👤 Get Printed By (GLOBAL MASTER PATTERN)
+============================================================ */
+export function getPrintedBy(entity = null) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (entity?.createdBy
+        ? `${entity.createdBy.first_name} ${entity.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch (e) {
+    console.warn("⚠️ Failed to parse authSession:", e);
+    return "Unknown User";
+  }
+}
 export function printReceipt(title, bodyHTML, orgId) {
   const branding = getOrgInfo(orgId) || {};
   const basePath = window.location.origin + "/assets/css/";

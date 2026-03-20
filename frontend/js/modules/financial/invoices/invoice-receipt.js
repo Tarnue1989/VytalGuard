@@ -3,6 +3,7 @@
 // 🧾 Invoice Receipt – Enterprise Master Pattern Aligned
 // ----------------------------------------------------------------------------
 // 🔹 Mirrors payment-receipt.js for unified tenant-aware receipt structure
+// 🔹 Uses authSession for Printed By (single source of truth)
 // 🔹 Includes org/facility info, itemized summary, and dynamic “Paid To Date”
 // 🔹 Currency-safe, localized printing with full audit footer
 // ============================================================================
@@ -25,11 +26,32 @@ function formatDate(dateStr) {
 }
 
 /* ============================================================
+   👤 Resolve Current User (MASTER PATTERN)
+============================================================ */
+function getPrintedBy(invoice) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (invoice?.createdBy
+        ? `${invoice.createdBy.first_name} ${invoice.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch (e) {
+    console.warn("⚠️ Failed to parse authSession:", e);
+    return "Unknown User";
+  }
+}
+
+/* ============================================================
    🧾 Print Invoice Receipt
 ============================================================ */
 export function printInvoiceReceipt(invoice) {
   const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = getPrintedBy(invoice);
   const printedAt = new Date().toLocaleString();
 
   /* ------------------------------------------------------------
