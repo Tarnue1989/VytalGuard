@@ -1,5 +1,5 @@
 // 📁 backend/src/services/billingService.js
-
+import { Op } from "sequelize";
 import {
   sequelize,
   AutoBillingRule,
@@ -376,7 +376,7 @@ export const billingService = {
   },
 
   /* ============================================================
-    3️⃣ VOID CHARGES (FK SAFE + module_key SUPPORT)
+    3️⃣ VOID CHARGES (FIXED + PAYMENT SAFE + MATCHES PRESCRIPTIONS)
   ============================================================ */
   async voidCharges({
     feature_module_id,
@@ -391,17 +391,63 @@ export const billingService = {
       module_key,
     });
 
+    /* ================= FETCH ITEMS (FIXED) ================= */
     const items = await InvoiceItem.findAll({
-      where: {
-        feature_module_id,
-        entity_id: entityId,
-        status: "applied",
-      },
+    where: {
+      entity_id: entityId,
+      status: { [Op.notIn]: ["voided"] },
+    },
+      include: [
+        {
+          model: Invoice,
+          as: "invoice",
+          attributes: ["id", "total_paid", "status"],
+        },
+      ],
       transaction,
     });
 
+    // 🔍 DEBUG (remove later if you want)
+    console.log("====== VOID CHARGES DEBUG ======");
+    console.log("entityId:", entityId);
+    console.log("module_key:", module_key);
+    console.log("feature_module_id:", feature_module_id);
+
+    // 🔎 RAW (no module filter)
+    const rawItems = await InvoiceItem.findAll({
+      where: { entity_id: entityId },
+      transaction,
+    });
+    console.log("RAW match:", rawItems.length);
+
+    // 🔎 FILTERED (current query)
+    console.log("FILTERED match:", items.length);
+
+    // 🔎 Show module IDs in DB
+    if (rawItems.length) {
+      console.log(
+        "RAW feature_module_ids:",
+        rawItems.map(i => i.feature_module_id)
+      );
+    }
+    /* ================= NO ITEMS → SAFE SKIP ================= */
+    // ✅ Do NOT throw (matches lab behavior but still safe)
     if (!items.length) return [];
 
+    /* ================= PAYMENT SAFETY ================= */
+    for (const item of items) {
+      const invoice = item.invoice;
+
+      if (!invoice) continue;
+
+      if ((invoice.total_paid || 0) > 0) {
+        throw new Error(
+          `Cannot void billing: invoice ${invoice.id} has payment(s)`
+        );
+      }
+    }
+
+    /* ================= VOID ITEMS ================= */
     for (const item of items) {
       await item.update(
         {
@@ -412,14 +458,15 @@ export const billingService = {
       );
     }
 
-    const invoiceIds = [...new Set(items.map(i => i.invoice_id))];
+    /* ================= RECALCULATE INVOICES ================= */
+    const invoiceIds = [...new Set(items.map((i) => i.invoice_id))];
+
     for (const id of invoiceIds) {
       await recalcInvoice(id, transaction);
     }
 
     return items;
   },
-
 
   /* ============================================================
      4️⃣ GET INVOICES BY PATIENT (READ)
@@ -439,94 +486,131 @@ export const billingService = {
   },
 
   /* ============================================================
-     5️⃣ BILL PHARMACY TRANSACTION (FK SAFE)
+      5️⃣ BILL PRESCRIPTION ITEMS (REQUIRED)
   ============================================================ */
-  async billPharmacyTransaction({
-    pharmacyTransaction,
+  async billPrescriptionItems({
+    prescription,
     user,
-    sequelizeTransaction,
+    transaction,
   }) {
-    if (!pharmacyTransaction.feature_module_id) {
-      throw new Error(
-        "billPharmacyTransaction requires feature_module_id"
-      );
-    }
+    const feature_module_id = await resolveFeatureModuleId({
+      module_key: "prescriptions",
+    });
 
     const { orgId, facilityId } = await resolveOrgFacility({
       user,
-      body: pharmacyTransaction,
+      body: prescription,
     });
 
+    /* 🔐 TRIGGER GATE */
     const allowed = await shouldTriggerBillingDB({
-      feature_module_id: pharmacyTransaction.feature_module_id,
-      status: pharmacyTransaction.status,
+      feature_module_id,
+      status: prescription.status,
       organization_id: orgId,
       facility_id: facilityId,
     });
 
-    if (!allowed || !pharmacyTransaction.patient_id) return null;
+    if (!allowed) return null;
 
-    const presItem = await sequelize.models.PrescriptionItem.findByPk(
-      pharmacyTransaction.prescription_item_id,
-      {
-        include: [{ model: BillableItem, as: "billableItem" }],
-        transaction: sequelizeTransaction,
-      }
-    );
+    const items = await sequelize.models.PrescriptionItem.findAll({
+      where: { prescription_id: prescription.id },
+      include: [{ model: BillableItem, as: "billableItem" }],
+      transaction,
+    });
 
-    if (!presItem?.billableItem || presItem.dispensed_qty <= 0) return null;
+    if (!items.length) return null;
 
-    const qty = Number(presItem.dispensed_qty);
-    const price = Number(presItem.billableItem.price || 0);
-    if (Number.isNaN(price)) return null;
-
-    const taxRate = presItem.billableItem.taxable ? getTaxRate("GST") : 0;
-
+    /* 🧾 INVOICE */
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: pharmacyTransaction.patient_id,
+        patient_id: prescription.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
+        status: ["draft", "issued", "unpaid", "partial"],
         is_locked: false,
       },
-      transaction: sequelizeTransaction,
+      transaction,
     });
 
     if (!invoice) {
       invoice = await Invoice.create(
         {
-          patient_id: pharmacyTransaction.patient_id,
+          patient_id: prescription.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
           status: "draft",
           currency: "USD",
           created_by_id: user.id,
         },
-        { transaction: sequelizeTransaction }
+        { transaction }
       );
     }
 
-    await InvoiceItem.create(
-      {
-        invoice_id: invoice.id,
-        billable_item_id: presItem.billableItem.id,
-        organization_id: orgId,
-        facility_id: facilityId,
-        description: presItem.billableItem.name,
-        unit_price: price,
-        quantity: qty,
-        tax_amount: price * qty * (taxRate / 100),
-        total_price: price * qty,
-        net_amount: price * qty * (1 + taxRate / 100),
-        feature_module_id: pharmacyTransaction.feature_module_id,
-        entity_id: pharmacyTransaction.id,
-        created_by_id: user.id,
-        status: "applied",
-      },
-      { transaction: sequelizeTransaction }
-    );
+    let billedCount = 0;
 
-    await recalcInvoice(invoice.id, sequelizeTransaction);
-    return { invoice };
+    for (const item of items) {
+      if (!item.billableItem) continue;
+
+      /* 🔒 DUPLICATE CHECK */
+      const existing = await InvoiceItem.findOne({
+        where: {
+          feature_module_id,
+          entity_id: item.id,
+          status: "applied",
+        },
+        transaction,
+      });
+
+      if (existing) continue;
+
+      const price = Number(item.billableItem.price || 0);
+      if (Number.isNaN(price)) continue;
+
+      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+
+      const invItem = await InvoiceItem.create(
+        {
+          invoice_id: invoice.id,
+          billable_item_id: item.billableItem.id,
+          organization_id: orgId,
+          facility_id: facilityId,
+          description: item.billableItem.name,
+          unit_price: price,
+          quantity: item.quantity || 1,
+          tax_amount: price * (taxRate / 100),
+          total_price: price,
+          net_amount: price * (1 + taxRate / 100),
+          feature_module_id,
+          entity_id: item.id,
+          created_by_id: user.id,
+          status: "applied",
+        },
+        { transaction }
+      );
+
+      await item.update(
+        {
+          invoice_item_id: invItem.id,
+          billed: true,
+        },
+        { transaction }
+      );
+
+      billedCount++;
+    }
+
+    if (billedCount > 0) {
+      await prescription.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
+
+      await recalcInvoice(invoice.id, transaction);
+    }
+
+    return { invoice, billedCount };
   },
 };

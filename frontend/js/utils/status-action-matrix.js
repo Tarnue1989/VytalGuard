@@ -136,7 +136,7 @@ export const STATUS_ACTION_MATRIX = {
   medical_record:{draft:["edit","review","delete","void"],reviewed:["finalize","void"],finalized:["verify","void"],verified:["void"],voided:["restore"]},
 
   /* ======================== 💊 PRESCRIPTION ======================== */
-  prescription:{draft:["edit","submit","delete","void"],issued:["edit","activate","cancel","void"],dispensed:["complete","verify","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
+  prescription:{draft:["edit","submit","delete","void"],issued:["cancel","void"],dispensed:["complete","verify","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 💊 PHARMACY TX ======================== */
   pharmacy_transaction:{

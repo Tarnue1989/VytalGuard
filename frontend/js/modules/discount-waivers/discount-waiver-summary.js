@@ -1,16 +1,18 @@
 // 📁 frontend/js/modules/discount-waivers/discount-waiver-summary.js
 // ============================================================================
-// 🧾 Discount Waiver Summary Slip (Printable PDF-ready version)
-// 🔹 Mirrors discount-summary.js enterprise pattern
-// 🔹 Tailored for waiver lifecycle: approved, rejected, voided
-// 🔹 Fully compatible with printReceipt() utility
+// 🧾 Discount Waiver Summary Slip – Enterprise Master Pattern Aligned
+// ----------------------------------------------------------------------------
+// 🔹 Mirrors invoice-receipt.js structure for consistency
+// 🔹 Uses authSession for Printed By (single source of truth)
+// 🔹 Includes org/facility info, waiver details, and full audit trail
+// 🔹 Clean, resilient, and print-ready
 // ============================================================================
 
 import { printReceipt } from "../../utils/receipt-utils.js";
 import { getOrgInfo } from "../shared/org-config.js";
 
 /* ============================================================
-   🧩 Helpers
+   📅 Date Formatter
 ============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
@@ -24,60 +26,86 @@ function formatDate(dateStr) {
 }
 
 /* ============================================================
+   👤 Resolve Current User (MASTER PATTERN)
+============================================================ */
+function getPrintedBy(waiver) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (authSession?.first_name && authSession?.last_name
+        ? `${authSession.first_name} ${authSession.last_name}`
+        : null) ||
+      (waiver?.createdBy
+        ? `${waiver.createdBy.first_name} ${waiver.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch (e) {
+    console.warn("⚠️ Failed to parse authSession:", e);
+    return "Unknown User";
+  }
+}
+
+/* ============================================================
    🧾 Print Discount Waiver Summary Slip
 ============================================================ */
 export function printDiscountWaiverSummary(waiver) {
   const orgInfo = getOrgInfo();
-  const printedBy = localStorage.getItem("userName") || "Unknown User";
+  const printedBy = getPrintedBy(waiver);
   const printedAt = new Date().toLocaleString();
 
-  // ✅ Invoice display
+  /* ------------------------------------------------------------
+     🧾 Invoice Label
+  ------------------------------------------------------------ */
   const invoiceLabel = waiver.invoice
     ? `${waiver.invoice.invoice_number || "Invoice"}`
     : waiver.invoice_id
     ? `Invoice ID: ${waiver.invoice_id}`
     : "—";
 
-  // ✅ Patient display
+  /* ------------------------------------------------------------
+     🧍 Patient Label
+  ------------------------------------------------------------ */
   const patientLabel =
     waiver.patient?.full_name ||
     waiver.patient_name ||
     waiver.patient_id ||
     "—";
 
-  // ✅ Type & value display
+  /* ------------------------------------------------------------
+     💲 Value Display
+  ------------------------------------------------------------ */
   const valueDisplay =
     waiver.type === "percentage"
       ? `${parseFloat(waiver.percentage || 0).toFixed(2)}%`
       : `$${parseFloat(waiver.amount || 0).toFixed(2)}`;
 
-  /* ============================================================
-     🧱 HTML Template
-  ============================================================ */
+  /* ------------------------------------------------------------
+     🧱 Body Content (MATCHES INVOICE STYLE)
+  ------------------------------------------------------------ */
   const bodyHTML = `
-    <!-- Org / Facility Info -->
-    <div class="mb-3">
-      <h5 class="fw-bold">${orgInfo?.name || "Organization"}</h5>
-      <div class="small text-muted">
-        ${waiver.facility?.name || "—"}<br/>
-        ${orgInfo?.address || ""}
-      </div>
+    <!-- 🏢 Organization & Facility -->
+    <div class="facility-info mb-3">
+      <p><strong>Organization:</strong> ${orgInfo?.name || "—"}</p>
+      <p><strong>Facility:</strong> ${waiver.facility?.name || "—"}</p>
     </div>
 
-    <!-- Waiver Details -->
-    <h6 class="border-bottom pb-1 mt-3">Discount Waiver Information</h6>
+    <!-- 📄 Waiver Meta -->
     <div class="invoice-meta">
       <div><strong>Invoice:</strong> ${invoiceLabel}</div>
       <div><strong>Patient:</strong> ${patientLabel}</div>
       <div><strong>Type:</strong> ${waiver.type || "—"}</div>
       <div><strong>Value:</strong> ${valueDisplay}</div>
-      <div><strong>Applied Total:</strong> $${parseFloat(waiver.applied_total || 0).toFixed(2)}</div>
-      <div><strong>Reason:</strong> ${waiver.reason || "—"}</div>
+      <div><strong>Applied Total:</strong> $${Number(waiver.applied_total || 0).toFixed(2)}</div>
       <div><strong>Status:</strong> ${waiver.status || "—"}</div>
+      <div style="grid-column:1 / -1;"><strong>Reason:</strong> ${waiver.reason || "—"}</div>
     </div>
 
-    <!-- Audit Trail -->
-    <h6 class="border-bottom pb-1 mt-3">Audit Trail</h6>
+    <!-- 🧾 Audit Trail -->
+    <h5 class="border-bottom pb-1 mt-3">Audit Trail</h5>
     <div class="invoice-meta">
       <div><strong>Created By:</strong> ${
         waiver.createdBy
@@ -108,20 +136,24 @@ export function printDiscountWaiverSummary(waiver) {
       }
     </div>
 
-    <!-- Print Info -->
+    <!-- 🕓 Print Audit -->
     <div class="mt-3 border-top pt-2 small text-muted">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
 
-    <!-- Footer -->
-    <div class="mt-3 text-center small">
-      <em>Discount waiver summary slip — non-cash adjustment.</em>
+    <!-- 🧾 Footer -->
+    <div id="receiptFooter" class="mt-3">
+      <p class="mb-0">Discount waiver processed successfully.</p>
     </div>
   `;
 
-  /* ============================================================
-     🖨️ Print using enterprise utils
-  ============================================================ */
-  printReceipt("Discount Waiver Summary Slip", bodyHTML, waiver.organization_id);
+  /* ------------------------------------------------------------
+     🖨️ Dispatch to Printer
+  ------------------------------------------------------------ */
+  printReceipt(
+    "Discount Waiver Summary Slip",
+    bodyHTML,
+    waiver.organization_id
+  );
 }

@@ -159,11 +159,12 @@ export async function setupDiscountFormSubmission({ form }) {
       invoiceSuggestions,
       "/api/lite/invoices",
       async (selected) => {
-        invoiceHidden.value = selected?.id || "";
+        const record = selected?.raw || selected;
+        invoiceHidden.value = record?.id || "";
 
         if (selected && invoiceItemSelect) {
           try {
-            const items = await loadInvoiceItemsLite(selected.id, {}, true);
+            const items = await loadInvoiceItemsLite(record.id, {}, true);
             const filtered = items.filter(
               (x) => !["voided", "cancelled"].includes(x.status)
             );

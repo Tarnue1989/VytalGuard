@@ -1,6 +1,22 @@
 // 📁 controllers/prescriptionController.js
+// ============================================================================
+// 💊 Prescription Controller — ENTERPRISE MASTER–ALIGNED (Lab Request Parity)
+// ----------------------------------------------------------------------------
+// 🔹 NO billing constants / shouldTriggerBilling
+// 🔹 NO inline role helpers
+// 🔹 Uses role-utils + resolveOrgFacility
+// 🔹 Billing handled ONLY via billingService (item-level)
+// ============================================================================
+
+/* ============================================================
+   📦 CORE / THIRD-PARTY
+============================================================ */
 import Joi from "joi";
 import { Op } from "sequelize";
+
+/* ============================================================
+   🗄️ MODELS
+============================================================ */
 import {
   sequelize,
   Prescription,
@@ -15,20 +31,62 @@ import {
   Facility,
   User,
   Invoice,
-  DepartmentStock 
+  InvoiceItem,
+  DepartmentStock,
 } from "../models/index.js";
+
+/* ============================================================
+   🧰 CORE UTILITIES
+============================================================ */
 import { success, error } from "../utils/response.js";
+import { validate } from "../utils/validation.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { PRESCRIPTION_STATUS, PRESCRIPTION_ITEM_STATUS } from "../constants/enums.js";
-import { authzService } from "../services/authzService.js";
-import { auditService } from "../services/auditService.js";
-import { FIELD_VISIBILITY_PRESCRIPTION } from "../constants/fieldVisibility.js";
-import { billingService } from "../services/billingService.js";
-import { shouldTriggerBilling } from "../constants/billing.js";
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
 
-const MODULE_KEY = "prescription";
+/* ============================================================
+   🔐 ROLE & ACCESS (MASTER — NO INLINE HELPERS)
+============================================================ */
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
 
+/* ============================================================
+   📜 CONSTANTS
+============================================================ */
+import {
+  PRESCRIPTION_STATUS,
+  PRESCRIPTION_ITEM_STATUS,
+} from "../constants/enums.js";
+import { FIELD_VISIBILITY_PRESCRIPTION } from "../constants/fieldVisibility.js";
+
+/* ============================================================
+   🔧 SERVICES
+============================================================ */
+import { authzService } from "../services/authzService.js";
+import { auditService } from "../services/auditService.js";
+import { billingService } from "../services/billingService.js";
+
+/* ============================================================
+   🐞 DEBUG LOGGER (MASTER)
+============================================================ */
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
+const DEBUG_OVERRIDE = true;
+const debug = makeModuleLogger("prescriptionController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔐 MODULE
+============================================================ */
+const MODULE_KEY = "prescriptions"; // ✅ FIXED (plural — matches billing)
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM-DRIVEN — MASTER)
+============================================================ */
 const PS = {
   DRAFT: PRESCRIPTION_STATUS[0],
   ISSUED: PRESCRIPTION_STATUS[1],
@@ -48,35 +106,48 @@ const PIS = {
   VOIDED: PRESCRIPTION_ITEM_STATUS[5],
 };
 
+/* ============================================================
+   🔗 PARENT → ITEM STATUS MAP (MASTER)
+============================================================ */
 const ITEM_STATUS_MAP = {
   [PS.DRAFT]: PIS.DRAFT,
   [PS.ISSUED]: PIS.ISSUED,
-  [PS.DISPENSED]: PIS.DISPENSED,
+  [PS.DISPENSED]: PIS.PARTIALLY_DISPENSED, // 🔥 FIX HERE
   [PS.COMPLETED]: PIS.DISPENSED,
   [PS.CANCELLED]: PIS.CANCELLED,
   [PS.VOIDED]: PIS.VOIDED,
   [PS.VERIFIED]: PIS.DISPENSED,
 };
 
-function isSuperAdmin(user) {
-  if (!user) return false;
-  const roles = Array.isArray(user.roleNames) ? user.roleNames : [user.role || ""];
-  return roles.map(r => r.toLowerCase()).includes("superadmin");
-}
-
+/* ============================================================
+   🔗 SHARED INCLUDES (MASTER PARITY)
+============================================================ */
 const PRESCRIPTION_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
   { model: Employee.unscoped(), as: "doctor", attributes: ["id", "first_name", "last_name"] },
   { model: Department, as: "department", attributes: ["id", "name"] },
   { model: Consultation, as: "consultation", attributes: ["id", "consultation_date", "status"] },
-  { model: RegistrationLog, as: "registrationLog", attributes: ["id", "registration_time", "log_status"] },
-  { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
+  {
+    model: RegistrationLog,
+    as: "registrationLog",
+    attributes: ["id", "registration_time", "log_status"],
+  },
   {
     model: PrescriptionItem,
     as: "items",
     required: false,
-    include: [{ model: BillableItem, as: "billableItem", attributes: ["id", "name", "price"] }],
+    where: {
+      status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] }, // ✅ match labRequest filtering
+    },
+    include: [
+      {
+        model: BillableItem,
+        as: "billableItem",
+        attributes: ["id", "name", "price"],
+      },
+    ],
   },
+  { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
@@ -85,9 +156,9 @@ const PRESCRIPTION_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMA
+   📋 JOI SCHEMA (MASTER-ALIGNED — TENANT SAFE)
 ============================================================ */
-function buildPrescriptionSchema(userRole, mode = "create") {
+function buildPrescriptionSchema(mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
     doctor_id: Joi.string().uuid().allow(null, ""),
@@ -95,12 +166,16 @@ function buildPrescriptionSchema(userRole, mode = "create") {
     consultation_id: Joi.string().uuid().allow(null, ""),
     registration_log_id: Joi.string().uuid().allow(null, ""),
     invoice_id: Joi.string().uuid().allow(null, ""),
-    organization_id: Joi.string().uuid().allow(null, ""),   // ✅ always allowed
-    facility_id: Joi.string().uuid().allow(null, ""),       // ✅ always allowed
-    prescription_date: Joi.date().iso().required(),
+
+    prescription_date: Joi.date().default(() => new Date()),
     notes: Joi.string().allow("", null),
     is_emergency: Joi.boolean().default(false),
-    status: Joi.string().valid(...PRESCRIPTION_STATUS).default(PS.DRAFT),
+
+    // 🔒 lifecycle-controlled (MASTER)
+    status: Joi.forbidden(),
+    organization_id: Joi.forbidden(),
+    facility_id: Joi.forbidden(),
+
     items: Joi.array()
       .items(
         Joi.object({
@@ -118,7 +193,10 @@ function buildPrescriptionSchema(userRole, mode = "create") {
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
+    });
+
     base.items = Joi.array()
       .items(
         Joi.object({
@@ -139,78 +217,98 @@ function buildPrescriptionSchema(userRole, mode = "create") {
   return Joi.object(base);
 }
 
-
 /* ============================================================
-   📌 CREATE PRESCRIPTIONS (Enterprise-Aligned)
+   📌 CREATE PRESCRIPTIONS — MASTER PARITY (NO BILLING HERE)
 ============================================================ */
 export const createPrescriptions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    /* ================= PERMISSION ================= */
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "create",
       res,
     });
     if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const schema = buildPrescriptionSchema(role, "create");
+    debug.log("createPrescriptions → RAW BODY", req.body);
+
+    /* ================= PAYLOAD ================= */
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
-    if (payloads.length === 0) {
+    if (!payloads.length) {
       await t.rollback();
-      return error(res, "Payload must be a non-empty object or array", null, 400);
+      return error(res, "Payload must not be empty", null, 400);
     }
 
-    const prepared = [];
+    const createdIds = [];
     const skipped = [];
 
     for (const [idx, payload] of payloads.entries()) {
-      const { error: validationError, value } = schema.validate(payload, { stripUnknown: true });
-      if (validationError) {
-        skipped.push({ index: idx, reason: "Validation failed", details: validationError.details });
+      const { value, errors } = validate(
+        buildPrescriptionSchema("create"),
+        payload
+      );
+
+      if (errors) {
+        skipped.push({ index: idx, reason: "Validation failed", errors });
         continue;
       }
 
-      let orgId = req.user.organization_id || null;
-      let facilityId = req.user.facility_id || null;
+      /* ---------- TENANT ---------- */
+      const { orgId, facilityId } = await resolveOrgFacility({
+        user: req.user,
+        value,
+        body: payload,
+      });
 
-      if (isSuperAdmin(req.user)) {
-        if (req.query.organization_id) orgId = req.query.organization_id;
-        if (req.query.facility_id) facilityId = req.query.facility_id;
-        orgId = value.organization_id || orgId;
-        facilityId = value.facility_id || facilityId;
+      /* ---------- CLINICAL LINK ---------- */
+      const resolved = await resolveClinicalLinks({
+        value,
+        user: req.user,
+        orgId,
+        facilityId,
+        transaction: t,
+      });
+
+      /* ---------- DOCTOR ENFORCEMENT ---------- */
+      if (!isSuperAdmin(req.user) && !resolved.doctor_id) {
+        resolved.doctor_id = req.user.employee_id;
       }
 
-      // 🔗 Auto clinical link resolution
-      value._currentUser = req.user;
-      await resolveClinicalLinks(value, orgId, facilityId, t);
-
-      orgId = orgId || value.organization_id || value.consultation?.organization_id || null;
-      facilityId = facilityId || value.facility_id || value.consultation?.facility_id || null;
-
-      if (!orgId) {
-        skipped.push({ index: idx, reason: "Unable to resolve organization_id" });
+      if (isSuperAdmin(req.user) && !resolved.doctor_id) {
+        skipped.push({ index: idx, reason: "Doctor required for superadmin" });
         continue;
       }
 
-      prepared.push({
-        prescription: {
-          ...value,
-          doctor_id: value.doctor_id || req.user.employee_id || null,
+      if (!resolved.registration_log_id) {
+        skipped.push({ index: idx, reason: "No active registration log" });
+        continue;
+      }
+
+      /* ================= CREATE ================= */
+      const prescription = await Prescription.create(
+        {
+          patient_id: resolved.patient_id,
+          doctor_id: resolved.doctor_id,
+          department_id: resolved.department_id,
+          consultation_id: resolved.consultation_id,
+          registration_log_id: resolved.registration_log_id,
+          prescription_date: resolved.prescription_date
+            ? new Date(resolved.prescription_date).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+          notes: resolved.notes,
+          is_emergency: resolved.is_emergency,
+          status: PS.DRAFT,
           organization_id: orgId,
           facility_id: facilityId,
           created_by_id: req.user?.id || null,
         },
-        items: value.items,
-      });
-    }
+        { transaction: t }
+      );
 
-    const createdPrescriptions = [];
-    for (const entry of prepared) {
-      const prescription = await Prescription.create(entry.prescription, { transaction: t });
-
-      const items = entry.items.map((it) => ({
+      /* ---------- ITEMS ---------- */
+      const items = resolved.items.map((it) => ({
         prescription_id: prescription.id,
         medication_id: it.medication_id,
         billable_item_id: it.billable_item_id,
@@ -220,779 +318,494 @@ export const createPrescriptions = async (req, res) => {
         quantity: it.quantity,
         dispensed_qty: 0,
         instructions: it.instructions,
-        organization_id: prescription.organization_id,
-        facility_id: prescription.facility_id,
+        organization_id: orgId,
+        facility_id: facilityId,
         created_by_id: req.user?.id || null,
-        status: ITEM_STATUS_MAP[prescription.status] || PIS.DRAFT,
+        status: PIS.DRAFT,
       }));
-      await PrescriptionItem.bulkCreate(items, { transaction: t });
 
-      // 💵 Billing Hook
-      try {
-        if (shouldTriggerBilling(MODULE_KEY, prescription.status)) {
-          await billingService.triggerAutoBilling({
-            module: MODULE_KEY,
-            entity: prescription,
-            user: req.user,
-            transaction: t,
-          });
-        }
-      } catch (billErr) {
-        console.warn("⚠️ Billing service failed:", billErr);
-      }
+      await PrescriptionItem.bulkCreate(items, {
+        transaction: t,
+        validate: true,
+      });
 
-      createdPrescriptions.push(prescription);
+      createdIds.push(prescription.id);
     }
 
     await t.commit();
 
-    const full = createdPrescriptions.length
+    const records = createdIds.length
       ? await Prescription.findAll({
-          where: { id: { [Op.in]: createdPrescriptions.map((c) => c.id) } },
+          where: { id: { [Op.in]: createdIds } },
           include: PRESCRIPTION_INCLUDES,
         })
       : [];
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
-      action: payloads.length > 1 ? "bulk_create" : "create",
-      details: { saved: createdPrescriptions.length, skipped: skipped.length },
+      module_key: MODULE_KEY,
+      action: createdIds.length > 1 ? "bulk_create" : "create",
+      details: { created: createdIds.length, skipped: skipped.length },
     });
 
-    return success(res, {
-      message: `✅ ${createdPrescriptions.length} created, ⚠️ ${skipped.length} skipped`,
-      records: full,
-      skipped,
-    });
+    return success(res, "✅ Prescriptions created", { records, skipped });
   } catch (err) {
-    console.error("❌ createPrescriptions error:", err);
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to create prescription(s)", err);
+    await t.rollback();
+    debug.error("createPrescriptions → FAILED", err);
+    return error(res, "❌ Failed to create prescriptions", err);
   }
 };
-
 /* ============================================================
-   📌 UPDATE PRESCRIPTION (Enterprise-Aligned)
+   📌 UPDATE PRESCRIPTION — MASTER PARITY (FIXED LOCK ISSUE)
 ============================================================ */
 export const updatePrescription = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const schema = buildPrescriptionSchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
+    debug.log("updatePrescription → RAW BODY", req.body);
+
+    const { value, errors } = validate(
+      buildPrescriptionSchema("update"),
+      req.body
+    );
+
+    if (errors) {
       await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
+      return error(res, "Validation failed", errors, 400);
     }
 
-    let orgId = req.user.organization_id || null;
-    let facilityId = req.user.facility_id || null;
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id || req.query.organization_id || orgId;
-      facilityId = value.facility_id || req.query.facility_id || facilityId;
-    }
-
-    const prescription = await Prescription.findOne({
-      where: { id },
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      body: value,
     });
-    if (!prescription) {
+
+    /* ================= LOCK PARENT ONLY ================= */
+    const record = await Prescription.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!record) {
       await t.rollback();
       return error(res, "Prescription not found", null, 404);
     }
 
-    const currentStatus = prescription.status;
-    const oldSnapshot = { ...prescription.get() };
-    if ([PS.COMPLETED, PS.CANCELLED, PS.VOIDED].includes(currentStatus)) {
+    /* ================= LOAD ITEMS SEPARATELY ================= */
+    const existingItems = await PrescriptionItem.findAll({
+      where: { prescription_id: record.id },
+      transaction: t,
+    });
+
+    if (
+      [PS.COMPLETED, PS.CANCELLED, PS.VOIDED, PS.VERIFIED].includes(
+        record.status
+      )
+    ) {
       await t.rollback();
-      return error(res, `Cannot update Prescription in status ${currentStatus}`, null, 400);
+      return error(res, "Finalized prescription cannot be edited", null, 400);
     }
 
-    // 🔗 Auto clinical re-link
-    value._currentUser = req.user;
-    await resolveClinicalLinks(value, orgId, facilityId, t);
+    /* ================= UPDATE ================= */
+    const updatePayload = {
+      updated_by_id: req.user?.id || null,
+    };
 
-    await prescription.update(
-      {
-        patient_id: value.patient_id || prescription.patient_id,
-        doctor_id: value.doctor_id || prescription.doctor_id,
-        department_id: value.department_id ?? prescription.department_id,
-        registration_log_id: value.registration_log_id ?? prescription.registration_log_id,
-        consultation_id: value.consultation_id ?? prescription.consultation_id,
-        invoice_id: value.invoice_id ?? prescription.invoice_id,
-        prescription_date: value.prescription_date ?? prescription.prescription_date,
-        notes: value.notes ?? prescription.notes,
-        is_emergency: value.is_emergency ?? prescription.is_emergency,
-        status: value.status || prescription.status,
-        organization_id: orgId,
-        facility_id: facilityId || prescription.facility_id,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
+    [
+      "patient_id",
+      "doctor_id",
+      "department_id",
+      "consultation_id",
+      "registration_log_id",
+      "notes",
+      "is_emergency",
+    ].forEach((f) => {
+      if (value[f] !== undefined) updatePayload[f] = value[f];
+    });
 
+    if (value.prescription_date) {
+      updatePayload.prescription_date =
+        new Date(value.prescription_date).toISOString().split("T")[0];
+    }
+
+    await record.update(updatePayload, { transaction: t });
+
+    /* ================= ITEMS SYNC ================= */
     if (Array.isArray(value.items)) {
-      const existingItems = prescription.items || [];
-      const existingById = new Map(existingItems.map((e) => [e.id, e]));
-      const touched = new Set();
+      const existingMap = new Map(
+        existingItems.map((i) => [i.billable_item_id, i])
+      );
+
+      const incoming = new Set();
 
       for (const it of value.items) {
-        if (!it.billable_item_id && !it.id) continue;
+        incoming.add(it.billable_item_id);
 
-        // DELETE
-        if (it._delete && it.id && existingById.has(it.id)) {
-          const existing = existingById.get(it.id);
-          await existing.update(
-            {
-              status: PIS.CANCELLED,
-              deleted_at: new Date(),
-              deleted_by_id: req.user?.id || null,
-              updated_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-          await billingService.voidCharges({
-            module: "prescription_item",
-            entityId: existing.id,
-            user: req.user,
-            transaction: t,
-          });
-          touched.add(existing.id);
-          continue;
-        }
+        const existing = existingMap.get(it.billable_item_id);
 
-        // UPDATE
-        if (it.id && existingById.has(it.id)) {
-          const existing = existingById.get(it.id);
-          await existing.update(
-            {
-              medication_id: it.medication_id || existing.medication_id,
-              billable_item_id: it.billable_item_id || existing.billable_item_id,
-              dosage: it.dosage ?? existing.dosage,
-              route: it.route ?? existing.route,
-              duration: it.duration ?? existing.duration,
-              quantity: it.quantity ?? existing.quantity,
-              dispensed_qty: it.dispensed_qty ?? existing.dispensed_qty,
-              instructions: it.instructions ?? existing.instructions,
-              status: ITEM_STATUS_MAP[prescription.status] || existing.status,
-              updated_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-          touched.add(existing.id);
-          continue;
-        }
-
-        // CREATE / REACTIVATE
-        const dup = await PrescriptionItem.findOne({
-          where: { prescription_id: prescription.id, billable_item_id: it.billable_item_id },
-          transaction: t,
-        });
-
-        if (dup) {
-          if ([PIS.CANCELLED, PIS.VOIDED].includes(dup.status)) {
-            await dup.update(
-              {
-                status: ITEM_STATUS_MAP[prescription.status] || dup.status,
-                dosage: it.dosage || dup.dosage,
-                route: it.route || dup.route,
-                duration: it.duration || dup.duration,
-                quantity: it.quantity || dup.quantity,
-                instructions: it.instructions || dup.instructions,
-                deleted_at: null,
-                deleted_by_id: null,
-                updated_by_id: req.user?.id || null,
-              },
-              { transaction: t }
-            );
-            touched.add(dup.id);
-          } else touched.add(dup.id);
-        } else {
-          const newItem = await PrescriptionItem.create(
-            {
-              prescription_id: prescription.id,
-              medication_id: it.medication_id,
-              billable_item_id: it.billable_item_id,
-              dosage: it.dosage || null,
-              route: it.route || null,
-              duration: it.duration || null,
-              quantity: it.quantity || 1,
-              instructions: it.instructions || null,
-              status: ITEM_STATUS_MAP[prescription.status] || PIS.DRAFT,
-              organization_id: prescription.organization_id,
-              facility_id: prescription.facility_id,
-              created_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-          touched.add(newItem.id);
-        }
-      }
-
-      if (currentStatus === PS.DRAFT) {
-        for (const existing of existingItems) {
-          if (!touched.has(existing.id)) {
+        if (existing) {
+          if (it._delete) {
             await existing.update(
               {
                 status: PIS.CANCELLED,
-                deleted_at: new Date(),
-                deleted_by_id: req.user?.id || null,
-                updated_by_id: req.user?.id || null,
+                deleted_by_id: req.user?.id,
+                updated_by_id: req.user?.id,
               },
               { transaction: t }
             );
+
             await billingService.voidCharges({
-              module: "prescription_item",
+              module_key: MODULE_KEY,
               entityId: existing.id,
               user: req.user,
               transaction: t,
             });
+
+            continue;
           }
+
+          await existing.update(
+            {
+              dosage: it.dosage ?? existing.dosage,
+              quantity: it.quantity ?? existing.quantity,
+              instructions: it.instructions ?? existing.instructions,
+              updated_by_id: req.user?.id,
+            },
+            { transaction: t }
+          );
+
+          continue;
+        }
+
+        if (!it._delete) {
+          await PrescriptionItem.create(
+            {
+              prescription_id: record.id,
+              billable_item_id: it.billable_item_id,
+              quantity: it.quantity || 1,
+              status: ITEM_STATUS_MAP[record.status] || PIS.DRAFT,
+              organization_id: record.organization_id,
+              facility_id: record.facility_id,
+              created_by_id: req.user?.id,
+            },
+            { transaction: t }
+          );
+        }
+      }
+
+      /* REMOVE MISSING */
+      for (const existing of existingItems) {
+        if (!incoming.has(existing.billable_item_id)) {
+          await existing.update(
+            {
+              status: PIS.CANCELLED,
+              deleted_by_id: req.user?.id,
+            },
+            { transaction: t }
+          );
+
+          await billingService.voidCharges({
+            module_key: MODULE_KEY,
+            entityId: existing.id,
+            user: req.user,
+            transaction: t,
+          });
         }
       }
     }
 
-    if (oldSnapshot.status !== prescription.status && shouldTriggerBilling(MODULE_KEY, prescription.status)) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: prescription,
-        user: req.user,
-        transaction: t,
-      });
-    }
-
     await t.commit();
 
-    const full = await Prescription.findOne({ where: { id }, include: PRESCRIPTION_INCLUDES });
+    const full = await Prescription.findOne({
+      where: { id: record.id },
+      include: PRESCRIPTION_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
-      entityId: id,
+      entityId: record.id,
       entity: full,
-      details: { before: oldSnapshot, after: full.get() },
     });
 
     return success(res, "✅ Prescription updated", full);
   } catch (err) {
-    console.error("❌ updatePrescription error:", err);
-    if (t && !t.finished) await t.rollback();
+    await t.rollback();
+    debug.error("updatePrescription → FAILED", err);
     return error(res, "❌ Failed to update prescription", err);
   }
 };
 
 /* ============================================================
-   📌 ACTIVATE PRESCRIPTION(S) (issued → dispensed/partial)
-   ============================================================ */
+   📌 ACTIVATE PRESCRIPTIONS — MASTER SAFE (NO JOIN LOCK)
+============================================================ */
 export const activatePrescriptions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
+      return error(res, "No prescription IDs provided", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
     });
 
-    if (!prescriptions.length) {
-      await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
-    }
-
-    const updated = [], skipped = [];
-
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
-
-      if (oldStatus !== PS.ISSUED) {
-        skipped.push({ id: prescription.id, reason: `Not issued (${oldStatus})` });
-        continue;
-      }
-
-      // 🔹 Parent moves to DISPENSED state
-      await prescription.update(
-        { status: PS.DISPENSED, updated_by_id: req.user?.id || null },
-        { transaction: t }
-      );
-
-      // 🔹 Items go PARTIALLY_DISPENSED (until pharmacy fulfills them)
-      await PrescriptionItem.update(
-        { status: PIS.PARTIALLY_DISPENSED, updated_by_id: req.user?.id },
-        { where: { prescription_id: prescription.id }, transaction: t }
-      );
-
-      // 💰 Billing — still bill at activation stage
-      if (shouldTriggerBilling(MODULE_KEY, PS.DISPENSED)) {
-        await billingService.billPrescriptionItems({
-          prescription,
-          user: {
-            ...req.user,
-            organization_id: prescription.organization_id,
-            facility_id: prescription.facility_id,
-          },
-          transaction: t,
-        });
-      }
-
-      updated.push({ prescription, from: oldStatus, to: PS.DISPENSED });
-    }
-
-    await t.commit();
-
-    const full = updated.length
-      ? await Prescription.findAll({
-          where: { id: updated.map(u => u.prescription.id) },
-          include: PRESCRIPTION_INCLUDES,
-        })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_activate" : "activate",
-      details: {
-        updated: updated.map(u => ({ id: u.prescription.id, from: u.from, to: u.to })),
-        skipped,
+    /* ================= LOCK PARENT ONLY ================= */
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: PS.ISSUED,
       },
-    });
-
-    return success(
-      res,
-      `✅ ${updated.length} activated (parent dispensed, items partial), ⚠️ ${skipped.length} skipped`,
-      { records: full, skipped }
-    );
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to activate/dispense prescription(s)", err);
-  }
-};
-
-/* ============================================================
-   📌 COMPLETE PRESCRIPTION(S) (dispensed → completed)
-   ============================================================ */
-export const completePrescriptions = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
-      await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
-    }
-
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+      lock: t.LOCK.UPDATE,
     });
-    if (!prescriptions.length) {
+
+    if (!records.length) {
       await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
+      return error(res, "No issued prescriptions found", null, 404);
     }
 
-    const updated = [], skipped = [];
+    /* ================= LOAD ITEMS ================= */
+    const recordIds = records.map(r => r.id);
 
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
-      if (oldStatus !== PS.DISPENSED) {
-        skipped.push({ id: prescription.id, reason: `Not dispensed (${oldStatus})` });
-        continue;
-      }
-
-      await prescription.update(
-        { status: PS.COMPLETED, updated_by_id: req.user?.id || null },
-        { transaction: t }
-      );
-
-      // ✅ Items remain dispensed — do NOT force to completed
-      await PrescriptionItem.update(
-        { status: PIS.DISPENSED, updated_by_id: req.user?.id },
-        { where: { prescription_id: prescription.id }, transaction: t }
-      );
-
-      if (shouldTriggerBilling(MODULE_KEY, PS.COMPLETED)) {
-        await billingService.billPrescriptionItems({
-          prescription,
-          user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ prescription, from: oldStatus, to: PS.COMPLETED });
-    }
-
-    await t.commit();
-
-    const full = updated.length
-      ? await Prescription.findAll({
-          where: { id: updated.map(r => r.prescription.id) },
-          include: PRESCRIPTION_INCLUDES,
-        })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_complete" : "complete",
-      details: { updated: updated.map(u => ({ id: u.prescription.id, from: u.from, to: u.to })), skipped },
-    });
-
-    return success(res, `✅ ${updated.length} completed, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to complete prescription(s)", err);
-  }
-};
-
-
-/* ============================================================
-   📌 CANCEL PRESCRIPTION(S) (issued/dispensed → cancelled)
-   ============================================================ */
-export const cancelPrescriptions = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
-      await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
-    }
-
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
-    });
-    if (!prescriptions.length) return error(res, "❌ No Prescriptions found", null, 404);
-
-    const updated = [], skipped = [];
-
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
-      if (![PS.ISSUED, PS.DISPENSED].includes(oldStatus)) {
-        skipped.push({ id: prescription.id, reason: `Not cancellable (${oldStatus})` });
-        continue;
-      }
-
-      await prescription.update(
-        { status: PS.CANCELLED, updated_by_id: req.user?.id || null },
-        { transaction: t }
-      );
-
-      // ✅ Items cancelled
-      await PrescriptionItem.update(
-        { status: PIS.CANCELLED, updated_by_id: req.user?.id },
+    const items = await PrescriptionItem.findAll({
+      where: {
+        prescription_id: { [Op.in]: recordIds },
+        status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] },
+      },
+      include: [
         {
+          model: BillableItem,
+          as: "billableItem",
+          attributes: ["id", "name", "master_item_id"],
+        },
+      ],
+      transaction: t,
+    });
+
+    /* ================= GROUP ITEMS ================= */
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.prescription_id)) {
+        itemsMap.set(item.prescription_id, []);
+      }
+      itemsMap.get(item.prescription_id).push(item);
+    }
+
+    for (const r of records) {
+      r.setDataValue("items", itemsMap.get(r.id) || []);
+    }
+
+    /* ================= STOCK VALIDATION ================= */
+    for (const r of records) {
+      for (const item of r.items || []) {
+        const masterItemId = item.billableItem?.master_item_id;
+        if (!masterItemId) continue;
+
+        const stock = await DepartmentStock.findOne({
           where: {
-            prescription_id: prescription.id,
-            status: { [Op.notIn]: [PIS.VOIDED, PIS.CANCELLED] },
+            department_id: r.department_id,
+            master_item_id: masterItemId,
           },
           transaction: t,
-        }
-      );
-
-      // Void billing for each item
-      for (const item of prescription.items || []) {
-        await billingService.voidCharges({
-          module: "prescription_item",
-          entityId: item.id,
-          user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-          transaction: t,
+          lock: t.LOCK.UPDATE,
         });
+
+        if (!stock) {
+          await t.rollback();
+          return error(res, `No stock found for ${item.billableItem?.name}`, null, 400);
+        }
+
+        if ((stock.quantity || 0) < item.quantity) {
+          await t.rollback();
+          return error(
+            res,
+            `Insufficient stock for ${item.billableItem?.name}. Available: ${stock.quantity}, Required: ${item.quantity}`,
+            null,
+            400
+          );
+        }
       }
-
-      updated.push({ prescription, from: oldStatus, to: PS.CANCELLED });
     }
 
-    await t.commit();
+    /* ================= STOCK DEDUCTION ================= */
+    for (const r of records) {
+      for (const item of r.items || []) {
+        const masterItemId = item.billableItem?.master_item_id;
+        if (!masterItemId) continue;
 
-    const full = updated.length
-      ? await Prescription.findAll({
-          where: { id: updated.map(u => u.prescription.id) },
-          include: PRESCRIPTION_INCLUDES,
-        })
-      : [];
+        const stock = await DepartmentStock.findOne({
+          where: {
+            department_id: r.department_id,
+            master_item_id: masterItemId,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_cancel" : "cancel",
-      details: { updated: updated.map(u => ({ id: u.prescription.id, from: u.from, to: u.to })), skipped },
-    });
+        await stock.update(
+          {
+            quantity: (stock.quantity || 0) - item.quantity,
+            updated_by_id: req.user.id,
+          },
+          { transaction: t }
+        );
 
-    return success(res, `✅ ${updated.length} cancelled, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to cancel prescription(s)", err);
-  }
-};
-/* ============================================================
-   📌 TOGGLE PRESCRIPTION STATUS (single + bulk)
-   ============================================================ */
-export const togglePrescriptionStatus = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "update",
-      res,
-    });
-    if (!allowed) return;
-
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
-      await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
-    }
-
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
-    });
-    if (!prescriptions.length) {
-      await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
-    }
-
-    const updated = [], skipped = [];
-
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
-      let newStatus = oldStatus;
-
-      if (req.body?.status && PRESCRIPTION_STATUS.includes(req.body.status)) {
-        newStatus = req.body.status;
-      } else if (oldStatus === PS.ISSUED) {
-        newStatus = PS.CANCELLED;
-      } else if (oldStatus === PS.CANCELLED) {
-        newStatus = PS.ISSUED;
+        await item.update(
+          {
+            dispensed_qty: item.quantity,
+            updated_by_id: req.user.id,
+          },
+          { transaction: t }
+        );
       }
+    }
 
-      if (oldStatus === newStatus) {
-        skipped.push({ id: prescription.id, reason: "No status change" });
-        continue;
-      }
-
-      await prescription.update(
-        { status: newStatus, updated_by_id: req.user?.id || null },
+    /* ================= STATUS UPDATE ================= */
+    for (const r of records) {
+      await r.update(
+        {
+          status: PS.DISPENSED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
-
-      // ✅ Cascade items safely
-      if (newStatus === PS.CANCELLED) {
-        await PrescriptionItem.update(
-          { status: PIS.CANCELLED, updated_by_id: req.user?.id },
-          { where: { prescription_id: prescription.id, status: { [Op.notIn]: [PIS.VOIDED, PIS.CANCELLED] } }, transaction: t }
-        );
-
-        for (const item of prescription.items || []) {
-          await billingService.voidCharges({
-            module: "prescription_item",
-            entityId: item.id,
-            user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-            transaction: t,
-          });
-        }
-      } else if (newStatus === PS.ISSUED) {
-        await PrescriptionItem.update(
-          { status: PIS.ISSUED, updated_by_id: req.user?.id },
-          { where: { prescription_id: prescription.id }, transaction: t }
-        );
-      }
-
-      // billing trigger
-      if (shouldTriggerBilling(MODULE_KEY, newStatus)) {
-        await billingService.triggerAutoBilling({
-          module: MODULE_KEY,
-          entity: prescription,
-          user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ prescription, from: oldStatus, to: newStatus });
     }
+
+    await PrescriptionItem.update(
+      {
+        status: PIS.PARTIALLY_DISPENSED,
+        updated_by_id: req.user.id,
+      },
+      {
+        where: {
+          prescription_id: { [Op.in]: recordIds },
+          status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] },
+        },
+        transaction: t,
+      }
+    );
 
     await t.commit();
 
-    const full = updated.length
-      ? await Prescription.findAll({ where: { id: updated.map(u => u.prescription.id) }, include: PRESCRIPTION_INCLUDES })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_toggle_status" : "toggle_status",
-      details: { updated: updated.map(u => ({ id: u.prescription.id, from: u.from, to: u.to })), skipped },
-    });
-
-    return success(res, `✅ ${updated.length} toggled, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "✅ Prescriptions activated (stock safe)");
   } catch (err) {
-    if (t) await t.rollback();
-    return error(res, "❌ Failed to toggle prescription status", err);
+    await t.rollback();
+    return error(res, "Failed to activate prescriptions", err);
   }
 };
-
-
 /* ============================================================
-   📌 SUBMIT PRESCRIPTION(S) (draft → issued)
-   Enterprise-Aligned: Duplicate-aware, status-safe, item-specific
+   📌 SUBMIT PRESCRIPTIONS — MASTER PARITY (LAB EXACT)
 ============================================================ */
 export const submitPrescriptions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // 🔐 Permission check
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    // 🔹 Collect IDs
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
+      return error(res, "Must provide at least one Prescription ID", null, 400);
     }
 
-    // 🔹 Role/org/facility scope
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    // 🔒 Lock prescriptions
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
     });
-    if (!prescriptions.length) {
+
+    /* ================= LOCK PARENT ONLY ================= */
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: PS.DRAFT,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!records.length) {
       await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
+      return error(res, "No draft prescriptions found", null, 404);
+    }
+
+    /* ================= LOAD ITEMS ================= */
+    const recordIds = records.map((r) => r.id);
+
+    const items = await PrescriptionItem.findAll({
+      where: {
+        prescription_id: { [Op.in]: recordIds },
+        status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] },
+      },
+      transaction: t,
+    });
+
+    /* ================= GROUP ITEMS ================= */
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.prescription_id)) {
+        itemsMap.set(item.prescription_id, []);
+      }
+      itemsMap.get(item.prescription_id).push(item);
+    }
+
+    for (const r of records) {
+      r.setDataValue("items", itemsMap.get(r.id) || []);
     }
 
     const updated = [];
     const skipped = [];
 
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
+    for (const r of records) {
+      const rItems = r.items || [];
 
-      // 🚫 Only draft can be submitted
-      if (oldStatus !== PS.DRAFT) {
-        skipped.push({ id: prescription.id, reason: `Not in draft (${oldStatus})` });
-        continue;
-      }
-
-      /* ============================================================
-         🧠 Smarter Duplicate Check (Enterprise-Aligned)
-         - Allows voided, cancelled, soft-deleted
-         - Blocks only active (issued → verified)
-         - Considers same patient, date, and overlapping items
-      ============================================================ */
-      const existingSameItem = await Prescription.findOne({
+      /* ================= DUPLICATE CHECK ================= */
+      const duplicate = await Prescription.findOne({
         where: {
-          organization_id: prescription.organization_id,
-          facility_id: prescription.facility_id,
-          patient_id: prescription.patient_id,
-          prescription_date: prescription.prescription_date,
-          id: { [Op.ne]: prescription.id },
+          organization_id: r.organization_id,
+          facility_id: r.facility_id,
+          patient_id: r.patient_id,
+          prescription_date: r.prescription_date,
+          id: { [Op.ne]: r.id },
           status: {
             [Op.in]: [PS.ISSUED, PS.DISPENSED, PS.COMPLETED, PS.VERIFIED],
           },
@@ -1001,546 +814,885 @@ export const submitPrescriptions = async (req, res) => {
           {
             model: PrescriptionItem,
             as: "items",
+            required: true,
             where: {
-              medication_id: { [Op.in]: prescription.items.map(i => i.medication_id) },
+              billable_item_id: {
+                [Op.in]: rItems.map((i) => i.billable_item_id),
+              },
               status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] },
             },
-            required: true,
           },
         ],
         transaction: t,
-        paranoid: false,
       });
 
-      if (existingSameItem) {
-        skipped.push({
-          id: prescription.id,
-          reason: "Duplicate active prescription for same medication(s) on same date",
-        });
+      if (duplicate) {
+        skipped.push({ id: r.id, reason: "Duplicate active prescription" });
         continue;
       }
 
-      // ✅ Update parent prescription
-      await prescription.update(
-        { status: PS.ISSUED, updated_by_id: req.user?.id || null },
+      /* ================= STATUS UPDATE ================= */
+      await r.update(
+        {
+          status: PS.ISSUED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
 
-      // ✅ Activate child items
-      await PrescriptionItem.update(
-        { status: PIS.ISSUED, updated_by_id: req.user?.id },
-        { where: { prescription_id: prescription.id }, transaction: t }
-      );
-
-      // ⚡ Auto-billing
-      if (shouldTriggerBilling(MODULE_KEY, PS.ISSUED)) {
-        await billingService.billPrescriptionItems({
-          prescription,
-          user: {
-            ...req.user,
-            organization_id: prescription.organization_id,
-            facility_id: prescription.facility_id,
-          },
-          transaction: t,
-        });
-      }
-
-      updated.push({ prescription, from: oldStatus, to: PS.ISSUED });
-    }
-
-    // 🚨 No updates
-    if (!updated.length) {
-      await t.rollback();
-      return error(res, "⚠️ No prescriptions submitted", { skipped }, 409);
-    }
-
-    await t.commit();
-
-    // 🔄 Reload updated prescriptions
-    const full = await Prescription.findAll({
-      where: { id: updated.map(u => u.prescription.id) },
-      include: PRESCRIPTION_INCLUDES,
-    });
-
-    // 🧾 Audit trail
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_submit" : "submit",
-      details: {
-        updated: updated.map(u => ({
-          id: u.prescription.id,
-          from: u.from,
-          to: u.to,
-        })),
-        skipped,
-      },
-    });
-
-    // ✅ Response
-    return success(
-      res,
-      `✅ ${updated.length} submitted${skipped.length ? `, ⚠️ ${skipped.length} skipped` : ""}`,
-      { records: full, skipped }
-    );
-  } catch (err) {
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to submit prescription(s)", err);
-  }
-};
-
-
-/* ============================================================
-   📌 DELETE PRESCRIPTION(S) (Soft Delete + Cascade Items + Rollback Billing)
-   ============================================================ */
-export const deletePrescriptions = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "delete",
-      res,
-    });
-    if (!allowed) return;
-
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
-      await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
-    }
-
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription }
-    });
-    if (!prescriptions.length) {
-      await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
-    }
-
-    const deleted = [], skipped = [];
-
-    for (const prescription of prescriptions) {
-      // ⛔ Block deletion if already completed
-      if ([PS.COMPLETED].includes(prescription.status)) {
-        skipped.push({ id: prescription.id, reason: "Completed prescriptions cannot be deleted" });
-        continue;
-      }
-
-      // Void billing for each item
-      for (const item of prescription.items || []) {
-        await billingService.voidCharges({
-          module: "prescription_item",
-          entityId: item.id,
-          user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-          transaction: t,
-        });
-      }
-
-      // Mark items as cancelled
       await PrescriptionItem.update(
         {
-          status: PIS.CANCELLED,
-          updated_by_id: req.user?.id,
-          deleted_by_id: req.user?.id,
-          deleted_at: new Date(),
+          status: PIS.ISSUED,
+          updated_by_id: req.user.id,
         },
         {
-          where: {
-            prescription_id: prescription.id,
-            status: { [Op.notIn]: [PIS.VOIDED, PIS.CANCELLED] }
-          },
+          where: { prescription_id: r.id },
           transaction: t,
         }
       );
 
-      // Soft delete parent prescription
-      await prescription.update({ deleted_by_id: req.user?.id }, { transaction: t });
-      await prescription.destroy({ transaction: t });
-      deleted.push(prescription);
+      /* ================= 🔥 BILLING (MASTER PARITY) ================= */
+      await billingService.billPrescriptionItems({
+        prescription: r,
+        user: {
+          ...req.user,
+          organization_id: orgId,
+          facility_id: facilityId,
+        },
+        transaction: t,
+      });
+
+      updated.push(r.id);
+    }
+
+    if (!updated.length) {
+      await t.rollback();
+      return error(res, "No prescriptions submitted", { skipped }, 409);
     }
 
     await t.commit();
 
-    const full = deleted.length
-      ? await Prescription.findAll({
-          where: { id: deleted.map(r => r.id) },
-          include: PRESCRIPTION_INCLUDES,
-          paranoid: false,
-        })
-      : [];
+    const full = await Prescription.findAll({
+      where: { id: { [Op.in]: updated } },
+      include: PRESCRIPTION_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_delete" : "delete",
-      details: { deleted: deleted.length, skipped },
+      module_key: MODULE_KEY,
+      action: ids.length > 1 ? "bulk_submit" : "submit",
+      details: { ids: updated, skipped },
     });
 
-    return success(res, `✅ ${deleted.length} deleted, ⚠️ ${skipped.length} skipped`, { records: full, skipped });
+    return success(res, "✅ Prescriptions submitted (MASTER billing)", {
+      records: full,
+      skipped,
+    });
+
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to delete prescription(s)", err);
+    return error(res, "Failed to submit prescriptions", err);
   }
 };
 /* ============================================================
-   📌 VOID PRESCRIPTION(S) (any → voided)
-   ============================================================ */
-export const voidPrescriptions = async (req, res) => {
+   📌 COMPLETE PRESCRIPTIONS — MASTER SAFE (NO JOIN LOCK)
+============================================================ */
+export const completePrescriptions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
-      action: "delete", // treat as destructive
+      module_key: MODULE_KEY,
+      action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
+      return error(res, "Must provide at least one Prescription ID", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescriptions = await Prescription.findAll({
-      where,
-      include: [{ model: PrescriptionItem, as: "items" }],
-      transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
     });
-    if (!prescriptions.length) {
+
+    /* ================= LOCK PARENT ONLY ================= */
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: PS.DISPENSED,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!records.length) {
       await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
+      return error(res, "No dispensed prescriptions found", null, 404);
     }
 
-    const updated = [];
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
+    const recordIds = records.map(r => r.id);
 
-      await prescription.update(
-        { status: PS.VOIDED, updated_by_id: req.user?.id || null },
+    /* ================= STATUS UPDATE ================= */
+    for (const r of records) {
+      await r.update(
+        {
+          status: PS.COMPLETED,
+          updated_by_id: req.user.id,
+        },
         { transaction: t }
       );
-
-      // ✅ Child items = voided
-      await PrescriptionItem.update(
-        {
-          status: PIS.VOIDED,
-          updated_by_id: req.user?.id,
-          deleted_by_id: req.user?.id,
-          deleted_at: new Date(),
-        },
-        { where: { prescription_id: prescription.id }, transaction: t }
-      );
-
-      // Void billing
-      for (const item of prescription.items || []) {
-        await billingService.voidCharges({
-          module: "prescription_item",
-          entityId: item.id,
-          user: { ...req.user, organization_id: prescription.organization_id, facility_id: prescription.facility_id },
-          transaction: t,
-        });
-      }
-
-      updated.push({ id: prescription.id, from: oldStatus, to: PS.VOIDED });
     }
+
+    await PrescriptionItem.update(
+      {
+        status: PIS.DISPENSED,
+        updated_by_id: req.user.id,
+      },
+      {
+        where: { prescription_id: { [Op.in]: recordIds } },
+        transaction: t,
+      }
+    );
 
     await t.commit();
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: ids.length > 1 ? "bulk_void" : "void",
-      details: { updated },
+    const full = await Prescription.findAll({
+      where: { id: { [Op.in]: recordIds } },
+      include: PRESCRIPTION_INCLUDES,
     });
 
-    return success(res, `✅ ${updated.length} voided`, { updated });
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: ids.length > 1 ? "bulk_complete" : "complete",
+      details: { ids: recordIds },
+    });
+
+    return success(res, "✅ Prescriptions completed", full);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to void prescription(s)", err);
+    await t.rollback();
+    return error(res, "Failed to complete prescriptions", err);
   }
 };
 
-
 /* ============================================================
-   📌 VERIFY PRESCRIPTION(S) (completed → verified)
-   ============================================================ */
+   📌 VERIFY PRESCRIPTIONS — MASTER SAFE (NO BILLING)
+============================================================ */
 export const verifyPrescriptions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.params.id];
-    if (!ids?.length) {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
       await t.rollback();
-      return error(res, "❌ Must provide at least one Prescription ID", null, 400);
+      return error(res, "Must provide at least one Prescription ID", null, 400);
     }
 
-    // 🔒 Tenant scoping
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { id: { [Op.in]: ids } };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    const prescriptions = await Prescription.findAll({
-      where,
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: PS.COMPLETED,
+      },
       include: [{ model: PrescriptionItem, as: "items" }],
       transaction: t,
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+      lock: t.LOCK.UPDATE,
     });
-    if (!prescriptions.length) {
+
+    if (!records.length) {
       await t.rollback();
-      return error(res, "❌ No Prescriptions found", null, 404);
+      return error(res, "No completed prescriptions found", null, 404);
     }
 
-    const updated = [], skipped = [];
-    for (const prescription of prescriptions) {
-      const oldStatus = prescription.status;
+    const updated = [];
 
-      if (oldStatus !== PS.COMPLETED) {
-        skipped.push({ id: prescription.id, reason: `Not completed (${oldStatus})` });
-        continue;
-      }
-
-      await prescription.update(
-        { status: PS.VERIFIED, updated_by_id: req.user?.id || null },
+    for (const r of records) {
+      await r.update(
+        { status: PS.VERIFIED, updated_by_id: req.user.id },
         { transaction: t }
       );
 
-      // ✅ Keep child items at dispensed
       await PrescriptionItem.update(
-        { status: PIS.DISPENSED, updated_by_id: req.user?.id },
-        { where: { prescription_id: prescription.id }, transaction: t }
+        { status: PIS.DISPENSED, updated_by_id: req.user.id },
+        { where: { prescription_id: r.id }, transaction: t }
       );
 
-      updated.push({ id: prescription.id, from: oldStatus, to: PS.VERIFIED });
+      updated.push(r.id);
     }
 
     await t.commit();
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_verify" : "verify",
-      details: { updated, skipped },
+      details: { ids: updated },
     });
 
-    return success(res, `✅ ${updated.length} verified, ⚠️ ${skipped.length} skipped`, { updated, skipped });
+    return success(res, "✅ Prescriptions verified", { ids: updated });
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to verify prescription(s)", err);
+    await t.rollback();
+    return error(res, "Failed to verify prescriptions", err);
   }
 };
 
 /* ============================================================
-   📌 RESTORE PRESCRIPTION (soft delete rollback)
-   ============================================================ */
-export const restorePrescription = async (req, res) => {
+   📌 TOGGLE PRESCRIPTION STATUS — MASTER SAFE
+============================================================ */
+export const togglePrescriptionStatus = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "update",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-
-    // 🔒 Tenant scoping
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+    const { status } = req.body;
+    if (!status || !PRESCRIPTION_STATUS.includes(status)) {
+      await t.rollback();
+      return error(res, "Invalid status", null, 400);
     }
 
-    // 🔎 Find soft-deleted prescription
-    const prescription = await Prescription.findOne({
-      where,
-      include: [{ model: PrescriptionItem, as: "items", paranoid: false }],
-      transaction: t,
-      paranoid: false, // include soft-deleted
-      lock: { level: t.LOCK.UPDATE, of: Prescription },
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
     });
 
-    if (!prescription || !prescription.deleted_at) {
+    const record = await Prescription.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      include: [{ model: PrescriptionItem, as: "items" }],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!record) {
       await t.rollback();
-      return error(res, "❌ Prescription not found or not deleted", null, 404);
+      return error(res, "Prescription not found", null, 404);
     }
 
-    // ♻️ Restore parent
-    await prescription.restore({ transaction: t });
-    await prescription.update(
-      { deleted_at: null, deleted_by_id: null, updated_by_id: req.user?.id || null },
+    // 🚫 restrict illegal transitions (VERY IMPORTANT)
+    const allowedTransitions = {
+      [PS.DRAFT]: [PS.ISSUED],
+      [PS.ISSUED]: [PS.DISPENSED, PS.CANCELLED],
+      [PS.DISPENSED]: [PS.COMPLETED, PS.CANCELLED],
+      [PS.COMPLETED]: [PS.VERIFIED],
+    };
+
+    if (
+      allowedTransitions[record.status] &&
+      !allowedTransitions[record.status].includes(status)
+    ) {
+      await t.rollback();
+      return error(res, "Invalid status transition", null, 400);
+    }
+
+    await record.update(
+      { status, updated_by_id: req.user.id },
       { transaction: t }
     );
 
-    // ♻️ Restore items (soft delete rollback)
-    await PrescriptionItem.restore({
-      where: { prescription_id: id },
+    await PrescriptionItem.update(
+      {
+        status: ITEM_STATUS_MAP[status] || PIS.DRAFT,
+        updated_by_id: req.user.id,
+      },
+      { where: { prescription_id: record.id }, transaction: t }
+    );
+
+    // 🔥 ONLY handle VOID / CANCEL billing
+    if (status === PS.CANCELLED || status === PS.VOIDED) {
+      for (const item of record.items || []) {
+        await billingService.voidCharges({
+          module_key: MODULE_KEY,
+          entityId: item.id,
+          user: req.user,
+          transaction: t,
+        });
+      }
+    }
+
+    await t.commit();
+
+    return success(res, "Status updated safely", record);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "Failed to update status", err);
+  }
+};
+
+/* ============================================================
+   📌 DELETE PRESCRIPTIONS — MASTER PARITY (SOFT DELETE)
+============================================================ */
+export const deletePrescriptions = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      include: [{ model: PrescriptionItem, as: "items" }],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!records.length) {
+      await t.rollback();
+      return error(res, "No prescriptions found", null, 404);
+    }
+
+    const deleted = [];
+    const skipped = [];
+
+    for (const r of records) {
+      if ([PS.COMPLETED, PS.VERIFIED].includes(r.status)) {
+        skipped.push({ id: r.id, reason: "Finalized prescription cannot be deleted" });
+        continue;
+      }
+
+      // 🔥 VOID BILLING FIRST
+      for (const item of r.items || []) {
+        await billingService.voidCharges({
+          module_key: MODULE_KEY,
+          entityId: item.id,
+          user: req.user,
+          transaction: t,
+        });
+      }
+
+      await PrescriptionItem.update(
+        {
+          status: PIS.CANCELLED,
+          deleted_by_id: req.user.id,
+          deleted_at: new Date(),
+        },
+        {
+          where: {
+            prescription_id: r.id,
+            status: { [Op.notIn]: [PIS.CANCELLED, PIS.VOIDED] },
+          },
+          transaction: t,
+        }
+      );
+
+      await r.update({ deleted_by_id: req.user.id }, { transaction: t });
+      await r.destroy({ transaction: t });
+
+      deleted.push(r.id);
+    }
+
+    await t.commit();
+
+    const full = await Prescription.findAll({
+      where: { id: { [Op.in]: deleted } },
+      include: PRESCRIPTION_INCLUDES,
+      paranoid: false,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: ids.length > 1 ? "bulk_delete" : "delete",
+      details: { ids: deleted, skipped },
+    });
+
+    return success(res, "✅ Prescriptions deleted", { records: full, skipped });
+  } catch (err) {
+    await t.rollback();
+    return error(res, "Failed to delete prescriptions", err);
+  }
+};
+
+/* ============================================================
+   📌 CANCEL PRESCRIPTIONS — MASTER + STOCK + BILLING (FINAL)
+============================================================ */
+export const cancelPrescriptions = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
+      await t.rollback();
+      return error(res, "No prescription IDs provided", null, 400);
+    }
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+        status: { [Op.in]: [PS.ISSUED, PS.DISPENSED] },
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!records.length) {
+      await t.rollback();
+      return error(res, "No cancellable prescriptions found", null, 404);
+    }
+
+    const recordIds = records.map((r) => r.id);
+
+    /* 🔥 FIX: include soft-deleted items */
+    const items = await PrescriptionItem.findAll({
+      where: {
+        prescription_id: { [Op.in]: recordIds },
+      },
+      paranoid: false, // ✅ CRITICAL FIX
+      include: [
+        {
+          model: BillableItem,
+          as: "billableItem",
+          attributes: ["id", "name", "master_item_id"],
+        },
+      ],
       transaction: t,
     });
 
-    // ✅ Use centralized ITEM_STATUS_MAP
-    const itemStatus = ITEM_STATUS_MAP[prescription.status] || PIS.DRAFT;
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.prescription_id)) {
+        itemsMap.set(item.prescription_id, []);
+      }
+      itemsMap.get(item.prescription_id).push(item);
+    }
+
+    for (const r of records) {
+      const rItems = itemsMap.get(r.id) || [];
+
+      console.log("==== CANCEL PRES DEBUG ====");
+      console.log("Prescription:", r.id);
+      console.log("Items count:", rItems.length);
+
+      /* ================= STOCK REVERSAL ================= */
+      for (const item of rItems) {
+        const masterItemId = item.billableItem?.master_item_id;
+
+        if (!masterItemId) continue;
+        if (!item.dispensed_qty || item.dispensed_qty <= 0) continue;
+
+        const stock = await DepartmentStock.findOne({
+          where: {
+            department_id: r.department_id,
+            master_item_id: masterItemId,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        if (stock) {
+          await stock.update(
+            {
+              quantity: (stock.quantity || 0) + item.dispensed_qty,
+              updated_by_id: req.user.id,
+            },
+            { transaction: t }
+          );
+        }
+
+        await item.update(
+          {
+            dispensed_qty: 0,
+            updated_by_id: req.user.id,
+          },
+          { transaction: t }
+        );
+      }
+
+      /* 🔥 VOID BILLING */
+      for (const item of rItems) {
+        console.log("VOIDING ITEM:", item.id);
+
+        await billingService.voidCharges({
+          module_key: MODULE_KEY,
+          entityId: item.id,
+          user: req.user,
+          transaction: t,
+        });
+      }
+
+      /* ================= STATUS ================= */
+      await r.update(
+        {
+          status: PS.CANCELLED,
+          updated_by_id: req.user.id,
+        },
+        { transaction: t }
+      );
+
+      await PrescriptionItem.update(
+        {
+          status: PIS.CANCELLED,
+          updated_by_id: req.user.id,
+        },
+        {
+          where: {
+            prescription_id: r.id,
+          },
+          transaction: t,
+        }
+      );
+    }
+
+    await t.commit();
+
+    return success(
+      res,
+      "✅ Prescriptions cancelled (stock + billing reversed correctly)"
+    );
+  } catch (err) {
+    await t.rollback();
+    return error(res, "Failed to cancel prescriptions", err);
+  }
+};
+
+/* ============================================================
+   📌 VOID PRESCRIPTIONS — MASTER + BILLING (FINAL)
+============================================================ */
+export const voidPrescriptions = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids
+      : [req.params.id];
+
+    if (!ids.length) {
+      await t.rollback();
+      return error(res, "No prescription IDs provided", null, 400);
+    }
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const records = await Prescription.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!records.length) {
+      await t.rollback();
+      return error(res, "No prescriptions found", null, 404);
+    }
+
+    const recordIds = records.map((r) => r.id);
+
+    /* 🔥 FIX: include soft-deleted items */
+    const items = await PrescriptionItem.findAll({
+      where: {
+        prescription_id: { [Op.in]: recordIds },
+      },
+      paranoid: false, // ✅ CRITICAL FIX
+      transaction: t,
+    });
+
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.prescription_id)) {
+        itemsMap.set(item.prescription_id, []);
+      }
+      itemsMap.get(item.prescription_id).push(item);
+    }
+
+    const updated = [];
+
+    for (const r of records) {
+      const rItems = itemsMap.get(r.id) || [];
+
+      console.log("==== VOID PRES DEBUG ====");
+      console.log("Prescription:", r.id);
+      console.log("Items count:", rItems.length);
+
+      /* 🔥 VOID BILLING FIRST */
+      for (const item of rItems) {
+        console.log("VOIDING ITEM:", item.id);
+
+        await billingService.voidCharges({
+          module_key: MODULE_KEY,
+          entityId: item.id,
+          user: req.user,
+          transaction: t,
+        });
+      }
+
+      /* ================= STATUS ================= */
+      await r.update(
+        {
+          status: PS.VOIDED,
+          updated_by_id: req.user.id,
+        },
+        { transaction: t }
+      );
+
+      await PrescriptionItem.update(
+        {
+          status: PIS.VOIDED,
+          deleted_by_id: req.user.id,
+          deleted_at: new Date(),
+        },
+        {
+          where: { prescription_id: r.id },
+          transaction: t,
+        }
+      );
+
+      updated.push(r.id);
+    }
+
+    await t.commit();
+
+    return success(res, "✅ Prescriptions voided (billing reversed correctly)", {
+      ids: updated,
+    });
+  } catch (err) {
+    await t.rollback();
+    return error(res, "Failed to void prescriptions", err);
+  }
+};
+
+/* ============================================================
+   📌 RESTORE PRESCRIPTION — MASTER PARITY
+============================================================ */
+export const restorePrescription = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const record = await Prescription.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
+      include: [{ model: PrescriptionItem, as: "items", paranoid: false }],
+      paranoid: false,
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!record || !record.deleted_at) {
+      await t.rollback();
+      return error(res, "Prescription not found or not deleted", null, 404);
+    }
+
+    /* ================= RESTORE ================= */
+    await record.restore({ transaction: t });
+
+    await record.update(
+      {
+        deleted_at: null,
+        deleted_by_id: null,
+        updated_by_id: req.user.id,
+      },
+      { transaction: t }
+    );
+
+    await PrescriptionItem.restore({
+      where: { prescription_id: record.id },
+      transaction: t,
+    });
+
+    const itemStatus = ITEM_STATUS_MAP[record.status] || PIS.DRAFT;
 
     await PrescriptionItem.update(
       {
         status: itemStatus,
         deleted_at: null,
         deleted_by_id: null,
-        updated_by_id: req.user?.id || null,
+        updated_by_id: req.user.id,
       },
-      { where: { prescription_id: id }, transaction: t }
+      { where: { prescription_id: record.id }, transaction: t }
     );
 
     await t.commit();
 
     const full = await Prescription.findOne({
-      where: { id },
+      where: { id: record.id },
       include: PRESCRIPTION_INCLUDES,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "restore",
-      entityId: id,
+      entityId: record.id,
       entity: full,
     });
 
     return success(res, "✅ Prescription restored", full);
   } catch (err) {
-    if (t && !t.finished) await t.rollback();
-    return error(res, "❌ Failed to restore prescription", err);
+    await t.rollback();
+    return error(res, "Failed to restore prescription", err);
   }
 };
 
 /* ============================================================
-   📌 GET PRESCRIPTION BY ID
-   ============================================================ */
+   📌 GET PRESCRIPTION BY ID — MASTER PARITY
+============================================================ */
 export const getPrescriptionById = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params;
-    const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
 
-    const where = { id };
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
-    }
-
-    const prescription = await Prescription.findOne({
-      where,
-      attributes: { include: ["prescription_date", "fulfilled_by_id", "fulfilled_at"] }, // ✅ include new fields
+    const record = await Prescription.findOne({
+      where: {
+        id: req.params.id,
+        organization_id: orgId,
+        ...(facilityId ? { facility_id: facilityId } : {}),
+      },
       include: PRESCRIPTION_INCLUDES,
     });
 
-    if (!prescription) return error(res, "❌ Prescription not found", null, 404);
+    if (!record) {
+      return error(res, "Prescription not found", null, 404);
+    }
 
-    // 🏷️ Build friendly label
-    const meds = (prescription.items || [])
-      .map(it => it.billableItem?.name)
+    const meds = (record.items || [])
+      .map((it) => it.billableItem?.name)
       .filter(Boolean)
       .join(", ");
 
-    const patientLabel = prescription.patient
-      ? `${prescription.patient.pat_no} - ${prescription.patient.first_name} ${prescription.patient.last_name}`
+    const patientLabel = record.patient
+      ? `${record.patient.pat_no} - ${record.patient.first_name} ${record.patient.last_name}`
       : "Unknown Patient";
 
-    const doctorLabel = prescription.doctor
-      ? `Dr. ${prescription.doctor.first_name} ${prescription.doctor.last_name}`
+    const doctorLabel = record.doctor
+      ? `Dr. ${record.doctor.first_name} ${record.doctor.last_name}`
       : "No Doctor";
 
-    const dateLabel = prescription.prescription_date
-      ? new Date(prescription.prescription_date).toLocaleDateString("en-US", {
-          month: "short", day: "numeric", year: "numeric",
-        })
+    const dateLabel = record.prescription_date
+      ? new Date(record.prescription_date).toLocaleDateString()
       : "Unknown Date";
 
-    const withLabel = {
-      ...prescription.get({ plain: true }),
-      label: `${dateLabel} · ${patientLabel} · ${meds || "No meds"} · ${prescription.status}`,
+    const result = {
+      ...record.get({ plain: true }),
+      label: `${dateLabel} · ${patientLabel} · ${meds || "No meds"} · ${record.status}`,
       patient_label: patientLabel,
       doctor_label: doctorLabel,
     };
 
     await auditService.logAction({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "view",
-      entityId: id,
-      entity: withLabel,
+      entityId: record.id,
+      entity: result,
     });
 
-    return success(res, "✅ Prescription loaded", withLabel);
+    return success(res, "✅ Prescription loaded", result);
   } catch (err) {
-    return error(res, "❌ Failed to load prescription", err);
+    return error(res, "Failed to load prescription", err);
   }
 };
-
-
 /* ============================================================
-   📌 GET ALL PRESCRIPTIONS
-   ============================================================ */
+   📌 GET ALL PRESCRIPTIONS — MASTER PARITY
+============================================================ */
 export const getAllPrescriptions = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
@@ -1548,140 +1700,107 @@ export const getAllPrescriptions = async (req, res) => {
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
-      FIELD_VISIBILITY_PRESCRIPTION[role] || FIELD_VISIBILITY_PRESCRIPTION.staff;
+      FIELD_VISIBILITY_PRESCRIPTION[role] ||
+      FIELD_VISIBILITY_PRESCRIPTION.staff;
 
-    const options = buildQueryOptions(req, "prescription_date", "DESC", visibleFields);
-    options.where = options.where || {};
+    /* ================= STRIP UI PARAMS ================= */
+    const {
+      dateRange,
+      status,
+      patient_id,
+      doctor_id,
+      department_id,
+      consultation_id,
+      facility_id,
+      ...safeQuery
+    } = req.query;
 
-    if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      if (role === "facilityhead") options.where.facility_id = req.user.facility_id;
-    } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+    req.query = safeQuery;
+
+    /* ================= QUERY OPTIONS ================= */
+    const options = buildQueryOptions(
+      req,
+      "prescription_date",
+      "DESC",
+      visibleFields
+    );
+
+    options.where = { [Op.and]: [] };
+
+    /* ================= DATE RANGE ================= */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          prescription_date: { [Op.between]: [start, end] },
+        });
+      }
     }
 
+    /* ================= FILTERS ================= */
+    if (patient_id) options.where[Op.and].push({ patient_id });
+    if (doctor_id) options.where[Op.and].push({ doctor_id });
+    if (department_id) options.where[Op.and].push({ department_id });
+    if (consultation_id) options.where[Op.and].push({ consultation_id });
+
+    if (status) {
+      const statuses = Array.isArray(status)
+        ? status
+        : status.split(",").map((s) => s.trim());
+
+      options.where[Op.and].push({
+        status: { [Op.in]: statuses },
+      });
+    }
+
+    /* ================= GLOBAL SEARCH ================= */
     if (options.search) {
-      options.where[Op.or] = [{ notes: { [Op.iLike]: `%${options.search}%` } }];
+      options.where[Op.and].push({
+        [Op.or]: [
+          { notes: { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.first_name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$patient.last_name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
+    }
+
+    /* ================= TENANT ================= */
+    if (!isSuperAdmin(req.user)) {
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      } else if (facility_id) {
+        options.where[Op.and].push({ facility_id });
+      }
+    } else {
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (facility_id) {
+        options.where[Op.and].push({ facility_id });
+      }
     }
 
     const liteMode = req.query.lite === "true";
 
     const { count, rows } = await Prescription.findAndCountAll({
       where: options.where,
-      distinct: true,
-      attributes: { include: ["prescription_date", "fulfilled_by_id", "fulfilled_at"] }, // ✅ include
-      include: liteMode ? [] : [...PRESCRIPTION_INCLUDES, ...(options.include || [])],
+      include: liteMode ? [] : PRESCRIPTION_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: Math.min(options.limit, 50),
+      distinct: true,
     });
 
-    const result = rows.map(p => {
-      const meds = (p.items || [])
-        .map(it => it.billableItem?.name)
-        .filter(Boolean)
-        .join(", ");
-
-      const patientLabel = p.patient
-        ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
-        : "Unknown Patient";
-
-      const doctorLabel = p.doctor
-        ? `Dr. ${p.doctor.first_name} ${p.doctor.last_name}`
-        : "No Doctor";
-
-      const dateLabel = p.prescription_date
-        ? new Date(p.prescription_date).toLocaleDateString("en-US", {
-            month: "short", day: "numeric", year: "numeric",
-          })
-        : "Unknown Date";
-
-      return {
-        ...p.get({ plain: true }),
-        label: `${dateLabel} · ${patientLabel} · ${meds || "No meds"} · ${p.status}`,
-        patient_label: patientLabel,
-        doctor_label: doctorLabel,
-      };
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list",
-      details: { query: req.query, returned: count, liteMode },
-    });
-
-    return success(res, "✅ Prescriptions loaded", {
-      records: result,
-      pagination: {
-        total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
-      },
-    });
-  } catch (err) {
-    return error(res, "❌ Failed to load prescriptions", err);
-  }
-};
-
-
-/* ============================================================
-   📌 GET ALL PRESCRIPTIONS LITE (for dropdowns)
-============================================================ */
-export const getAllPrescriptionsLite = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { patient_id, facility_id, organization_id, status } = req.query;
-    const where = {};
-    if (patient_id) where.patient_id = patient_id;
-    if (facility_id) where.facility_id = facility_id;
-    if (organization_id) where.organization_id = organization_id;
-    if (status) {
-    if (status === "open") {
-        // allow still-actionable prescriptions
-        where.status = { [Op.in]: ["issued", "partially_dispensed"] };
-      } else if (Array.isArray(status)) {
-        where.status = { [Op.in]: status };
-      } else {
-        where.status = status;
-      }
-    }
-
-    const items = await Prescription.findAll({
-      where,
-      attributes: [
-        "id",
-        "patient_id",
-        "doctor_id",
-        "status",
-        "notes",
-        "is_emergency",
-        "prescription_date",
-        "fulfilled_by_id",
-        "fulfilled_at",
-      ],
-      include: [
-        { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-        { model: Employee, as: "doctor", attributes: ["id", "first_name", "last_name"] },
-        {
-          model: PrescriptionItem,
-          as: "items",
-          attributes: ["id", "quantity", "dispensed_qty"],
-          include: [{ model: BillableItem, as: "billableItem", attributes: ["id", "name"] }],
-        },
-      ],
-      order: [["created_at", "DESC"]],
-    });
-
-    const result = items.map((p) => {
+    /* ================= LABEL BUILD ================= */
+    const result = rows.map((p) => {
       const meds = (p.items || [])
         .map((it) => it.billableItem?.name)
         .filter(Boolean)
@@ -1696,71 +1815,141 @@ export const getAllPrescriptionsLite = async (req, res) => {
         : "No Doctor";
 
       const dateLabel = p.prescription_date
-        ? new Date(p.prescription_date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
+        ? new Date(p.prescription_date).toLocaleDateString()
         : "Unknown Date";
 
       return {
-        id: p.id,
-        patient_id: p.patient_id,
-        doctor_id: p.doctor_id,
-        prescription_date: p.prescription_date,
-        status: p.status,
-        is_emergency: p.is_emergency,
-        notes: p.notes,
-        fulfilled_by_id: p.fulfilled_by_id,
-        fulfilled_at: p.fulfilled_at,
-        // ✅ Friendly label
-        label: `${dateLabel} · ${patientLabel} · ${meds || "No meds"} · ${p.status.toLowerCase()}`,
-        display_name: `RX-${String(p.id).slice(0, 8)} | ${meds || p.notes || "No meds"} | ${dateLabel}`,
+        ...p.get({ plain: true }),
+        label: `${dateLabel} · ${patientLabel} · ${meds || "No meds"} · ${p.status}`,
+        patient_label: patientLabel,
+        doctor_label: doctorLabel,
       };
     });
 
-    return success(res, "✅ Prescriptions loaded (lite)", { records: result });
+    /* ================= SUMMARY (MATCH LAB REQUEST) ================= */
+    const summary = { total: count };
+
+    const statusCounts = await Prescription.findAll({
+      where: options.where,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
+    });
+
+    PRESCRIPTION_STATUS.forEach((s) => {
+      const found = statusCounts.find((r) => r.status === s);
+      summary[s] = found ? Number(found.get("count")) : 0;
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "list",
+      details: { count },
+    });
+
+    return success(res, "✅ Prescriptions loaded", {
+      records: result,
+      summary,
+      pagination: {
+        total: count,
+        page: options.pagination.page,
+        pageCount: Math.ceil(count / options.pagination.limit),
+      },
+    });
+  } catch (err) {
+    return error(res, "❌ Failed to load prescriptions", err);
+  }
+};
+
+/* ============================================================
+   📌 GET ALL PRESCRIPTIONS LITE — MASTER PARITY
+============================================================ */
+export const getAllPrescriptionsLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      query: req.query,
+    });
+
+    const where = {
+      organization_id: orgId,
+      ...(facilityId ? { facility_id: facilityId } : {}),
+    };
+
+    if (req.query.patient_id) where.patient_id = req.query.patient_id;
+
+    if (req.query.status) {
+      const statuses = req.query.status.includes(",")
+        ? req.query.status.split(",")
+        : [req.query.status];
+      where.status = { [Op.in]: statuses };
+    }
+
+    const rows = await Prescription.findAll({
+      where,
+      attributes: [
+        "id",
+        "patient_id",
+        "doctor_id",
+        "status",
+        "notes",
+        "prescription_date",
+      ],
+      include: [
+        { model: Patient, as: "patient", attributes: ["pat_no", "first_name", "last_name"] },
+        { model: Employee, as: "doctor", attributes: ["first_name", "last_name"] },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+
+    const result = rows.map((p) => {
+      const patientLabel = p.patient
+        ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
+        : "Unknown";
+
+      return {
+        id: p.id,
+        label: `${patientLabel} · ${p.status}`,
+      };
+    });
+
+    return success(res, "✅ Prescriptions (lite)", { records: result });
   } catch (err) {
     return error(res, "❌ Failed to load prescriptions (lite)", err);
   }
 };
 
 /* ============================================================
-   📌 GET ALL PRESCRIPTION ITEMS LITE (by prescription_id)
+   📌 GET ALL PRESCRIPTION ITEMS LITE — MASTER PARITY
 ============================================================ */
 export const getAllPrescriptionItemsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY,
+      module_key: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const { prescription_id, status, department_id } = req.query;
+    const { prescription_id, department_id } = req.query;
     if (!prescription_id) {
-      return error(res, "❌ prescription_id is required", null, 400);
-    }
-
-    const where = { prescription_id };
-
-    // 🔹 Handle status filter (single or comma-separated)
-    if (status) {
-      if (status.includes(",")) {
-        where.status = { [Op.in]: status.split(",").map((s) => s.trim()) };
-      } else {
-        where.status = status;
-      }
+      return error(res, "prescription_id is required", null, 400);
     }
 
     const items = await PrescriptionItem.findAll({
-      where,
-      attributes: [
-        "id", "prescription_id", "billable_item_id",
-        "dosage", "quantity", "dispensed_qty",
-        "instructions", "status"
-      ],
+      where: { prescription_id },
       include: [
         {
           model: BillableItem,
@@ -1773,46 +1962,31 @@ export const getAllPrescriptionItemsLite = async (req, res) => {
 
     const result = [];
     for (const i of items) {
-      let deptStocks = [];
       let stockAvailable = null;
 
       if (department_id && i.billableItem?.master_item_id) {
-        deptStocks = await DepartmentStock.findAll({
-          where: { department_id, master_item_id: i.billableItem.master_item_id },
-          attributes: ["id", "quantity", "min_threshold", "max_threshold"],
-          order: [["created_at", "ASC"]],
+        const stocks = await DepartmentStock.findAll({
+          where: {
+            department_id,
+            master_item_id: i.billableItem.master_item_id,
+          },
         });
 
-        stockAvailable = deptStocks.reduce((sum, s) => sum + (s.quantity || 0), 0);
+        stockAvailable = stocks.reduce((sum, s) => sum + (s.quantity || 0), 0);
       }
 
-      const autoDeptStockId = deptStocks.length === 1 ? deptStocks[0].id : null;
-
       result.push({
-        prescription_item_id: i.id,
-        medication_name: i.billableItem?.name || "—",
-        prescribed_qty: i.quantity,
-        dispensed_qty: i.dispensed_qty || 0,
-        already_dispensed: i.dispensed_qty || 0,
-        dosage: i.dosage,
-        instructions: i.instructions || "",
+        id: i.id,
+        medication: i.billableItem?.name,
+        quantity: i.quantity,
+        dispensed: i.dispensed_qty,
         stock_available: stockAvailable,
-        stocks: deptStocks.map((s) => ({
-          id: s.id,
-          balance: s.quantity,
-          min_threshold: s.min_threshold,
-          max_threshold: s.max_threshold,
-        })),
-        department_stock_id: autoDeptStockId,
-        dispense_now: 0,
-        notes: "",
         status: i.status,
-        label: `${i.billableItem?.name || "Unnamed"} · ${i.quantity} units · ${i.status.toLowerCase()}`,
       });
     }
 
-    return success(res, "✅ Prescription Items loaded (lite)", { records: result });
+    return success(res, "✅ Prescription items (lite)", { records: result });
   } catch (err) {
-    return error(res, "❌ Failed to load prescription items (lite)", err);
+    return error(res, "❌ Failed to load items", err);
   }
 };

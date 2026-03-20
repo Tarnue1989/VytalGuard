@@ -1,21 +1,73 @@
-// 📁 prescription-render.js
-// ============================================================
-// 💊 Prescription Table & Card Renderer (Enterprise-Aligned)
-// Master Pattern: Lab Request / Central Stock Unified Renderer
-// ============================================================
+// 📁 prescription-render.js – Entity Card System (PRESCRIPTION | ENTERPRISE FINAL)
+// ============================================================================
+// 🧭 FULL MASTER PARITY WITH labrequest-render.js
+// 🔹 Table = flat | Card = RICH + structured
+// 🔹 Field-selector safe
+// 🔹 Backend sorting bridge
+// 🔹 Column resize + drag enabled
+// 🔹 Full audit section
+// 🔹 Permission-driven actions
+// 🔹 Export-safe (no object leaks)
+// ============================================================================
 
 import { FIELD_LABELS_PRESCRIPTION } from "./prescription-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+
+import {
+  formatDate,
+  formatDateTime,
+  initTooltips,
+  formatClinicalDate,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons (Centralized, Permission-Driven)
+   🔃 SORTABLE FIELDS (MASTER PARITY)
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "organization_id",
+  "facility_id",
+  "patient_id",
+  "doctor_id",
+  "department_id",
+  "prescription_date",
+  "status",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("prescriptionSortBy") || "";
+let sortDir = localStorage.getItem("prescriptionSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("prescriptionSortBy", sortBy);
+  localStorage.setItem("prescriptionSortDir", sortDir);
+
+  window.setPrescriptionSort = (field, dir) => {
+    sortBy = field;
+    sortDir = dir;
+  };
+
+  window.loadPrescriptionPage = (p = 1) => loadEntries(p);
+}
+
+/* ============================================================
+   🎛️ ACTIONS
 ============================================================ */
 function getPrescriptionActionButtons(entry, user) {
   return buildActionButtons({
     module: "prescription",
     status: (entry.status || "").toLowerCase(),
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "prescriptions",
@@ -23,175 +75,275 @@ function getPrescriptionActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
-function renderUserName(userObj) {
-  if (!userObj) return "—";
-  const parts = [userObj.first_name, userObj.middle_name, userObj.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : userObj.full_name || userObj.username || "—";
+const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return (
+    [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ") ||
+    u.full_name ||
+    "—"
+  );
 }
 
-function renderPatient(patient) {
-  if (!patient) return "—";
-  const fullName = [patient.first_name, patient.last_name].filter(Boolean).join(" ");
-  return `${patient.pat_no ? patient.pat_no + " - " : ""}${fullName || "—"}`;
+function renderPatient(entry) {
+  const p = entry.patient;
+  if (!p) return "—";
+  return `${p.pat_no || "—"} - ${[p.first_name, p.last_name]
+    .filter(Boolean)
+    .join(" ")}`;
 }
 
-function renderDate(value) {
-  return value ? formatDate(value) : "—";
-}
-
-function renderStatus(status) {
-  const raw = (status || "").toLowerCase();
-  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-  const colorMap = {
-    draft: "bg-secondary",
-    issued: "bg-info text-dark",
-    in_progress: "bg-warning text-dark",
-    completed: "bg-primary",
-    verified: "bg-success",
-    cancelled: "bg-danger",
-    voided: "bg-dark",
-  };
-  return raw
-    ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-    : "—";
-}
-
-/* ============================================================
-   💊 Medication Renderer (Name + Qty + Route + Duration)
-   (Bullet style for each medication line)
-============================================================ */
-function renderMedicationList(items = []) {
-  if (!Array.isArray(items) || items.length === 0) return "—";
-
-  const meds = items.map((i) => {
-    const name = i.billableItem?.name || i.medication?.name || "Unnamed";
-    const qty = i.quantity ?? 0;
-    const route = i.route ? i.route : "";
-    const duration = i.duration ? i.duration : "";
-    const extra =
-      [route, duration].filter(Boolean).length > 0
-        ? ` – ${[route, duration].filter(Boolean).join(", ")}`
-        : "";
-
-    // 🩺 Clean bullet line format (Qty bold)
-    return `<li>${name} <span class="text-muted"><strong>(Qty: ${qty})</strong></span>${extra}</li>`;
-  });
-
+function renderItems(entry) {
+  if (!Array.isArray(entry.items) || !entry.items.length) return "—";
   return `
-    <ul class="mb-0 ps-4" style="list-style-type: disc; line-height: 1.4;">
-      ${meds.join("")}
+    <ul class="mb-0 ps-3">
+      ${entry.items
+        .map(
+          (i) =>
+            `<li>${i.billableItem?.name || i.medication?.name || "—"} 
+              <span class="text-muted">(Qty: ${i.quantity || 0})</span>
+            </li>`
+        )
+        .join("")}
     </ul>
   `;
 }
 
-
 /* ============================================================
-   🧱 Value Renderer
+   🧩 VALUE RENDERER (SAFE)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
-    // -------- RELATIONS --------
-    case "organization": return entry.organization?.name || "—";
-    case "facility": return entry.facility?.name || "—";
-    case "department": return entry.department?.name || "—";
-    case "patient": return renderPatient(entry.patient);
-    case "doctor": return renderUserName(entry.doctor);
-    case "consultation":
-      return entry.consultation
-        ? `${renderDate(entry.consultation.consultation_date)} (${entry.consultation.status || "—"})`
-        : "—";
-    case "registrationLog":
-      return entry.registrationLog
-        ? `${renderDate(entry.registrationLog.registration_time)} (${entry.registrationLog.log_status || "—"})`
-        : "—";
+    case "status": {
+      const s = (entry.status || "").toLowerCase();
+      const cls =
+        s === "draft"
+          ? "bg-secondary"
+          : s === "issued"
+          ? "bg-info text-dark"
+          : s === "in_progress"
+          ? "bg-warning text-dark"
+          : s === "completed"
+          ? "bg-primary"
+          : s === "verified"
+          ? "bg-success"
+          : s === "cancelled"
+          ? "bg-danger"
+          : s === "voided"
+          ? "bg-dark text-light"
+          : "bg-secondary";
+      return `<span class="badge ${cls}">${s.toUpperCase()}</span>`;
+    }
 
-    // -------- COLLECTIONS --------
+    case "organization":
+    case "organization_id":
+      return entry.organization?.name || "—";
+
+    case "facility":
+    case "facility_id":
+      return entry.facility?.name || "—";
+
+    case "patient":
+    case "patient_id":
+      return renderPatient(entry);
+
+    case "doctor":
+    case "doctor_id":
+      return renderUserName(entry.doctor);
+
+    case "department":
+    case "department_id":
+      return entry.department?.name || "—";
+
     case "items":
-      return renderMedicationList(entry.items);
+      return renderItems(entry);
 
-    // -------- USER ACTORS --------
-    case "createdBy": return renderUserName(entry.createdBy);
-    case "updatedBy": return renderUserName(entry.updatedBy);
-    case "cancelledBy": return renderUserName(entry.cancelledBy);
-    case "voidedBy": return renderUserName(entry.voidedBy);
-    case "deletedBy": return renderUserName(entry.deletedBy);
+    case "createdBy":
+      return renderUserName(entry.createdBy);
+    case "updatedBy":
+      return renderUserName(entry.updatedBy);
+    case "cancelledBy":
+      return renderUserName(entry.cancelledBy);
+    case "voidedBy":
+      return renderUserName(entry.voidedBy);
+    case "deletedBy":
+      return renderUserName(entry.deletedBy);
 
-    // -------- DATE FIELDS --------
     case "prescription_date":
-    case "cancelled_at":
-    case "voided_at":
+      return formatClinicalDate(entry.prescription_date);
+
     case "created_at":
     case "updated_at":
+    case "cancelled_at":
+    case "voided_at":
     case "deleted_at":
-      return renderDate(entry[field]);
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
-    // -------- BOOLEAN --------
     case "is_emergency":
-      return entry[field] ? "Yes" : "No";
+      return entry.is_emergency ? "Yes" : "No";
 
-    // -------- STATUS --------
-    case "status":
-      return renderStatus(entry.status);
-
-    // -------- DEFAULT --------
-    default:
-      return entry[field] ?? "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
 /* ============================================================
-   🧱 Table Head Renderer
+   🧱 TABLE HEAD (MASTER)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_PRESCRIPTION[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+    th.dataset.key = field;
+
+    const label =
+      FIELD_LABELS_PRESCRIPTION[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon = sortDir === "asc" ? "ri-arrow-up-line" : "ri-arrow-down-line";
+      }
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadPrescriptionPage?.(1),
+  });
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER (ENTERPRISE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_PRESCRIPTION[f] || f}:</strong> 
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getPrescriptionActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const row = (label, value) =>
+    `<div class="entity-field">
+       <span class="entity-label">${label}</span>
+       <span class="entity-value">${value ?? "—"}</span>
+     </div>`;
+
+  const badge = (val) =>
+    `<span class="entity-status ${val}">${val.toUpperCase()}</span>`;
+
+  const yesNo = (v) => (v ? "Yes" : "No");
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card prescription-card">
+
+      <!-- HEADER -->
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient(entry)}</div>
+          <div class="entity-primary">Prescription</div>
+        </div>
+        ${has("status") ? badge(status) : ""}
+      </div>
+
+      <!-- CONTEXT -->
+      <div class="entity-card-context">
+        <div>🏥 ${entry.organization?.name || "—"}</div>
+        <div>📍 ${entry.facility?.name || "—"}</div>
+        <div>👨‍⚕️ ${renderUserName(entry.doctor)}</div>
+        <div>🏬 ${entry.department?.name || "—"}</div>
+      </div>
+
+      <!-- CORE -->
+      <div class="entity-card-body">
+        ${row("Prescription Date", formatClinicalDate(entry.prescription_date))}
+        ${row("Emergency", yesNo(entry.is_emergency))}
+        ${row("Status", status.toUpperCase())}
+      </div>
+
+      <!-- MEDICATIONS (ALWAYS VISIBLE) -->
+      <div class="entity-section">
+        <div class="entity-section-title">Medications</div>
+        <div class="entity-card-body">
+          ${renderItems(entry)}
+        </div>
+      </div>
+
+      <!-- NOTES -->
+      ${
+        entry.notes
+          ? `<div class="entity-card-body">${row("Notes", entry.notes)}</div>`
+          : ""
+      }
+
+      <!-- AUDIT -->
+      <details class="entity-section">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDateTime(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${row("Cancelled By", renderUserName(entry.cancelledBy))}
+          ${row("Cancelled At", formatDateTime(entry.cancelled_at))}
+          ${row("Voided By", renderUserName(entry.voidedBy))}
+          ${row("Voided At", formatDateTime(entry.voided_at))}
+        </div>
+      </details>
+
+      <!-- ACTIONS -->
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getPrescriptionActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("prescriptionTableBody");
@@ -202,32 +354,29 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
-  const noData = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No prescriptions found.</td></tr>`;
-
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
-
+    cardContainer.classList.remove("active");
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = noData;
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="${visibleFields.length}" class="text-center text-muted">
+            No prescriptions found.
+          </td>
+        </tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
+    entries.forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">${getPrescriptionActionButtons(entry, user)}</div>`
-              : renderValue(entry, f);
-          const cls = f === "actions" ? ' class="text-center actions-cell"' : "";
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">${getPrescriptionActionButtons(e, user)}</td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
         .join("");
       tableBody.appendChild(tr);
     });
@@ -236,13 +385,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
-
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No prescriptions found.</p>`;
-
+      : `<p class="text-center text-muted">No prescriptions found.</p>`;
     initTooltips(cardContainer);
   }
 
@@ -250,7 +395,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers (Enterprise Unified)
+   📤 EXPORT
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -272,7 +417,7 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #prescriptionList.active",
       orientation: "landscape",
     })
   );

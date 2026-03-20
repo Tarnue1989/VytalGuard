@@ -691,12 +691,13 @@ export const getAllConsultationsLite = async (req, res) => {
 };
 
 /* ============================================================
-   📌 START CONSULTATION (open → in_progress) — MASTER
+   📌 START CONSULTATION (open → in_progress) — MASTER + BILLING
 ============================================================ */
 export const startConsultation = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
+
     const cons = await Consultation.findByPk(id, { transaction: t });
     if (!cons) return error(res, "❌ Consultation not found", null, 404);
 
@@ -707,17 +708,34 @@ export const startConsultation = async (req, res) => {
 
     const oldStatus = cons.status;
 
+    /* ================= STATUS UPDATE ================= */
     await cons.update(
-      { status: CS.IN_PROGRESS, updated_by_id: req.user?.id || null },
+      {
+        status: CS.IN_PROGRESS,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
 
+    /* ================= APPOINTMENT SYNC ================= */
     if (cons.appointment_id) {
       await Appointment.update(
         { status: "in_progress" },
         { where: { id: cons.appointment_id }, transaction: t }
       );
     }
+
+    /* ================= BILLING (REGISTRATION PARITY) ================= */
+    await billingService.triggerAutoBilling({
+      module_key: MODULE_KEY,
+      entity: cons,
+      user: {
+        ...req.user,
+        organization_id: cons.organization_id,
+        facility_id: cons.facility_id,
+      },
+      transaction: t,
+    });
 
     await t.commit();
 
@@ -736,14 +754,14 @@ export const startConsultation = async (req, res) => {
     return error(res, "❌ Failed to start consultation", err);
   }
 };
-
 /* ============================================================
-   📌 COMPLETE CONSULTATION (in_progress → completed) — MASTER
+   📌 COMPLETE CONSULTATION (in_progress → completed) — MASTER (NO BILLING)
 ============================================================ */
 export const completeConsultation = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
+
     const cons = await Consultation.findByPk(id, { transaction: t });
     if (!cons) return error(res, "❌ Consultation not found", null, 404);
 
@@ -754,29 +772,22 @@ export const completeConsultation = async (req, res) => {
 
     const oldStatus = cons.status;
 
+    /* ================= STATUS UPDATE ================= */
     await cons.update(
-      { status: CS.COMPLETED, updated_by_id: req.user?.id || null },
+      {
+        status: CS.COMPLETED,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
 
+    /* ================= APPOINTMENT SYNC ================= */
     if (cons.appointment_id) {
       await Appointment.update(
         { status: "completed" },
         { where: { id: cons.appointment_id }, transaction: t }
       );
     }
-
-    /* ================= BILLING (DELIVERY STYLE) ================= */
-    await billingService.triggerAutoBilling({
-      module_key: MODULE_KEY,
-      entity: cons,
-      user: {
-        ...req.user,
-        organization_id: cons.organization_id,
-        facility_id: cons.facility_id,
-      },
-      transaction: t,
-    });
 
     await t.commit();
 
@@ -796,6 +807,67 @@ export const completeConsultation = async (req, res) => {
   }
 };
 
+/* ============================================================
+   📌 VERIFY CONSULTATION (completed → verified) — MASTER (NO BILLING)
+============================================================ */
+export const verifyConsultation = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+
+    const cons = await Consultation.findByPk(id, { transaction: t });
+    if (!cons) {
+      await t.rollback();
+      return error(res, "❌ Consultation not found", null, 404);
+    }
+
+    if (cons.status !== CS.COMPLETED) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Only completed consultations can be verified",
+        null,
+        400
+      );
+    }
+
+    const oldStatus = cons.status;
+
+    /* ================= STATUS UPDATE ================= */
+    await cons.update(
+      {
+        status: CS.VERIFIED,
+        verified_by_id: req.user?.id || null,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
+
+    /* ================= APPOINTMENT SYNC ================= */
+    if (cons.appointment_id) {
+      await Appointment.update(
+        { status: "attended" },
+        { where: { id: cons.appointment_id }, transaction: t }
+      );
+    }
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "verify",
+      entityId: id,
+      entity: cons,
+      details: { from: oldStatus, to: CS.VERIFIED },
+    });
+
+    return success(res, "✅ Consultation verified", cons);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to verify consultation", err);
+  }
+};
 /* ============================================================
    📌 CANCEL CONSULTATION (open/in_progress → cancelled) — MASTER
 ============================================================ */
@@ -942,77 +1014,6 @@ export const voidConsultation = async (req, res) => {
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed to void consultation", err);
-  }
-};
-
-/* ============================================================
-   📌 VERIFY CONSULTATION (completed → verified) — MASTER
-============================================================ */
-export const verifyConsultation = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-
-    const cons = await Consultation.findByPk(id, { transaction: t });
-    if (!cons) {
-      await t.rollback();
-      return error(res, "❌ Consultation not found", null, 404);
-    }
-
-    if (cons.status !== CS.COMPLETED) {
-      await t.rollback();
-      return error(
-        res,
-        "❌ Only completed consultations can be verified",
-        null,
-        400
-      );
-    }
-
-    const oldStatus = cons.status;
-
-    await cons.update(
-      {
-        status: CS.VERIFIED,
-        verified_by_id: req.user?.id || null,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
-
-    if (cons.appointment_id) {
-      await Appointment.update(
-        { status: "attended" },
-        { where: { id: cons.appointment_id }, transaction: t }
-      );
-    }
-
-    await billingService.triggerAutoBilling({
-      module_key: MODULE_KEY,
-      entity: cons,
-      user: {
-        ...req.user,
-        organization_id: cons.organization_id,
-        facility_id: cons.facility_id,
-      },
-      transaction: t,
-    });
-
-    await t.commit();
-
-    await auditService.logAction({
-      user: req.user,
-      module_key: MODULE_KEY,
-      action: "verify",
-      entityId: id,
-      entity: cons,
-      details: { from: oldStatus, to: CS.VERIFIED },
-    });
-
-    return success(res, "✅ Consultation verified", cons);
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to verify consultation", err);
   }
 };
 

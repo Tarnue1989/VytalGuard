@@ -1,51 +1,38 @@
-// 📦 prescription-main.js – Form-only loader for Prescriptions (ENTERPRISE MASTER PARITY)
-// ============================================================================
-// 🧭 FULL MASTER PARITY WITH labrequest-main.js
-// 🔹 Auth guard + logout watcher
-// 🔹 Unified form visibility and reset logic
-// 🔹 Session-safe edit caching
-// 🔹 Field selector integration (role-aware)
-// 🔹 Pill state preserved (handled by form module)
-// 🔹 100% ID-safe and controller-aligned
-// ============================================================================
-
-/* ============================================================
-   🔒 PREVENT BFCACHE RESTORE (ROOT FIX)
-============================================================ */
-window.addEventListener("pageshow", function (event) {
-  if (event.persisted) {
-    window.location.reload();
-  }
-});
+// 📦 prescription-main.js – Form-only Loader for Prescriptions (Enterprise-Aligned)
+// ============================================================
+// 🧭 Fully aligned with Lab Request Master Pattern (Central Stock Style)
+// ============================================================
 
 import {
   initPageGuard,
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
-
 import { setupPrescriptionFormSubmission } from "./prescription-form.js";
-
 import {
   FIELD_LABELS_PRESCRIPTION,
   FIELD_ORDER_PRESCRIPTION,
   FIELD_DEFAULTS_PRESCRIPTION,
 } from "./prescription-constants.js";
-
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth Guard + Shared State
+   🔐 Auth + Global Guards
 ============================================================ */
+
+// Automatically resolves correct permission ("prescriptions:create" / "prescriptions:edit")
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
+/* ============================================================
+   🌐 Shared State
+============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   📎 DOM Refs
+   📎 DOM References
 ============================================================ */
 const form = document.getElementById("prescriptionForm");
 const formContainer = document.getElementById("formContainer");
@@ -54,26 +41,39 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper (MASTER PARITY)
+   🧹 Reset Form Helper (Enterprise-Aligned)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
-
   if (form) form.reset();
 
+  // Clear cached edit state
   sessionStorage.removeItem("prescriptionEditId");
   sessionStorage.removeItem("prescriptionEditPayload");
 
-  ["notes", "prescription_date", "itemNotes"].forEach((id) => {
+  // Explicitly clear text fields
+  ["notes"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
+  // ✅ Always reset prescription_date to today’s date
+  const dateInput = document.getElementById("prescription_date");
+  if (dateInput) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    dateInput.value = `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Clear dropdowns
   ["organizationSelect", "facilitySelect", "departmentSelect"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
+  // Clear suggestion-based inputs
   [
     "patientSearch",
     "doctorSearch",
@@ -88,12 +88,26 @@ function resetForm() {
     }
   });
 
+  // Reset checkbox
   const emergencyCheck = document.getElementById("is_emergency");
   if (emergencyCheck) emergencyCheck.checked = false;
+
+  // Reset pills
+  const pillsContainer = document.getElementById("prescriptionPillsContainer");
+  if (pillsContainer)
+    pillsContainer.innerHTML = `<p class="text-muted">No prescription items added yet.</p>`;
+
+  // Reset UI state
+  const titleEl = document.querySelector(".card-title");
+  if (titleEl) titleEl.textContent = "Add Prescription";
+
+  const submitBtn = form?.querySelector("button[type=submit]");
+  if (submitBtn)
+    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit Prescription`;
 }
 
 /* ============================================================
-   🧭 Form Show / Hide (MASTER)
+   🧭 Form Visibility
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -108,11 +122,12 @@ function hideForm() {
   localStorage.setItem("prescriptionFormVisible", "false");
 }
 
+// Expose globally
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring (MASTER)
+   🔘 Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
@@ -123,7 +138,15 @@ if (cancelBtn) {
 
 if (clearBtn) {
   clearBtn.onclick = () => {
-    resetForm();
+    const isEdit = !!sharedState.currentEditIdRef.value;
+    sessionStorage.removeItem("prescriptionEditId");
+    sessionStorage.removeItem("prescriptionEditPayload");
+
+    if (isEdit) {
+      window.location.href = "/prescriptions-list.html";
+    } else {
+      resetForm();
+    }
   };
 }
 
@@ -137,54 +160,36 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder
+   🧠 Loader (no-op)
 ============================================================ */
 async function loadEntries() {
-  return;
+  return; // list page handles loading
 }
 
 /* ============================================================
-   🚀 Init Entrypoint (MASTER SAFE)
+   🚀 Module Initializer
 ============================================================ */
 export async function initPrescriptionModule() {
+  showForm(); // auto-open form on standalone page
 
-  /* ============================================================
-     🔒 MODE DETERMINED STRICTLY BY URL
-  ============================================================ */
-  const urlParams = new URLSearchParams(window.location.search);
-  const editIdFromUrl = urlParams.get("id");
-
-  sharedState.currentEditIdRef.value = editIdFromUrl || null;
-
-  if (!editIdFromUrl) {
-    sessionStorage.removeItem("prescriptionEditId");
-    sessionStorage.removeItem("prescriptionEditPayload");
-  }
-
-  showForm();
-
-  if (form) {
-    setupPrescriptionFormSubmission({
-      form,
-      token,
-      sharedState,
-      resetForm,
-      loadEntries,
-    });
-  }
+  setupPrescriptionFormSubmission({
+    form,
+    token,
+    sharedState,
+    resetForm,
+    loadEntries,
+  });
 
   localStorage.setItem("prescriptionPanelVisible", "false");
 
-  /* ============================================================
-     🎛 Normalize role for field defaults
-  ============================================================ */
+  // Normalize role for default field visibility
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
-
   if (role.includes("super") && role.includes("admin")) role = "superadmin";
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
+  // 🧩 Initialize Field Selector (role-based)
   setupFieldSelector({
     module: "prescription",
     fieldLabels: FIELD_LABELS_PRESCRIPTION,
@@ -194,8 +199,8 @@ export async function initPrescriptionModule() {
 }
 
 /* ============================================================
-   🔁 Sync Stub
+   🔁 Sync Helper
 ============================================================ */
 export function syncRefsToState() {
-  // reserved
+  // reserved for advanced reactive integration
 }

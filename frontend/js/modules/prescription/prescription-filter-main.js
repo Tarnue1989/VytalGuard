@@ -1,79 +1,90 @@
-// 📦 prescription-filter-main.js – Filters + Table/Card (Enterprise-Aligned)
-// ============================================================
-// 🧭 Fully aligned with Lab Request Master Pattern (Central Stock Style)
-// ============================================================
+// 📦 prescription-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// ============================================================================
+// 🔹 FULLY mirrors labrequest-filter-main.js MASTER pattern
+// 🔹 Auto search, auto filters, sorting, pagination
+// 🔹 UI-only dateRange (single input, NEVER DB column)
+// 🔹 Org / Facility fully wired (role-aware)
+// 🔹 Prescription Status fully wired
+// 🔹 Summary + export aligned
+// 🔹 ALL existing Prescription API calls PRESERVED
+// ============================================================================
 
 import {
   showToast,
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
-  setupSuggestionInputDynamic,
   loadOrganizationsLite,
   loadFacilitiesLite,
   loadDepartmentsLite,
-  loadPatientsLite,
-  loadEmployeesLite,
-  loadConsultationsLite,
-  loadRegistrationLogsLite,
-  loadBillableItemsLite,
   setupSelectOptions,
+  setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { renderList, renderDynamicTableHead } from "./prescription-render.js";
+
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./prescription-render.js";
+
 import { setupActionHandlers } from "./prescription-actions.js";
+
 import {
   FIELD_ORDER_PRESCRIPTION,
   FIELD_DEFAULTS_PRESCRIPTION,
+  FIELD_LABELS_PRESCRIPTION,
 } from "./prescription-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
-
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("prescriptionView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "prescription",
   userRole,
@@ -81,11 +92,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_PRESCRIPTION,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -93,91 +107,128 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM (MASTER STRUCTURE)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterDept = document.getElementById("filterDept");
-const filterPatient = document.getElementById("filterPatient");
-const filterDoctor = document.getElementById("filterDoctor");
-const filterConsultation = document.getElementById("filterConsultation");
-const filterRegLog = document.getElementById("filterRegLog");
-const filterMedication = document.getElementById("filterMedication");
-const filterStatus = document.getElementById("filterStatus");
-const filterEmergency = document.getElementById("filterEmergency");
-const filterDateFrom = document.getElementById("filterDateFrom");
-const filterDateTo = document.getElementById("filterDateTo");
+const qs = (id) => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus   = qs("filterStatus");
+const dateRange      = qs("dateRange");
+
+const filterPatient            = qs("filterPatient");
+const filterPatientHidden      = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
+
+const filterDoctor             = qs("filterDoctor");
+const filterDoctorHidden       = qs("filterDoctorId");
+const filterDoctorSuggestions  = qs("filterDoctorSuggestions");
+
+const filterDepartment = qs("filterDepartment");
+const filterMedication = qs("filterMedication");
 
 /* ============================================================
-   🌍 View + Pagination
+   🔃 SORT BRIDGE (MASTER)
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("prescriptionView") || "table";
-const getPagination = initPaginationControl("prescription", loadEntries, 25);
+window.setPrescriptionSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadPrescriptionPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "prescription",
+  loadEntries,
+  Number(localStorage.getItem("prescriptionPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+globalSearch && setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterDepartment,
+    filterMedication,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (MASTER SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.dataset?.value || "",
-    facility_id: filterFacility?.dataset?.value || "",
-    department_id: filterDept?.dataset?.value || "",
-    patient_id: filterPatient?.dataset?.value || "",
-    doctor_id: filterDoctor?.dataset?.value || "",
-    consultation_id: filterConsultation?.dataset?.value || "",
-    registration_log_id: filterRegLog?.dataset?.value || "",
-    medication_id: filterMedication?.dataset?.value || "",
-    status: filterStatus?.value || "",
-    is_emergency: filterEmergency?.value || "",
-    date_from: filterDateFrom?.value || "",
-    date_to: filterDateTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    department_id: filterDepartment?.value,
+    medication_id: filterMedication?.value,
+    patient_id: filterPatientHidden?.value,
+    doctor_id: filterDoctorHidden?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Prescriptions
+   📦 LOAD PRESCRIPTIONS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.date_from) q.append("prescription_date[gte]", filters.date_from);
-    if (filters.date_to) q.append("prescription_date[lte]", filters.date_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["date_from", "date_to"].includes(k)) return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_PRESCRIPTION.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+    if (f.department_id)   q.set("department_id", f.department_id);
+    if (f.medication_id)   q.set("medication_id", f.medication_id);
+    if (f.patient_id)      q.set("patient_id", f.patient_id);
+    if (f.doctor_id)       q.set("doctor_id", f.doctor_id);
 
     const res = await authFetch(`/api/prescriptions?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "PRESCRIPTIONS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -190,16 +241,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
-
-    if (!records.length)
-      showToast("ℹ️ No prescriptions found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load prescriptions");
   } finally {
     hideLoading();
@@ -207,87 +255,66 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("prescriptionView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("tableViewBtn")?.classList.add("active");
-  document.getElementById("cardViewBtn")?.classList.remove("active");
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("prescriptionView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
-  document.getElementById("cardViewBtn")?.classList.add("active");
-  document.getElementById("tableViewBtn")?.classList.remove("active");
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn").onclick = () => {
   [
+    globalSearch,
     filterOrg,
     filterFacility,
-    filterDept,
+    filterStatus,
+    filterDepartment,
+    filterMedication,
     filterPatient,
     filterDoctor,
-    filterConsultation,
-    filterRegLog,
-    filterMedication,
-    filterStatus,
-    filterEmergency,
-    filterDateFrom,
-    filterDateTo,
-  ].forEach((el) => {
-    if (el) {
-      el.value = "";
-      if (el.dataset) el.dataset.value = "";
-    }
-  });
+    dateRange,
+  ].forEach((el) => el && (el.value = ""));
+  filterPatientHidden.value = "";
+  filterDoctorHidden.value = "";
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export Tools
+   ⬇️ EXPORT (MASTER)
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `prescriptions_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_PRESCRIPTION),
+    `prescriptions_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#prescriptionList";
-    exportToPDF("Prescriptions List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Prescriptions List",
+    viewMode === "table" ? ".table-container" : "#prescriptionList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initPrescriptionModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible =
-    localStorage.getItem("prescriptionFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -296,114 +323,70 @@ export async function initPrescriptionModule() {
     "prescriptionFilterVisible"
   );
 
-  /* ----------------- Suggestion Inputs ----------------- */
-  if (filterOrg)
-    setupSuggestionInputDynamic(
-      filterOrg,
-      document.getElementById("filterOrgSuggestions"),
-      "/api/lite/organizations",
-      (sel) => {
-        filterOrg.dataset.value = sel?.id || "";
-        if (filterFacility) {
-          filterFacility.value = "";
-          filterFacility.dataset.value = "";
-        }
-      },
-      "name"
-    );
+  setupSuggestionInputDynamic(
+    filterPatient,
+    filterPatientSuggestions,
+    "/api/lite/patients",
+    (selected) => {
+      filterPatientHidden.value = selected?.id || "";
+      filterPatient.value = selected?.label || "";
+      loadEntries(1);
+    },
+    "label"
+  );
 
-  if (filterFacility)
-    setupSuggestionInputDynamic(
-      filterFacility,
-      document.getElementById("filterFacilitySuggestions"),
-      "/api/lite/facilities",
-      (sel) => (filterFacility.dataset.value = sel?.id || ""),
-      "name",
-      {
-        extraParams: () => ({
-          organization_id: filterOrg?.dataset?.value || "",
-        }),
-      }
-    );
-
-  if (filterDept)
-    setupSuggestionInputDynamic(
-      filterDept,
-      document.getElementById("filterDeptSuggestions"),
-      "/api/lite/departments",
-      (sel) => (filterDept.dataset.value = sel?.id || ""),
-      "name",
-      {
-        extraParams: () => ({
-          organization_id: filterOrg?.dataset?.value || "",
-          facility_id: filterFacility?.dataset?.value || "",
-        }),
-      }
-    );
-
-  if (filterPatient)
-    setupSuggestionInputDynamic(
-      filterPatient,
-      document.getElementById("filterPatientSuggestions"),
-      "/api/lite/patients",
-      (sel) => (filterPatient.dataset.value = sel?.id || ""),
-      "full_name"
-    );
-
-  if (filterDoctor)
+  if (userRole.includes("super") || userRole.includes("admin")) {
     setupSuggestionInputDynamic(
       filterDoctor,
-      document.getElementById("filterDoctorSuggestions"),
+      filterDoctorSuggestions,
       "/api/lite/employees",
-      (sel) => (filterDoctor.dataset.value = sel?.id || ""),
+      (selected) => {
+        filterDoctorHidden.value = selected?.id || "";
+        filterDoctor.value = selected?.full_name || "";
+        loadEntries(1);
+      },
       "full_name"
     );
+  } else {
+    filterDoctor?.closest(".form-group")?.classList.add("hidden");
+  }
 
-  if (filterConsultation)
-    setupSuggestionInputDynamic(
-      filterConsultation,
-      document.getElementById("filterConsultationSuggestions"),
-      "/api/lite/consultations",
-      (sel) => (filterConsultation.dataset.value = sel?.id || ""),
-      "id"
-    );
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-  if (filterRegLog)
-    setupSuggestionInputDynamic(
-      filterRegLog,
-      document.getElementById("filterRegLogSuggestions"),
-      "/api/lite/registration-logs",
-      (sel) => (filterRegLog.dataset.value = sel?.id || ""),
-      "id"
-    );
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
 
-  if (filterMedication)
-    setupSuggestionInputDynamic(
-      filterMedication,
-      document.getElementById("filterMedicationSuggestions"),
-      "/api/lite/billable-items?category=medication",
-      (sel) => (filterMedication.dataset.value = sel?.id || ""),
-      "name"
-    );
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".form-group")?.classList.add("hidden");
+    filterFacility?.closest(".form-group")?.classList.add("hidden");
+  }
+
+  const depts = await loadDepartmentsLite({}, true);
+  setupSelectOptions(
+    filterDepartment,
+    depts,
+    "id",
+    "name",
+    "-- All Departments --"
+  );
 
   await loadEntries(1);
 }
 
 /* ============================================================
-   🔁 Sync Helper
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {
-  // reserved for advanced reactive integration
-}
-
-/* ============================================================
-   🏁 Boot
-============================================================ */
-function boot() {
-  initPrescriptionModule().catch((err) =>
-    console.error("initPrescriptionModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initPrescriptionModule)
+  : initPrescriptionModule();

@@ -178,32 +178,36 @@ export async function setupDiscountWaiverFormSubmission({ form }) {
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    setupSuggestionInputDynamic(
-      invoiceInput,
-      invoiceSuggestions,
-      "/api/lite/invoices",
-      (selected) => {
-        const record = selected?.raw || selected;
-        if (!record?.id || !record?.patient?.id) return;
+setupSuggestionInputDynamic(
+  invoiceInput,
+  invoiceSuggestions,
+  "/api/lite/invoices",
+  (selected) => {
+    const record = selected?.raw || selected;
 
-        isSelectingInvoice = true;
+    // 🔥 FIX: support both API shapes
+    const patientId = record?.patient?.id || record?.patient_id;
 
-        invoiceHidden.value = record.id;
-        patientHidden.value = record.patient.id;
+    if (!record?.id || !patientId) return;
 
-        maxAllowed = record.balance
-          ? normalizeNumber(record.balance)
-          : null;
+    isSelectingInvoice = true;
 
-        invoiceInput.value = selected.label;
+    invoiceHidden.value = record.id;
+    patientHidden.value = patientId;
 
-        // release lock after browser settles events
-        setTimeout(() => {
-          isSelectingInvoice = false;
-        }, 0);
-      },
-      "label"
-    );
+    maxAllowed = record.balance
+      ? normalizeNumber(record.balance)
+      : null;
+
+    invoiceInput.value = selected.label;
+
+    // 🔥 safer lock
+    setTimeout(() => {
+      isSelectingInvoice = false;
+    }, 200);
+  },
+  "label"
+);
 
     // ❗ invalidate ONLY on real typing, never on selection
     invoiceInput.addEventListener("input", (e) => {
