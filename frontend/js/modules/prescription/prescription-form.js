@@ -1,7 +1,11 @@
-// 📦 prescription-form.js – Secure & Role-Aware Prescription Form (Enterprise-Aligned)
-// ============================================================
-// Master Pattern: Lab Request (Central Stock + EKG Pill Style)
-// ============================================================
+// 📦 prescription-form.js – Secure & Role-Aware Prescription Form (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🔹 MASTER parity with lab-request-form.js
+// 🔹 Pill-based multi-item handling (PRESERVED)
+// 🔹 Rule-driven validation
+// 🔹 Controller-faithful (NO org/fac submission)
+// 🔹 Clean payload normalization
+// ============================================================================
 
 import {
   showToast,
@@ -11,21 +15,24 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
-import { authFetch } from "../../authSession.js";
+
 import {
-  loadOrganizationsLite,
-  loadFacilitiesLite,
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
+import { authFetch } from "../../authSession.js";
+
+import {
   loadDepartmentsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
 
 /* ============================================================
-   🔧 Helpers
+   🔧 HELPERS (MASTER)
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
 function normalizeMessage(result, fallback) {
   if (!result) return fallback;
   const msg = result.message ?? result.error ?? result.msg;
@@ -37,28 +44,43 @@ function normalizeMessage(result, fallback) {
     return fallback;
   }
 }
+
+function normalizeUUID(val) {
+  return typeof val === "string" && val.trim() !== "" ? val : null;
+}
+
 function normalizeDate(val) {
   if (!val) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+
+  return d.toISOString().split("T")[0];
 }
-function normalizeUUID(val) {
-  return val && val.trim() !== "" ? val : null;
-}
-function validatePrescriptionItem(obj) {
-  if (!obj.billable_item_id) return showToast("❌ Medication is required"), false;
-  return true;
+
+function buildPersonName(obj) {
+  if (!obj) return "";
+  return [obj.first_name, obj.middle_name, obj.last_name]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /* ============================================================
-   💊 Pill-Based Item Handling
+   💊 Pill-Based Item Handling (MASTER PARITY)
 ============================================================ */
 let selectedItems = [];
 let pillsContainer = null;
 let editingIndex = null;
+let addItemBtn = null;
+
+function validatePrescriptionItem(obj) {
+  if (!obj.billable_item_id) {
+    showToast("❌ Medication is required");
+    return false;
+  }
+  return true;
+}
 
 function renderItemPills() {
   if (!pillsContainer) return;
@@ -66,323 +88,390 @@ function renderItemPills() {
 
   if (!selectedItems.length) {
     pillsContainer.innerHTML = `<p class="text-muted">No prescription items added yet.</p>`;
-  } else {
-    selectedItems.forEach((item, idx) => {
-      const pill = document.createElement("div");
-      pill.className = "pill";
-      pill.innerHTML = `
-        ${item.medication_name || "—"}
-        ${item.dosage ? `– ${item.dosage}` : ""}
-        ${item.route ? `– ${item.route}` : ""}
-        ${item.duration ? `– ${item.duration}` : ""}
-        ${item.quantity ? `– Qty: ${item.quantity}` : ""}
-        <button type="button" class="btn btn-sm btn-link pill-edit" data-idx="${idx}" title="Edit">
-          <i class="ri-pencil-line"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-link text-danger pill-remove" data-idx="${idx}" title="Remove">
-          <i class="ri-close-line"></i>
-        </button>
-      `;
-      pillsContainer.appendChild(pill);
-    });
-
-    pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = selectedItems[idx];
-        if (!item) return;
-
-        // Fill fields
-        document.getElementById("medicationSearch").dataset.value = item.billable_item_id;
-        document.getElementById("medicationSearch").value = item.medication_name || "";
-        document.getElementById("dosage").value = item.dosage || "";
-        document.getElementById("route").value = item.route || "";
-        document.getElementById("duration").value = item.duration || "";
-        document.getElementById("quantity").value = item.quantity || "";
-        document.getElementById("instructions").value = item.instructions || "";
-        document.getElementById("itemNotes").value = item.notes || "";
-
-        editingIndex = idx;
-
-        // Change Add button label → Update
-        const addItemBtn = document.getElementById("addItemBtn");
-        if (addItemBtn)
-          addItemBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Medication`;
-
-        // Temporarily remove from list (so it can be re-added clean)
-        selectedItems.splice(idx, 1);
-        renderItemPills();
-      });
-    });
-
-    pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = parseInt(btn.dataset.idx);
-        selectedItems.splice(idx, 1);
-        renderItemPills();
-      });
-    });
+    return;
   }
 
-  // Update submit button text
-  const submitBtn = document.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML =
-      selectedItems.length > 1
-        ? `<i class="ri-save-3-line me-1"></i> Submit All`
-        : `<i class="ri-save-3-line me-1"></i> Submit`;
-  }
-}
+  selectedItems.forEach((item, idx) => {
+    const pill = document.createElement("div");
+    pill.className = "pill";
+    pill.innerHTML = `
+      ${item.medication_name || "—"}
+      ${item.dosage ? `– ${item.dosage}` : ""}
+      ${item.route ? `– ${item.route}` : ""}
+      ${item.duration ? `– ${item.duration}` : ""}
+      ${item.quantity ? `– Qty: ${item.quantity}` : ""}
+      <button type="button" class="btn btn-sm btn-link pill-edit" data-idx="${idx}">
+        <i class="ri-pencil-line"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-link text-danger pill-remove" data-idx="${idx}">
+        <i class="ri-close-line"></i>
+      </button>
+    `;
+    pillsContainer.appendChild(pill);
+  });
 
-export function getPrescriptionFormState() {
-  return { selectedItems, renderItemPills };
+  pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
+    btn.onclick = () => {
+      const idx = Number(btn.dataset.idx);
+      const item = selectedItems[idx];
+
+      document.getElementById("medicationSearch").dataset.value =
+        item.billable_item_id;
+      document.getElementById("medicationSearch").value =
+        item.medication_name || "";
+      document.getElementById("dosage").value = item.dosage || "";
+      document.getElementById("route").value = item.route || "";
+      document.getElementById("duration").value = item.duration || "";
+      document.getElementById("quantity").value = item.quantity || "";
+      document.getElementById("instructions").value =
+        item.instructions || "";
+      document.getElementById("itemNotes").value = item.notes || "";
+
+      editingIndex = idx;
+
+      if (addItemBtn) {
+        addItemBtn.innerHTML =
+          `<i class="ri-save-3-line me-1"></i> Update Medication`;
+      }
+    };
+  });
+
+  pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
+    btn.onclick = () => {
+      const idx = Number(btn.dataset.idx);
+
+      selectedItems.splice(idx, 1);
+
+      if (editingIndex === idx) {
+        editingIndex = null;
+        if (addItemBtn) {
+          addItemBtn.innerHTML =
+            `<i class="ri-add-line me-1"></i> Add Medication`;
+        }
+      }
+
+      renderItemPills();
+    };
+  });
 }
 
 /* ============================================================
-   🚀 Setup Prescription Form
+   🚀 Main Setup (MASTER)
 ============================================================ */
-export async function setupPrescriptionFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
+export async function setupPrescriptionFormSubmission({
+  form,
+  sharedState,
+}) {
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const prescriptionId = getQueryParam("id");
-  const isEdit = !!prescriptionId;
+  const prescriptionId = sharedState?.currentEditIdRef?.value;
+  const isEdit = Boolean(prescriptionId);
 
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
   const clearBtn = document.getElementById("clearBtn");
-  const addItemBtn = document.getElementById("addItemBtn");
-  pillsContainer = document.getElementById("prescriptionPillsContainer");
-  const prescriptionDateInput = document.getElementById("prescription_date");
+  addItemBtn = document.getElementById("addItemBtn");
 
-  // 🧭 UI Mode
-  if (isEdit) {
-    titleEl && (titleEl.textContent = "Edit Prescription");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Prescription`);
-  } else {
-    titleEl && (titleEl.textContent = "Add Prescription");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Submit All`);
-  }
+  pillsContainer = document.getElementById("prescriptionPillsContainer");
+
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit" ? "Edit Prescription" : "Add Prescription";
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update Prescription`
+          : `<i class="ri-add-line me-1"></i> Save Prescription`;
+  };
+  setUI(isEdit ? "edit" : "add");
 
   /* ============================================================
-     🏢 Role-Aware Dropdowns & Suggestions
+     📋 DOM Refs
+  ============================================================ */
+  const deptSelect = document.getElementById("departmentSelect");
+
+  const patientInput = document.getElementById("patientSearch");
+  const patientSuggestions = document.getElementById(
+    "patientSearchSuggestions"
+  );
+
+  const doctorInput = document.getElementById("doctorSearch");
+  const doctorSuggestions = document.getElementById(
+    "doctorSearchSuggestions"
+  );
+
+  const consultationInput = document.getElementById(
+    "consultationSearch"
+  );
+  const consultationSuggestions = document.getElementById(
+    "consultationSearchSuggestions"
+  );
+
+  const regLogInput = document.getElementById(
+    "registrationLogSearch"
+  );
+  const regLogSuggestions = document.getElementById(
+    "registrationLogSearchSuggestions"
+  );
+
+  const medInput = document.getElementById("medicationSearch");
+  const medSuggestions = document.getElementById(
+    "medicationSearchSuggestions"
+  );
+
+  const prescriptionDateInput = document.getElementById(
+    "prescription_date"
+  );
+  const notesInput = document.getElementById("notes");
+  const emergencyInput = document.getElementById("is_emergency");
+
+  /* ============================================================
+    🌐 Dropdowns & Suggestions (MASTER FIXED)
   ============================================================ */
   try {
-    const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-    const orgSelect = document.getElementById("organizationSelect");
-    const facSelect = document.getElementById("facilitySelect");
-    const deptSelect = document.getElementById("departmentSelect");
+    setupSelectOptions(
+      deptSelect,
+      await loadDepartmentsLite({}, true),
+      "id",
+      "name",
+      "-- Select Department --"
+    );
 
-    if (userRole.includes("super")) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(orgId ? { organization_id: orgId } : {}, true);
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
-      await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (userRole.includes("admin")) {
-      orgSelect?.closest(".col-md-3")?.classList.add("d-none");
-      const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-    } else {
-      orgSelect?.closest(".col-md-3")?.classList.add("d-none");
-      facSelect?.closest(".col-md-3")?.classList.add("d-none");
-    }
-
-    const depts = await loadDepartmentsLite({}, true);
-    setupSelectOptions(deptSelect, depts, "id", "name", "-- Select Department --");
-
-    // 🔹 Suggestions
+    // ================= PATIENT =================
     setupSuggestionInputDynamic(
-      document.getElementById("patientSearch"),
-      document.getElementById("patientSearchSuggestions"),
+      patientInput,
+      patientSuggestions,
       "/api/lite/patients",
       (sel) => {
-        const input = document.getElementById("patientSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || sel?.full_name || "";
+        patientInput.dataset.value = sel?.id || "";
+        document.getElementById("patientId").value = sel?.id || ""; // ✅ FIX
+
+        patientInput.value =
+          sel?.label ||
+          `${sel?.pat_no || ""} ${buildPersonName(sel)}`.trim();
       },
       "label"
     );
+
+    // ================= DOCTOR =================
     setupSuggestionInputDynamic(
-      document.getElementById("doctorSearch"),
-      document.getElementById("doctorSearchSuggestions"),
+      doctorInput,
+      doctorSuggestions,
       "/api/lite/employees",
       (sel) => {
-        const input = document.getElementById("doctorSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || sel?.full_name || "";
+        doctorInput.dataset.value = sel?.id || "";
+        document.getElementById("doctorId").value = sel?.id || ""; // ✅ FIX
+
+        doctorInput.value = buildPersonName(sel);
       },
-      "label"
+      "full_name"
     );
+
+    // ================= CONSULTATION =================
     setupSuggestionInputDynamic(
-      document.getElementById("consultationSearch"),
-      document.getElementById("consultationSearchSuggestions"),
+      consultationInput,
+      consultationSuggestions,
       "/api/lite/consultations",
       (sel) => {
-        const input = document.getElementById("consultationSearch");
-        input.dataset.value = sel?.id || "";
-        input.value =
-          sel?.label || `Consultation ${normalizeDate(sel?.consultation_date) || ""}`;
+        consultationInput.dataset.value = sel?.id || "";
+        document.getElementById("consultationId").value = sel?.id || ""; // ✅ FIX
+
+        consultationInput.value =
+          sel?.label ||
+          `Consultation ${normalizeDate(sel?.consultation_date) || ""}`;
       },
       "label"
     );
+
+    // ================= REG LOG =================
     setupSuggestionInputDynamic(
-      document.getElementById("registrationLogSearch"),
-      document.getElementById("registrationLogSearchSuggestions"),
+      regLogInput,
+      regLogSuggestions,
       "/api/lite/registration-logs",
       (sel) => {
-        const input = document.getElementById("registrationLogSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.label || `RegLog #${sel?.id || ""}`;
+        regLogInput.dataset.value = sel?.id || "";
+        document.getElementById("registrationLogId").value = sel?.id || ""; // ✅ FIX
+
+        regLogInput.value =
+          sel?.label || `RegLog #${sel?.id || ""}`;
       },
       "label"
     );
+
+    // ================= MEDICATION (CRITICAL FIX) =================
     setupSuggestionInputDynamic(
-      document.getElementById("medicationSearch"),
-      document.getElementById("medicationSearchSuggestions"),
-      "/api/lite/billable-items?category=medication",
+      medInput,
+      medSuggestions,
+      "/api/lite/billable-items?category=medication", // ✅ FIXED ENDPOINT
       (sel) => {
-        const input = document.getElementById("medicationSearch");
-        input.dataset.value = sel?.id || "";
-        input.value = sel?.name || "";
+        medInput.dataset.value = sel?.id || "";
+        document.getElementById("medicationId").value = sel?.id || ""; // ✅ FIX
+
+        medInput.value = sel?.name || "";
       },
       "name"
     );
+
   } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
+    console.error(err);
+    showToast("❌ Failed to load reference data");
   }
 
   /* ============================================================
-     ✏️ Prefill if Editing
+     ✏️ Prefill (EDIT MODE)
   ============================================================ */
-  if (isEdit && prescriptionId) {
+  if (isEdit) {
     try {
       showLoading();
-      const res = await authFetch(`/api/prescriptions/${prescriptionId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(
+        `/api/prescriptions/${prescriptionId}`
+      );
       const result = await res.json().catch(() => ({}));
-      hideLoading();
+      if (!res.ok)
+        throw new Error(
+          normalizeMessage(result, "Failed to load prescription")
+        );
 
-      if (res.ok && result?.data) {
-        const entry = result.data;
-        document.getElementById("organizationSelect").value = entry.organization_id || "";
-        document.getElementById("facilitySelect").value = entry.facility_id || "";
-        document.getElementById("departmentSelect").value = entry.department_id || "";
-        if (entry.patient) {
-          const input = document.getElementById("patientSearch");
-          input.dataset.value = entry.patient.id;
-          input.value =
-            entry.patient.label ||
-            `${entry.patient.pat_no || ""} - ${entry.patient.full_name || ""}`;
-        }
-        if (entry.doctor) {
-          const input = document.getElementById("doctorSearch");
-          input.dataset.value = entry.doctor.id;
-          input.value = entry.doctor.full_name || "";
-        }
-        if (entry.consultation) {
-          const input = document.getElementById("consultationSearch");
-          input.dataset.value = entry.consultation.id;
-          input.value =
-            entry.consultation.label ||
-            `Consultation ${normalizeDate(entry.consultation.consultation_date)}`;
-        }
-        if (entry.registrationLog) {
-          const input = document.getElementById("registrationLogSearch");
-          input.dataset.value = entry.registrationLog.id;
-          input.value = entry.registrationLog.label || `RegLog #${entry.registrationLog.id}`;
-        }
-        document.getElementById("notes").value = entry.notes || "";
-        document.getElementById("is_emergency").checked = !!entry.is_emergency;
-        document.getElementById("prescription_date").value = normalizeDate(entry.prescription_date);
-        selectedItems =
-          entry.items?.map((i) => ({
-            id: i.id,
-            billable_item_id: i.billable_item_id,
-            medication_name: i.billableItem?.name || "",
-            dosage: i.dosage || "",
-            route: i.route || "",
-            duration: i.duration || "",
-            quantity: i.quantity || "",
-            instructions: i.instructions || "",
-            notes: i.notes || "",
-          })) || [];
-        renderItemPills();
+      const entry = result.data;
+
+      patientInput.dataset.value = entry.patient_id || "";
+      patientInput.value = entry.patient
+        ? `${entry.patient.pat_no || ""} ${buildPersonName(
+            entry.patient
+          )}`.trim()
+        : "";
+
+      deptSelect.value = entry.department_id || "";
+      prescriptionDateInput.value = normalizeDate(
+        entry.prescription_date
+      );
+      notesInput.value = entry.notes || "";
+      emergencyInput.checked = !!entry.is_emergency;
+
+      if (entry.doctor) {
+        doctorInput.dataset.value = entry.doctor.id;
+        doctorInput.value = buildPersonName(entry.doctor);
       }
+
+      if (entry.consultation) {
+        consultationInput.dataset.value = entry.consultation.id;
+        consultationInput.value =
+          entry.consultation.label ||
+          `Consultation ${normalizeDate(
+            entry.consultation.consultation_date
+          )}`;
+      }
+
+      if (entry.registrationLog) {
+        regLogInput.dataset.value = entry.registrationLog.id;
+        regLogInput.value =
+          entry.registrationLog.label ||
+          `RegLog #${entry.registrationLog.id}`;
+      }
+
+      selectedItems =
+        entry.items?.map((i) => ({
+          id: i.id,
+          billable_item_id: i.billable_item_id,
+          medication_name: i.billableItem?.name || "",
+          dosage: i.dosage || "",
+          route: i.route || "",
+          duration: i.duration || "",
+          quantity: i.quantity || "",
+          instructions: i.instructions || "",
+          notes: i.notes || "",
+        })) || [];
+
+      renderItemPills();
     } catch (err) {
+      showToast(err.message || "❌ Could not load prescription");
+    } finally {
       hideLoading();
-      console.error("❌ Prefill error:", err);
-      showToast("❌ Could not load prescription");
     }
   } else {
-    if (prescriptionDateInput) prescriptionDateInput.value = normalizeDate(new Date());
+    prescriptionDateInput.value =
+      new Date().toISOString().split("T")[0];
     renderItemPills();
   }
 
   /* ============================================================
-     ➕ Add / Update Item Pill (Smart Mode)
+     ➕ Add / Update Pill (MASTER FIXED)
   ============================================================ */
   addItemBtn?.addEventListener("click", () => {
-    const medInput = document.getElementById("medicationSearch");
-    const billableId = medInput.dataset.value || null;
-    const medName = medInput.value.trim();
     const obj = {
-      billable_item_id: billableId,
-      medication_name: medName,
+      billable_item_id: normalizeUUID(medInput.dataset.value),
+      medication_name: medInput.value || "",
       dosage: document.getElementById("dosage").value.trim(),
       route: document.getElementById("route").value.trim(),
       duration: document.getElementById("duration").value.trim(),
       quantity: document.getElementById("quantity").value.trim(),
-      instructions: document.getElementById("instructions").value.trim(),
+      instructions:
+        document.getElementById("instructions").value.trim(),
       notes: document.getElementById("itemNotes").value.trim(),
     };
+
     if (!validatePrescriptionItem(obj)) return;
 
-    const duplicate = selectedItems.find(
-      (i) => i.billable_item_id === obj.billable_item_id
-    );
-    if (duplicate) return showToast("⚠️ Medication already in list");
+    if (editingIndex !== null) {
+      selectedItems[editingIndex] = {
+        ...selectedItems[editingIndex],
+        ...obj,
+      };
+      editingIndex = null;
+      addItemBtn.innerHTML =
+        `<i class="ri-add-line me-1"></i> Add Medication`;
+    } else {
+      selectedItems.push(obj);
+    }
 
-    selectedItems.push(obj);
-    ["medicationSearch", "dosage", "route", "duration", "quantity", "instructions", "itemNotes"].forEach(
+    medInput.value = "";
+    medInput.dataset.value = "";
+    ["dosage", "route", "duration", "quantity", "instructions", "itemNotes"].forEach(
       (id) => {
         const el = document.getElementById(id);
-        if (!el) return;
-        el.value = "";
-        if (id === "medicationSearch") el.dataset.value = "";
+        if (el) el.value = "";
       }
     );
-    const addItemBtn = document.getElementById("addItemBtn");
-    if (addItemBtn)
-      addItemBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Medication`;
+
     renderItemPills();
   });
 
   /* ============================================================
-    💾 Submit
+     💾 SUBMIT — MASTER PARITY
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    if (!normalizeUUID(patientInput.dataset.value)) {
+      applyServerErrors(form, [
+        { field: "patientSearch", message: "Patient is required" },
+      ]);
+      return;
+    }
+
+    if (!selectedItems.length) {
+      showToast("❌ Add at least one Medication");
+      return;
+    }
+
     const payload = {
-      organization_id: normalizeUUID(document.getElementById("organizationSelect")?.value),
-      facility_id: normalizeUUID(document.getElementById("facilitySelect")?.value),
-      patient_id: normalizeUUID(document.getElementById("patientSearch")?.dataset?.value),
-      doctor_id: normalizeUUID(document.getElementById("doctorSearch")?.dataset?.value),
-      department_id: normalizeUUID(document.getElementById("departmentSelect")?.value),
-      consultation_id: normalizeUUID(document.getElementById("consultationSearch")?.dataset?.value),
-      registration_log_id: normalizeUUID(document.getElementById("registrationLogSearch")?.dataset?.value),
-      prescription_date: document.getElementById("prescription_date")?.value,
-      notes: document.getElementById("notes")?.value?.trim(),
-      is_emergency: document.getElementById("is_emergency")?.checked || false,
+      patient_id: normalizeUUID(patientInput.dataset.value),
+      doctor_id: normalizeUUID(doctorInput.dataset.value),
+      department_id: normalizeUUID(deptSelect.value),
+      consultation_id: normalizeUUID(
+        consultationInput.dataset.value
+      ),
+      registration_log_id: normalizeUUID(
+        regLogInput.dataset.value
+      ),
+      prescription_date: prescriptionDateInput.value,
+      notes: notesInput.value || null,
+      is_emergency: !!emergencyInput.checked,
       items: selectedItems.map((t) => ({
         billable_item_id: t.billable_item_id,
         dosage: t.dosage,
@@ -393,46 +482,58 @@ export async function setupPrescriptionFormSubmission({ form }) {
         notes: t.notes,
       })),
     };
-    const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
-    payload.organization_id =
-      payload.organization_id ||
-      currentUser.organization_id ||
-      localStorage.getItem("organizationId") ||
-      null;
-    payload.facility_id =
-      payload.facility_id ||
-      currentUser.facility_id ||
-      localStorage.getItem("facilityId") ||
-      null;
-    if (!payload.organization_id)
-      return showToast("❌ Organization is required (auto-scope missing)");
-    if (!payload.patient_id) return showToast("❌ Patient is required");
-    if (!payload.items.length) return showToast("❌ Add at least one Medication");
 
     try {
       showLoading();
+
       const res = await authFetch(
-        isEdit ? `/api/prescriptions/${prescriptionId}` : `/api/prescriptions`,
+        isEdit
+          ? `/api/prescriptions/${prescriptionId}`
+          : `/api/prescriptions`,
         {
           method: isEdit ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
       );
+
       const result = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
 
-      showToast(isEdit ? "✅ Prescription updated successfully" : "✅ Prescription created successfully");
+      showToast(
+        isEdit
+          ? "✅ Prescription updated"
+          : "✅ Prescription created"
+      );
 
-      if (isEdit) window.location.href = "/prescriptions-list.html";
-      else {
-        selectedItems = [];
+      if (isEdit) {
+        window.location.href = "/prescriptions-list.html";
+      } else {
         form.reset();
+
+        selectedItems = [];
+        editingIndex = null;
+
         renderItemPills();
+        setUI("add");
+
+        [
+          patientInput,
+          doctorInput,
+          consultationInput,
+          regLogInput,
+          medInput,
+        ].forEach((el) => {
+          if (el) el.dataset.value = "";
+        });
+
+        prescriptionDateInput.value =
+          new Date().toISOString().split("T")[0];
       }
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
@@ -442,10 +543,18 @@ export async function setupPrescriptionFormSubmission({ form }) {
   /* ============================================================
      🚪 Cancel / Clear
   ============================================================ */
-  cancelBtn?.addEventListener("click", () => (window.location.href = "/prescriptions-list.html"));
+  cancelBtn?.addEventListener("click", () => {
+    window.location.href = "/prescriptions-list.html";
+  });
+
   clearBtn?.addEventListener("click", () => {
+    clearFormErrors(form);
     form.reset();
     selectedItems = [];
     renderItemPills();
+    setUI("add");
+    editingIndex = null;
+    addItemBtn.innerHTML =
+      `<i class="ri-add-line me-1"></i> Add Medication`;
   });
 }

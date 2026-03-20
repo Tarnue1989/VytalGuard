@@ -1,20 +1,22 @@
-// 📦 prescription.js – Entry Point (Master Pattern Aligned)
-// ============================================================
-// 🧭 Enterprise-standard entrypoint structure
-// Aligned with labrequest.js (form + filter unified bootstrap)
-// ============================================================
+// 📦 prescription.js – Entry Point (ENTERPRISE MASTER PARITY)
+// ============================================================================
+// 🧭 Master Pattern: labrequest.js / consultation.js / deposits.js
+// 🔹 Unified initialization entry for the Prescription module
+// 🔹 Handles module boot, imports, constants, and safe startup guard
+// 🔹 FULL parity with labrequest.js MASTER
+// ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module init (handles filters + form view)
+// 🧭 Main module init (handles filter, table, card, pagination, export)
 import { initPrescriptionModule } from "./prescription-filter-main.js";
 
-// ⚙️ Lifecycle and action handlers (view/edit/delete/verify/etc.)
+// ⚙️ Lifecycle + action handlers (view, edit, delete, verify, cancel, void)
 import "./prescription-actions.js";
 
-// 🧩 Constants (exportable for dynamic UI or external integration)
+// 🧩 Constants (exportable for dynamic field selector or columns)
 import {
   FIELD_LABELS_PRESCRIPTION,
   FIELD_ORDER_PRESCRIPTION,
@@ -29,12 +31,16 @@ import { showToast, hideLoading } from "../../utils/index.js";
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize only if prescription form or list exists
-    if (document.getElementById("prescriptionForm")) {
-      await initPrescriptionModule(); // unified (form page)
+    // 🧩 Initialize only if Prescription form OR list/table container exists
+    if (
+      document.getElementById("prescriptionForm") ||
+      document.getElementById("prescriptionList") ||
+      document.getElementById("prescriptionTableBody")
+    ) {
+      await initPrescriptionModule();
     }
 
-    // (Optional) future expansion:
+    // (Optional future expansion – list-only init hook)
     // if (document.getElementById("prescriptionTableBody")) {
     //   await initPrescriptionListModule();
     // }
@@ -45,12 +51,3 @@ document.addEventListener("DOMContentLoaded", async () => {
     showToast("❌ Failed to load Prescription module");
   }
 });
-
-/* ============================================================
-   📦 Re-exports
-============================================================ */
-export {
-  FIELD_LABELS_PRESCRIPTION,
-  FIELD_ORDER_PRESCRIPTION,
-  FIELD_DEFAULTS_PRESCRIPTION,
-};

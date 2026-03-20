@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Add Prescription</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Add Prescription">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Breadcrumb -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Prescriptions</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">Add Prescription</li>
+        </ol>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title">Add Prescription</h5>
+              </div>
+              <div class="card-body">
+
+              <!-- 📦 Form Container -->
+              <div id="formContainer">
+                <form id="prescriptionForm">
+                  <div class="row gx-4">
+
+                    <!-- Organization -->
+                    <div class="col-lg-3 col-sm-6 d-none" id="organizationFieldGroup">
+                      <div class="mb-3">
+                        <label class="form-label" for="organizationSelect">Organization</label>
+                        <select class="form-control" id="organizationSelect" name="organization_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-lg-3 col-sm-6 d-none" id="facilityFieldGroup">
+                      <div class="mb-3">
+                        <label class="form-label" for="facilitySelect">Facility</label>
+                        <select class="form-control" id="facilitySelect" name="facility_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Department -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="departmentSelect">Department</label>
+                        <select class="form-control" id="departmentSelect" name="department_id"></select>
+                      </div>
+                    </div>
+
+                    <!-- Patient -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="patientSearch">Patient</label>
+                        <input
+                          type="text"
+                          id="patientSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search patient..."
+                          autocomplete="off"
+                        >
+                        <div id="patientSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Doctor -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="doctorSearch">Doctor</label>
+                        <input
+                          type="text"
+                          id="doctorSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search doctor..."
+                          autocomplete="off"
+                        >
+                        <div id="doctorSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Consultation (hidden) -->
+                    <div class="col-lg-3 col-sm-6 d-none">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="consultationSearch">Consultation</label>
+                        <input
+                          type="text"
+                          id="consultationSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search consultation..."
+                          autocomplete="off"
+                        >
+                        <div id="consultationSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Registration Log (hidden) -->
+                    <div class="col-lg-3 col-sm-6 d-none">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="registrationLogSearch">Registration Log</label>
+                        <input
+                          type="text"
+                          id="registrationLogSearch"
+                          class="form-control suggestion-input"
+                          placeholder="Search registration log..."
+                          autocomplete="off"
+                        >
+                        <div id="registrationLogSearchSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Prescription Date -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="prescription_date">Prescription Date</label>
+                        <input type="date" class="form-control" id="prescription_date" name="prescription_date">
+                      </div>
+                    </div>
+
+                    <!-- ================= Medication Row (kept same width, own row) ================= -->
+                    <div class="col-12">
+                      <div class="row gx-2">
+
+                        <!-- Medication -->
+                        <div class="col-lg-3 col-sm-6">
+                          <div class="field-wrapper">
+                            <label class="form-label" for="medicationSearch">Medication</label>
+                            <input
+                              type="text"
+                              id="medicationSearch"
+                              class="form-control suggestion-input"
+                              placeholder="Search medication..."
+                              autocomplete="off"
+                            >
+                            <div id="medicationSearchSuggestions" class="suggestions"></div>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <!-- ================= Compact Fields Row (reduced width) ================= -->
+                    <div class="col-12">
+                      <div class="row gx-2">
+
+                        <!-- Dosage -->
+                        <div class="col-lg-2 col-sm-6">
+                          <div class="mb-3">
+                            <label class="form-label" for="dosage">Dosage</label>
+                            <input type="text" id="dosage" class="form-control" placeholder="e.g., 1 tab 3x/day">
+                          </div>
+                        </div>
+
+                        <!-- Route -->
+                        <div class="col-lg-2 col-sm-6">
+                          <div class="mb-3">
+                            <label class="form-label" for="route">Route</label>
+                            <select id="route" class="form-control">
+                              <option value="">-- Select --</option>
+                              <option value="oral">Oral</option>
+                              <option value="iv">IV</option>
+                              <option value="im">IM</option>
+                              <option value="sc">SC</option>
+                              <option value="topical">Topical</option>
+                              <option value="inhalation">Inhalation</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <!-- Duration -->
+                        <div class="col-lg-2 col-sm-6">
+                          <div class="mb-3">
+                            <label class="form-label" for="duration">Duration</label>
+                            <input type="text" id="duration" class="form-control" placeholder="e.g., 5d">
+                          </div>
+                        </div>
+
+                        <!-- Quantity -->
+                        <div class="col-lg-2 col-sm-6">
+                          <div class="mb-3">
+                            <label class="form-label" for="quantity">Qty</label>
+                            <input type="number" id="quantity" class="form-control" placeholder="10">
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <!-- Instructions -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="instructions">Instructions</label>
+                        <textarea id="instructions" class="form-control" rows="2" placeholder="Special instructions"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Item Notes -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label" for="itemNotes">Item Notes</label>
+                        <textarea id="itemNotes" class="form-control" rows="2" placeholder="Optional note"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Add Prescription Item -->
+                    <div class="col-sm-12">
+                      <div class="d-flex justify-content-start mb-3">
+                        <button type="button" id="addItemBtn" class="btn btn-outline-primary">
+                          <i class="ri-add-line me-1"></i> Add Item
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Pills Container -->
+                    <div class="col-sm-12">
+                      <div id="prescriptionPillsContainer" class="mb-3">
+                        <p class="text-muted">No prescription items added yet.</p>
+                      </div>
+                    </div>
+
+                    <!-- Emergency Checkbox -->
+                    <div class="col-lg-3 col-sm-6">
+                      <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="is_emergency">
+                        <label class="form-check-label" for="is_emergency">
+                          Emergency Prescription
+                        </label>
+                      </div>
+                    </div>
+
+                    <!-- General Notes -->
+                    <div class="col-sm-12">
+                      <div class="mb-3">
+                        <label class="form-label" for="notes">Notes</label>
+                        <textarea id="notes" class="form-control" placeholder="Additional notes (optional)"></textarea>
+                      </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-sm-12">
+                      <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
+                          <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                        </button>
+                        <button type="reset" id="clearBtn" class="btn btn-warning">
+                          <i class="ri-refresh-line me-1"></i> Clear
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                          <i class="ri-save-3-line me-1"></i> Submit All
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </form>
+              </div>
+              <!-- /formContainer -->
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module JS -->
+  <script type="module" src="js/modules/prescription/add-prescription.js"></script>
+</body>
+</html>
