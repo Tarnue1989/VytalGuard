@@ -477,6 +477,33 @@
   border-radius:8px;
 }
 
+/* ================= PRESCRIPTION STATUS ================= */
+
+.prescription-card .entity-status.draft{background:#f59e0b;color:#111}
+.prescription-card .entity-status.issued{background:#0d6efd;color:#fff}
+.prescription-card .entity-status.dispensed{background:#0dcaf0;color:#111}
+.prescription-card .entity-status.completed{background:#198754;color:#fff}
+.prescription-card .entity-status.verified{background:#0d6efd;color:#fff}
+.prescription-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.prescription-card .entity-status.voided,
+.prescription-card .entity-status.deleted{background:#dc3545;color:#fff}
+
+/* ================= PRESCRIPTION BODY TUNING ================= */
+
+.prescription-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+/* ================= INVOICE STATUS ================= */
+
+.invoice-card .entity-status.unpaid{background:#dc3545;color:#fff}
+.invoice-card .entity-status.partial{background:#0d6efd;color:#fff}
+.invoice-card .entity-status.paid{background:#198754;color:#fff}
+.invoice-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.invoice-card .entity-status.voided,
+.invoice-card .entity-status.deleted{background:#dc3545;color:#fff}
+
 .scan-type-pill {
   display: inline-block;
   padding: 2px 8px;
@@ -567,4 +594,36 @@
   body {
     overflow-x: hidden !important;
   }
+}
+
+/* ================= INVOICE ITEMS GRID ================= */
+
+.invoice-items-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:6px;
+}
+
+.invoice-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+  font-size:.82rem;
+}
+
+.item-name{
+  font-weight:500;
+  color:#111827;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.item-price{
+  font-weight:600;
+  color:#111827;
+  margin-left:8px;
 }

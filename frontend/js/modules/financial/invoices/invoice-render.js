@@ -234,27 +234,160 @@ export function renderInvoiceDetail(entry, user) {
    🗂️ Card Renderer
 ============================================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) =>
-        `<p><strong>${FIELD_LABELS_INVOICE[f] || f}:</strong> ${renderValue(
-          entry,
-          f
-        )}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
-  const footer = visibleFields.includes("actions")
-    ? `<div class="card-footer text-end">
-         <div class="table-actions">${getInvoiceActionButtons(entry, user)}</div>
-       </div>`
-    : "";
+  const row = (label, value) => `
+    <div class="entity-field">
+      <span class="entity-label">${label}</span>
+      <span class="entity-value">${value ?? "—"}</span>
+    </div>
+  `;
 
-  return `<div class="record-card card shadow-sm h-100">
-            <div class="card-body">${details}</div>
-            ${footer}
-          </div>`;
+  const badge = (val) =>
+    `<span class="entity-status ${val}">${val.toUpperCase()}</span>`;
+
+  const renderPatient = () => {
+    if (!entry.patient) return "—";
+    return `${entry.patient.pat_no || "—"} - ${
+      [entry.patient.first_name, entry.patient.last_name].filter(Boolean).join(" ")
+    }`;
+  };
+
+  const renderItems = () => {
+    if (!Array.isArray(entry.items) || !entry.items.length) return "—";
+
+    const LIMIT = 3;
+
+    const formatItem = (i) =>
+      `<li>${i.description || "Item"} - $${Number(i.total_price || 0).toFixed(2)}</li>`;
+
+    // show all if small
+    if (entry.items.length <= LIMIT) {
+      return `
+        <ul class="mb-0 ps-3">
+          ${entry.items.map(formatItem).join("")}
+        </ul>
+      `;
+    }
+
+    // split items
+    const visible = entry.items.slice(0, LIMIT);
+    const hidden = entry.items.slice(LIMIT);
+
+    return `
+      <ul class="mb-0 ps-3">
+        ${visible.map(formatItem).join("")}
+      </ul>
+
+      <details class="entity-notes mt-1">
+        <summary>View ${hidden.length} more item${hidden.length > 1 ? "s" : ""}</summary>
+        <ul class="mb-0 ps-3 mt-1">
+          ${hidden.map(formatItem).join("")}
+        </ul>
+      </details>
+    `;
+  };
+
+  return `
+    <div class="entity-card invoice-card">
+
+      <!-- ================= HEADER ================= -->
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-secondary">${renderPatient()}</div>
+          <div class="entity-primary">Invoice #${entry.invoice_number || "—"}</div>
+        </div>
+        ${has("status") ? badge(status) : ""}
+      </div>
+
+      <!-- ================= CONTEXT ================= -->
+      <div class="entity-card-context">
+        <div>🏥 ${entry.organization?.name || "—"}</div>
+        <div>📍 ${entry.facility?.name || "—"}</div>
+        <div>👤 ${renderPatient()}</div>
+      </div>
+
+      <!-- ================= CORE ================= -->
+      <div class="entity-card-body">
+        ${row("Date", formatDate(entry.created_at))}
+        ${row("Status", status.toUpperCase())}
+        ${row("Total", entry.total ? `$${Number(entry.total).toFixed(2)}` : "—")}
+        ${row("Balance", entry.balance ? `$${Number(entry.balance).toFixed(2)}` : "—")}
+      </div>
+
+      <!-- ================= ITEMS ================= -->
+      <div class="entity-section">
+        <div class="entity-section-title">Items</div>
+        <div class="entity-card-body">
+          ${renderItems()}
+        </div>
+      </div>
+
+      <!-- ================= PAYMENTS ================= -->
+      ${
+        entry.payments?.length
+          ? `<details class="entity-section">
+              <summary>Payments</summary>
+              <div class="entity-card-body">
+                ${entry.payments
+                  .map(
+                    (p) =>
+                      row(
+                        p.method,
+                        `$${Number(p.amount).toFixed(2)} (${p.status})`
+                      )
+                  )
+                  .join("")}
+              </div>
+            </details>`
+          : ""
+      }
+
+      <!-- ================= DEPOSITS ================= -->
+      ${
+        entry.appliedDeposits?.length
+          ? `<details class="entity-section">
+              <summary>Deposits</summary>
+              <div class="entity-card-body">
+                ${entry.appliedDeposits
+                  .map(
+                    (d) =>
+                      row(
+                        "Deposit",
+                        `$${Number(d.applied_amount).toFixed(2)} (Remaining: $${Number(
+                          d.remaining_balance
+                        ).toFixed(2)})`
+                      )
+                  )
+                  .join("")}
+              </div>
+            </details>`
+          : ""
+      }
+
+      <!-- ================= AUDIT ================= -->
+      <details class="entity-section">
+        <summary>Audit</summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDate(entry.updated_at))}
+        </div>
+      </details>
+
+      <!-- ================= ACTIONS ================= -->
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getInvoiceActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+
+    </div>
+  `;
 }
 
 /* ============================================================================
