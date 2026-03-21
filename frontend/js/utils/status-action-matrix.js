@@ -227,9 +227,15 @@ export const STATUS_ACTION_MATRIX = {
   stock_request:{draft:["edit","submit","delete","void"],pending:["edit","approve","reject","cancel","void"],approved:["issue","cancel","void"],issued:["fulfill","void"],fulfilled:["void"],cancelled:["void"],voided:["restore"]},
 
   /* ======================== 🧩 MASTER DATA ======================== */
-  master_item:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
-  master_item_category:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
-
+  master_item:{
+    active:["edit","toggle-status","delete"],
+    inactive:["edit","toggle-status","delete"],
+    deleted:["restore"]
+  },
+  master_item_category:{
+    active:["edit","toggle-status","delete"],
+    inactive:["edit","toggle-status","delete"],
+  },
   /* ======================== 👨‍💼 EMPLOYEE ======================== */
   employee:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],terminated:["edit","toggle","delete"],deleted:["restore"]},
 

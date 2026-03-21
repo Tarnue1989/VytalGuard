@@ -1,22 +1,23 @@
-// 📦 autoBillingRule.js – Entry Point (Enterprise-Aligned Master Pattern)
+// 📦 autoBillingRule.js – Entry Point (ENTERPRISE MASTER ALIGNED)
 // ============================================================================
-// 🧭 Master Pattern: billableitem.js / department.js / role.js / vitals.js
-// 🔹 Unified initialization entry for the Auto Billing Rule module
-// 🔹 Handles form + list bootstrapping with full enterprise guards
-// 🔹 Safe startup, consistent constants import, and robust error handling
+// 🧭 Mirrors registrationLog.js EXACTLY
+// 🔹 Unified bootstrap entry for Auto Billing Rule module
+// 🔹 Safe DOM-based initialization guard
+// 🔹 Imports module + actions + constants
+// 🔹 NO business logic, NO API calls
 // ============================================================================
 
 /* ============================================================
    ✅ Imports
 ============================================================ */
 
-// 🧭 Main module initializer (handles filters, table, card, etc.)
-import { initAutoBillingRuleModule } from "./autoBillingRule-filter-main.js";
+// 🧭 Main module init (form + filters + table if present)
+import { initAutoBillingRuleModule } from "./autoBillingRule-main.js";
 
-// ⚙️ Lifecycle + action handlers (view, edit, delete, toggle, etc.)
+// ⚙️ Lifecycle / action handlers (view, edit, delete, toggle, etc.)
 import "./autoBillingRule-actions.js";
 
-// 🧩 Constants (exportable for field selector or dynamic column setup)
+// 🧩 Constants (ensures availability for dynamic UI systems)
 import {
   FIELD_LABELS_AUTO_BILLING_RULE,
   FIELD_ORDER_AUTO_BILLING_RULE,
@@ -29,17 +30,19 @@ import { showToast, hideLoading } from "../../utils/index.js";
 /* ============================================================
    🚀 DOM-Ready Bootstrap
 ============================================================ */
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    // 🧩 Initialize module only if relevant form or list exists
+    // ✅ Safe init guard (ONLY run if module exists on page)
     if (
       document.getElementById("autoBillingRuleForm") ||
-      document.getElementById("autoBillingRuleList")
+      document.getElementById("autoBillingRuleList") ||
+      document.getElementById("autoBillingRuleTableBody")
     ) {
       await initAutoBillingRuleModule();
     }
 
-    // (Optional) Future enhancement:
+    // (Future split support)
     // if (document.getElementById("autoBillingRuleTableBody")) {
     //   await initAutoBillingRuleListModule();
     // }

@@ -20,7 +20,12 @@ import {
   AUTO_BILLING_RULE_STATUS,
   AUTO_BILLING_CHARGE_MODE,
 } from "../constants/enums.js";
-import { isSuperAdmin } from "../utils/role-utils.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (Auto Billing Rule)
@@ -46,11 +51,8 @@ const AUTOBILLINGRULE_INCLUDES = [
 ============================================================ */
 function buildAutoBillingRuleSchema(user, mode = "create") {
   const base = {
-    // 🔑 LOGIC DRIVER (MANDATORY)
     trigger_feature_module_id: Joi.string().uuid().required(),
-
     billable_item_id: Joi.string().uuid().required(),
-
     auto_generate: Joi.boolean().default(true),
 
     charge_mode: Joi.string()
@@ -61,31 +63,30 @@ function buildAutoBillingRuleSchema(user, mode = "create") {
 
     // 🔒 backend controlled
     status: Joi.forbidden(),
-    organization_id: Joi.forbidden(),
-    facility_id: Joi.forbidden(),
+
+    // ✅ ALLOW (MASTER PATTERN)
+    organization_id: Joi.string().uuid().allow(null, ""),
+    facility_id: Joi.string().uuid().allow(null, ""),
   };
 
-  /* 🔓 SUPER ADMIN OVERRIDE */
   if (isSuperAdmin(user)) {
     base.organization_id = Joi.string().uuid().required();
     base.facility_id = Joi.string().uuid().allow(null, "");
   }
 
-  /* ✏️ UPDATE MODE */
   if (mode === "update") {
     Object.keys(base).forEach((k) => {
-      if (base[k] !== Joi.forbidden()) {
-        base[k] = base[k].optional();
-      }
+      if (base[k] !== Joi.forbidden()) base[k] = base[k].optional();
     });
   }
 
   return Joi.object(base);
 }
 
-
 /* ============================================================
-   📌 CREATE AUTO BILLING RULE (FK SAFE)
+   📌 CREATE AUTO BILLING RULE
+   ✅ Multi-module allowed
+   ✅ Unique billable item per facility/org
 ============================================================ */
 export const createAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
@@ -108,39 +109,99 @@ export const createAutoBillingRule = async (req, res) => {
       return res.status(400).json({ success: false, errors });
     }
 
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    /* ========================================================
+       🧭 ROLE PATTERN (MASTER ALIGN)
+    ======================================================== */
+    let orgId = null;
+    let facilityId = null;
+
+    if (isSuperAdmin(req.user)) {
+      orgId = value.organization_id ?? null;
+      facilityId = value.facility_id ?? null;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+
+      if (value.facility_id) {
+        facilityId = value.facility_id;
+      } else if (req.user.facility_id) {
+        facilityId = req.user.facility_id;
+      } else {
+        facilityId = null;
+      }
+
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
+    }
+
+    /* ========================================================
+       🔒 NORMALIZE (VERY IMPORTANT)
+    ======================================================== */
+    facilityId = facilityId || null;
 
     if (!orgId) {
       await t.rollback();
       return error(res, "Organization is required", null, 400);
     }
 
-    // 🔒 DUPLICATE CHECK (FK-DRIVEN)
-    const exists = await AutoBillingRule.findOne({
-      where: {
-        organization_id: orgId,
-        facility_id: facilityId,
-        trigger_feature_module_id: value.trigger_feature_module_id,
-        billable_item_id: value.billable_item_id,
-      },
-      paranoid: false,
-      transaction: t,
-    });
-
-    if (exists) {
+    if (!facilityId) {
       await t.rollback();
-      return error(
-        res,
-        "Auto Billing Rule already exists for this feature module and item",
-        null,
-        400
-      );
+      return error(res, "Facility is required", null, 400);
     }
 
+/* ========================================================
+   🔒 DUPLICATE CHECK (WITH FULL DEBUG)
+======================================================== */
+const moduleId = String(value.trigger_feature_module_id || "").trim();
+const billableId = String(value.billable_item_id || "").trim();
+const facId = facilityId || null;
+
+console.log("🧪 DUP CHECK INPUT:", {
+  orgId,
+  facId,
+  moduleId,
+  billableId,
+});
+
+const exists = await AutoBillingRule.findOne({
+  where: {
+    organization_id: orgId,
+    facility_id: facId,
+    trigger_feature_module_id: moduleId,
+    billable_item_id: billableId,
+  },
+  attributes: ["id", "billable_item_id", "trigger_feature_module_id", "facility_id"],
+  paranoid: false,
+  transaction: t,
+});
+
+console.log("🧪 DUP CHECK RESULT:", exists);
+
+if (exists) {
+  console.log("🚨 DUPLICATE FOUND:", {
+    found_id: exists.id,
+    found_billable: exists.billable_item_id,
+    found_module: exists.trigger_feature_module_id,
+    found_facility: exists.facility_id,
+  });
+
+  await t.rollback();
+  return error(
+    res,
+    "⚠️ This billable item is already assigned to this module in this facility.",
+    exists,
+    400
+  );
+}
+
+    /* ========================================================
+       ➕ CREATE
+    ======================================================== */
     const created = await AutoBillingRule.create(
       {
         trigger_feature_module_id: value.trigger_feature_module_id,
@@ -155,7 +216,6 @@ export const createAutoBillingRule = async (req, res) => {
       },
       { transaction: t }
     );
-
 
     await t.commit();
 
@@ -173,14 +233,24 @@ export const createAutoBillingRule = async (req, res) => {
     });
 
     return success(res, "✅ Auto Billing Rule created", full);
+
   } catch (err) {
     await t.rollback();
+
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return error(
+        res,
+        "⚠️ This billable item is already assigned to this module in this facility.",
+        null,
+        400
+      );
+    }
+
     return error(res, "❌ Failed to create auto billing rule", err);
   }
 };
-
 /* ============================================================
-   📌 UPDATE AUTO BILLING RULE (FK SAFE)
+   📌 UPDATE AUTO BILLING RULE (FINAL — UNIQUE BILLABLE ENFORCED)
 ============================================================ */
 export const updateAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
@@ -205,51 +275,101 @@ export const updateAutoBillingRule = async (req, res) => {
       return res.status(400).json({ success: false, errors });
     }
 
+    /* ========================================================
+       🔒 TENANT-SAFE FETCH
+    ======================================================== */
     const where = { id };
+
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
       where.facility_id = req.user.facility_id || null;
     }
 
-    const rule = await AutoBillingRule.findOne({ where, transaction: t });
+    const rule = await AutoBillingRule.findOne({
+      where,
+      transaction: t,
+    });
+
     if (!rule) {
       await t.rollback();
       return error(res, "Auto Billing Rule not found", null, 404);
     }
 
-    // 🔒 DUPLICATE CHECK (FK-DRIVEN)
-    if (value.trigger_feature_module_id || value.billable_item_id) {
-      const exists = await AutoBillingRule.findOne({
-        where: {
-          organization_id: rule.organization_id,
-          facility_id: rule.facility_id,
-          trigger_feature_module_id:
-            value.trigger_feature_module_id ||
-            rule.trigger_feature_module_id,
-          billable_item_id:
-            value.billable_item_id || rule.billable_item_id,
-          id: { [Op.ne]: id },
-        },
-        paranoid: false,
-      });
+    /* ========================================================
+       🧭 ROLE PATTERN (MASTER ALIGN)
+    ======================================================== */
+    let orgId = rule.organization_id;
+    let facilityId = rule.facility_id;
 
-      if (exists) {
-        await t.rollback();
-        return error(
-          res,
-          "Another Auto Billing Rule already exists for this feature module and item",
-          null,
-          400
-        );
+    if (isSuperAdmin(req.user)) {
+      if ("organization_id" in value) orgId = value.organization_id;
+      if ("facility_id" in value) facilityId = value.facility_id;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+
+      if (value.facility_id) {
+        facilityId = value.facility_id;
+      } else if (rule.facility_id) {
+        facilityId = rule.facility_id;
+      } else if (req.user.facility_id) {
+        facilityId = req.user.facility_id;
+      } else {
+        facilityId = null;
       }
+
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? rule.facility_id;
     }
 
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Organization is required", null, 400);
+    }
+
+    if (!facilityId) {
+      await t.rollback();
+      return error(res, "Facility is required", null, 400);
+    }
+
+    /* ========================================================
+       🔒 DUPLICATE CHECK (MODULE + BILLABLE)
+    ======================================================== */
+    const newModule =
+      value.trigger_feature_module_id || rule.trigger_feature_module_id;
+
+    const newBillable =
+      value.billable_item_id || rule.billable_item_id;
+
+    const exists = await AutoBillingRule.findOne({
+      where: {
+        organization_id: orgId,
+        facility_id: facilityId,
+        trigger_feature_module_id: newModule,
+        billable_item_id: newBillable,
+        id: { [Op.ne]: id },
+      },
+      transaction: t,
     });
 
+    if (exists) {
+      await t.rollback();
+      return error(
+        res,
+        "⚠️ This rule already exists for this module + billable item.",
+        null,
+        400
+      );
+    }
+
+    /* ========================================================
+       ✏️ UPDATE
+    ======================================================== */
     await rule.update(
       {
         ...(value.trigger_feature_module_id && {
@@ -267,13 +387,13 @@ export const updateAutoBillingRule = async (req, res) => {
         ...(value.auto_generate !== undefined && {
           auto_generate: value.auto_generate,
         }),
+
         organization_id: orgId,
         facility_id: facilityId,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
-
 
     await t.commit();
 
@@ -291,14 +411,24 @@ export const updateAutoBillingRule = async (req, res) => {
     });
 
     return success(res, "✅ Auto Billing Rule updated", full);
+
   } catch (err) {
     await t.rollback();
+
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return error(
+        res,
+        "⚠️ This rule already exists for this module + billable item.",
+        null,
+        400
+      );
+    }
+
     return error(res, "❌ Failed to update auto billing rule", err);
   }
 };
-
 /* ============================================================
-   📌 GET ALL AUTO BILLING RULES (FK-DRIVEN | STABLE)
+   📌 GET ALL AUTO BILLING RULES — MASTER PARITY (FINAL CLEAN)
 ============================================================ */
 export const getAllAutoBillingRules = async (req, res) => {
   try {
@@ -310,57 +440,183 @@ export const getAllAutoBillingRules = async (req, res) => {
     });
     if (!allowed) return;
 
-    const options = buildQueryOptions(req);
+    /* ============================================================
+       🧱 BASE QUERY OPTIONS
+    ============================================================ */
+    const options = buildQueryOptions(req, {
+      defaultSort: ["created_at", "DESC"],
+    });
 
-    options.where = options.where || {};
+    options.search = req.query.search || "";
 
-    /* 🔒 Tenant scope */
+    const mainWhere = [];
+    const summaryWhere = [];
+
+    /* ============================================================
+       📅 DATE RANGE
+    ============================================================ */
+    if (req.query.dateRange) {
+      const { start, end } = normalizeDateRangeLocal(req.query.dateRange);
+      if (start && end) {
+        const cond = {
+          created_at: { [Op.between]: [start, end] },
+        };
+        mainWhere.push(cond);
+        summaryWhere.push(cond);
+      }
+    }
+
+    /* ============================================================
+       🔒 TENANT SCOPE
+    ============================================================ */
+    const orgCond = { organization_id: req.user.organization_id };
+    mainWhere.push(orgCond);
+    summaryWhere.push(orgCond);
+
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
-      options.where.facility_id = req.user.facility_id || null;
+      if (req.user.facility_id) {
+        const facCond = { facility_id: req.user.facility_id };
+        mainWhere.push(facCond);
+        summaryWhere.push(facCond);
+      } else if (req.query.facility_id) {
+        const facCond = { facility_id: req.query.facility_id };
+        mainWhere.push(facCond);
+        summaryWhere.push(facCond);
+      }
     } else {
-      if (req.query.organization_id)
-        options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        const cond = { organization_id: req.query.organization_id };
+        mainWhere.push(cond);
+        summaryWhere.push(cond);
+      }
+      if (req.query.facility_id) {
+        const cond = { facility_id: req.query.facility_id };
+        mainWhere.push(cond);
+        summaryWhere.push(cond);
+      }
     }
 
-    /* 🔍 SEARCH (JOIN SAFE) */
-    if (options.search) {
-      options.where[Op.or] = [
-        { "$featureModule.key$": { [Op.iLike]: `%${options.search}%` } },
-      ];
+    /* ============================================================
+       🔍 GLOBAL SEARCH (SAFE — NO ENUM)
+    ============================================================ */
+    if (options.search && options.search.trim()) {
+      mainWhere.push({
+        [Op.or]: [
+          { "$featureModule.key$": { [Op.iLike]: `%${options.search}%` } },
+          { "$billableItem.name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
     }
 
+    /* ============================================================
+       🔎 FILTERS
+    ============================================================ */
+
+    // 🔥 Trigger module (ID priority)
+    if (req.query.trigger_feature_module_id) {
+      const cond = {
+        trigger_feature_module_id: req.query.trigger_feature_module_id,
+      };
+      mainWhere.push(cond);
+      summaryWhere.push(cond);
+    } else if (req.query.trigger_module) {
+      mainWhere.push({
+        "$featureModule.key$": {
+          [Op.iLike]: `%${req.query.trigger_module}%`,
+        },
+      });
+      // ❌ DO NOT add to summaryWhere (JOIN FIELD)
+    }
+
+    if (req.query.billable_item_id) {
+      const cond = { billable_item_id: req.query.billable_item_id };
+      mainWhere.push(cond);
+      summaryWhere.push(cond);
+    }
+
+    if (req.query.charge_mode) {
+      const cond = { charge_mode: req.query.charge_mode };
+      mainWhere.push(cond);
+      summaryWhere.push(cond);
+    }
+
+    if (req.query.status) {
+      const cond = { status: req.query.status };
+      mainWhere.push(cond);
+      summaryWhere.push(cond);
+    }
+
+    /* ============================================================
+       🧱 FINAL WHERE
+    ============================================================ */
+    options.where = { [Op.and]: mainWhere };
+
+    const summaryWhereFinal = { [Op.and]: summaryWhere };
+
+    /* ============================================================
+       📦 MAIN QUERY
+    ============================================================ */
     const { count, rows } = await AutoBillingRule.findAndCountAll({
       where: options.where,
       include: AUTOBILLINGRULE_INCLUDES,
-
-      /* 🔥 CRITICAL FIXES */
-      subQuery: false, // 👈 REQUIRED for JOIN ORDERING
-      order: [
-        [{ model: FeatureModule, as: "featureModule" }, "key", "ASC"],
-      ],
-
+      order: options.order,
       offset: options.offset,
       limit: options.limit,
       distinct: true,
+      subQuery: false,
     });
 
+    /* ============================================================
+       📊 SUMMARY (SAFE + CLEAN)
+    ============================================================ */
+    const summary = { total: count };
+
+    const statusCounts = await AutoBillingRule.findAll({
+      where: summaryWhereFinal,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
+      raw: true,
+    });
+
+    AUTO_BILLING_RULE_STATUS.forEach((s) => {
+      const found = statusCounts.find((r) => r.status === s);
+      summary[s] = found ? Number(found.count) : 0;
+    });
+
+    /* ============================================================
+       🧾 AUDIT
+    ============================================================ */
+    await auditService.logAction({
+      user: req.user,
+      module: "auto_billing_rule",
+      action: "list",
+      details: {
+        query: req.query,
+        returned: count,
+      },
+    });
+
+    /* ============================================================
+       📤 RESPONSE
+    ============================================================ */
     return success(res, "✅ Auto Billing Rules loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
     });
+
   } catch (err) {
     console.error("AUTO BILLING RULE LIST FAILED:", err);
     return error(res, "❌ Failed to load auto billing rules", err);
   }
 };
-
 /* ============================================================
    📌 GET AUTO BILLING RULE BY ID
 ============================================================ */

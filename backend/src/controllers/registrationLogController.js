@@ -552,7 +552,10 @@ export const activateRegistrationLog = async (req, res) => {
 
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
-      entity: log,
+      entity: {
+        ...log.toJSON(),
+        billable_item_id: log.registration_type_id,
+      },
       user: { ...req.user, organization_id: orgId, facility_id: facilityId },
       transaction: t,
     });

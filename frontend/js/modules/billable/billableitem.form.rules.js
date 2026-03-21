@@ -6,7 +6,7 @@ export const BILLABLE_ITEM_FORM_RULES = [
   // Identity
   { id: "masterItemSearch", message: "Master Item is required" },
   { id: "master_item_id", message: "Master Item selection is required" },
-  { id: "name", message: "Billable item name is required" },
+  { id: "name", message: "Billable item name is required", when: () => false },
   { id: "code", message: "Billable item code is required", when: () => false },
   { id: "description", message: "Description is required", when: () => false },
 
@@ -45,8 +45,8 @@ export const BILLABLE_ITEM_FORM_RULES = [
     message: "Facility is required",
     when: () => {
       const role = (localStorage.getItem("userRole") || "").toLowerCase();
-      if (role.includes("super")) return false;
-      if (role.includes("org")) return false;
+      if (role.includes("super")) return true;
+      if (role.includes("org")) return true;
       return true;
     },
   },

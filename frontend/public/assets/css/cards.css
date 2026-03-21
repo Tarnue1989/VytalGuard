@@ -596,34 +596,3 @@
   }
 }
 
-/* ================= INVOICE ITEMS GRID ================= */
-
-.invoice-items-grid{
-  display:grid;
-  grid-template-columns:repeat(2, minmax(0,1fr));
-  gap:6px;
-}
-
-.invoice-item{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  background:#f9fafb;
-  padding:6px 8px;
-  border-radius:8px;
-  font-size:.82rem;
-}
-
-.item-name{
-  font-weight:500;
-  color:#111827;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.item-price{
-  font-weight:600;
-  color:#111827;
-  margin-left:8px;
-}

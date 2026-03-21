@@ -149,7 +149,7 @@ function renderUserName(user) {
 }
 
 /* ============================================================
-   🧩 FIELD VALUE RENDERER
+   🧩 FIELD VALUE RENDERER (FIXED — BILLABLE ITEM SUPPORTED)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -192,6 +192,17 @@ function renderValue(entry, field) {
 
     case "technician":
       return renderUserName(entry.technician);
+
+    /* ✅ 🔥 BILLABLE ITEM — FULL FIX */
+    case "billableItem":
+      return entry.billableItem
+        ? `${entry.billableItem.name} ($${entry.billableItem.price || "0"})`
+        : "—";
+
+    case "billable_item_id":
+      return entry.billableItem
+        ? `${entry.billableItem.name}`
+        : entry.billable_item_id || "—";
 
     case "file_path":
       return entry.file_path

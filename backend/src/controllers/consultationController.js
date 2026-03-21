@@ -728,7 +728,10 @@ export const startConsultation = async (req, res) => {
     /* ================= BILLING (REGISTRATION PARITY) ================= */
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
-      entity: cons,
+      entity: {
+        ...cons.toJSON(),
+        billable_item_id: cons.consultation_type_id,
+      },
       user: {
         ...req.user,
         organization_id: cons.organization_id,
@@ -744,7 +747,10 @@ export const startConsultation = async (req, res) => {
       module_key: MODULE_KEY,
       action: "start",
       entityId: id,
-      entity: cons,
+      entity: {
+     ...cons.toJSON(),
+        billable_item_id: cons.consultation_type_id,
+      },
       details: { from: oldStatus, to: CS.IN_PROGRESS },
     });
 
@@ -858,7 +864,10 @@ export const verifyConsultation = async (req, res) => {
       module_key: MODULE_KEY,
       action: "verify",
       entityId: id,
-      entity: cons,
+      entity: {
+        ...cons.toJSON(),
+        billable_item_id: cons.consultation_type_id,
+      },
       details: { from: oldStatus, to: CS.VERIFIED },
     });
 

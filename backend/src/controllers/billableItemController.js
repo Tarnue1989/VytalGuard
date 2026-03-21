@@ -21,7 +21,12 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 import { validate } from "../utils/validation.js";
 import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
-import { isSuperAdmin, isFacilityHead } from "../utils/role-utils.js";
+
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead,
+} from "../utils/role-utils.js";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (Billable Item)
@@ -36,27 +41,14 @@ const debug = makeModuleLogger("billableItemController", DEBUG_OVERRIDE);
 ============================================================ */
 const BILLABLE_ITEM_INCLUDES = [
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  {
-    model: Facility,
-    as: "facility",
-    attributes: ["id", "name", "code", "organization_id"],
-  },
+  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
   { model: Department, as: "department", attributes: ["id", "name", "code"] },
-  {
-    model: MasterItem,
-    as: "masterItem",
-    attributes: ["id", "name", "code", "description"],
-  },
-  {
-    model: MasterItemCategory,
-    as: "category",
-    attributes: ["id", "name", "code"],
-  },
+  { model: MasterItem, as: "masterItem", attributes: ["id", "name", "code", "description"] },
+  { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] },
+
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
-
 /* ============================================================
    📋 ROLE-AWARE JOI SCHEMA (Patient-Parity, FINAL)
 ============================================================ */
@@ -105,8 +97,9 @@ function buildBillableItemSchema(user, mode = "create") {
   return Joi.object(base);
 }
 
+
 /* ============================================================
-   📌 CREATE BILLABLE ITEM(S) (PATIENT-PARITY, FINAL)
+   📌 CREATE BILLABLE ITEM(S) (FINAL — FIXED + SAFE)
 ============================================================ */
 export const createBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -119,7 +112,6 @@ export const createBillableItems = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= DEBUG: INCOMING ================= */
     debug.log("create → incoming body", req.body);
 
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
@@ -141,24 +133,41 @@ export const createBillableItems = async (req, res) => {
       );
 
       if (errors) {
-        debug.warn(`create[${index}] → validation error`, errors);
         skipped.push({ index, reason: "Validation failed", errors });
         continue;
       }
 
-      debug.log(`create[${index}] → validated value`, value);
+      /* ================= ROLE SCOPE ================= */
+      let orgId = null;
+      let facilityId = null;
 
-      /* ================= ORG / FACILITY ================= */
-      const { orgId, facilityId } = resolveOrgFacility({
-        user: req.user,
-        value,
-        body: raw,
-      });
+      if (isSuperAdmin(req.user)) {
+        orgId = raw.organization_id ?? null;
+        facilityId = raw.facility_id ?? null;
 
-      debug.log(`create[${index}] → resolved scope`, {
-        organization_id: orgId,
-        facility_id: facilityId,
-      });
+      } else if (isOrgLevelUser(req.user)) {
+        orgId = req.user.organization_id;
+
+        if (raw.facility_id) {
+          facilityId = raw.facility_id;
+        } else if (req.user.facility_id) {
+          facilityId = req.user.facility_id;
+        } else {
+          skipped.push({
+            index,
+            reason: "Facility is required for organization-level user",
+          });
+          continue;
+        }
+
+      } else if (isFacilityHead(req.user)) {
+        orgId = req.user.organization_id;
+        facilityId = req.user.facility_id;
+
+      } else {
+        orgId = req.user.organization_id;
+        facilityId = req.user.facility_id ?? null;
+      }
 
       if (!orgId) {
         skipped.push({ index, reason: "Missing organization assignment" });
@@ -184,19 +193,18 @@ export const createBillableItems = async (req, res) => {
         continue;
       }
 
-      /* ================= FINAL PAYLOAD ================= */
-      const payload = {
-        ...value,
-        organization_id: orgId,
-        facility_id: facilityId,
-        status: BILLABLE_ITEM_STATUS[0],
-        created_by_id: req.user?.id || null,
-      };
-
-      debug.log(`create[${index}] → final payload`, payload);
-
       /* ================= CREATE ================= */
-      const item = await BillableItem.create(payload, { transaction: t });
+      const item = await BillableItem.create(
+        {
+          ...value,
+          organization_id: orgId,
+          facility_id: facilityId,
+          status: BILLABLE_ITEM_STATUS[0],
+          created_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
+
       created.push(item);
 
       /* ================= PRICE HISTORY ================= */
@@ -205,9 +213,9 @@ export const createBillableItems = async (req, res) => {
           billable_item_id: item.id,
           organization_id: orgId,
           facility_id: facilityId,
-          old_price: null,
+          old_price: item.price,
           new_price: item.price,
-          old_currency: null,
+          old_currency: item.currency,
           new_currency: item.currency,
           effective_date: new Date(),
           created_by_id: req.user?.id || null,
@@ -215,33 +223,11 @@ export const createBillableItems = async (req, res) => {
         { transaction: t }
       );
 
-      /* ================= AUTO BILLING RULE ================= */
-      await AutoBillingRule.findOrCreate({
-        where: {
-          organization_id: orgId,
-          facility_id: facilityId,
-          billable_item_id: item.id,
-          trigger_module: "manual",
-        },
-        defaults: {
-          trigger_feature_module_id: null,
-          auto_generate: false,
-          charge_mode: "manual",
-          default_price: null,
-          status: "inactive",
-          created_by_id: req.user?.id || null,
-        },
-        transaction: t,
-      });
+      // ❌ REMOVED AutoBillingRule (handled by model hook)
     }
 
     await t.commit();
-    debug.log("create → committed", {
-      created: created.length,
-      skipped: skipped.length,
-    });
 
-    /* ================= RELOAD FULL ================= */
     const full = created.length
       ? await BillableItem.findAll({
           where: { id: { [Op.in]: created.map((c) => c.id) } },
@@ -261,13 +247,13 @@ export const createBillableItems = async (req, res) => {
       records: full,
       skipped,
     });
+
   } catch (err) {
     await t.rollback();
     debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create billable item(s)", err);
   }
 };
-
 
 /* ============================================================
    ✏️ UPDATE BILLABLE ITEM (PATIENT-PARITY, FINAL)
@@ -721,10 +707,11 @@ export const getBillableItemById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET BILLABLE ITEMS LITE (MASTER PARITY – FINAL)
+   📌 GET BILLABLE ITEMS LITE (MASTER PARITY – FINAL + MODULE LINK)
    - Active only
    - Tenant safe
    - Super admin supports global + facility
+   - 🔥 Supports module → billable via code
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
@@ -736,15 +723,22 @@ export const getAllBillableItemsLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, category_id, category } = req.query;
+    /* ============================================================
+       🧾 QUERY PARAMS
+    ============================================================ */
+    const { q, category_id, category, code } = req.query; // 🔥 NEW
 
-    /* ================= BASE WHERE ================= */
+    /* ============================================================
+       🧱 BASE WHERE
+    ============================================================ */
     const where = {
       status: BILLABLE_ITEM_STATUS[0], // ACTIVE ONLY
       [Op.and]: [],
     };
 
-    /* ================= TENANT SCOPE ================= */
+    /* ============================================================
+       🔒 TENANT SCOPE
+    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
 
@@ -771,11 +765,22 @@ export const getAllBillableItemsLite = async (req, res) => {
       }
     }
 
-    /* ================= CATEGORY FILTER ================= */
+    /* ============================================================
+       🧩 CATEGORY FILTER
+    ============================================================ */
     if (category_id) where.category_id = category_id;
     if (category) where["$category.code$"] = category;
 
-    /* ================= SEARCH ================= */
+    /* ============================================================
+       🔥 MODULE → BILLABLE LINK (KEY FIX)
+    ============================================================ */
+    if (code) {
+      where.code = code; // 👈 THIS ENABLES YOUR FEATURE
+    }
+
+    /* ============================================================
+       🔍 SEARCH
+    ============================================================ */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -787,7 +792,9 @@ export const getAllBillableItemsLite = async (req, res) => {
       });
     }
 
-    /* ================= QUERY ================= */
+    /* ============================================================
+       📦 QUERY
+    ============================================================ */
     const items = await BillableItem.findAll({
       where,
       include: [
@@ -802,7 +809,9 @@ export const getAllBillableItemsLite = async (req, res) => {
       limit: 20,
     });
 
-    /* ================= SHAPE ================= */
+    /* ============================================================
+       🔄 SHAPE RESPONSE
+    ============================================================ */
     const records = items.map((i) => ({
       id: i.id,
       name: i.name,
@@ -818,21 +827,32 @@ export const getAllBillableItemsLite = async (req, res) => {
         : null,
     }));
 
-    /* ================= AUDIT ================= */
+    /* ============================================================
+       🧾 AUDIT
+    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: records.length, q, category, category_id },
+      details: {
+        count: records.length,
+        q,
+        category,
+        category_id,
+        code, // 🔥 TRACK THIS
+      },
     });
 
+    /* ============================================================
+       📤 RESPONSE
+    ============================================================ */
     return success(res, "✅ Billable Items loaded (lite)", { records });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load billable items (lite)", err);
   }
 };
-
 /* ============================================================
    📌 BULK UPDATE BILLABLE ITEMS (MASTER PARITY – FINAL)
    - Role scoped

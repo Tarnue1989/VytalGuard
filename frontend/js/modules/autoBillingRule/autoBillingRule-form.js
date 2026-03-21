@@ -1,9 +1,10 @@
-// 📦 autoBillingRule-form.js – Secure & Permission-Driven Auto Billing Rule Form (Enterprise-Aligned)
+// 📦 autoBillingRule-form.js – FULL ENTERPRISE MASTER ORCHESTRATION
 // ============================================================================
-// 🧭 Master Pattern: billableitem-form.js / vital-form.js
-// 🔹 Enterprise submission flow, tenant scoping, and role-aware dropdowns
-// 🔹 Auto-filled Trigger Module from Feature Module (read-only)
-// 🔹 100% ID-safe for linked HTML + JS
+// 🔹 Rule-driven validation (AUTO_BILLING_RULE_FORM_RULES)
+// 🔹 RegistrationLog parity (validation, UX, flow)
+// 🔹 Role-aware scope enforcement
+// 🔹 Clean payload normalization
+// 🔹 NO API changes
 // ============================================================================
 
 import {
@@ -15,6 +16,12 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
+import {
+  enableLiveValidation,
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
 
 import {
@@ -25,8 +32,11 @@ import {
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
+import { resolveUserRole } from "../../utils/roleResolver.js";
+import { AUTO_BILLING_RULE_FORM_RULES } from "./autoBillingRule-form-rules.js";
+
 /* ============================================================
-   🔧 Helpers
+   🧩 Helpers
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
@@ -44,53 +54,45 @@ function normalizeMessage(result, fallback) {
   }
 }
 
-function validateRuleFields({ trigger_feature_module_id, trigger_module, billable_item_id, charge_mode }) {
-  if (!trigger_feature_module_id) return showToast("❌ Feature Module is required"), false;
-  if (!trigger_module) return showToast("❌ Trigger Module is required"), false;
-  if (!billable_item_id) return showToast("❌ Billable Item is required"), false;
-  if (!charge_mode) return showToast("❌ Charge Mode is required"), false;
-  return true;
-}
-
-function resolveTenantScope() {
-  const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-  const userOrg = localStorage.getItem("organization_id") || null;
-  const userFac = localStorage.getItem("facility_id") || null;
-  return {
-    userRole,
-    userOrg,
-    userFac,
-    isSuper: userRole.includes("super"),
-    isAdmin: userRole.includes("admin"),
-    isFacilityHead:
-      userRole.includes("facilityhead") || userRole.includes("manager"),
-  };
+function normalizeUUID(val) {
+  return typeof val === "string" && val.trim() !== "" ? val : null;
 }
 
 /* ============================================================
-   🚀 Main Form Setup
+   🚀 MAIN
 ============================================================ */
 export async function setupAutoBillingRuleFormSubmission({ form }) {
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(
+    autoPagePermissionKey(["auto_billing_rule:create", "auto_billing_rule:edit"])
+  );
   initLogoutWatcher();
+  enableLiveValidation(form);
 
-  const queryId = getQueryParam("id");
-  const sessionId = sessionStorage.getItem("autoBillingRuleEditId");
-  const ruleId = sessionId || queryId;
-  const isEdit = !!ruleId;
+  const ruleId =
+    sessionStorage.getItem("autoBillingRuleEditId") || getQueryParam("id");
+  const isEdit = Boolean(ruleId);
 
+  /* ================= UI ================= */
   const titleEl = document.querySelector(".card-title");
-  const submitBtn = form?.querySelector("button[type=submit]");
+  const submitBtn = form.querySelector("button[type=submit]");
 
-  if (isEdit) {
-    titleEl && (titleEl.textContent = "Edit Auto Billing Rule");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update Rule`);
-  } else {
-    titleEl && (titleEl.textContent = "Add Auto Billing Rule");
-    submitBtn && (submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Rule`);
-  }
+  const setUI = (mode = "add") => {
+    if (titleEl)
+      titleEl.textContent =
+        mode === "edit"
+          ? "Update Auto Billing Rule"
+          : "Add Auto Billing Rule";
 
-  // 📋 DOM Refs
+    if (submitBtn)
+      submitBtn.innerHTML =
+        mode === "edit"
+          ? `<i class="ri-save-3-line me-1"></i> Update`
+          : `<i class="ri-add-line me-1"></i> Add Rule`;
+  };
+
+  setUI(isEdit ? "edit" : "add");
+
+  /* ================= DOM ================= */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const featureSelect = document.getElementById("featureModuleSelect");
@@ -100,97 +102,122 @@ export async function setupAutoBillingRuleFormSubmission({ form }) {
   const chargeModeInput = document.getElementById("chargeMode");
   const defaultPriceInput = document.getElementById("defaultPrice");
 
+  /* ================= ROLE ================= */
+  const userRole = resolveUserRole();
+  const isSuper = userRole === "superadmin";
+
   /* ============================================================
-     📥 Prefill Dropdowns
+    🌐 DROPDOWNS (MASTER — FIXED)
   ============================================================ */
   try {
-    const { isSuper, isAdmin, userOrg } = resolveTenantScope();
-
     if (isSuper) {
-      const orgs = await loadOrganizationsLite();
-      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
+      // ================= SUPER ADMIN =================
+      setupSelectOptions(
+        orgSelect,
+        await loadOrganizationsLite(),
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
 
-      async function reloadFacilities(orgId = null) {
-        const facs = await loadFacilitiesLite(
-          orgId ? { organization_id: orgId } : {},
-          true
+      const reloadFacilities = async (orgId = null) => {
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            orgId ? { organization_id: orgId } : {},
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
         );
-        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
-      }
+      };
 
       await reloadFacilities();
-      orgSelect?.addEventListener("change", async () => {
-        await reloadFacilities(orgSelect.value || null);
-      });
-    } else if (isAdmin) {
+
+      orgSelect?.addEventListener("change", () =>
+        reloadFacilities(orgSelect.value || null)
+      );
+
+    } else if (userRole === "orgadmin" || userRole.includes("org")) {
+      // ================= ORG ADMIN (FIXED) =================
       orgSelect?.closest(".form-group")?.classList.add("hidden");
-      const facs = await loadFacilitiesLite({ organization_id: userOrg }, true);
-      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+
     } else {
+      // ================= FACILITY / STAFF =================
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    const featureModules = await loadFeatureModulesLite();
+    // ================= FEATURE MODULE =================
     setupSelectOptions(
       featureSelect,
-      featureModules,
+      await loadFeatureModulesLite(),
       "id",
       "name",
       "-- Select Feature Module --"
     );
 
-    const billables = await loadBillableItemsLite({}, true);
+    // ================= BILLABLE ITEM =================
     setupSelectOptions(
       billableSelect,
-      billables,
+      await loadBillableItemsLite({}, true),
       "id",
       "name",
       "-- Select Billable Item --"
     );
-  } catch (err) {
-    console.error("❌ Dropdown preload failed:", err);
-    showToast("❌ Failed to load reference lists");
-  }
 
+  } catch (err) {
+    console.error(err);
+    showToast("❌ Failed to load reference data");
+  }
   /* ============================================================
-     ⚡ Auto-fill Trigger Module when Feature selected
+     ⚡ AUTO-FILL TRIGGER MODULE
   ============================================================ */
-  featureSelect?.addEventListener("change", function () {
-    const selectedText = featureSelect.options[featureSelect.selectedIndex]?.text || "";
-    const key = selectedText
+  featureSelect?.addEventListener("change", () => {
+    const text =
+      featureSelect.options[featureSelect.selectedIndex]?.text || "";
+    const key = text
       .trim()
       .toLowerCase()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9\-]/g, "");
+
     triggerInput.value = key;
     triggerInput.dataset.key = key;
-    triggerInput.dataset.id = featureSelect.value || null;
   });
 
   /* ============================================================
-     🧩 Prefill If Editing
+     ✏️ PREFILL
   ============================================================ */
   if (isEdit && ruleId) {
     try {
       showLoading();
 
-      let entry = null;
-      const cached = sessionStorage.getItem("autoBillingRuleEditPayload");
-      if (cached) entry = JSON.parse(cached);
+      let entry = JSON.parse(
+        sessionStorage.getItem("autoBillingRuleEditPayload") || "null"
+      );
 
       if (!entry) {
-        const res = await authFetch(`/api/auto-billing-rules/${ruleId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await res.json().catch(() => ({}));
+        const res = await authFetch(`/api/auto-billing-rules/${ruleId}`);
+        const json = await res.json().catch(() => ({}));
         if (!res.ok)
-          throw new Error(normalizeMessage(result, `❌ Failed to load rule (${res.status})`));
-        entry = result.data;
+          throw new Error(
+            normalizeMessage(json, "Failed to load rule")
+          );
+        entry = json?.data;
       }
 
-      orgSelect.value = entry.organization_id || "";
-      facSelect.value = entry.facility_id || "";
+      if (!entry) throw new Error("Rule not found");
+
       featureSelect.value = entry.trigger_feature_module_id || "";
       triggerInput.value = entry.trigger_module || "";
       billableSelect.value = entry.billable_item_id || "";
@@ -198,106 +225,128 @@ export async function setupAutoBillingRuleFormSubmission({ form }) {
       chargeModeInput.value = entry.charge_mode || "";
       defaultPriceInput.value = entry.default_price || "";
 
-      if (entry.status) {
-        const radio = document.getElementById(`status_${entry.status.toLowerCase()}`);
-        if (radio) radio.checked = true;
+      if (isSuper) {
+        orgSelect.value = entry.organization_id || "";
+        setupSelectOptions(
+          facSelect,
+          await loadFacilitiesLite(
+            { organization_id: entry.organization_id },
+            true
+          ),
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+        facSelect.value = entry.facility_id || "";
       }
+
+      setUI("edit");
     } catch (err) {
-      console.error(err);
-      showToast(err.message || "❌ Could not load Auto Billing Rule");
+      showToast(err.message || "❌ Could not load rule");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     🧾 Submit
+    🛡️ SUBMIT (RULE ENGINE — MASTER FIXED)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
-    if (!e.isTrusted) return;
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of AUTO_BILLING_RULE_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    /* ========================================================
+      📦 PAYLOAD (MASTER PARITY)
+    ======================================================== */
+    const role = (userRole || "").toLowerCase();
+
+    const payload = {
+      trigger_feature_module_id: normalizeUUID(featureSelect.value),
+      billable_item_id: normalizeUUID(billableSelect.value),
+      auto_generate: autoGenInput.checked,
+      charge_mode: chargeModeInput.value,
+      default_price:
+        defaultPriceInput.value !== ""
+          ? Number(defaultPriceInput.value)
+          : null,
+
+      // 🔥 KEY FIX — ROLE-AWARE FACILITY
+      facility_id: role.includes("org")
+        ? normalizeUUID(facSelect?.value) ||
+          localStorage.getItem("facility_id")
+        : normalizeUUID(facSelect?.value),
+    };
+
+    // 🔓 SUPER ADMIN EXTRA
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect.value);
+      payload.facility_id = normalizeUUID(facSelect.value);
+    }
 
     try {
       showLoading();
 
-      const payload = {
-        trigger_feature_module_id: featureSelect.value || null,
-        trigger_module: triggerInput.dataset.key || triggerInput.value.trim(),
-        billable_item_id: billableSelect.value || null,
-        auto_generate: autoGenInput.checked || false,
-        charge_mode: chargeModeInput.value || "",
-        default_price: defaultPriceInput.value || null,
-        organization_id: orgSelect?.value || null,
-        facility_id: facSelect?.value || null,
-      };
-
-      if (!validateRuleFields(payload)) return;
-
-      const { isSuper, isAdmin, userOrg, userFac } = resolveTenantScope();
-
-      if (isSuper) {
-        payload.organization_id = orgSelect.value || null;
-        payload.facility_id = facSelect.value || null;
-      } else if (isAdmin) {
-        payload.organization_id = userOrg;
-        payload.facility_id = facSelect.value || null;
-      } else {
-        payload.organization_id = userOrg;
-        payload.facility_id = userFac;
-      }
-
-      delete payload.status;
-
-      const url = isEdit
-        ? `/api/auto-billing-rules/${ruleId}`
-        : `/api/auto-billing-rules`;
-      const method = isEdit ? "PUT" : "POST";
-
-      const res = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await authFetch(
+        isEdit
+          ? `/api/auto-billing-rules/${ruleId}`
+          : `/api/auto-billing-rules`,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const result = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(normalizeMessage(result, `❌ Server error (${res.status})`));
+        throw new Error(
+          normalizeMessage(result, `❌ Server error (${res.status})`)
+        );
 
-      if (isEdit) {
-        showToast("✅ Auto Billing Rule updated successfully");
-        sessionStorage.removeItem("autoBillingRuleEditId");
-        sessionStorage.removeItem("autoBillingRuleEditPayload");
-        window.location.href = "/autoBillingRules-list.html";
-        return;
-      }
+      showToast(
+        isEdit
+          ? "✅ Auto Billing Rule updated"
+          : "✅ Auto Billing Rule created"
+      );
 
-      showToast("✅ Auto Billing Rule added successfully");
-      form.reset();
-      triggerInput.value = "";
-      document.getElementById("status_active")?.setAttribute("checked", true);
+      sessionStorage.clear();
+      window.location.href = "/autoBillingRules-list.html";
+
     } catch (err) {
-      console.error(err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
   };
-
-  /* ============================================================
-     🧹 Cancel / Clear
-  ============================================================ */
+  /* ================= Cancel / Clear ================= */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("autoBillingRuleEditId");
-    sessionStorage.removeItem("autoBillingRuleEditPayload");
+    sessionStorage.clear();
     window.location.href = "/autoBillingRules-list.html";
   });
 
   document.getElementById("clearBtn")?.addEventListener("click", () => {
+    clearFormErrors(form);
     form.reset();
-    triggerInput.value = "";
-    sessionStorage.removeItem("autoBillingRuleEditId");
-    sessionStorage.removeItem("autoBillingRuleEditPayload");
-    document.getElementById("status_active")?.setAttribute("checked", true);
-    titleEl && (titleEl.textContent = "Add Auto Billing Rule");
+    setUI("add");
   });
 }

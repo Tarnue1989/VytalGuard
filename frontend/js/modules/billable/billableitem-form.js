@@ -288,7 +288,16 @@ export async function setupBillableItemFormSubmission({
       override_allowed: overrideInput.checked,
     });
 
+    // 🔒 Preserve org/fac before reset
+    const orgVal = orgSelect?.value;
+    const facVal = facSelect?.value;
+
     form.reset();
+
+    // 🔁 Restore org/fac
+    if (orgSelect) orgSelect.value = orgVal;
+    if (facSelect) facSelect.value = facVal;
+
     masterItemSearch.dataset.value = "";
     document.getElementById("master_item_id").value = "";
     document.getElementById("addItemBtn").innerHTML =
@@ -304,10 +313,13 @@ export async function setupBillableItemFormSubmission({
     e.preventDefault();
     clearFormErrors(form);
 
-    if (!selectedItems.length) {
-      showToast("❌ No billable item to submit");
-      return;
-    }
+  if (!selectedItems.length) {
+    pillsContainer.classList.add("border-danger");
+    showToast("⚠️ Please add at least one billable item first");
+    return;
+  } else {
+    pillsContainer.classList.remove("border-danger");
+  }
 
     try {
       showLoading();
@@ -343,7 +355,29 @@ export async function setupBillableItemFormSubmission({
       if (!res.ok) throw new Error("❌ Save failed");
 
       showToast(isEdit ? "✅ Billable item updated" : "✅ Billable item added");
-      window.location.href = "/billableitems-list.html";
+      // 🔄 FULL HARD RESET (everything)
+      form.reset();
+
+      // 🧹 clear pill state completely
+      selectedItems.length = 0; // safer than reassign
+      renderItemPills();
+
+      // 🧹 clear master item selection
+      masterItemSearch.dataset.value = "";
+      document.getElementById("master_item_id").value = "";
+
+      // 🧹 reset add button
+      document.getElementById("addItemBtn").innerHTML =
+        `<i class="ri-add-line"></i> Add`;
+
+      // 🧹 remove validation errors
+      clearFormErrors(form);
+
+      // 🧹 remove any UI highlights
+      pillsContainer.classList.remove("border-danger");
+
+      // 🧹 reset internal flags
+      isSelectingMasterItem = false;
     } catch (err) {
       showToast(err.message || "❌ Submission error");
     } finally {

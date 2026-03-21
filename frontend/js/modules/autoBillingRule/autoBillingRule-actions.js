@@ -1,9 +1,10 @@
-// 📁 autoBillingRule-actions.js – Full Permission-Driven Action Handlers for Auto Billing Rules
+// 📁 autoBillingRule-actions.js – ENTERPRISE MASTER PARITY (UPGRADED)
 // ============================================================================
-// 🧠 Master Pattern: BillableItem / Vital / Central Stock
-// 🔹 Enterprise Permission Control (RBAC + Superadmin)
-// 🔹 Unified UI Behavior (view, edit, toggle, restore, delete)
-// 🔹 Safe ID Preservation for HTML Bindings
+// 🧭 FULL ALIGNMENT WITH registrationLog-actions.js MASTER
+// 🔹 Permission-driven (superadmin-aware)
+// 🔹 Explicit lifecycle: view / edit / toggle / restore / delete
+// 🔹 Keeps ALL existing API routes intact
+// 🔹 Adds standardized permission normalization + global helpers
 // ============================================================================
 
 import {
@@ -17,7 +18,7 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./autoBillingRule-render.js";
 
 /* ============================================================
-   🎯 Main Setup
+   🎯 MAIN SETUP
 ============================================================ */
 export function setupActionHandlers({
   entries,
@@ -26,20 +27,21 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // ✅ { role, roleNames, permissions }
+  user,
 }) {
-  const tableBody = document.getElementById("autoBillingRuleTableBody");
-  const cardContainer = document.getElementById("autoBillingRuleList");
   const { currentEditIdRef } = sharedState || {};
 
-  // Cache latest entries globally
+  const tableBody = document.getElementById("autoBillingRuleTableBody");
+  const cardContainer = document.getElementById("autoBillingRuleList");
+
+  // 🗂️ Cache latest entries
   window.latestAutoBillingRuleEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
   /* ============================================================
-     🧩 Permission Normalization
+     🔑 Normalize Permissions (MASTER)
   ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
@@ -53,7 +55,12 @@ export function setupActionHandlers({
     return Array.isArray(perms) ? perms : [];
   }
 
-  const userPerms = new Set(normalizePermissions(user?.permissions || []));
+  const userPerms = new Set(
+    normalizePermissions(user?.permissions || []).map((p) =>
+      p.toLowerCase().trim()
+    )
+  );
+
   const isSuperAdmin =
     (user?.role &&
       user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
@@ -62,27 +69,30 @@ export function setupActionHandlers({
         (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
       ));
 
-  const hasPerm = (key) => {
-    const normalizedKey = key
-      .replace(/autoBillingRules?/gi, "auto_billing_rules")
-      .trim()
-      .toLowerCase();
-    return isSuperAdmin || userPerms.has(normalizedKey);
-  };
+  const hasPerm = (key) =>
+    isSuperAdmin ||
+    userPerms.has(
+      String(key)
+        .replace(/autoBillingRules?/gi, "auto_billing_rules")
+        .toLowerCase()
+        .trim()
+    );
 
   /* ============================================================
-     ⚙️ Action Dispatcher
+     🎯 MAIN DISPATCHER
   ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
 
     const id = btn.dataset.id;
+
     let entry =
       (window.latestAutoBillingRuleEntries || entries || []).find(
         (x) => String(x.id) === String(id)
       ) || null;
 
+    // 🩹 Fallback fetch (MASTER)
     if (!entry) {
       try {
         showLoading();
@@ -97,115 +107,129 @@ export function setupActionHandlers({
     }
 
     if (!entry) return showToast("❌ Auto Billing Rule data missing");
+
     const cls = btn.classList;
 
-    // 🔹 View — always allowed
-    if (cls.contains("view-btn")) return handleView(entry);
+    /* ---------------- VIEW ---------------- */
+    if (cls.contains("view-btn")) {
+      return handleView(entry);
+    }
 
-    // 🔹 Edit
+    /* ---------------- EDIT ---------------- */
     if (cls.contains("edit-btn")) {
       if (!hasPerm("auto_billing_rules:edit"))
         return showToast("⛔ No permission to edit");
       return handleEdit(entry);
     }
 
-    // 🔹 Toggle Status
+    /* ---------------- TOGGLE ---------------- */
     if (cls.contains("toggle-btn") || cls.contains("toggle-status-btn")) {
       if (
         !hasPerm("auto_billing_rules:toggle-status") &&
         !hasPerm("auto_billing_rules:edit")
       )
         return showToast("⛔ No permission to toggle status");
-      return await handleToggleStatus(id, entry);
+      return handleToggleStatus(id, entry);
     }
 
-    // 🔹 Restore
+    /* ---------------- RESTORE ---------------- */
     if (cls.contains("restore-btn")) {
       if (
         !hasPerm("auto_billing_rules:restore") &&
         !hasPerm("auto_billing_rules:edit")
       )
         return showToast("⛔ No permission to restore");
-      return await handleRestore(id, entry);
+      return handleRestore(id, entry);
     }
 
-    // 🔹 Delete
+    /* ---------------- DELETE ---------------- */
     if (cls.contains("delete-btn")) {
       if (!hasPerm("auto_billing_rules:delete"))
         return showToast("⛔ No permission to delete");
-      return await handleDelete(id, entry);
+      return handleDelete(id, entry);
     }
   }
 
   /* ============================================================
-     🧭 Handlers
+     ⚙️ HANDLERS
   ============================================================ */
+
+  // 🔍 View
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Auto Billing Rule Info", html);
   }
 
+  // ✏️ Edit
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
     sessionStorage.setItem("autoBillingRuleEditId", entry.id);
-    sessionStorage.setItem("autoBillingRuleEditPayload", JSON.stringify(entry));
-    window.location.href = `add-autoBillingRule.html?id=${entry.id}`;
+    sessionStorage.setItem(
+      "autoBillingRuleEditPayload",
+      JSON.stringify(entry)
+    );
+    window.location.href = "add-autoBillingRule.html";
   }
 
+  // 🔁 Toggle Status (kept original API)
   async function handleToggleStatus(id, entry) {
     const isActive = (entry.status || "").toLowerCase() === "active";
+
     const confirmed = await showConfirm(
       isActive
-        ? `Deactivate auto billing rule for "${entry.trigger_module || "Unknown"}"?`
-        : `Activate auto billing rule for "${entry.trigger_module || "Unknown"}"?`
+        ? `Deactivate rule for "${entry.trigger_module || "Unknown"}"?`
+        : `Activate rule for "${entry.trigger_module || "Unknown"}"?`
     );
     if (!confirmed) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/auto-billing-rules/${id}/toggle-status`, {
-        method: "PATCH",
-      });
+
+      const res = await authFetch(
+        `/api/auto-billing-rules/${id}/toggle-status`,
+        { method: "PATCH" }
+      );
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to toggle rule status");
-
-      const newStatus = (
-        data?.data?.status || (isActive ? "inactive" : "active")
-      ).toLowerCase();
+        throw new Error(data.message || "❌ Failed to toggle status");
 
       showToast(
-        newStatus === "active"
-          ? `✅ Rule for "${entry.trigger_module || "Unknown"}" activated`
-          : `✅ Rule for "${entry.trigger_module || "Unknown"}" deactivated`
+        isActive
+          ? "✅ Rule deactivated successfully"
+          : "✅ Rule activated successfully"
       );
 
       window.latestAutoBillingRuleEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
-      showToast(err.message || "❌ Failed to update rule status");
+      showToast(err.message || "❌ Failed to toggle status");
     } finally {
       hideLoading();
     }
   }
 
+  // 🔁 Restore
   async function handleRestore(id, entry) {
     const confirmed = await showConfirm(
-      `Restore deleted Auto Billing Rule for "${entry.trigger_module || "Unknown"}"?`
+      `Restore rule "${entry.trigger_module || "Unknown"}"?`
     );
     if (!confirmed) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/auto-billing-rules/${id}/restore`, {
-        method: "PATCH",
-      });
+
+      const res = await authFetch(
+        `/api/auto-billing-rules/${id}/restore`,
+        { method: "PATCH" }
+      );
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to restore Auto Billing Rule");
+        throw new Error(data.message || "❌ Failed to restore");
 
-      showToast(`✅ "${entry.trigger_module || "Unknown"}" restored successfully`);
+      showToast("✅ Rule restored successfully");
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
@@ -215,77 +239,59 @@ export function setupActionHandlers({
     }
   }
 
+  // 🗑️ Delete
   async function handleDelete(id, entry) {
     const confirmed = await showConfirm(
-      `Delete Auto Billing Rule for "${entry.trigger_module || "Unknown"}"?`
+      `Delete rule "${entry.trigger_module || "Unknown"}"?`
     );
     if (!confirmed) return;
 
     try {
       showLoading();
+
       const res = await authFetch(`/api/auto-billing-rules/${id}`, {
         method: "DELETE",
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete Auto Billing Rule");
+        throw new Error(data.message || "❌ Failed to delete");
 
-      showToast(`✅ Rule for "${entry.trigger_module || "Unknown"}" deleted`);
+      showToast("✅ Rule deleted successfully");
+
+      window.latestAutoBillingRuleEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
-      showToast(err.message || "❌ Failed to delete");
+      showToast(err.message || "❌ Delete failed");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     🌐 Global Helper Bindings
+     🌍 GLOBAL HELPERS (MASTER)
   ============================================================ */
   const findEntry = (id) =>
     (window.latestAutoBillingRuleEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
-  window.viewAutoBillingEntry = (id) => {
+  window.viewAutoBillingRule = (id) => {
     const entry = findEntry(id);
     if (entry) handleView(entry);
-    else showToast("❌ Auto Billing Rule not found");
   };
 
-  window.editAutoBillingEntry = (id) => {
+  window.editAutoBillingRule = (id) => {
     if (!hasPerm("auto_billing_rules:edit"))
       return showToast("⛔ No permission to edit");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
-    else showToast("❌ Rule not found");
   };
 
-  window.toggleAutoBillingStatus = async (id) => {
-    if (
-      !hasPerm("auto_billing_rules:toggle-status") &&
-      !hasPerm("auto_billing_rules:edit")
-    )
-      return showToast("⛔ No permission to toggle status");
-    const entry = findEntry(id);
-    await handleToggleStatus(id, entry);
-  };
-
-  window.restoreAutoBillingEntry = async (id) => {
-    if (
-      !hasPerm("auto_billing_rules:restore") &&
-      !hasPerm("auto_billing_rules:edit")
-    )
-      return showToast("⛔ No permission to restore");
-    const entry = findEntry(id);
-    await handleRestore(id, entry);
-  };
-
-  window.deleteAutoBillingEntry = async (id) => {
+  window.deleteAutoBillingRule = async (id) => {
     if (!hasPerm("auto_billing_rules:delete"))
       return showToast("⛔ No permission to delete");
-    const entry = findEntry(id);
-    await handleDelete(id, entry);
+    await handleDelete(id);
   };
 }
