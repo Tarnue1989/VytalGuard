@@ -158,73 +158,86 @@ export async function setupEKGRecordFormSubmission({ form }) {
   const hideFac = () =>
     facSelect?.closest(".form-group")?.classList.add("hidden");
 
-  /* ============================================================
-     🌐 DROPDOWNS & SUGGESTIONS
-  ============================================================ */
-  try {
-    if (isSuper) {
-      showOrg();
-      setupSelectOptions(
-        orgSelect,
-        await loadOrganizationsLite(),
-        "id",
-        "name",
-        "-- Select Organization --"
-      );
-    } else {
-      hideOrg();
-    }
+/* ============================================================
+   🌐 Dropdowns & Suggestions (MASTER)
+============================================================ */
+try {
+  if (isSuper) {
+    // SUPERADMIN ONLY — org & facility visible
+    setupSelectOptions(
+      orgSelect,
+      await loadOrganizationsLite(),
+      "id",
+      "name",
+      "-- Select Organization --"
+    );
 
-    if (isSuper || isOrgAdmin) {
-      showFac();
+    const reloadFacilities = async (orgId = null) => {
       setupSelectOptions(
         facSelect,
         await loadFacilitiesLite(
-          { organization_id: getOrganizationId() },
+          orgId ? { organization_id: orgId } : {},
           true
         ),
         "id",
         "name",
         "-- Select Facility --"
       );
-      if (getFacilityId()) facSelect.value = getFacilityId();
-    } else {
-      hideFac();
-    }
+    };
 
-    setupSelectOptions(
-      billableSelect,
-      await loadBillableItemsLite({ category: "ekg" }, true),
-      "id",
-      "name",
-      "-- Select EKG Item --"
+    await reloadFacilities();
+
+    orgSelect?.addEventListener("change", () =>
+      reloadFacilities(orgSelect.value || null)
     );
 
-    setupSuggestionInputDynamic(
-      patientInput,
-      patientSuggestions,
-      "/api/lite/patients",
-      (selected) => {
-        patientId.value = selected?.id || "";
-        patientInput.value = selected?.label || "";
-      },
-      "label"
-    );
+  } else {
+    // 🔒 ALL OTHER ROLES — HIDDEN
+    orgSelect?.closest(".form-group")?.classList.add("hidden");
+    facSelect?.closest(".form-group")?.classList.add("hidden");
 
-
-    setupSuggestionInputDynamic(
-      technicianInput,
-      technicianSuggestions,
-      "/api/lite/employees",
-      (t) => {
-        technicianId.value = t?.id || "";
-        technicianInput.value = t?.full_name || "";
-      }
-    );
-  } catch (err) {
-    console.error(err);
-    showToast("❌ Failed to load reference data");
+    // 🔒 clear stale values
+    if (orgSelect) orgSelect.value = "";
+    if (facSelect) facSelect.value = "";
   }
+
+  /* ================= BILLABLE ITEMS ================= */
+  setupSelectOptions(
+    billableSelect,
+    await loadBillableItemsLite({ category: "ekg" }, true),
+    "id",
+    "name",
+    "-- Select EKG Item --"
+  );
+
+  /* ================= PATIENT ================= */
+  setupSuggestionInputDynamic(
+    patientInput,
+    patientSuggestions,
+    "/api/lite/patients",
+    (selected) => {
+      patientId.value = selected?.id || "";
+      patientInput.value = selected?.label || "";
+    },
+    "label"
+  );
+
+  /* ================= TECHNICIAN ================= */
+  setupSuggestionInputDynamic(
+    technicianInput,
+    technicianSuggestions,
+    "/api/lite/employees",
+    (t) => {
+      technicianId.value = t?.id || "";
+      technicianInput.value = t?.full_name || "";
+    },
+    "full_name"
+  );
+
+} catch (err) {
+  console.error(err);
+  showToast("❌ Failed to load reference data");
+}
   /* ============================================================
     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
@@ -278,11 +291,9 @@ export async function setupEKGRecordFormSubmission({ form }) {
       if (isSuper && entry.organization_id) {
         orgSelect.value = entry.organization_id;
       }
-
-      if ((isSuper || isOrgAdmin) && entry.facility_id) {
+      if (isSuper && entry.facility_id) {
         facSelect.value = entry.facility_id;
       }
-
       /* ---------- Billing ---------- */
       if (entry.billable_item_id) {
         billableSelect.value = entry.billable_item_id;
@@ -311,13 +322,12 @@ export async function setupEKGRecordFormSubmission({ form }) {
     }
 
     const payload = {
-      organization_id: isSuper ? normalizeUUID(orgSelect.value) : null,
-      facility_id: normalizeUUID(facSelect.value),
       patient_id: normalizeUUID(patientId.value),
       technician_id: normalizeUUID(technicianId.value),
       billable_item_id: normalizeUUID(billableSelect.value),
       registration_log_id: normalizeUUID(registrationLogSelect?.value),
       consultation_id: normalizeUUID(consultationSelect?.value),
+
       recorded_date: qs("recordedDate").value,
       heart_rate: qs("heartRate").value || null,
       pr_interval: qs("prInterval").value || null,
@@ -331,6 +341,10 @@ export async function setupEKGRecordFormSubmission({ form }) {
       is_emergency: qs("isEmergency").checked,
     };
 
+    if (isSuper) {
+      payload.organization_id = normalizeUUID(orgSelect.value);
+      payload.facility_id = normalizeUUID(facSelect.value);
+    }
     try {
       showLoading();
 

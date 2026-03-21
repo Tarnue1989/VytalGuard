@@ -1,10 +1,11 @@
-// 📦 autoBillingRule-main.js – Form-Only Loader (Enterprise-Aligned)
+// 📦 autoBillingRule-main.js – FULL ENTERPRISE MASTER ALIGNMENT (UPGRADED)
 // ============================================================================
-// 🧭 Master Pattern: billableitem-main.js / department-main.js (Form-Only Mode)
-// 🔹 Auth guard, logout watcher, and field selector
-// 🔹 Role-based form visibility and reset logic
-// 🔹 Auto-filled Trigger Module from Feature Module
-// 🔹 100% ID-safe for linked HTML + JS modules
+// 🧭 Mirrors registrationLog-main.js EXACTLY
+// 🔹 Pure module orchestrator (NO API, NO validation, NO business logic)
+// 🔹 Form visibility control + reset orchestration
+// 🔹 Session-safe edit handling
+// 🔹 Field selector (role-aware)
+// 🔹 100% aligned with enterprise structure
 // ============================================================================
 
 import {
@@ -14,22 +15,26 @@ import {
 } from "../../utils/index.js";
 
 import { setupAutoBillingRuleFormSubmission } from "./autoBillingRule-form.js";
+
 import {
   FIELD_LABELS_AUTO_BILLING_RULE,
   FIELD_ORDER_AUTO_BILLING_RULE,
   FIELD_DEFAULTS_AUTO_BILLING_RULE,
 } from "./autoBillingRule-constants.js";
+
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 Auth Guard + Shared State
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
+const token = initPageGuard(
+  autoPagePermissionKey([
+    "auto_billing_rule:create",
+    "auto_billing_rule:edit",
+  ])
+);
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
@@ -44,57 +49,56 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 Reset Form Helper (MASTER PARITY)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
+
   if (form) form.reset();
 
-  // 🧩 Clear cached edit session
+  // Clear cached edit state
   sessionStorage.removeItem("autoBillingRuleEditId");
   sessionStorage.removeItem("autoBillingRuleEditPayload");
 
-  // 🧽 Clear key inputs
+  // Clear visible inputs
   [
-    "featureModuleSelect",
     "triggerModuleInput",
-    "billableItemSelect",
-    "chargeMode",
     "defaultPrice",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🏢 Reset dropdowns
-  ["organizationSelect", "facilitySelect"].forEach((id) => {
+  // Clear dropdowns
+  [
+    "organizationSelect",
+    "facilitySelect",
+    "featureModuleSelect",
+    "billableItemSelect",
+    "chargeMode",
+  ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // ✅ Reset checkboxes / radios
-  const autoGen = document.getElementById("autoGenerate");
-  if (autoGen) autoGen.checked = false;
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
-
-  // 🧩 Clear dataset values
+  // Clear dataset (trigger module)
   const triggerInput = document.getElementById("triggerModuleInput");
   if (triggerInput) {
     delete triggerInput.dataset.key;
     delete triggerInput.dataset.id;
   }
 
-  // 🧾 Reset UI labels
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add Auto Billing Rule";
-  const submitBtn = form?.querySelector("button[type=submit]");
-  if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Rule`;
+  // Reset checkbox
+  const autoGen = document.getElementById("autoGenerate");
+  if (autoGen) autoGen.checked = false;
+
+  // Reset status radio
+  const activeRadio = document.getElementById("status_active");
+  if (activeRadio) activeRadio.checked = true;
 }
 
 /* ============================================================
-   🧭 Form Visibility Controls
+   🧭 Form Show / Hide (MASTER PARITY)
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -109,12 +113,12 @@ function hideForm() {
   localStorage.setItem("autoBillingRuleFormVisible", "false");
 }
 
-// 🌐 Expose globally for reuse by other handlers
+// 🌐 Expose globally
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Bindings
+   ⚙️ Button Wiring
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
@@ -127,33 +131,26 @@ if (clearBtn) clearBtn.onclick = resetForm;
 
 if (desktopAddBtn) {
   desktopAddBtn.onclick = () => {
-    // 🧹 Clean up stale edit data
     sessionStorage.removeItem("autoBillingRuleEditId");
     sessionStorage.removeItem("autoBillingRuleEditPayload");
-
-    // Reset + show form for Add mode
     resetForm();
     showForm();
   };
 }
 
 /* ============================================================
-   🧠 Loader Stub (Form-Only Mode)
+   📦 Loader Placeholder (FORM-ONLY MODE)
 ============================================================ */
 async function loadEntries() {
-  return; // handled by list page
+  return;
 }
 
 /* ============================================================
-   🚀 Module Initializer
+   🚀 Init Entrypoint (MASTER PARITY)
 ============================================================ */
 export async function initAutoBillingRuleModule() {
-  // Restore last visibility state
-  const visible = localStorage.getItem("autoBillingRuleFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
+  showForm(); // form-only mode (match registration log)
 
-  // Initialize form logic
   if (form) {
     setupAutoBillingRuleFormSubmission({
       form,
@@ -164,10 +161,9 @@ export async function initAutoBillingRuleModule() {
     });
   }
 
-  // Hide list panel when form-only mode is active
   localStorage.setItem("autoBillingRulePanelVisible", "false");
 
-  /* --------------------- Role Normalization --------------------- */
+  /* ---------------- Role Normalization ---------------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -175,18 +171,20 @@ export async function initAutoBillingRuleModule() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector Setup --------------------- */
+  /* ---------------- Field Selector ---------------- */
   setupFieldSelector({
     module: "auto_billing_rule",
     fieldLabels: FIELD_LABELS_AUTO_BILLING_RULE,
     fieldOrder: FIELD_ORDER_AUTO_BILLING_RULE,
-    defaultFields: FIELD_DEFAULTS_AUTO_BILLING_RULE[role],
+    defaultFields:
+      FIELD_DEFAULTS_AUTO_BILLING_RULE[role] ||
+      FIELD_DEFAULTS_AUTO_BILLING_RULE.staff,
   });
 }
 
 /* ============================================================
-   🔁 Sync Helper (Reserved for Future Reactive Updates)
+   🔁 Sync Stub (Future)
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for enterprise-level reactive form syncing
+  // Reserved for enterprise reactive syncing
 }

@@ -27,7 +27,7 @@ import {
 /* ============================================================
    🧭 CONSTANTS & DEBUG
 ============================================================ */
-const MODULE_KEY = "masterItemCategory";
+const MODULE_KEY = "master_item_categories";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
@@ -98,14 +98,11 @@ function buildCategorySchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE CATEGORY (MASTER PARITY)
+   📌 CREATE CATEGORY (MASTER PARITY — ROLE-BASED FIX)
 ============================================================ */
 export const createCategory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    /* ========================================================
-       🔐 AUTHORIZATION
-    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -114,11 +111,6 @@ export const createCategory = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("create → incoming body", req.body);
-
-    /* ========================================================
-       ✅ VALIDATION (ROLE-AWARE)
-    ======================================================== */
     const { value, errors } = validate(
       buildCategorySchema(
         (req.user?.roleNames?.[0] || "").toLowerCase(),
@@ -128,27 +120,33 @@ export const createCategory = async (req, res) => {
     );
 
     if (errors) {
-      debug.warn("create → validation error", errors);
       await t.rollback();
       return res.status(400).json({ success: false, errors });
     }
 
     /* ========================================================
-       🧭 SCOPE RESOLUTION (MASTER)
+       🧭 ROLE-BASED SCOPE RESOLUTION (FIXED)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    let orgId = null;
+    let facilityId = null;
 
-    debug.log("create → resolved scope", { orgId, facilityId });
-
-    if (!orgId) {
-      await t.rollback();
-      return error(res, "Missing organization assignment", null, 400);
+    if (isSuperAdmin(req.user)) {
+      orgId = "organization_id" in value ? value.organization_id : null;
+      facilityId = "facility_id" in value ? value.facility_id : null;
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = "facility_id" in value ? value.facility_id : null;
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
     }
 
+    /* ========================================================
+       🚫 FACILITY RULE
+    ======================================================== */
     if (!facilityId && !isOrgLevelUser(req.user) && !isSuperAdmin(req.user)) {
       await t.rollback();
       return error(
@@ -160,7 +158,7 @@ export const createCategory = async (req, res) => {
     }
 
     /* ========================================================
-       🚫 UNIQUENESS CHECK (PARANOID-SAFE)
+       🚫 UNIQUENESS CHECK
     ======================================================== */
     const exists = await MasterItemCategory.findOne({
       where: {
@@ -198,17 +196,11 @@ export const createCategory = async (req, res) => {
 
     await t.commit();
 
-    /* ========================================================
-       🔄 RELOAD (FULL ENTITY)
-    ======================================================== */
     const full = await MasterItemCategory.findOne({
       where: { id: created.id },
       include: CATEGORY_INCLUDES,
     });
 
-    /* ========================================================
-       🧾 AUDIT LOG
-    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -221,23 +213,16 @@ export const createCategory = async (req, res) => {
     return success(res, "✅ Category created", full);
   } catch (err) {
     await t.rollback();
-    debug.error("createCategory → FAILED", err);
     return error(res, "❌ Failed to create category", err);
   }
 };
 
-
 /* ============================================================
-   📌 UPDATE CATEGORY (MASTER PARITY)
+   📌 UPDATE CATEGORY (MASTER PARITY — ROLE-BASED FIX)
 ============================================================ */
 export const updateCategory = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    debug.log("update → incoming", {
-      id: req.params.id,
-      body: req.body,
-    });
-
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -260,17 +245,23 @@ export const updateCategory = async (req, res) => {
     }
 
     /* ========================================================
-       🧭 SCOPE RESOLUTION (MASTER PARITY)
+       🧭 ROLE-BASED SCOPE RESOLUTION (FIXED)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    let orgId = null;
+    let facilityId = null;
 
-    if (!orgId) {
-      await t.rollback();
-      return error(res, "Missing organization assignment", null, 400);
+    if (isSuperAdmin(req.user)) {
+      orgId = "organization_id" in value ? value.organization_id : null;
+      facilityId = "facility_id" in value ? value.facility_id : null;
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = "facility_id" in value ? value.facility_id : null;
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
     }
 
     const record = await MasterItemCategory.findOne({
@@ -341,11 +332,9 @@ export const updateCategory = async (req, res) => {
     return success(res, "✅ Category updated", full);
   } catch (err) {
     await t.rollback();
-    debug.error("updateCategory → FAILED", err);
     return error(res, "❌ Failed to update category", err);
   }
 };
-
 
 /* ============================================================
    📌 GET ALL CATEGORIES (MASTER PARITY)
@@ -542,7 +531,11 @@ export const getCategoryById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET CATEGORIES LITE (MASTER PARITY)
+   📌 GET CATEGORIES LITE (MASTER PARITY — FIXED)
+   - Active only
+   - Org + System visibility (for Org Admin)
+   - Facility-safe for lower roles
+   - No hard limit (dropdown-safe)
 ============================================================ */
 export const getAllCategoriesLite = async (req, res) => {
   try {
@@ -556,17 +549,27 @@ export const getAllCategoriesLite = async (req, res) => {
 
     const { q } = req.query;
 
+    /* ========================================================
+       🧱 BASE WHERE
+    ======================================================== */
     const where = {
       status: MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
+       🔐 TENANT SCOPE (FIXED)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+      // ✅ Org + System categories
+      where[Op.and].push({
+        [Op.or]: [
+          { organization_id: req.user.organization_id },
+          { organization_id: null }, // 🔥 system categories
+        ],
+      });
 
+      // ✅ Only restrict facility for NON-org-level users
       if (!isOrgLevelUser(req.user)) {
         where[Op.and].push({
           [Op.or]: [
@@ -576,10 +579,18 @@ export const getAllCategoriesLite = async (req, res) => {
         });
       }
     } else {
-      if (req.query.organization_id)
-        where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        where.facility_id = req.query.facility_id;
+      // Super admin filters (optional)
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
     /* ========================================================
@@ -594,11 +605,14 @@ export const getAllCategoriesLite = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const categories = await MasterItemCategory.findAll({
       where,
       attributes: ["id", "name", "code"],
       order: [["name", "ASC"]],
-      limit: 50,
+      // 🚫 NO LIMIT → dropdown must show all
     });
 
     const records = categories.map((c) => ({
@@ -607,20 +621,27 @@ export const getAllCategoriesLite = async (req, res) => {
       code: c.code || "",
     }));
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: records.length, q: q || null },
+      details: {
+        count: records.length,
+        q: q || null,
+      },
     });
 
-    return success(res, "✅ Categories loaded (lite)", { records });
+    return success(res, "✅ Categories loaded (lite)", {
+      records,
+    });
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load categories (lite)", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE CATEGORY STATUS (MASTER PARITY)
 ============================================================ */

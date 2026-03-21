@@ -527,7 +527,7 @@ async function authFetch(url, options = {}) {
     };
 
     /* ============================================================
-       🔐 TENANT SCOPING (LEDGER-FIRST, MASTER RULE)
+      🔐 TENANT SCOPING (LEDGER-FIRST, MASTER RULE — FIXED)
     ============================================================ */
     if (!isFormData && finalOptions.body) {
       try {
@@ -544,15 +544,22 @@ async function authFetch(url, options = {}) {
         );
 
         if (isLedgerDerived) {
-          // 🔒 Ledger is source of truth → NEVER accept tenant from frontend
+          // 🔒 Ledger = source of truth → strip ALL tenant fields
           delete scoped.organization_id;
           delete scoped.facility_id;
           delete scoped.patient_id;
+
         } else if (userRole === "superadmin") {
-          // 🧭 Explicit tenant-scoped actions only (non-ledger)
+          // 🧭 Super Admin → full control
           scoped = applyRequestScope(scoped);
+
+        } else if (userRole === "orgadmin" || userRole.includes("org")) {
+          // ✅ ORG ADMIN → allow facility_id, block org override
+          delete scoped.organization_id;
+          // keep facility_id
+
         } else {
-          // 🚫 Safety net for org admin / staff
+          // 🚫 Facility users / staff → no tenant override
           delete scoped.organization_id;
           delete scoped.facility_id;
         }
@@ -570,7 +577,6 @@ async function authFetch(url, options = {}) {
         console.warn("⚠️ [authFetch] Could not process JSON payload", e);
       }
     }
-
     /* ============================================================
        🧩 FORMDATA DEBUG (SAFE)
     ============================================================ */

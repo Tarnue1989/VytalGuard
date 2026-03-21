@@ -121,7 +121,7 @@ export function setupActionHandlers({
 
     // --- Toggle Status ---
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("master_items:toggle"))
+      if (!hasPerm("master_items:toggle_status"))
         return showToast("⛔ You don't have permission to toggle item status");
       return await handleToggleStatus(id, entry);
     }
@@ -242,7 +242,7 @@ export function setupActionHandlers({
   };
 
   window.toggleStatusEntry = async (id) => {
-    if (!hasPerm("master_items:toggle"))
+    if (!hasPerm("master_items:toggle_status"))
       return showToast("⛔ No permission to toggle item status");
     const entry = findEntry(id);
     await handleToggleStatus(id, entry);

@@ -25,7 +25,7 @@ import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
 import { FIELD_VISIBILITY_INVOICE } from "../constants/fieldVisibility.js";
 
-const MODULE_KEY = "invoice";
+const MODULE_KEY = "invoices";
 
 // 🔖 Local enum map for readability
 const IS = {

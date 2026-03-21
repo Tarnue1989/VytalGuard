@@ -206,7 +206,29 @@ export async function setupMasterItemFormSubmission({ form }) {
           "-- Select Facility --"
         );
       });
+
+    } else if (role.includes("org")) {
+      // ✅ ORG ADMIN FIX
+      orgSelect?.closest(".form-group")?.classList.add("hidden");
+
+      setupSelectOptions(
+        facSelect,
+        await loadFacilitiesLite({}, true),
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+
+      setupSelectOptions(
+        deptSelect,
+        await loadDepartmentsLite({}, true),
+        "id",
+        "name",
+        "-- Select Department --"
+      );
+
     } else {
+      // facility / staff
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
 
@@ -338,7 +360,9 @@ export async function setupMasterItemFormSubmission({ form }) {
       category_id: normalizeUUID(catSelect.value),
       department_id: normalizeUUID(deptSelect.value),
       organization_id: normalizeUUID(orgSelect?.value),
-      facility_id: normalizeUUID(facSelect?.value),
+      facility_id: role.includes("org")
+        ? normalizeUUID(facSelect?.value) || localStorage.getItem("facility_id")
+        : normalizeUUID(facSelect?.value),
       feature_module_id: normalizeUUID(featureModuleId.value),
       status:
         document.querySelector("input[name='status']:checked")?.value ||
@@ -362,11 +386,35 @@ export async function setupMasterItemFormSubmission({ form }) {
           normalizeMessage(result, `❌ Server error (${res.status})`)
         );
 
-      showToast(
-        isEdit ? "✅ Item updated successfully" : "✅ Item created successfully"
-      );
-      sessionStorage.clear();
-      window.location.href = "/master-items-list.html";
+        showToast(
+          isEdit ? "✅ Item updated successfully" : "✅ Item created successfully"
+        );
+
+        sessionStorage.clear();
+
+        /* ================= RESET FORM ================= */
+        form.reset();
+        clearFormErrors(form);
+
+        /* ================= RESET UI ================= */
+        setUI("add");
+
+        document
+          .getElementById("status_active")
+          ?.setAttribute("checked", true);
+
+        /* ================= CLEAR CUSTOM FIELDS ================= */
+        featureModuleInput.value = "";
+        featureModuleId.value = "";
+
+        /* ================= OPTIONAL: reset dropdowns ================= */
+        if (orgSelect) orgSelect.value = "";
+        if (facSelect) facSelect.value = "";
+        if (deptSelect) deptSelect.value = "";
+        if (catSelect) catSelect.value = "";
+        itemTypeSelect.value = "";
+
+        /* ⚠️ DO NOT call toggleFieldsByItemType("") */
     } catch (err) {
       showToast(err.message);
     } finally {

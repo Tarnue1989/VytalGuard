@@ -1,10 +1,11 @@
-// 📦 autoBillingRule-filter-main.js – Filters + Table/Card (Enterprise-Aligned)
+// 📦 autoBillingRule-filter-main.js – ENTERPRISE MASTER PARITY (FINAL)
 // ============================================================================
-// 🧭 Master Pattern: billableitem-filter-main.js / vital-filter-main.js
-// 🔹 Full enterprise structure — auth guard, pagination, filters, exports,
-//   field selector, unified UI logic, and consistent permission handling.
-// 🔹 Added dynamic Trigger Module search (lite endpoint integration)
-// 🔹 100% ID and dataset key preservation for safe integration.
+// 🔹 FULL parity with registrationLog-filter-main.js
+// 🔹 Auto search + auto filters (FIXED)
+// 🔹 Trigger module live search (FIXED)
+// 🔹 Date range wired (FIXED)
+// 🔹 Sort bridge
+// 🔹 View sync
 // ============================================================================
 
 import {
@@ -19,6 +20,7 @@ import {
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
+
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
@@ -32,47 +34,52 @@ import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 import { renderList, renderDynamicTableHead } from "./autoBillingRule-render.js";
 import { setupActionHandlers } from "./autoBillingRule-actions.js";
+
 import {
   FIELD_ORDER_AUTO_BILLING_RULE,
   FIELD_DEFAULTS_AUTO_BILLING_RULE,
 } from "./autoBillingRule-constants.js";
+
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
 
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+
 /* ============================================================
-   🔐 Auth Guard + Session Watch
+   🔐 AUTH
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-const user = { role: userRole, permissions: perms };
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map(p =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("autoBillingRuleView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "auto_billing_rule",
   userRole,
@@ -80,11 +87,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_AUTO_BILLING_RULE,
 });
 
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -92,97 +102,131 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 DOM REFS
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterTriggerModule = document.getElementById("filterTriggerModule");
-const filterTriggerModuleId = document.getElementById("filterTriggerModuleId");
-const filterTriggerModuleSuggestions = document.getElementById("filterTriggerModuleSuggestions");
-const filterBillableItem = document.getElementById("filterBillableItemSelect");
-const filterChargeMode = document.getElementById("filterChargeMode");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch = qs("globalSearch");
+const dateRange = qs("dateRange");
+
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+
+const filterTriggerModule = qs("filterTriggerModule");
+const filterTriggerModuleId = qs("filterTriggerModuleId");
+const filterTriggerModuleSuggestions = qs("filterTriggerModuleSuggestions");
+
+const filterBillableItem = qs("filterBillableItemSelect");
+const filterChargeMode = qs("filterChargeMode");
+const filterStatus = qs("filterStatus");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("autoBillingRuleView") || "table";
+window.setAutoBillingRuleSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+
+window.loadAutoBillingRulePage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
-============================================================ */
-function getFilters() {
-  return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    trigger_feature_module_id: filterTriggerModuleId?.value || "",
-    trigger_module: filterTriggerModule?.value || "",
-    billable_item_id: filterBillableItem?.value || "",
-    charge_mode: filterChargeMode?.value || "",
-    status: filterStatus?.value || "",
-    created_at: {
-      gte: filterCreatedFrom?.value || "",
-      lte: filterCreatedTo?.value || "",
-    },
-  };
-}
-
-/* ============================================================
-   🔁 Pagination Control
+   📄 PAGINATION
 ============================================================ */
 const getPagination = initPaginationControl(
   "auto_billing_rule",
   loadEntries,
-  25
+  Number(localStorage.getItem("autoBillingRulePageLimit") || 25)
 );
 
 /* ============================================================
-   📦 Load Auto Billing Rules
+   🔎 AUTO SEARCH + FILTERS (FIXED)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterBillableItem,
+    filterChargeMode,
+    filterStatus,
+  ],
+  dateRangeInput: dateRange, // ✅ FIXED
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   🔥 TRIGGER MODULE LIVE SEARCH (FIXED)
+============================================================ */
+let triggerDebounce;
+
+filterTriggerModule?.addEventListener("input", () => {
+  clearTimeout(triggerDebounce);
+
+  triggerDebounce = setTimeout(() => {
+    if (!filterTriggerModule.value.trim()) {
+      filterTriggerModuleId.value = "";
+    }
+    loadEntries(1);
+  }, 400);
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
+============================================================ */
+function getFilters() {
+  return {
+    search: globalSearch?.value?.trim(),
+    dateRange: dateRange?.value,
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    trigger_feature_module_id: filterTriggerModuleId?.value,
+    trigger_module: filterTriggerModule?.value,
+    billable_item_id: filterBillableItem?.value,
+    charge_mode: filterChargeMode?.value,
+    status: filterStatus?.value,
+  };
+}
+
+/* ============================================================
+   📦 LOAD DATA
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_at.gte) q.append("created_at[gte]", filters.created_at.gte);
-    if (filters.created_at.lte) q.append("created_at[lte]", filters.created_at.lte);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || typeof v === "object") return;
-      q.append(k, v);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v) q.set(k, v);
     });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_AUTO_BILLING_RULE.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
 
     const res = await authFetch(`/api/auto-billing-rules?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -195,16 +239,14 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
 
-    if (!records.length)
-      showToast("ℹ️ No Auto Billing Rules found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load Auto Billing Rules");
   } finally {
     hideLoading();
@@ -212,86 +254,47 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle (Table ↔ Card)
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("autoBillingRuleView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("autoBillingRuleView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
+qs("resetFilterBtn")?.addEventListener("click", () => {
   [
-    filterTriggerModule,
+    globalSearch,
+    dateRange,
+    filterOrg,
+    filterFacility,
     filterBillableItem,
     filterChargeMode,
     filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => {
-    if (el) el.value = "";
-  });
+  ].forEach(el => el && (el.value = ""));
+
+  if (filterTriggerModule) filterTriggerModule.value = "";
   if (filterTriggerModuleId) filterTriggerModuleId.value = "";
 
-  if (userRole.includes("super")) {
-    if (filterOrg) filterOrg.value = "";
-    if (filterFacility) filterFacility.value = "";
-  } else {
-    const scopedOrgId = localStorage.getItem("organizationId");
-    const scopedFacId = localStorage.getItem("facilityId");
-    if (filterOrg) filterOrg.value = scopedOrgId || "";
-    if (filterFacility) filterFacility.value = scopedFacId || "";
-  }
-
   loadEntries(1);
-};
+});
 
 /* ============================================================
-   ⬇️ Export Tools
-============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `auto_billing_rules_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
-
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#autoBillingRuleList";
-    exportToPDF("Auto Billing Rule List", target, "portrait", true);
-  };
-
-/* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initAutoBillingRuleModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible =
-    localStorage.getItem("autoBillingRuleFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -301,53 +304,24 @@ export async function initAutoBillingRuleModule() {
   );
 
   try {
-    // 🌐 Organization / Facility preload
+    /* ORG / FAC */
     const orgs = await loadOrganizationsLite();
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      let facilities = await loadFacilitiesLite();
-      facilities.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facilities, "id", "name");
+    const facs = await loadFacilitiesLite();
+    facs.unshift({ id: "", name: "-- All Facilities --" });
+    setupSelectOptions(filterFacility, facs, "id", "name");
 
-      filterOrg?.addEventListener("change", async () => {
-        const selectedOrgId = filterOrg.value;
-        try {
-          let facs = selectedOrgId
-            ? await loadFacilitiesLite({ organization_id: selectedOrgId })
-            : await loadFacilitiesLite();
-          facs.unshift({ id: "", name: "-- All Facilities --" });
-          setupSelectOptions(filterFacility, facs, "id", "name");
-        } catch (err) {
-          console.error("❌ Facility reload failed:", err);
-          showToast("❌ Could not load facilities for organization");
-        }
+    filterOrg?.addEventListener("change", async () => {
+      const facs = await loadFacilitiesLite({
+        organization_id: filterOrg.value,
       });
-    } else {
-      const scopedOrgId = localStorage.getItem("organizationId");
-      const scopedFacId = localStorage.getItem("facilityId");
-      if (filterOrg) {
-        const scopedOrg = orgs.find((o) => o.id === scopedOrgId);
-        setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-        filterOrg.disabled = true;
-        filterOrg.value = scopedOrgId || "";
-      }
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    });
 
-      const facilities = scopedOrgId
-        ? await loadFacilitiesLite({ organization_id: scopedOrgId })
-        : [];
-      setupSelectOptions(
-        filterFacility,
-        facilities,
-        "id",
-        "name",
-        "-- All Facilities --"
-      );
-      if (scopedFacId) filterFacility.value = scopedFacId;
-    }
-
-    // 💳 Billable Items
+    /* BILLABLE */
     const billables = await loadBillableItemsLite();
     setupSelectOptions(
       filterBillableItem,
@@ -357,17 +331,35 @@ export async function initAutoBillingRuleModule() {
       "-- All Billable Items --"
     );
 
-    // ⚡ Dynamic Trigger Module Search
+    /* TRIGGER MODULE */
     setupSuggestionInputDynamic(
       filterTriggerModule,
       filterTriggerModuleSuggestions,
       "/api/lite/feature-modules",
-      (item) => {
+      async (item) => {
         filterTriggerModule.value = item.name;
         filterTriggerModuleId.value = item.id;
+
+        // 🔥 IMPORTANT: filter billables by module
+        await loadBillableItemsLite(
+          { code: item.key, _ts: Date.now() }, // 🔥 FORCE UNIQUE REQUEST
+          true
+        ).then((billables) => {
+          billables.unshift({ id: "", name: "-- All Billable Items --" });
+
+          setupSelectOptions(
+            filterBillableItem,
+            billables,
+            "id",
+            "name"
+          );
+        });
+
+        loadEntries(1);
       },
       "name"
     );
+
   } catch (err) {
     console.error("❌ preload failed:", err);
   }
@@ -377,20 +369,8 @@ export async function initAutoBillingRuleModule() {
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   🏁 BOOT
 ============================================================ */
-export function syncRefsToState() {
-  // Reserved for enterprise reactive sync
-}
-
-/* ============================================================
-   🏁 Boot
-============================================================ */
-function boot() {
-  initAutoBillingRuleModule().catch((err) =>
-    console.error("initAutoBillingRuleModule failed:", err)
-  );
-}
-if (document.readyState === "loading")
-  document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initAutoBillingRuleModule)
+  : initAutoBillingRuleModule();

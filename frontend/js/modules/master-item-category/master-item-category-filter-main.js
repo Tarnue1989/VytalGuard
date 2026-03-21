@@ -15,6 +15,7 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
@@ -48,10 +49,11 @@ import { mapDataForExport } from "../../utils/export-mapper.js";
 import { syncViewToggleUI } from "../../utils/view-toggle.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
+
 /* ============================================================
-   🔐 AUTH + USER
+   🔐 AUTH + USER (MASTER CONSISTENT)
 ============================================================ */
-const token = initPageGuard("master-item-categories");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();

@@ -1,6 +1,14 @@
 // 📁 controllers/ultrasoundRecordController.js
+
+/* ============================================================
+   📦 CORE / THIRD-PARTY
+============================================================ */
 import Joi from "joi";
 import { Op } from "sequelize";
+
+/* ============================================================
+   🗄️ MODELS
+============================================================ */
 import {
   sequelize,
   UltrasoundRecord,
@@ -16,18 +24,37 @@ import {
   Facility,
   Department,
 } from "../models/index.js";
+
+/* ============================================================
+   🧰 CORE UTILITIES
+============================================================ */
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
-import { ULTRASOUND_STATUS } from "../constants/enums.js";
-import { authzService } from "../services/authzService.js";
-import { auditService } from "../services/auditService.js";
-import { FIELD_VISIBILITY_ULTRASOUND_RECORD } from "../constants/fieldVisibility.js";
-import { billingService } from "../services/billingService.js";
-import { shouldTriggerBilling } from "../constants/billing.js";
-import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
-import { isSuperAdmin} from "../utils/role-utils.js";
-import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { validate } from "../utils/validation.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+
+/* ============================================================
+   🔐 AUTH / ROLE
+============================================================ */
+import { authzService } from "../services/authzService.js";
+import { isSuperAdmin } from "../utils/role-utils.js";
+
+/* ============================================================
+   📊 ENUMS / FIELD VISIBILITY
+============================================================ */
+import { ULTRASOUND_STATUS } from "../constants/enums.js";
+import { FIELD_VISIBILITY_ULTRASOUND_RECORD } from "../constants/fieldVisibility.js";
+
+/* ============================================================
+   🧾 SERVICES
+============================================================ */
+import { auditService } from "../services/auditService.js";
+import { billingService } from "../services/billingService.js";
+
+/* ============================================================
+   🔗 HELPERS
+============================================================ */
+import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
 
 // 🔖 Local enum map for readability
 const USS = {
@@ -398,15 +425,23 @@ export const updateUltrasoundRecord = async (req, res) => {
 
 /* ============================================================
    1️⃣ START ULTRASOUND (pending → in_progress)
-   ============================================================ */
+   🔥 MASTER PARITY (BILLING POINT)
+============================================================ */
 export const startUltrasound = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const user = req.user;
 
-    const rec = await UltrasoundRecord.findOne({ where: { id }, transaction: t });
-    if (!rec) return error(res, "❌ Ultrasound record not found", null, 404);
+    const rec = await UltrasoundRecord.findOne({
+      where: { id },
+      transaction: t,
+    });
+
+    if (!rec) {
+      await t.rollback();
+      return error(res, "❌ Ultrasound record not found", null, 404);
+    }
 
     if (rec.status !== USS.PENDING) {
       await t.rollback();
@@ -414,12 +449,37 @@ export const startUltrasound = async (req, res) => {
     }
 
     const oldStatus = rec.status;
+
+    /* ================= UPDATE ================= */
     await rec.update(
-      { status: USS.IN_PROGRESS, updated_by_id: user?.id || null },
+      {
+        status: USS.IN_PROGRESS,
+        updated_by_id: user?.id || null,
+      },
       { transaction: t }
     );
+
+    /* 🔥 CRITICAL — ENSURE UPDATED STATE */
+    await rec.reload({ transaction: t });
+
+    /* 🔥 MASTER BILLING (EARLY — SAME AS EKG) */
+    await billingService.triggerAutoBilling({
+      module: MODULE_KEY,
+      entity: {
+        ...rec.toJSON(),
+        billable_item_id: rec.billable_item_id,
+      },
+      user: {
+        ...user,
+        organization_id: rec.organization_id,
+        facility_id: rec.facility_id,
+      },
+      transaction: t,
+    });
+
     await t.commit();
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user,
       module: MODULE_KEY,
@@ -434,9 +494,10 @@ export const startUltrasound = async (req, res) => {
       },
     });
 
-    return success(res, "✅ Ultrasound started (in-progress)", rec);
+    return success(res, "✅ Ultrasound started", rec);
   } catch (err) {
     await t.rollback();
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -444,21 +505,30 @@ export const startUltrasound = async (req, res) => {
       entityId: req.params.id,
       details: { outcome: "failed", error: err.message },
     });
+
     return error(res, "❌ Failed to start ultrasound", err);
   }
 };
 
 /* ============================================================
    2️⃣ COMPLETE ULTRASOUND (in_progress → completed)
-   ============================================================ */
+   (NO BILLING — billing happens at START)
+============================================================ */
 export const completeUltrasound = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const user = req.user;
 
-    const rec = await UltrasoundRecord.findOne({ where: { id }, transaction: t });
-    if (!rec) return error(res, "❌ Ultrasound record not found", null, 404);
+    const rec = await UltrasoundRecord.findOne({
+      where: { id },
+      transaction: t,
+    });
+
+    if (!rec) {
+      await t.rollback();
+      return error(res, "❌ Ultrasound record not found", null, 404);
+    }
 
     if (rec.status !== USS.IN_PROGRESS) {
       await t.rollback();
@@ -466,25 +536,19 @@ export const completeUltrasound = async (req, res) => {
     }
 
     const oldStatus = rec.status;
+
+    /* ================= UPDATE ================= */
     await rec.update(
-      { status: USS.COMPLETED, updated_by_id: user?.id || null },
+      {
+        status: USS.COMPLETED,
+        updated_by_id: user?.id || null,
+      },
       { transaction: t }
     );
 
-    if (shouldTriggerBilling(MODULE_KEY, USS.COMPLETED)) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: rec,
-        user: {
-          ...user,
-          organization_id: rec.organization_id,
-          facility_id: rec.facility_id,
-        },
-        transaction: t,
-      });
-    }
-
     await t.commit();
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user,
       module: MODULE_KEY,
@@ -502,6 +566,7 @@ export const completeUltrasound = async (req, res) => {
     return success(res, "✅ Ultrasound marked as completed", rec);
   } catch (err) {
     await t.rollback();
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -509,10 +574,10 @@ export const completeUltrasound = async (req, res) => {
       entityId: req.params.id,
       details: { outcome: "failed", error: err.message },
     });
+
     return error(res, "❌ Failed to complete ultrasound", err);
   }
 };
-
 /* ============================================================
    3️⃣ CANCEL ULTRASOUND (pending/in_progress → cancelled)
    ============================================================ */
@@ -599,7 +664,8 @@ export const cancelUltrasound = async (req, res) => {
 
 /* ============================================================
    4️⃣ VERIFY ULTRASOUND (completed → verified)
-   ============================================================ */
+   (NO BILLING — billing happens at START)
+============================================================ */
 export const verifyUltrasound = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -608,13 +674,23 @@ export const verifyUltrasound = async (req, res) => {
     const role = (user?.roleNames?.[0] || "staff").toLowerCase();
 
     const where = { id };
+
     if (!isSuperAdmin(user)) {
       where.organization_id = user.organization_id;
-      if (role === "facility_head") where.facility_id = user.facility_id;
+      if (role === "facility_head") {
+        where.facility_id = user.facility_id;
+      }
     }
 
-    const rec = await UltrasoundRecord.findOne({ where, transaction: t });
-    if (!rec) return error(res, "❌ Ultrasound record not found", null, 404);
+    const rec = await UltrasoundRecord.findOne({
+      where,
+      transaction: t,
+    });
+
+    if (!rec) {
+      await t.rollback();
+      return error(res, "❌ Ultrasound record not found", null, 404);
+    }
 
     if (rec.status !== USS.COMPLETED) {
       await t.rollback();
@@ -622,25 +698,21 @@ export const verifyUltrasound = async (req, res) => {
     }
 
     const oldStatus = rec.status;
+
+    /* ================= UPDATE ================= */
     await rec.update(
-      { status: USS.VERIFIED, verified_by_id: user?.id || null, verified_at: new Date() },
+      {
+        status: USS.VERIFIED,
+        verified_by_id: user?.id || null,
+        verified_at: new Date(),
+        updated_by_id: user?.id || null,
+      },
       { transaction: t }
     );
 
-    if (shouldTriggerBilling(MODULE_KEY, USS.VERIFIED)) {
-      await billingService.triggerAutoBilling({
-        module: MODULE_KEY,
-        entity: rec,
-        user: {
-          ...user,
-          organization_id: rec.organization_id,
-          facility_id: rec.facility_id,
-        },
-        transaction: t,
-      });
-    }
-
     await t.commit();
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user,
       module: MODULE_KEY,
@@ -658,6 +730,7 @@ export const verifyUltrasound = async (req, res) => {
     return success(res, "✅ Ultrasound verified", rec);
   } catch (err) {
     await t.rollback();
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -665,10 +738,10 @@ export const verifyUltrasound = async (req, res) => {
       entityId: req.params.id,
       details: { outcome: "failed", error: err.message },
     });
+
     return error(res, "❌ Failed to verify ultrasound", err);
   }
 };
-
 /* ============================================================
    5️⃣ FINALIZE ULTRASOUND (verified → finalized)
    ============================================================ */

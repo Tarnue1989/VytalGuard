@@ -474,13 +474,15 @@ export async function fetchGenericList(endpoint, key = "data", cacheMinutes = 15
     const result = await res.json();
     const records = extractArrayRecords(result, key);
 
-    sessionStorage.setItem(
-      cacheKey,
-      JSON.stringify({
-        records,
-        expires: Date.now() + cacheMinutes * 60 * 1000,
-      })
-    );
+if (records.length > 0) {
+  sessionStorage.setItem(
+    cacheKey,
+    JSON.stringify({
+      records,
+      expires: Date.now() + cacheMinutes * 60 * 1000,
+    })
+  );
+}
 
     return records;
   } catch (err) {

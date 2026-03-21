@@ -48,21 +48,29 @@
 
                 <!-- 📦 Form Container -->
                 <div id="formContainer">
-                  <form id="autoBillingRuleForm">
+                  <form id="autoBillingRuleForm" novalidate>
                     <div class="row gx-4">
 
-                      <!-- Trigger Feature Module -->
-                      <div class="col-md-4">
+                      <!-- ================= Identity ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Identity</h6>
+                        <hr />
+                      </div>
+
+                      <!-- Feature Module -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
-                          <label class="form-label" for="featureModuleSelect">Feature Module</label>
+                          <label class="form-label" for="featureModuleSelect">
+                            Feature Module <span class="text-danger">*</span>
+                          </label>
                           <select class="form-control" id="featureModuleSelect" name="trigger_feature_module_id">
                             <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
-                      <!-- Trigger Module (auto-filled, read-only) -->
-                      <div class="col-md-4">
+                      <!-- Trigger Module -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
                           <label class="form-label" for="triggerModuleInput">
                             Trigger Module <small class="text-muted">(auto-filled)</small>
@@ -78,29 +86,34 @@
                         </div>
                       </div>
 
-
                       <!-- Billable Item -->
-                      <div class="col-md-4">
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
                           <label class="form-label" for="billableItemSelect">
                             Billable Item <span class="text-danger">*</span>
                           </label>
                           <select class="form-control" id="billableItemSelect" name="billable_item_id" required>
-                            <!-- dynamically populated by JS -->
+                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
+                      <!-- ================= Rule Configuration ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Rule Configuration</h6>
+                        <hr />
+                      </div>
+
                       <!-- Auto Generate -->
-                      <div class="col-md-4">
-                        <div class="form-check mb-3 mt-4">
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="form-check mt-4">
                           <input class="form-check-input" type="checkbox" id="autoGenerate" name="auto_generate">
                           <label class="form-check-label" for="autoGenerate">Auto Generate</label>
                         </div>
                       </div>
 
                       <!-- Charge Mode -->
-                      <div class="col-md-4">
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
                           <label class="form-label" for="chargeMode">
                             Charge Mode <span class="text-danger">*</span>
@@ -116,61 +129,57 @@
                       </div>
 
                       <!-- Default Price -->
-                      <div class="col-md-4">
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3">
                           <label class="form-label" for="defaultPrice">Default Price</label>
                           <input type="number" step="0.01" class="form-control" id="defaultPrice" name="default_price" placeholder="Enter default price">
                         </div>
                       </div>
 
-                      <!-- Status (hidden) -->
-                      <div class="col-md-4 d-none">
-                        <div class="mb-3">
-                          <label class="form-label">Status</label>
-                          <div class="m-0">
-                            <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_active" value="active" checked>
-                              <label class="form-check-label" for="status_active">Active</label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                              <input class="form-check-input" type="radio" name="status" id="status_inactive" value="inactive">
-                              <label class="form-check-label" for="status_inactive">Inactive</label>
-                            </div>
-                          </div>
-                        </div>
+                      <!-- ================= Scope ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Scope</h6>
+                        <hr />
                       </div>
 
-                      <!-- Organization (Super Admins only) -->
-                      <div class="col-md-4">
+                      <!-- Organization -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
-                          <label class="form-label" for="organizationSelect">Organization</label>
+                          <label class="form-label" for="organizationSelect">
+                            Organization
+                          </label>
                           <select class="form-control" id="organizationSelect" name="organization_id">
-                            <!-- dynamically populated by JS -->
+                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
-                      <!-- Facility (Admins only) -->
-                      <div class="col-md-4">
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
-                          <label class="form-label" for="facilitySelect">Facility</label>
+                          <label class="form-label" for="facilitySelect">
+                            Facility <span class="text-muted">(optional)</span>
+                          </label>
                           <select class="form-control" id="facilitySelect" name="facility_id">
-                            <!-- dynamically populated by JS -->
+                            <!-- dynamically populated -->
                           </select>
                         </div>
                       </div>
 
-                      <!-- Buttons -->
+                      <!-- ================= Actions ================= -->
                       <div class="col-sm-12">
                         <div class="d-flex gap-2 justify-content-end">
                           <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                            <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                            <i class="ri-arrow-go-back-line me-1"></i>
+                            Cancel
                           </button>
                           <button type="reset" id="clearBtn" class="btn btn-warning">
-                            <i class="ri-refresh-line me-1"></i> Clear
+                            <i class="ri-refresh-line me-1"></i>
+                            Clear
                           </button>
                           <button type="submit" class="btn btn-primary">
-                            <i class="ri-save-3-line me-1"></i> Save Rule
+                            <i class="ri-save-3-line me-1"></i>
+                            Save Rule
                           </button>
                         </div>
                       </div>
@@ -195,7 +204,9 @@
 
   <!-- overlays / modals / toasts -->
   <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    <div class="spinner-box">
+      <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
   </div>
 
   <!-- JS -->
