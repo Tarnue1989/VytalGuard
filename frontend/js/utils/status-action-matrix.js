@@ -551,9 +551,9 @@ export function buildActionButtons({
     /* =========================
       NORMALIZE TO DB PERMS
     ========================= */
-    if (act === "toggle-status") {
-      backend = "toggle_status";
-    }
+  if (act === "toggle-status") {
+    backend = "toggle_status";
+  }
     /* =========================
       MODULE-SPECIFIC OVERRIDES
     ========================= */

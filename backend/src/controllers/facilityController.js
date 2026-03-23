@@ -86,7 +86,9 @@ function buildFacilitySchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE FACILITY (MASTER PARITY)
+   📌 CREATE FACILITY (MASTER PARITY — FIXED)
+   ✔ No resolveOrgFacility
+   ✔ Org resolved safely by role
 ============================================================ */
 export const createFacility = async (req, res) => {
   const t = await sequelize.transaction();
@@ -112,17 +114,28 @@ export const createFacility = async (req, res) => {
       return res.status(400).json({ success: false, errors });
     }
 
-    const { orgId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    /* ============================================================
+       🧭 ORGANIZATION RESOLUTION (MASTER SAFE)
+       🚫 DO NOT USE resolveOrgFacility HERE
+    ============================================================ */
+    let orgId = null;
+
+    if (isSuperAdmin(req.user)) {
+      // Super Admin must send organization_id
+      orgId = value.organization_id;
+    } else {
+      // Org users inherit from session
+      orgId = req.user.organization_id;
+    }
 
     if (!orgId) {
       await t.rollback();
-      return error(res, "Missing organization assignment", null, 400);
+      return error(res, "❌ Organization is required", null, 400);
     }
 
+    /* ============================================================
+       🔒 DUPLICATE CHECK (ORG + CODE)
+    ============================================================ */
     const exists = await Facility.findOne({
       where: {
         code: value.code,
@@ -132,12 +145,14 @@ export const createFacility = async (req, res) => {
       transaction: t,
     });
 
-
     if (exists) {
       await t.rollback();
-      return error(res, "Facility code already exists", null, 400);
+      return error(res, "❌ Facility code already exists", null, 400);
     }
 
+    /* ============================================================
+       🏗️ CREATE
+    ============================================================ */
     const created = await Facility.create(
       {
         ...value,
@@ -149,11 +164,17 @@ export const createFacility = async (req, res) => {
 
     await t.commit();
 
+    /* ============================================================
+       📦 LOAD FULL RECORD
+    ============================================================ */
     const full = await Facility.findOne({
       where: { id: created.id },
       include: FACILITY_INCLUDES,
     });
 
+    /* ============================================================
+       🧾 AUDIT
+    ============================================================ */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -170,7 +191,6 @@ export const createFacility = async (req, res) => {
     return error(res, "❌ Failed to create facility", err);
   }
 };
-
 /* ============================================================
    📌 UPDATE FACILITY (MASTER PARITY)
 ============================================================ */

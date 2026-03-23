@@ -262,18 +262,25 @@ export async function setupRegistrationLogFormSubmission({ form }) {
     e.preventDefault();
     clearFormErrors(form);
 
-    const errors = [];
+  const errors = [];
 
-    for (const rule of REGISTRATION_LOG_FORM_RULES) {
-      if (typeof rule.when === "function" && !rule.when()) continue;
-      const el =
-        document.getElementById(rule.id) ||
-        form.querySelector(`[name="${rule.id}"]`);
-      if (!el || !el.value || el.value.toString().trim() === "") {
-        errors.push({ field: rule.id, message: rule.message });
-      }
+  for (const rule of REGISTRATION_LOG_FORM_RULES) {
+    // Skip if condition not met
+    if (typeof rule.when === "function" && !rule.when()) continue;
+
+    // Skip if not required
+    if (!rule.required) continue;
+
+    const el =
+      document.getElementById(rule.id) ||
+      form.querySelector(`[name="${rule.id}"]`);
+
+    const value = el?.value?.toString().trim();
+
+    if (!value) {
+      errors.push({ field: rule.id, message: rule.message });
     }
-
+  }
     if (!patientHidden.value) {
       errors.push({ field: "patientInput", message: "Patient is required" });
     }

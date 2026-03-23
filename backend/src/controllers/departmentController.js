@@ -101,7 +101,9 @@ function buildDepartmentSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE DEPARTMENT
+   📌 CREATE DEPARTMENT (MASTER — ROLE PATTERN)
+   ✔ NO resolveOrgFacility
+   ✔ Org comes from user for org admin
 ============================================================ */
 export const createDepartment = async (req, res) => {
   const t = await sequelize.transaction();
@@ -131,21 +133,39 @@ export const createDepartment = async (req, res) => {
     }
 
     /* ========================================================
-       🧭 SCOPE RESOLUTION (MASTER PARITY)
+       🧭 ROLE-BASED SCOPE RESOLUTION (MATCH ROLE CONTROLLER)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    let orgId = null;
+    let facilityId = null;
+
+    if (isSuperAdmin(req.user)) {
+      orgId = value.organization_id;
+      facilityId = value.facility_id || null;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = value.facility_id || null;
+
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
+    }
 
     debug.log("create → resolved scope", { orgId, facilityId });
 
+    /* ========================================================
+       🚨 HARD VALIDATION
+    ======================================================== */
     if (!orgId) {
       await t.rollback();
       return error(res, "Missing organization assignment", null, 400);
     }
 
+    // Optional rule (keep if your system requires facility)
     if (!facilityId && !isOrgLevelUser(req.user) && !isSuperAdmin(req.user)) {
       await t.rollback();
       return error(
@@ -195,11 +215,17 @@ export const createDepartment = async (req, res) => {
 
     await t.commit();
 
+    /* ========================================================
+       📦 LOAD FULL RECORD
+    ======================================================== */
     const full = await Department.findOne({
       where: { id: created.id },
       include: DEPARTMENT_INCLUDES,
     });
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -210,13 +236,13 @@ export const createDepartment = async (req, res) => {
     });
 
     return success(res, "✅ Department created", full);
+
   } catch (err) {
     await t.rollback();
     debug.error("createDepartment → FAILED", err);
     return error(res, "❌ Failed to create department", err);
   }
 };
-
 
 /* ============================================================
    📌 UPDATE DEPARTMENT (MASTER PARITY)

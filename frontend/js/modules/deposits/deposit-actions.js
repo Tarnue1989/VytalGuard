@@ -126,20 +126,21 @@ export function setupActionHandlers({
 
     // 🔄 Lifecycle map (MASTER STYLE)
     const lifecycleMap = {
-      "toggle-status-btn": "toggle-status",
-      "clear-btn": "toggle-status",
-      "revert-btn": "toggle-status",
+      "clear-btn": "clear",
+      "revert-btn": "reverse",
       "cancel-btn": "cancel",
       "reverse-btn": "reverse",
       "apply-btn": "apply",
       "verify-btn": "verify",
-      "void-btn": "voided",
+      "void-btn": "void",
       "restore-btn": "restore",
     };
-
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
-        if (!hasPerm(`deposits:${action}`) && !hasPerm("deposits:edit"))
+
+        const normalizedAction = action;
+
+        if (!hasPerm(`deposits:${normalizedAction}`) && !hasPerm("deposits:edit"))
           return showToast(`⛔ No permission to ${action} deposits`);
 
         if (action === "apply") return await handleApply(entry);
@@ -198,11 +199,12 @@ export function setupActionHandlers({
     );
     if (!confirmed) return;
 
-    const url =
-      action === "toggle-status"
-        ? `/api/deposits/${id}/toggle-status`
-        : `/api/deposits/${id}/${action}`;
+    let url = `/api/deposits/${id}/${action}`;
 
+    // 🔥 map frontend lifecycle → backend endpoint
+    if (action === "clear" || action === "reverse") {
+      url = `/api/deposits/${id}/toggle-status`;
+    }
     try {
       showLoading();
       const res = await authFetch(url, { method: "PATCH" });
@@ -363,13 +365,18 @@ export function setupActionHandlers({
     await handleDelete(id);
   };
 
-  ["toggle-status", "cancel", "reverse", "apply", "verify", "voided", "restore"].forEach(
+  ["clear", "cancel", "reverse", "apply", "verify", "void", "restore"].forEach(
     (action) => {
       window[`${action}Deposit`] = async (id) => {
-        if (!hasPerm(`deposits:${action}`) && !hasPerm("deposits:edit"))
+        const normalizedAction = action;
+
+        if (!hasPerm(`deposits:${normalizedAction}`) && !hasPerm("deposits:edit"))
           return showToast(`⛔ No permission to ${action} deposits`);
+
         const entry = findEntry(id);
+
         if (action === "apply") return await handleApply(entry);
+
         await handleLifecycle(id, action);
       };
     }
