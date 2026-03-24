@@ -1,11 +1,4 @@
-// 📦 billing-trigger-filter-main.js – Enterprise Filter + Table/Card (FINAL)
-// ============================================================================
-// 🔹 MASTER PARITY with billableitem-filter-main.js (selective)
-// 🔹 Auto search, auto filters, sorting, pagination
-// 🔹 UI-only dateRange (never DB column)
-// 🔹 Org / Facility fully wired
-// 🔹 BillingTrigger controller-aligned
-// ============================================================================
+// 📦 billing-trigger-filter-main.js – Enterprise Filter + Table/Card (FINAL – FULL SAFE UPGRADE)
 
 import {
   showToast,
@@ -23,6 +16,7 @@ import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
+  loadFeatureModulesLite, // 🔥 NEW (SAFE ADD)
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
@@ -49,9 +43,7 @@ import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
 import { syncViewToggleUI } from "../../utils/view-toggle.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
-/* ============================================================
-   🔐 AUTH + USER
-============================================================ */
+/* ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
@@ -66,9 +58,7 @@ const permissions = (() => {
 })();
 const user = { role: userRole, permissions };
 
-/* ============================================================
-   🧠 STATE
-============================================================ */
+/* ============================================================ */
 let entries = [];
 let currentPage = 1;
 let viewMode = localStorage.getItem("billingTriggerView") || "table";
@@ -77,19 +67,15 @@ let sortDir = "asc";
 
 const sharedState = { currentEditIdRef: { value: null } };
 
-/* ============================================================
-   👁️ FIELD VISIBILITY
-============================================================ */
+/* ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "billingTrigger",
+  moduleKey: "billing_triggers",
   userRole,
   defaultFields: FIELD_DEFAULTS_BILLING_TRIGGER,
   allowedFields: FIELD_ORDER_BILLING_TRIGGER,
 });
 
-/* ============================================================
-   🧩 FIELD SELECTOR
-============================================================ */
+/* ============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
@@ -101,57 +87,55 @@ renderFieldSelector(
   FIELD_ORDER_BILLING_TRIGGER
 );
 
-/* ============================================================
-   🔎 FILTER DOM
-============================================================ */
+/* ============================================================ */
 const qs = (id) => document.getElementById(id);
 
 const globalSearch   = qs("globalSearch");
+const filterModule   = qs("filterModuleSelect"); // 🔥 NEW
 const filterOrg      = qs("filterOrganizationSelect");
 const filterFacility = qs("filterFacilitySelect");
-const filterActive   = qs("filterStatusSelect"); // ✅ FIXED
+const filterActive   = qs("filterStatusSelect");
 const dateRange      = qs("dateRange");
 
-/* ============================================================
-   🔃 SORT BRIDGE
-============================================================ */
+/* ============================================================ */
 window.setBillingTriggerSort = (field, dir) => {
   sortBy = field;
   sortDir = dir;
 };
 window.loadBillingTriggerPage = (p = 1) => loadEntries(p);
 
-/* ============================================================
-   📄 PAGINATION
-============================================================ */
+/* ============================================================ */
 const getPagination = initPaginationControl(
   "billingTrigger",
   loadEntries,
   Number(localStorage.getItem("billingTriggerPageLimit") || 25)
 );
 
-/* ============================================================
-   🔎 AUTO SEARCH / FILTERS
-============================================================ */
+/* ============================================================ */
 setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
-  selectInputs: [filterOrg, filterFacility, filterActive],
+  selectInputs: [
+    filterModule, // 🔥 ADDED
+    filterOrg,
+    filterFacility,
+    filterActive
+  ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
 
-/* ============================================================
-   📋 FILTER BUILDER
-============================================================ */
+/* ============================================================ */
 function getFilters() {
   return {
     search: globalSearch?.value?.trim() || undefined,
+
+    feature_module_id: filterModule?.value || undefined, // 🔥 NEW
+
     organization_id: filterOrg?.value || undefined,
     facility_id: filterFacility?.value || undefined,
 
-    // ✅ normalize status → backend-safe boolean
     is_active:
       filterActive?.value === "active"
         ? true
@@ -159,13 +143,11 @@ function getFilters() {
         ? false
         : undefined,
 
-    dateRange: dateRange?.value || undefined, // UI-only
+    dateRange: dateRange?.value || undefined,
   };
 }
 
-/* ============================================================
-   📦 LOAD ENTRIES
-============================================================ */
+/* ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
@@ -232,9 +214,7 @@ async function loadEntries(page = 1) {
   }
 }
 
-/* ============================================================
-   🧭 VIEW TOGGLE
-============================================================ */
+/* ============================================================ */
 qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("billingTriggerView", "table");
@@ -249,19 +229,15 @@ qs("cardViewBtn").onclick = () => {
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-/* ============================================================
-   🔄 RESET FILTERS
-============================================================ */
+/* ============================================================ */
 qs("resetFilterBtn").onclick = () => {
-  [globalSearch, filterOrg, filterFacility, filterActive, dateRange].forEach(el => {
+  [globalSearch, filterModule, filterOrg, filterFacility, filterActive, dateRange].forEach(el => {
     if (el) el.value = "";
   });
   loadEntries(1);
 };
 
-/* ============================================================
-   ⬇️ EXPORT
-============================================================ */
+/* ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
   exportToExcel(
@@ -278,9 +254,7 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
   );
 });
 
-/* ============================================================
-   🚀 INIT
-============================================================ */
+/* ============================================================ */
 export async function initBillingTriggerModule() {
   renderDynamicTableHead(visibleFields);
 
@@ -291,21 +265,27 @@ export async function initBillingTriggerModule() {
     "billingTriggerFilterVisible"
   );
 
-  // 🔹 Organizations
+  // 🔥 FEATURE MODULES (SAFE ADD)
+  if (filterModule) {
+    const modules = await loadFeatureModulesLite();
+    modules.unshift({ id: "", name: "-- All Modules --" });
+    setupSelectOptions(filterModule, modules, "id", "name");
+  }
+
+  // ORG
   if (filterOrg) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
     setupSelectOptions(filterOrg, orgs, "id", "name");
   }
 
-  // 🔹 Facilities (ORG-SCOPED)
+  // FACILITY
   if (filterFacility) {
     const facs = await loadFacilitiesLite();
     facs.unshift({ id: "", name: "-- All Facilities --" });
     setupSelectOptions(filterFacility, facs, "id", "name");
   }
 
-  // 🔁 Reload facilities when org changes
   filterOrg?.addEventListener("change", async () => {
     const facs = await loadFacilitiesLite(filterOrg.value);
     facs.unshift({ id: "", name: "-- All Facilities --" });
@@ -316,9 +296,7 @@ export async function initBillingTriggerModule() {
   await loadEntries(1);
 }
 
-/* ============================================================
-   🏁 BOOT
-============================================================ */
+/* ============================================================ */
 document.readyState === "loading"
   ? document.addEventListener("DOMContentLoaded", initBillingTriggerModule)
   : initBillingTriggerModule();

@@ -80,6 +80,10 @@ import { getAllDiscountsLite } from "../controllers/discountController.js";
 import { getAllAutoBillingRulesLite } from "../controllers/autoBillingRuleController.js";
 import { getAllBillingTriggersLite } from "../controllers/billingTriggerController.js";
 
+import {
+  getAllOrdersLite,
+  getAllOrderItemsLite,
+} from "../controllers/orderController.js";
 // -------------------------------
 // 🔹 Consultations & Appointments
 // -------------------------------
@@ -197,6 +201,8 @@ router.get("/discounts", verifyAuth, getAllDiscountsLite);
 router.get("/auto-billing-rules", verifyAuth, getAllAutoBillingRulesLite);
 router.get("/billing-triggers", verifyAuth, getAllBillingTriggersLite); // ✅ ADD
 
+router.get("/orders", verifyAuth, getAllOrdersLite);
+router.get("/order-items", verifyAuth, getAllOrderItemsLite);
 // -------------------------------
 // 🔹 Consultations & Appointments
 // -------------------------------

@@ -43,6 +43,9 @@ import RefundTransactionModel from "./RefundTransaction.js";
 import RefundDepositTransactionModel from "./RefundDepositTransaction.js";   // ✅ NEW
 import RefundDepositModel from "./RefundDeposit.js";
 
+// 📦 Orders (NEW)
+import OrderModel from "./Order.js";
+import OrderItemModel from "./OrderItem.js";
 
 // 📦 Inventory & Master Data
 import MasterItemModel from "./MasterItem.js";
@@ -150,7 +153,9 @@ const models = {
   RefundTransaction: RefundTransactionModel(sequelize),
   RefundDeposit: RefundDepositModel(sequelize),
   RefundDepositTransaction: RefundDepositTransactionModel(sequelize),
-
+  // 🔹 Orders (NEW)
+  Order: OrderModel(sequelize),
+  OrderItem: OrderItemModel(sequelize),
   // 🔹 Inventory
   MasterItem: MasterItemModel(sequelize),
   MasterItemCategory: MasterItemCategoryModel(sequelize),
@@ -226,7 +231,8 @@ export const {
   DiscountWaiver, DiscountPolicy, Tax, TaxPolicy, CurrencyRate,
   InsuranceProvider, InsuranceClaim, InsurancePreAuthorization,
   FinancialLedger,
-
+  Order,
+  OrderItem,
   // Inventory
   MasterItem, MasterItemCategory, CentralStock, DepartmentStock,
   StockRequest, StockRequestItem, Supplier, StockLedger,

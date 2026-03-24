@@ -355,6 +355,98 @@ export const EKG_STATUS = [
   'voided',       // invalidated after saving
 ];
 
+
+
+/* ============================================================
+🔹 Orders (General Billing Engine – MASTER ALIGNED)
+============================================================ */
+
+/* -------------------- Order Header Lifecycle -------------------- */
+export const ORDER_STATUS = [
+'draft',        // 0 → created, editable
+'pending',      // 1 → awaiting action/approval
+'approved',     // 2 → approved for execution
+'in_progress',  // 3 → being processed (dispense/service)
+'completed',    // 4 → execution finished
+'verified',     // 5 → checked/validated by authority
+'finalized',    // 6 → 🔒 locked (billing + audit complete)
+'cancelled',    // 7 → intentionally stopped
+'voided'        // 8 → invalid/rolled back record
+];
+
+/* -------------------- Order Item Lifecycle -------------------- */
+export const ORDER_ITEM_STATUS = [
+'draft',        // created but not confirmed
+'pending',      // awaiting processing
+'approved',     // approved for execution
+'in_progress',  // being executed
+'completed',    // done
+'verified',     // checked
+'cancelled',    // cancelled before completion
+'voided'        // invalidated
+];
+
+/* -------------------- Order Type (Classification) -------------------- */
+export const ORDER_TYPE = [
+'medication',   // pharmacy items
+'service',      // consultation, nursing, procedures
+'lab',          // optional linkage to lab system
+'procedure',    // surgeries, imaging, etc.
+'admission',    // ward/bed related charges
+'package',      // bundled services
+'mixed'         // multiple types in one order
+];
+
+/* -------------------- Order Priority -------------------- */
+export const ORDER_PRIORITY = [
+'routine',
+'urgent',
+'stat'          // immediate/emergency
+];
+
+/* -------------------- Fulfillment Mode -------------------- */
+export const ORDER_FULFILLMENT_STATUS = [
+'pending',
+'partially_fulfilled',
+'fulfilled',
+'cancelled',
+'voided'
+];
+
+/* -------------------- Billing Link Status -------------------- */
+export const ORDER_BILLING_STATUS = [
+'not_billed',   // no invoice yet
+'billed',       // invoice created
+'partially_paid',
+'paid',
+'cancelled',
+'voided'
+];
+
+/* -------------------- Prescription-specific (optional reuse) -------------------- */
+export const ORDER_MEDICATION_STATUS = [
+'prescribed',
+'dispensed',
+'partially_dispensed',
+'completed',
+'cancelled',
+'voided'
+];
+
+/* -------------------- Audit Extensions (Optional but Recommended) -------------------- */
+export const ORDER_AUDIT_ACTIONS = [
+'created',
+'updated',
+'approved',
+'processed',
+'verified',
+'finalized',
+'cancelled',
+'voided',
+'reversed',
+'restored'
+];
+
 // 📘 patientChartEnums.js – Enumerations for patient chart subsystem
 
 export const PATIENT_CHART_NOTE_TYPE = ["doctor", "nurse", "admin", "system"];

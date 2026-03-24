@@ -20,11 +20,19 @@ import {
   APPOINTMENT_STATUS, ADMISSION_STATUS, ADMISSION_TYPE,
   ADJUSTMENT_TYPES, STOCK_REQUEST_STATUS, STOCK_REQUEST_ITEM_STATUS,
   CURRENCY_RATE_STATUS, LAB_REQUEST_STATUS, LAB_RESULT_STATUS, LAB_SUPPLY_STATUS,
-  PRESCRIPTION_STATUS, PRESCRIPTION_ITEM_STATUS, EMPLOYEE_SHIFT_STATUS,
+  PRESCRIPTION_STATUS, PRESCRIPTION_ITEM_STATUS,
+
+  // 🔹 ORDER (NEW)
+  ORDER_STATUS, ORDER_TYPE, ORDER_PRIORITY,
+  ORDER_FULFILLMENT_STATUS, ORDER_BILLING_STATUS,
+  ORDER_ITEM_STATUS,
+
+  EMPLOYEE_SHIFT_STATUS,
   ULTRASOUND_STATUS, LETTERHEAD_STATUS, LETTERHEAD_TEMPLATE_STATUS,
   THEME_STATUS, HOME_CONTENT_STATUS, ANNOUNCEMENT_STATUS, VIDEO_STATUS, 
-  LEDGER_STATUS, LEDGER_TRANSACTION_TYPE,LAB_REQUEST_ITEM_STATUS, DEPARTMENT_STOCK_STATUS,
-  DISCOUNT_TYPE, DISCOUNT_STATUS, POLICY_APPLIES_TO, POLICY_STATUS
+  LEDGER_STATUS, LEDGER_TRANSACTION_TYPE, LAB_REQUEST_ITEM_STATUS, DEPARTMENT_STOCK_STATUS,
+  DISCOUNT_TYPE, DISCOUNT_STATUS, POLICY_APPLIES_TO, POLICY_STATUS,
+  
 } from "./enums.js";
 // 🧠 Safe join helper for enums (handles both arrays & objects)
 const joinValues = (e) =>
@@ -1071,4 +1079,46 @@ export const FIELD_LABELS_PATIENT_CHART_VIEW_LOG = {
   reviewed_by_id: "Reviewed By", reviewed_at: "Reviewed At", verified_by_id: "Verified By", verified_at: "Verified At",
   created_by_id: "Created By", created_at: "Created At", updated_by_id: "Updated By", updated_at: "Updated At",
   deleted_by_id: "Deleted By", deleted_at: "Deleted At"
+};
+
+/* -------------------- Order -------------------- */
+export const FIELD_LABELS_ORDER = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  patient_id: "Patient", provider_id: "Provider", consultation_id: "Consultation",
+
+  type: `Type (${joinValues(ORDER_TYPE)})`,
+  priority: `Priority (${joinValues(ORDER_PRIORITY)})`,
+
+  invoice_id: "Invoice",
+  billing_status: `Billing Status (${joinValues(ORDER_BILLING_STATUS)})`,
+  fulfillment_status: `Fulfillment Status (${joinValues(ORDER_FULFILLMENT_STATUS)})`,
+
+  order_date: "Order Date",
+
+  status: `Status (${joinValues(ORDER_STATUS)})`,
+  status_changed_at: "Status Changed At", status_changed_by_id: "Status Changed By",
+
+  notes: "Notes",
+
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+};
+
+/* -------------------- Order Item -------------------- */
+export const FIELD_LABELS_ORDER_ITEM = {
+  id: "ID", order_id: "Order", billable_item_id: "Billable Item", invoice_item_id: "Invoice Item",
+
+  organization_id: "Organization", facility_id: "Facility",
+
+  quantity: "Quantity", unit_price: "Unit Price", total_price: "Total Price",
+
+  dosage: "Dosage", frequency: "Frequency", duration: "Duration", instructions: "Instructions",
+
+  status: `Status (${joinValues(ORDER_ITEM_STATUS)})`,
+  billing_status: `Billing Status (${joinValues(ORDER_BILLING_STATUS)})`,
+
+  notes: "Notes",
+
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };

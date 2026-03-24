@@ -195,6 +195,23 @@ export const STATUS_ACTION_MATRIX = {
     cancelled:["void"],
     voided:["restore"]
   },
+    /* ======================== 🧾 ORDER ======================== */
+    order:{
+    draft:["edit","submit",
+    "delete","void"],
+    pending:["edit",
+    "activate","cancel",
+    "void"],
+    in_progress:["complete",
+    "cancel","void"],
+    completed:["verify",
+    "void"],
+    verified:["finalize",
+    "void"],
+    finalized:["void"],
+    cancelled:["void"],
+    voided:["restore"]
+  },
   /* ======================== 🏭 SUPPLIER ======================== */
   supplier: {
     active:   ["edit", "toggle-status", "delete"],
