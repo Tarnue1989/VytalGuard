@@ -1,13 +1,4 @@
-// 📦 add-billing-trigger.js – Billing Trigger Form Page Controller (ENTERPRISE FINAL)
-// ============================================================================
-// 🧭 FULL PARITY WITH billableitem-main.js
-// 🔹 Auth guard + logout watcher
-// 🔹 Role-aware org/fac loading ONLY
-// 🔹 Edit session coordination (sessionStorage + URL)
-// 🔹 Delegates ALL business logic to billing-trigger-form.js
-// 🔹 ❌ Never builds payloads
-// 🔹 ❌ Never validates fields
-// ============================================================================
+// 📦 add-billing-trigger.js – FULL MASTER FIXED
 
 import { setupBillingTriggerFormSubmission } from "./billing-trigger-form.js";
 
@@ -22,25 +13,20 @@ import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
+  loadFeatureModulesLite, // 🔥 NEW
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
-/* ============================================================
-   🔐 Auth Guard + Global Watchers
-============================================================ */
+/* ============================================================ */
 initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State (SINGLE SOURCE OF TRUTH)
-============================================================ */
+/* ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
-/* ============================================================
-   📎 DOM Refs
-============================================================ */
+/* ============================================================ */
 const form = document.getElementById("billingTriggerForm");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.querySelector("button[type=reset]");
@@ -48,9 +34,10 @@ const clearBtn = document.querySelector("button[type=reset]");
 const orgSelect = document.getElementById("organizationSelect");
 const facSelect = document.getElementById("facilitySelect");
 
-/* ============================================================
-   🚀 Init (Page Entry)
-============================================================ */
+const moduleSelect = document.getElementById("feature_module_id"); // 🔥 NEW
+const moduleKeyInput = document.getElementById("module_key"); // 🔥 NEW
+
+/* ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   if (!form) return;
 
@@ -58,9 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isSuper = roleRaw.includes("super");
   const isAdmin = roleRaw.includes("admin") && !isSuper;
 
-  /* ========================================================
-     🔑 EDIT MODE DETECTION (FIRST — MASTER RULE)
-  ======================================================== */
+  /* ======================================================== */
   const editId =
     sessionStorage.getItem("billingTriggerEditId") ||
     new URLSearchParams(window.location.search).get("id");
@@ -70,8 +55,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ========================================================
-     🌐 ORGANIZATION / FACILITY (ROLE-OWNED)
+     🔥 LOAD FEATURE MODULES (NEW)
   ======================================================== */
+  let modules = [];
+  try {
+    modules = await loadFeatureModulesLite();
+
+    setupSelectOptions(
+      moduleSelect,
+      modules,
+      "id",
+      "name",
+      "-- Select Module --"
+    );
+
+    moduleSelect.addEventListener("change", () => {
+      const selected = modules.find(
+        (m) => m.id === moduleSelect.value
+      );
+      moduleKeyInput.value = selected?.key || "";
+    });
+  } catch (err) {
+    console.error("❌ Module preload failed:", err);
+  }
+
+  /* ======================================================== */
   try {
     if (isSuper) {
       setupSelectOptions(
@@ -117,24 +125,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("❌ Org/Facility preload failed:", err);
   }
 
-  /* ========================================================
-     🔗 Wire Form (AFTER editId is known)
-  ======================================================== */
+  /* ======================================================== */
   setupBillingTriggerFormSubmission({
     form,
     sharedState,
   });
 
   /* ========================================================
-     ✏️ EDIT PREFILL (UI SEED ONLY)
+     ✏️ PREFILL (FIXED)
   ======================================================== */
   async function applyPrefill(entry) {
-    document.getElementById("module_key").value =
-      entry.module_key || "";
-
+    moduleKeyInput.value = entry.module_key || "";
     document.getElementById("trigger_status").value =
       entry.trigger_status || "";
 
+    // 🔥 SET MODULE SELECT
+    if (entry.feature_module_id) {
+      moduleSelect.value = entry.feature_module_id;
+
+      // 🔥 FORCE UI SYNC (THIS IS WHAT YOU WERE MISSING)
+      moduleSelect.dispatchEvent(new Event("change"));
+    }
     const statusEl = document.getElementById("is_active");
     if (statusEl) {
       statusEl.value = entry.is_active ? "true" : "false";
@@ -169,11 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* ========================================================
-     🧠 EDIT LOAD STRATEGY (ENTERPRISE STANDARD)
-     1️⃣ sessionStorage (fast path)
-     2️⃣ API GET /:id (source of truth)
-  ======================================================== */
+  /* ======================================================== */
   if (editId) {
     const cached = sessionStorage.getItem("billingTriggerEditPayload");
 
@@ -192,9 +199,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* ========================================================
-     🔘 Buttons
-  ======================================================== */
+  /* ======================================================== */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billingTriggerEditId");
     sessionStorage.removeItem("billingTriggerEditPayload");
@@ -204,6 +209,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   clearBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billingTriggerEditId");
     sessionStorage.removeItem("billingTriggerEditPayload");
-    window.location.reload(); // clean ADD mode
+    window.location.reload();
   });
 });

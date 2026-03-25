@@ -1,15 +1,4 @@
-// 📁 billing-trigger-render.js – Entity Card System (BILLING TRIGGER | ENTERPRISE FINAL)
-// ============================================================================
-// 🧭 MASTER PARITY WITH billableitem-render.js (SELECTIVE)
-// 🔹 Table = flat | Card = structured
-// 🔹 Field-selector safe
-// 🔹 Backend sorting bridge
-// 🔹 Column resize enabled
-// 🔹 Column drag reorder enabled
-// 🔹 Full audit section (created / updated / deleted)
-// 🔹 Permission-driven actions
-// 🔹 Export-safe
-// ============================================================================
+// 📁 billing-trigger-render.js – Entity Card System (BILLING TRIGGER | ENTERPRISE FINAL – FULL SAFE)
 
 import { FIELD_LABELS_BILLING_TRIGGER } from "./billing-trigger-constants.js";
 
@@ -23,9 +12,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
-/* ============================================================
-   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
-============================================================ */
+/* ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "module_key",
   "trigger_status",
@@ -34,12 +21,10 @@ const SORTABLE_FIELDS = new Set([
   "updated_at",
 ]);
 
-/* ============================================================
-   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
-============================================================ */
 let sortBy = localStorage.getItem("billingTriggerSortBy") || "";
 let sortDir = localStorage.getItem("billingTriggerSortDir") || "asc";
 
+/* ============================================================ */
 function toggleSort(field) {
   if (sortBy === field) {
     sortDir = sortDir === "asc" ? "desc" : "asc";
@@ -51,27 +36,22 @@ function toggleSort(field) {
   localStorage.setItem("billingTriggerSortBy", sortBy);
   localStorage.setItem("billingTriggerSortDir", sortDir);
 
-  // 🔗 Bridge to MAIN
   window.setBillingTriggerSort?.(sortBy, sortDir);
   window.loadBillingTriggerPage?.(1);
 }
 
-/* ============================================================
-   🎛️ ACTION BUTTONS
-============================================================ */
+/* ============================================================ */
 function getBillingTriggerActionButtons(entry, user) {
   return buildActionButtons({
     module: "billing_trigger",
     status: entry.is_active ? "active" : "inactive",
     entryId: entry.id,
     user,
-    permissionPrefix: "billing_trigger",
+    permissionPrefix: "billing_triggers",
   });
 }
 
-/* ============================================================
-   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
-============================================================ */
+/* ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
   const table = thead?.closest("table");
@@ -119,7 +99,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   thead.appendChild(tr);
 
-  /* ================= Column resize ================= */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
@@ -133,7 +112,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   enableColumnResize(table);
 
-  /* ================= Column drag ================= */
   enableColumnDrag({
     table,
     visibleFields,
@@ -144,9 +122,7 @@ export function renderDynamicTableHead(visibleFields) {
   });
 }
 
-/* ============================================================
-   🔠 HELPERS
-============================================================ */
+/* ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
   const parts = [
@@ -157,11 +133,16 @@ function renderUserName(user) {
   return parts.length ? parts.join(" ") : "—";
 }
 
-/* ============================================================
-   🧩 FIELD VALUE RENDERER
-============================================================ */
+/* ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
+    // 🔥 NEW (SAFE ADD)
+    case "featureModule":
+      return entry.featureModule?.name || entry.module_key || "—";
+
+    case "module_key":
+      return entry.module_key || "—";
+
     case "is_active":
       return `<span class="badge ${
         entry.is_active ? "bg-success" : "bg-warning text-dark"
@@ -190,13 +171,15 @@ function renderValue(entry, field) {
   }
 }
 
-/* ============================================================
-   🗂️ CARD RENDERER — BILLING TRIGGER
-============================================================ */
+/* ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
+
+  // 🔥 SAFE ADD (NO REMOVAL)
+  const moduleName =
+    entry.featureModule?.name || entry.module_key;
 
   const fieldRow = (label, value) => `
     <div class="entity-field">
@@ -208,7 +191,8 @@ export function renderCard(entry, visibleFields, user) {
   const header = `
     <div class="entity-card-header">
       <div>
-        <div class="entity-primary">${safe(entry.module_key)}</div>
+        <!-- 🔥 UPDATED DISPLAY ONLY -->
+        <div class="entity-primary">${safe(moduleName)}</div>
         <div class="entity-secondary">${safe(entry.trigger_status)}</div>
       </div>
       ${
@@ -282,9 +266,7 @@ export function renderCard(entry, visibleFields, user) {
   `;
 }
 
-/* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
-============================================================ */
+/* ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("billingTriggerTableBody");
   const cardContainer = document.getElementById("billingTriggerList");
@@ -331,9 +313,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     cardContainer.classList.add("active");
 
     cardContainer.innerHTML = entries.length
-      ? entries
-          .map((e) => renderCard(e, visibleFields, user))
-          .join("")
+      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
       : `<p class="text-muted text-center">No billing triggers found.</p>`;
 
     initTooltips(cardContainer);
@@ -342,9 +322,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   setupExportHandlers(entries);
 }
 
-/* ============================================================
-   📤 EXPORT HANDLERS
-============================================================ */
+/* ============================================================ */
 let exportHandlersBound = false;
 
 function setupExportHandlers(entries) {

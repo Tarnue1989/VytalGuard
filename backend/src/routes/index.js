@@ -70,6 +70,7 @@ import discountRoutes from "./discountRoutes.js";
 import autoBillingRuleRoutes from "./autoBillingRuleRoutes.js";
 import billingTriggerRoutes from "./billingTriggerRoutes.js";
 
+import orderRoutes from "./orderRoutes.js";
 /* ============================================================
    📌 Lite Routes (Autocomplete / Dropdown APIs)
 ============================================================ */
@@ -155,6 +156,7 @@ router.use("/discount-policies", discountPolicyRoutes);
 router.use("/discount-waivers", discountWaiverRoutes);
 router.use("/discounts", discountRoutes);
 router.use("/auto-billing-rules", autoBillingRuleRoutes);
+router.use("/orders", orderRoutes);
 
 /* ============================================================
    📌 Lite Routes

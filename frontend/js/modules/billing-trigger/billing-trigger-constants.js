@@ -1,25 +1,22 @@
-// 📁 billing-trigger-constants.js – Enterprise Master Pattern (FINAL)
-// ============================================================================
-// 🧭 Matches Billable Item / Department / Patient Constants Pattern
-// 🔹 Fully aligned with BillingTrigger model + API payload
-// 🔹 NO phantom fields
-// 🔹 Safe for list, export, detail, and lite views
-// ============================================================================
+// 📁 billing-trigger-constants.js – Enterprise Master Pattern (FINAL FIXED)
 
 /* ============================================================
-   📋 Field Labels (Enterprise Aligned)
+   📋 Field Labels
 ============================================================ */
 export const FIELD_LABELS_BILLING_TRIGGER = {
-  // 🏢 Organizational Scope
+  // 🏢 Scope
   organization: "Organization",
   facility: "Facility",
 
-  // ⚙️ Trigger Definition
+  // 🔥 Feature Module (NEW PRIMARY DISPLAY)
+  featureModule: "Module",
+
+  // ⚙️ Trigger
   module_key: "Module Key",
   trigger_status: "Trigger Status",
   is_active: "Active",
 
-  // 🧾 Audit Trail
+  // 🧾 Audit
   createdBy: "Created By",
   created_at: "Created At",
   updatedBy: "Updated By",
@@ -32,17 +29,18 @@ export const FIELD_LABELS_BILLING_TRIGGER = {
 };
 
 /* ============================================================
-   📋 Field Display Order (Table / Export / Detail)
+   📋 Field Order
 ============================================================ */
 export const FIELD_ORDER_BILLING_TRIGGER = [
   "organization",
   "facility",
 
+  "featureModule", // 🔥 NEW
   "module_key",
+
   "trigger_status",
   "is_active",
 
-  // 🧾 AUDIT
   "createdBy",
   "created_at",
   "updatedBy",
@@ -54,14 +52,16 @@ export const FIELD_ORDER_BILLING_TRIGGER = [
 ];
 
 /* ============================================================
-   👥 Role-Based Default Field Sets (Enterprise Master)
+   👥 Role Defaults
 ============================================================ */
 export const FIELD_DEFAULTS_BILLING_TRIGGER = {
   superadmin: [
     "organization",
     "facility",
 
+    "featureModule", // 🔥
     "module_key",
+
     "trigger_status",
     "is_active",
 
@@ -79,7 +79,9 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
     "organization",
     "facility",
 
+    "featureModule",
     "module_key",
+
     "trigger_status",
     "is_active",
 
@@ -95,7 +97,9 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
     "organization",
     "facility",
 
+    "featureModule",
     "module_key",
+
     "trigger_status",
     "is_active",
 
@@ -106,6 +110,7 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
   ],
 
   staff: [
+    "featureModule", // 🔥
     "module_key",
     "trigger_status",
     "is_active",
@@ -114,7 +119,7 @@ export const FIELD_DEFAULTS_BILLING_TRIGGER = {
 };
 
 /* ============================================================
-   ⚙️ Module Metadata (REQUIRED)
+   ⚙️ Module Metadata
 ============================================================ */
 export const MODULE_KEY_BILLING_TRIGGER = "billingTrigger";
 export const MODULE_LABEL_BILLING_TRIGGER = "Billing Trigger";

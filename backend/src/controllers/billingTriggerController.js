@@ -5,7 +5,8 @@ import {
   sequelize, 
   BillingTrigger, 
   Organization, 
-  Facility  } from "../models/index.js";
+  Facility,
+FeatureModule  } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { authzService } from "../services/authzService.js";
@@ -17,13 +18,14 @@ import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import {
   isSuperAdmin,
   isFacilityHead,
+  isOrgLevelUser,
 } from "../utils/role-utils.js";
 import { FIELD_VISIBILITY_BILLING_TRIGGER } from "../constants/fieldVisibility.js";
 
 /* ============================================================
    🔑 MODULE KEY (MASTER LOCK)
 ============================================================ */
-const MODULE_KEY = "billingTrigger";
+const MODULE_KEY = "billing_triggers";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
@@ -38,18 +40,23 @@ const BILLING_TRIGGER_INCLUDES = [
   {
     model: Organization,
     as: "organization",
-    attributes: ["id", "name", "code"],
+    attributes: ["id", "name", "code"], // ✅ FIXED
   },
   {
     model: Facility,
     as: "facility",
-    attributes: ["id", "name", "code"],
-    required: false, // facility may be null
+    attributes: ["id", "name", "code"], // ✅ FIXED
+    required: false,
+  },
+  {
+    model: FeatureModule,
+    as: "featureModule",
+    attributes: ["id", "name", "key"], // ✅ already correct
   },
 ];
 
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY | FK-DRIVEN)
+   📋 ROLE-AWARE JOI SCHEMA (MASTER PARITY | FK-DRIVEN | FIXED)
 ============================================================ */
 function buildBillingTriggerSchema(user, mode = "create") {
   const base = {
@@ -62,16 +69,34 @@ function buildBillingTriggerSchema(user, mode = "create") {
     trigger_status: Joi.string().max(50).required(),
     is_active: Joi.boolean().default(true),
 
-    // 🔒 tenant fields controlled by backend
+    // 🔒 tenant fields (default locked)
     organization_id: Joi.forbidden(),
     facility_id: Joi.forbidden(),
   };
 
+  /* ============================================================
+     🔐 ROLE CONTROL
+  ============================================================ */
+
+  // ✅ SUPERADMIN → full control
   if (isSuperAdmin(user)) {
     base.organization_id = Joi.string().uuid().required();
     base.facility_id = Joi.string().uuid().allow(null, "");
   }
 
+  // ✅ ORG ADMIN → can choose facility
+  else if (isOrgLevelUser(user)) {
+    base.facility_id = Joi.string().uuid().allow(null, "");
+  }
+
+  // ✅ FACILITY HEAD → locked to their facility (no override)
+  else if (isFacilityHead(user)) {
+    base.facility_id = Joi.forbidden();
+  }
+
+  /* ============================================================
+     🔄 UPDATE MODE (optional fields)
+  ============================================================ */
   if (mode === "update") {
     Object.keys(base).forEach((k) => {
       if (base[k] !== Joi.forbidden()) {
@@ -83,9 +108,8 @@ function buildBillingTriggerSchema(user, mode = "create") {
   return Joi.object(base);
 }
 
-
 /* ============================================================
-   ➕ CREATE
+   ➕ CREATE (MASTER PARITY – ROLE SAFE | FIXED)
 ============================================================ */
 export const createBillingTrigger = async (req, res) => {
   const t = await sequelize.transaction();
@@ -102,30 +126,57 @@ export const createBillingTrigger = async (req, res) => {
       buildBillingTriggerSchema(req.user, "create"),
       req.body
     );
+
     if (errors) {
       await t.rollback();
       return res.status(400).json({ success: false, errors });
     }
 
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
+    /* ================= ROLE-AWARE ORG / FAC ================= */
+    let orgId = null;
+    let facilityId = null;
 
-    if (!orgId) {
-      await t.rollback();
-      return error(res, "Organization is required", null, 400);
+    if (isSuperAdmin(req.user)) {
+      orgId = value.organization_id ?? null;
+      facilityId = value.facility_id ?? null;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+
+      if (value.facility_id !== undefined) {
+        facilityId = value.facility_id;
+      } else if (req.user.facility_id) {
+        facilityId = req.user.facility_id;
+      } else {
+        facilityId = null;
+      }
+
+    } else if (isFacilityHead(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id;
+
+    } else {
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
     }
 
+    /* ================= FINAL SAFETY ================= */
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
+
+    /* ================= CREATE ================= */
     const trigger = await BillingTrigger.create(
       {
         feature_module_id: value.feature_module_id,
         module_key: value.module_key,
         trigger_status: value.trigger_status,
         is_active: value.is_active,
+
         organization_id: orgId,
         facility_id: facilityId,
+
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -143,6 +194,7 @@ export const createBillingTrigger = async (req, res) => {
     });
 
     return success(res, "✅ Billing trigger created", trigger);
+
   } catch (err) {
     await t.rollback();
     debug.error("create → FAILED", err);
@@ -151,7 +203,7 @@ export const createBillingTrigger = async (req, res) => {
 };
 
 /* ============================================================
-   ✏️ UPDATE
+   ✏️ UPDATE (MASTER PARITY – SAFE | FIXED)
 ============================================================ */
 export const updateBillingTrigger = async (req, res) => {
   const t = await sequelize.transaction();
@@ -168,6 +220,7 @@ export const updateBillingTrigger = async (req, res) => {
       buildBillingTriggerSchema(req.user, "update"),
       req.body
     );
+
     if (errors) {
       await t.rollback();
       return res.status(400).json({ success: false, errors });
@@ -175,31 +228,53 @@ export const updateBillingTrigger = async (req, res) => {
 
     const where = { id: req.params.id };
 
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
+
       if (isFacilityHead(req.user)) {
         where.facility_id = req.user.facility_id;
       }
     }
 
-    const trigger = await BillingTrigger.findOne({ where, transaction: t });
+    const trigger = await BillingTrigger.findOne({
+      where,
+      transaction: t,
+    });
+
     if (!trigger) {
       await t.rollback();
       return error(res, "Billing trigger not found", null, 404);
     }
 
+    /* ================= ORG / FAC RESOLUTION ================= */
+    const resolvedOrgId =
+      trigger.organization_id || req.user.organization_id;
+
+    const resolvedFacilityId =
+      value.facility_id !== undefined
+        ? value.facility_id
+        : trigger.facility_id ?? req.user.facility_id ?? null;
+
+    /* ================= UPDATE ================= */
     await trigger.update(
       {
-        ...(value.feature_module_id && {
+        ...(value.feature_module_id !== undefined && {
           feature_module_id: value.feature_module_id,
         }),
-        ...(value.module_key && { module_key: value.module_key }),
-        ...(value.trigger_status && {
+        ...(value.module_key !== undefined && {
+          module_key: value.module_key,
+        }),
+        ...(value.trigger_status !== undefined && {
           trigger_status: value.trigger_status,
         }),
         ...(value.is_active !== undefined && {
           is_active: value.is_active,
         }),
+
+        organization_id: resolvedOrgId,
+        facility_id: resolvedFacilityId,
+
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -217,6 +292,7 @@ export const updateBillingTrigger = async (req, res) => {
     });
 
     return success(res, "✅ Billing trigger updated", trigger);
+
   } catch (err) {
     await t.rollback();
     debug.error("update → FAILED", err);
@@ -366,16 +442,17 @@ export const getAllBillingTriggers = async (req, res) => {
         [Op.or]: [
           { module_key: { [Op.iLike]: `%${options.search}%` } },
           { trigger_status: { [Op.iLike]: `%${options.search}%` } },
+          { "$featureModule.name$": { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
     /* ========================================================
-       📄 MAIN LIST QUERY (WITH SHARED INCLUDES)
+       📄 MAIN LIST QUERY (USING SHARED INCLUDES)
     ======================================================== */
     const { count, rows } = await BillingTrigger.findAndCountAll({
       where: listWhere,
-      include: BILLING_TRIGGER_INCLUDES, // ✅ SHARED ORG / FAC INCLUDE
+      include: BILLING_TRIGGER_INCLUDES, // ✅ CLEAN MASTER USE
       attributes: Array.from(
         new Set([
           "id",
@@ -451,7 +528,6 @@ export const getAllBillingTriggers = async (req, res) => {
     return error(res, "❌ Failed to load billing triggers", err);
   }
 };
-
 /* ============================================================
    📌 GET BILLING TRIGGER BY ID (MASTER PARITY + ORG/FAC)
 ============================================================ */

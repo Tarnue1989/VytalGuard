@@ -18,7 +18,7 @@ import {
   FIELD_ORDER_ULTRASOUND_RECORD, FIELD_ORDER_INVOICE, FIELD_ORDER_INSURANCE_PROVIDER, FIELD_ORDER_RECOMMENDATION,
   FIELD_ORDER_PAYMENT, FIELD_ORDER_WARD, FIELD_ORDER_ADMISSION, FIELD_ORDER_CURRENCY_RATE,
   FIELD_ORDER_AUTO_BILLING_RULE, FIELD_ORDER_MESSAGE, FIELD_ORDER_MESSAGE_ATTACHMENT, FIELD_ORDER_CONVERSATION,
-  FIELD_ORDER_TRIAGE_RECORD, 
+  FIELD_ORDER_TRIAGE_RECORD, FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,
   FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION, FIELD_ORDER_FINANCIAL_LEDGER,
   FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_LAB_REQUEST_ITEM, FIELD_ORDER_BILLING_TRIGGER  
 
@@ -1119,7 +1119,34 @@ export const FIELD_DEFAULTS_ULTRASOUND_RECORD = {
     "scan_type", "scan_date", "status"
   ]
 };
+/* -------------------- Order -------------------- */
+export const FIELD_DEFAULTS_ORDER = {
+  admin: FIELD_ORDER_ORDER,
+  manager: [
+    "patient_id","provider_id","consultation_id",
+    "type","priority",
+    "order_date",
+    "status","billing_status","fulfillment_status",
+    "notes"
+  ],
+  staff: [
+    "patient_id","type","order_date","status"
+  ]
+};
 
+/* -------------------- Order Item -------------------- */
+export const FIELD_DEFAULTS_ORDER_ITEM = {
+  admin: FIELD_ORDER_ORDER_ITEM,
+  manager: [
+    "order_id","billable_item_id",
+    "quantity","unit_price","total_price",
+    "dosage","frequency","duration",
+    "status","billing_status"
+  ],
+  staff: [
+    "billable_item_id","quantity","status"
+  ]
+};
 
 /* -------------------- Patient Chart Cache -------------------- */
 export const FIELD_DEFAULTS_PATIENT_CHART_CACHE = {

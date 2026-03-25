@@ -1,12 +1,4 @@
-// 📦 billing-trigger-form.js – Enterprise-Final Billing Trigger Form
-// ============================================================================
-// 🔹 Rule-driven validation (BILLING_TRIGGER_FORM_RULES)
-// 🔹 Role-aware org / facility handling
-// 🔹 Controller-faithful (no silent assumptions)
-// 🔹 FULL ID safety (matches HTML + main.js)
-// 🔹 Edit-safe (session + direct fetch fallback)
-// 🔹 FIXED: Prefill waits for dropdown hydration
-// ============================================================================
+// 📦 billing-trigger-form.js – Enterprise-Final (FULLY FIXED)
 
 import {
   showToast,
@@ -28,14 +20,13 @@ import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
+  loadFeatureModulesLite, // 🔥 NEW
   setupSelectOptions,
 } from "../../utils/data-loaders.js";
 
 import { BILLING_TRIGGER_FORM_RULES } from "./billing-trigger.form.rules.js";
 
-/* ============================================================
-   🧩 Helpers
-============================================================ */
+/* ============================================================ */
 const getQueryParam = (k) =>
   new URLSearchParams(window.location.search).get(k);
 
@@ -45,15 +36,14 @@ const normalizeMessage = (res, fallback) => {
   return typeof msg === "string" ? msg : fallback;
 };
 
-/* ============================================================
-   ✏️ PREFILL HELPER (FIXED ORDER)
-============================================================ */
+/* ============================================================ */
 async function applyBillingTriggerPrefill(entry, {
   userRole,
   orgSelect,
   facSelect,
   statusEl,
   setTitle,
+  moduleSelect,
 }) {
   document.getElementById("module_key").value =
     entry.module_key || "";
@@ -63,6 +53,11 @@ async function applyBillingTriggerPrefill(entry, {
 
   if (statusEl) {
     statusEl.value = entry.is_active ? "true" : "false";
+  }
+
+  // 🔥 set module id
+  if (entry.feature_module_id && moduleSelect) {
+    moduleSelect.value = entry.feature_module_id;
   }
 
   if (userRole.includes("super") && entry.organization_id) {
@@ -89,13 +84,10 @@ async function applyBillingTriggerPrefill(entry, {
   setTitle("Update Billing Trigger");
 }
 
-/* ============================================================
-   🚀 Main Setup
-============================================================ */
+/* ============================================================ */
 export async function setupBillingTriggerFormSubmission({
   form,
   sharedState,
-  resetForm,
 }) {
   initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
@@ -112,6 +104,8 @@ export async function setupBillingTriggerFormSubmission({
   /* ---------------- DOM ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
+  const moduleSelect = document.getElementById("feature_module_id"); // 🔥 NEW
+  const moduleKeyInput = document.getElementById("module_key"); // 🔥 NEW
   const statusEl = document.getElementById("is_active");
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
@@ -127,7 +121,32 @@ export async function setupBillingTriggerFormSubmission({
   setTitle(isEdit ? "Update Billing Trigger" : "Add Billing Trigger");
 
   /* ============================================================
-     🔐 ROLE-AWARE DROPDOWNS (VISIBILITY + DATA)
+     🔥 LOAD FEATURE MODULES
+  ============================================================ */
+  try {
+    const modules = await loadFeatureModulesLite();
+
+    setupSelectOptions(
+      moduleSelect,
+      modules,
+      "id",
+      "name",
+      "-- Select Module --"
+    );
+
+    moduleSelect.addEventListener("change", () => {
+      const selected =
+        modules.find((m) => m.id === moduleSelect.value);
+
+      moduleKeyInput.value = selected?.key || "";
+    });
+  } catch (err) {
+    console.error(err);
+    showToast("❌ Failed to load feature modules");
+  }
+
+  /* ============================================================
+     🔐 ORG / FACILITY
   ============================================================ */
   try {
     const hideOrg = () =>
@@ -180,7 +199,7 @@ export async function setupBillingTriggerFormSubmission({
   }
 
   /* ============================================================
-     ✏️ PREFILL (EDIT MODE — AFTER DROPDOWNS)
+     ✏️ PREFILL
   ============================================================ */
   if (isEdit) {
     try {
@@ -204,6 +223,7 @@ export async function setupBillingTriggerFormSubmission({
         facSelect,
         statusEl,
         setTitle,
+        moduleSelect,
       });
     } catch (err) {
       console.error(err);
@@ -214,7 +234,7 @@ export async function setupBillingTriggerFormSubmission({
   }
 
   /* ============================================================
-     🛡️ SUBMIT (RULE-DRIVEN, CONTROLLER-ALIGNED)
+     🛡️ SUBMIT
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -229,7 +249,12 @@ export async function setupBillingTriggerFormSubmission({
         document.getElementById(rule.id) ||
         form.querySelector(`[name="${rule.id}"]`);
 
-      if (!el || el.value === "" || el.value === null) {
+      if (!el) continue;
+
+      // ✅ SKIP HIDDEN FIELDS (CRITICAL)
+      if (el.closest(".hidden")) continue;
+
+      if (!el.value || el.value.toString().trim() === "") {
         errors.push({ field: rule.id, message: rule.message });
       }
     }
@@ -241,7 +266,8 @@ export async function setupBillingTriggerFormSubmission({
     }
 
     const payload = {
-      module_key: document.getElementById("module_key").value.trim(),
+      feature_module_id: moduleSelect.value, // 🔥 REQUIRED
+      module_key: moduleKeyInput.value.trim(), // 🔥 AUTO
       trigger_status: document
         .getElementById("trigger_status")
         .value.trim(),
@@ -250,7 +276,15 @@ export async function setupBillingTriggerFormSubmission({
 
     if (userRole.includes("super")) {
       payload.organization_id = orgSelect?.value || null;
-      payload.facility_id = facSelect?.value || null;
+      if (facSelect && facSelect.value) {
+        payload.facility_id = facSelect.value;
+      }
+
+    } else if (userRole.includes("admin")) {
+      // ✅ SEND FACILITY FOR ORG ADMIN
+      if (facSelect && facSelect.value) {
+        payload.facility_id = facSelect.value;
+      }
     }
 
     const method = isEdit ? "PUT" : "POST";
@@ -294,7 +328,7 @@ export async function setupBillingTriggerFormSubmission({
   };
 
   /* ============================================================
-     ⏮️ CANCEL / CLEAR
+     ⏮️ CANCEL / RESET
   ============================================================ */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("billingTriggerEditId");
@@ -302,12 +336,10 @@ export async function setupBillingTriggerFormSubmission({
     window.location.href = "/billing-triggers-list.html";
   });
 
-  document
-    .querySelector("button[type=reset]")
-    ?.addEventListener("click", () => {
-      clearFormErrors(form);
-      form.reset();
-      if (statusEl) statusEl.value = "true";
-      setTitle("Add Billing Trigger");
-    });
+  form.addEventListener("reset", () => {
+    clearFormErrors(form);
+    form.reset();
+    if (statusEl) statusEl.value = "true";
+    setTitle("Add Billing Trigger");
+  });
 }

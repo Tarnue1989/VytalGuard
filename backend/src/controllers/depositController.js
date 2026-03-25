@@ -143,7 +143,7 @@ export const createDeposit = async (req, res) => {
     /* ========================================================
        🧭 TENANT RESOLUTION (MASTER)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
@@ -251,12 +251,11 @@ export const updateDeposit = async (req, res) => {
     /* ========================================================
        🧭 TENANT RESOLUTION (MASTER)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
-      user: req.user,
-      value,
-      body: req.body,
-    });
-
+  const { orgId, facilityId } = await resolveOrgFacility({
+    user: req.user,
+    value,
+    body: req.body,
+  });
     await record.update(
       {
         ...value,

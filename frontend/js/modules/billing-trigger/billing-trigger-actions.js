@@ -106,26 +106,26 @@ export function setupActionHandlers({
     const cls = btn.classList;
 
     if (cls.contains("view-btn")) {
-      if (!hasPerm("billing_trigger:view"))
+      if (!hasPerm("billing_triggers:view"))
         return showToast("⛔ You don't have permission to view");
       return handleView(entry);
     }
 
     if (cls.contains("edit-btn")) {
-      if (!hasPerm("billing_trigger:update"))
+      if (!hasPerm("billing_triggers:update"))
         return showToast("⛔ You don't have permission to edit");
       return handleEdit(entry);
     }
 
     // ✅ FIXED: correct class name
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("billing_trigger:update"))
+      if (!hasPerm("billing_triggers:update"))
         return showToast("⛔ You don't have permission to change status");
       return handleToggleStatus(id, entry);
     }
 
     if (cls.contains("delete-btn")) {
-      if (!hasPerm("billing_trigger:delete"))
+      if (!hasPerm("billing_triggers:delete"))
         return showToast("⛔ You don't have permission to delete");
       return handleDelete(id, entry);
     }
@@ -227,7 +227,7 @@ export function setupActionHandlers({
     );
 
   window.viewBillingTrigger = (id) => {
-    if (!hasPerm("billing_trigger:view"))
+    if (!hasPerm("billing_triggers:view"))
       return showToast("⛔ No permission to view billing trigger");
     const entry = findEntry(id);
     if (entry) handleView(entry);
@@ -235,7 +235,7 @@ export function setupActionHandlers({
   };
 
   window.editBillingTrigger = (id) => {
-    if (!hasPerm("billing_trigger:update"))
+    if (!hasPerm("billing_triggers:update"))
       return showToast("⛔ No permission to edit billing trigger");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
@@ -243,14 +243,14 @@ export function setupActionHandlers({
   };
 
   window.toggleBillingTrigger = async (id) => {
-    if (!hasPerm("billing_trigger:update"))
+    if (!hasPerm("billing_triggers:update"))
       return showToast("⛔ No permission to toggle trigger");
     const entry = findEntry(id);
     if (entry) await handleToggleStatus(id, entry);
   };
 
   window.deleteBillingTrigger = async (id) => {
-    if (!hasPerm("billing_trigger:delete"))
+    if (!hasPerm("billing_triggers:delete"))
       return showToast("⛔ No permission to delete billing trigger");
     const entry = findEntry(id);
     if (entry) await handleDelete(id, entry);

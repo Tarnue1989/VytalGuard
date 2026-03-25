@@ -51,7 +51,7 @@ const MODULE_KEY = "registration_logs";
 /* ============================================================
    🔧 DEBUG LOGGER
 ============================================================ */
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("registrationLogController", DEBUG_OVERRIDE);
 
 /* ============================================================
@@ -634,7 +634,10 @@ export const completeRegistrationLog = async (req, res) => {
 
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
-      entity: log,
+      entity: {
+        ...log.toJSON(),
+        billable_item_id: log.registration_type_id,
+      },
       user: { ...req.user, organization_id: orgId, facility_id: facilityId },
       transaction: t,
     });

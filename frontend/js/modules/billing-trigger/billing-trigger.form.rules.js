@@ -18,13 +18,6 @@ export const BILLING_TRIGGER_FORM_RULES = [
     message: "Trigger Status is required",
   },
 
-  /* ================= Status ================= */
-  {
-    id: "is_active",
-    message: "Active status is required",
-    when: () => false, // optional, defaulted by UI
-  },
-
   /* ================= Organization (Superadmin only) ================= */
   {
     id: "organizationSelect",

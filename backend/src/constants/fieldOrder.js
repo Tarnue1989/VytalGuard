@@ -925,3 +925,28 @@ export const FIELD_ORDER_PATIENT_CHART_VIEW_LOG = [
   "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
+
+/* -------------------- Order -------------------- */
+export const FIELD_ORDER_ORDER = [
+  "id","organization_id","facility_id",
+  "patient_id","provider_id","consultation_id",
+  "type","priority",
+  "invoice_id","billing_status","fulfillment_status",
+  "order_date",
+  "status","status_changed_at","status_changed_by_id",
+  "notes",
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
+];
+
+/* -------------------- Order Item -------------------- */
+export const FIELD_ORDER_ORDER_ITEM = [
+  "id","order_id","billable_item_id","invoice_item_id",
+  "organization_id","facility_id",
+  "quantity","unit_price","total_price",
+  "dosage","frequency","duration","instructions",
+  "status","billing_status",
+  "notes",
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
+];

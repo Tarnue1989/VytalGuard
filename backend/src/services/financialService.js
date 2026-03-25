@@ -809,7 +809,7 @@ async applyPayment({
 
         await applyLifecycleTransition({
           entity: deposit,
-          action: "clear",
+          action: "processed",
           nextStatus: DS.CLEARED,
           user,
           t,
@@ -833,7 +833,7 @@ async applyPayment({
       if (deposit.status === DS.PENDING) {
         await applyLifecycleTransition({
           entity: deposit,
-          action: "clear",
+          action: "processed",
           nextStatus: DS.CLEARED,
           user,
           t,
@@ -948,7 +948,7 @@ async applyPayment({
 
         await applyLifecycleTransition({
           entity: deposit,
-          action: "verify",
+          action: "verified",
           nextStatus: DS.VERIFIED,
           user,
           t,

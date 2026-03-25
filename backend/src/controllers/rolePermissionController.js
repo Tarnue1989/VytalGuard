@@ -16,6 +16,7 @@ import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { isSuperAdmin, hasRole } from "../utils/role-utils.js";
 import { validatePaginationStrict } from "../utils/query-utils.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 
 /* ============================================================
    🧩 MODULE CONFIG
@@ -32,49 +33,135 @@ const ROLE_PERMISSION_INCLUDES = [
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"], required: false },
 ];
 
-/* ============================================================
-   ⚙️ ACCESS HELPERS
-   ============================================================ */
-function resolveOrganizationId(req, bodyOrgId) {
-  return isSuperAdmin(req.user)
-    ? bodyOrgId
-    : req.user?.organization_id || null;
-}
-
-function resolveFacilityId(req, bodyFacilityId) {
-  if (isSuperAdmin(req.user)) return bodyFacilityId;
-  if (hasRole(req.user, ["org owner", "organization owner"])) {
-    if (
-      Array.isArray(req.user.facility_ids) &&
-      req.user.facility_ids.includes(bodyFacilityId)
-    ) {
-      return bodyFacilityId;
-    }
-    return null;
-  }
-  return req.user?.facility_id || null;
-}
 
 /* ============================================================
    📋 SCHEMA FACTORY
    ============================================================ */
-function buildRolePermissionSchema(mode = "create") {
+function buildRolePermissionSchema(userRole, mode = "create") {
   const base = {
-    organization_id: Joi.string().uuid().required(),
-    facility_id: Joi.string().uuid().allow(null, ""),
     role_id: Joi.string().uuid().required(),
     permission_id: Joi.string().uuid().optional(),
     permission_ids: Joi.array().items(Joi.string().uuid()).optional(),
   };
 
-  return Joi.object(base).custom((value, helpers) => {
-    if (!value.permission_id && (!value.permission_ids || value.permission_ids.length === 0)) {
-      return helpers.error("any.custom", { message: "Either permission_id or permission_ids is required" });
-    }
-    return value;
-  });
+  if (userRole === "superadmin") {
+    base.organization_id = Joi.string().uuid().optional();
+    base.facility_id = Joi.string().uuid().allow(null).optional();
+  } else {
+    base.organization_id = Joi.forbidden();
+    base.facility_id = Joi.forbidden(); // 🔥 FIX
+  }
+  return Joi.object(base);
 }
+/* ============================================================
+   📌 CREATE ROLE PERMISSION (MASTER + HYBRID FACILITY)
+============================================================ */
+export const createRolePermission = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      res,
+    });
+    if (!allowed) return;
 
+  const role =
+    (req.user?.roleNames?.[0] || "staff").toLowerCase();
+
+  const schema = buildRolePermissionSchema(role, "create");
+    const { error: validationError, value } = schema.validate(req.body, {
+      stripUnknown: true,
+    });
+
+    if (validationError) {
+      await t.rollback();
+      return error(res, "Validation failed", validationError, 400);
+    }
+
+    /* ========================================================
+       🧭 TENANT RESOLUTION (ORG FROM BACKEND)
+    ======================================================== */
+    const { orgId, facilityId: resolvedFacilityId } =
+      await resolveOrgFacility({
+        user: req.user,
+        value,
+        body: req.body,
+      });
+
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
+
+    /* ========================================================
+       🏥 FACILITY (HYBRID – FRONTEND + VALIDATION)
+    ======================================================== */
+    let facilityId = resolvedFacilityId;
+
+    const permissionIds = value.permission_ids || [value.permission_id];
+
+    const createdRecords = [];
+
+    for (const pid of permissionIds) {
+      const exists = await RolePermission.findOne({
+        where: {
+          organization_id: orgId,
+          role_id: value.role_id,
+          permission_id: pid,
+          facility_id: facilityId,
+        },
+        paranoid: false,
+        transaction: t,
+      });
+
+      if (exists) continue;
+
+      const created = await RolePermission.create(
+        {
+          organization_id: orgId,
+          facility_id: facilityId,
+          role_id: value.role_id,
+          permission_id: pid,
+          created_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
+
+      createdRecords.push(created);
+    }
+
+    await t.commit();
+
+    const fullRecords = await RolePermission.findAll({
+      where: { id: { [Op.in]: createdRecords.map((r) => r.id) } },
+      include: ROLE_PERMISSION_INCLUDES,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "create",
+      details: {
+        organization_id: orgId,
+        facility_id: facilityId,
+        role_id: value.role_id,
+        created_count: fullRecords.length,
+      },
+    });
+
+    const message =
+      fullRecords.length === 0
+        ? "⚠️ All selected permissions already exist for this role."
+        : `✅ ${fullRecords.length} role permission(s) created successfully.`;
+
+    return success(res, message, { records: fullRecords });
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to create role permission", err);
+  }
+};
 /* ============================================================
    📌 GET LITE ROLE PERMISSIONS
    ============================================================ */
@@ -257,100 +344,30 @@ export const getRolePermissionById = async (req, res) => {
   }
 };
 
-/* ============================================================
-   📌 CREATE ROLE PERMISSION (Single or Bulk)
-   ============================================================ */
-export const createRolePermission = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    await authzService.checkPermission(req.user, MODULE_KEY, "create");
-
-    const schema = buildRolePermissionSchema("create");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
-    if (validationError) {
-      await t.rollback();
-      return error(res, "Validation failed", validationError, 400);
-    }
-
-    const finalOrgId = resolveOrganizationId(req, value.organization_id);
-    const finalFacilityId = resolveFacilityId(req, value.facility_id);
-    const permissionIds = value.permission_ids || [value.permission_id];
-
-    const createdRecords = [];
-
-    for (const pid of permissionIds) {
-      const exists = await RolePermission.findOne({
-        where: {
-          organization_id: finalOrgId,
-          role_id: value.role_id,
-          permission_id: pid,
-          facility_id: finalFacilityId,
-        },
-        paranoid: false,
-        transaction: t,
-      });
-      if (exists) continue;
-
-      const created = await RolePermission.create(
-        {
-          organization_id: finalOrgId,
-          facility_id: finalFacilityId,
-          role_id: value.role_id,
-          permission_id: pid,
-          created_by_id: req.user?.id || null,
-        },
-        { transaction: t }
-      );
-      createdRecords.push(created);
-    }
-
-    await t.commit();
-
-    const fullRecords = await RolePermission.findAll({
-      where: { id: { [Op.in]: createdRecords.map((r) => r.id) } },
-      include: ROLE_PERMISSION_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "create",
-      details: {
-        organization_id: finalOrgId,
-        facility_id: finalFacilityId,
-        role_id: value.role_id,
-        created_count: fullRecords.length,
-      },
-    });
-
-    const message =
-      fullRecords.length === 0
-        ? "⚠️ All selected permissions already exist for this role."
-        : `✅ ${fullRecords.length} role permission(s) created successfully.`;
-
-    return success(res, message, { records: fullRecords });
-  } catch (err) {
-    await t.rollback();
-    return error(res, "❌ Failed to create role permission", err);
-  }
-};
 /* ============================================================ 
-   📌 REPLACE ROLE PERMISSIONS (Bulk Safe Replace)
-   ============================================================ */
+   📌 REPLACE ROLE PERMISSIONS (MASTER + HYBRID FACILITY)
+============================================================ */
 export const replaceRolePermissions = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    await authzService.checkPermission(req.user, MODULE_KEY, "edit");
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "edit",
+      res,
+    });
+    if (!allowed) return;
 
     console.log("\n===============================");
     console.log("🟢 [ROLE PERMISSION UPDATE] Incoming Request Body:");
     console.log(JSON.stringify(req.body, null, 2));
     console.log("===============================");
 
-    // 🔹 Normalize incoming payload
+    /* ========================================================
+       🔹 NORMALIZE INPUT (NO ORG FROM FRONTEND)
+    ======================================================== */
     const normalizedBody = {
       role_id: req.params.role_id || req.body.role_id,
-      organization_id: req.body.organization_id,
       facility_id: req.body.facility_id ?? null,
       permission_ids: Array.isArray(req.body.permission_ids)
         ? req.body.permission_ids
@@ -361,18 +378,25 @@ export const replaceRolePermissions = async (req, res) => {
 
     console.log("🧩 Normalized Body:", normalizedBody);
 
-    // 🔹 Validate
+    /* ========================================================
+       🔹 VALIDATE (NO organization_id HERE)
+    ======================================================== */
     const schema = Joi.object({
       role_id: Joi.string().uuid().required(),
-      organization_id: Joi.string().uuid().required(),
       facility_id: Joi.string().uuid().allow(null, ""),
-      permission_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
+      permission_ids: Joi.array()
+        .items(Joi.string().uuid())
+        .min(1)
+        .required(),
     });
 
-    const { error: validationError, value } = schema.validate(normalizedBody, {
-      stripUnknown: true,
-      abortEarly: false,
-    });
+    const { error: validationError, value } = schema.validate(
+      normalizedBody,
+      {
+        stripUnknown: true,
+        abortEarly: false,
+      }
+    );
 
     if (validationError) {
       console.error("❌ Joi validation error:", validationError.details);
@@ -380,36 +404,49 @@ export const replaceRolePermissions = async (req, res) => {
       return error(res, "Validation failed", validationError.details, 400);
     }
 
-    const finalOrgId = value.organization_id || req.user.organization_id;
-    const finalFacilityId = value.facility_id || req.user.facility_id;
+    /* ========================================================
+       🧭 TENANT RESOLUTION (MASTER – SAME AS DEPOSIT)
+    ======================================================== */
+    const { orgId, facilityId: resolvedFacilityId } =
+      await resolveOrgFacility({
+        user: req.user,
+        value,
+        body: req.body,
+      });
 
-    console.log("🏢 Final Resolved Org/Facility:", {
-      finalOrgId,
-      finalFacilityId,
-    });
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
+    }
 
-    // 🔹 Remove old permissions
+    /* ========================================================
+       🏥 FACILITY VALIDATION (HYBRID)
+    ======================================================== */
+    let facilityId = resolvedFacilityId;
+
+    console.log("🏢 Final Org/Facility:", { orgId, facilityId });
+
+    /* ========================================================
+       🗑️ REMOVE OLD PERMISSIONS (SAFE SCOPE)
+    ======================================================== */
     const destroyCount = await RolePermission.destroy({
       where: {
         role_id: value.role_id,
-        organization_id: finalOrgId,
-        [Op.or]: [{ facility_id: finalFacilityId }, { facility_id: null }],
+        organization_id: orgId,
+        [Op.or]: [{ facility_id: facilityId }, { facility_id: null }],
       },
       force: true,
       transaction: t,
     });
+
     console.log(`🗑️ Deleted old permissions: ${destroyCount}`);
 
-    // 🔹 Insert new permissions
-    if (!value.permission_ids || value.permission_ids.length === 0) {
-      console.warn("⚠️ No permissions provided in request body!");
-      await t.rollback();
-      return error(res, "❌ No permissions selected to update.", null, 400);
-    }
-
+    /* ========================================================
+       ➕ INSERT NEW PERMISSIONS
+    ======================================================== */
     const newEntries = value.permission_ids.map((pid) => ({
-      organization_id: finalOrgId,
-      facility_id: finalFacilityId,
+      organization_id: orgId,
+      facility_id: facilityId,
       role_id: value.role_id,
       permission_id: pid,
       created_by_id: req.user?.id || null,
@@ -434,14 +471,17 @@ export const replaceRolePermissions = async (req, res) => {
 
     console.log("📦 Final Response:", { message });
 
+    /* ========================================================
+       🧾 AUDIT LOG
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "replace",
       details: {
         role_id: value.role_id,
-        organization_id: finalOrgId,
-        facility_id: finalFacilityId,
+        organization_id: orgId,
+        facility_id: facilityId,
         permissions: value.permission_ids,
         message,
       },
@@ -454,7 +494,6 @@ export const replaceRolePermissions = async (req, res) => {
     return error(res, "❌ Failed to replace role permissions", err);
   }
 };
-
 
 /* ============================================================
    📌 DELETE ROLE PERMISSION

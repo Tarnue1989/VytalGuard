@@ -1,3 +1,4 @@
+// 📁 backend/src/models/BillingTrigger.js
 import { DataTypes, Model } from "sequelize";
 
 export default (sequelize) => {
@@ -42,8 +43,15 @@ export default (sequelize) => {
       /* 🔑 Trigger Identity (FK-DRIVEN) */
       feature_module_id: {
         type: DataTypes.UUID,
-        allowNull: false, // ✅ must match DB
+        allowNull: false,
         comment: "Foreign key → feature_modules.id",
+      },
+
+      // 🔥 REQUIRED (matches DB + controller)
+      module_key: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        comment: "Display key for module (e.g. appointments, lab_requests)",
       },
 
       trigger_status: {
@@ -92,10 +100,22 @@ export default (sequelize) => {
 
       indexes: [
         { fields: ["feature_module_id"] },
+        { fields: ["module_key"] }, // 🔥 added
         { fields: ["trigger_status"] },
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
         { fields: ["is_active"] },
+
+        // 🔥 PREVENT DUPLICATES (IMPORTANT)
+        {
+          unique: true,
+          fields: [
+            "feature_module_id",
+            "trigger_status",
+            "organization_id",
+            "facility_id",
+          ],
+        },
       ],
     }
   );

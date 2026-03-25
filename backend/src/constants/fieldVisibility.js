@@ -19,7 +19,8 @@ import {
   FIELD_ORDER_AUTO_BILLING_RULE, FIELD_ORDER_MESSAGE, FIELD_ORDER_MESSAGE_ATTACHMENT, FIELD_ORDER_CONVERSATION,
   FIELD_ORDER_TRIAGE_RECORD,  FIELD_ORDER_EKG_RECORD, FIELD_ORDER_DEPARTMENT_STOCK, 
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
-  FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER
+  FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
+  FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,
 } from "./fieldOrder.js";
 
 
@@ -1125,4 +1126,36 @@ export const FIELD_VISIBILITY_PATIENT_CHART_VIEW_LOG = {
   organization_admin: FIELD_ORDER_PATIENT_CHART_VIEW_LOG,
   manager: ["id", "patient_id", "user_id", "action", "viewed_at"],
   staff: ["id", "patient_id", "action", "viewed_at"]
+};
+
+/* -------------------- Order -------------------- */
+export const FIELD_VISIBILITY_ORDER = {
+  superadmin: FIELD_ORDER_ORDER,
+  organization_admin: FIELD_ORDER_ORDER,
+  manager: [
+    "id","patient_id","provider_id",
+    "type","priority",
+    "order_date",
+    "status","billing_status","fulfillment_status"
+  ],
+  staff: [
+    "id","patient_id",
+    "type",
+    "order_date","status"
+  ]
+};
+
+/* -------------------- Order Item -------------------- */
+export const FIELD_VISIBILITY_ORDER_ITEM = {
+  superadmin: FIELD_ORDER_ORDER_ITEM,
+  organization_admin: FIELD_ORDER_ORDER_ITEM,
+  manager: [
+    "id","order_id","billable_item_id",
+    "quantity","unit_price","total_price",
+    "status","billing_status"
+  ],
+  staff: [
+    "id","billable_item_id",
+    "quantity","status"
+  ]
 };
