@@ -806,7 +806,7 @@ export const getAllBillableItemsLite = async (req, res) => {
       ],
       attributes: ["id", "name", "code", "price", "currency"],
       order: [["name", "ASC"]],
-      limit: 20,
+      limit: 600,
     });
 
     /* ============================================================

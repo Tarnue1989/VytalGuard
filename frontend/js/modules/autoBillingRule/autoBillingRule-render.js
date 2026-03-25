@@ -173,10 +173,10 @@ function renderValue(entry, field) {
       return entry.facility?.name || "—";
 
     case "trigger_feature_module":
-      return entry.trigger_feature_module?.name || "—";
+      return entry.featureModule?.name || "—";
 
     case "trigger_module":
-      return entry.trigger_module || "—";
+      return entry.featureModule?.name || "—";
 
     case "billableItem":
       return entry.billableItem?.name || "—";
@@ -230,10 +230,10 @@ export function renderCard(entry, visibleFields, user) {
     <div class="entity-card-header">
       <div>
         <div class="entity-secondary">
-          ${safe(entry.trigger_feature_module?.name)}
+          ${safe(entry.featureModule?.name)}
         </div>
         <div class="entity-primary">
-          ${safe(entry.trigger_module)}
+          ${safe(entry.featureModule?.name)}
         </div>
       </div>
       ${
