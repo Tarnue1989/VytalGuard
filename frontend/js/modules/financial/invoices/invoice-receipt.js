@@ -57,7 +57,7 @@ export function printInvoiceReceipt(invoice) {
   /* ------------------------------------------------------------
      🧮 Optional “Paid To Date” line (only if > 0)
   ------------------------------------------------------------ */
-  const paidToDateValue = Number(invoice.total_paid || 0);
+  const paidToDateValue = Number(invoice.total_paid ?? 0);
   const paidToDateHTML =
     paidToDateValue > 0
       ? `<div><strong>Paid To Date:</strong> $${paidToDateValue.toFixed(2)}</div>`

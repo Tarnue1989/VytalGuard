@@ -99,7 +99,7 @@ export function setupActionHandlers({
       👁️ View
     ========================= */
     if (action === "view") {
-      if (!hasPerm("invoices:view"))
+      if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
         return showToast("⛔ No permission to view invoices");
       return handleView(entry);
     }
@@ -114,12 +114,27 @@ export function setupActionHandlers({
     }
 
     /* =========================
-      🔁 Toggle Status
+      🔁 Toggle Status (FIXED)
     ========================= */
     if (action === "toggle-status") {
-      if (!hasPerm("invoices:toggle-status") && !hasPerm("invoices:edit"))
+      if (
+        !hasPerm("invoices:toggle-status") &&
+        !hasPerm("invoices:toggle_status") &&
+        !hasPerm("invoices:edit")
+      )
         return showToast("⛔ No permission to toggle invoices");
+
       return await handleToggleStatus(id, entry);
+    }
+
+    /* =========================
+      ⚠️ VOID / RESTORE (ADD HERE)
+    ========================= */
+    if (action === "void" || action === "restore") {
+      if (!hasPerm(`invoices:${action}`))
+        return showToast(`⛔ No permission to ${action} invoices`);
+
+      return await handleLifecycleAction(id, action);
     }
 
     /* =========================
@@ -149,7 +164,7 @@ export function setupActionHandlers({
       🖨️ Print
     ========================= */
     if (action === "print") {
-      if (!hasPerm("invoices:view"))
+      if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
         return showToast("⛔ No permission to print invoices");
       return handlePrint(entry);
     }
@@ -207,6 +222,27 @@ export function setupActionHandlers({
     }
   }
 
+  async function handleLifecycleAction(id, action) {
+    const confirmed = await showConfirm(`Proceed to ${action} this invoice?`);
+    if (!confirmed) return;
+
+    try {
+      showLoading();
+      const res = await authFetch(`/api/invoices/${id}/${action}`, {
+        method: "PATCH",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `❌ Failed to ${action}`);
+
+      showToast(`✅ Invoice ${action} successful`);
+      window.latestInvoiceEntries = [];
+      await loadEntries(currentPage);
+    } catch (err) {
+      showToast(err.message || `❌ Failed to ${action}`);
+    } finally {
+      hideLoading();
+    }
+  }
   async function handlePrint(entry) {
     if (!entry?.id) return showToast("❌ Invalid invoice");
 
@@ -472,7 +508,7 @@ export function setupActionHandlers({
     );
 
   window.viewEntry = (id) => {
-    if (!hasPerm("invoices:view"))
+    if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
       return showToast("⛔ No permission to view invoices");
     const entry = findEntry(id);
     entry ? handleView(entry) : showToast("❌ Invoice not found");
@@ -488,13 +524,21 @@ export function setupActionHandlers({
     window[`${action}Invoice`] = async (id) => {
       if (!hasPerm(`invoices:${action}`) && !hasPerm("invoices:edit"))
         return showToast(`⛔ No permission to ${action} invoices`);
+
       const entry = findEntry(id);
-      await handleToggleStatus(id, entry);
+
+      if (action === "toggle-status") {
+        return await handleToggleStatus(id, entry);
+      }
+
+      if (action === "reverse") {
+        return await handleLifecycleAction(id, action);
+      }
     };
   });
 
   window.printInvoice = (id) => {
-    if (!hasPerm("invoices:view"))
+    if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
       return showToast("⛔ No permission to print invoices");
     const entry = findEntry(id);
     entry ? handlePrint(entry) : showToast("❌ Invoice not found");

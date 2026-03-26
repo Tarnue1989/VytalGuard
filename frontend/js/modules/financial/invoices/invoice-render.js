@@ -119,7 +119,11 @@ function renderValue(entry, field) {
 export function renderInvoiceDetail(entry, user) {
   const actionBar = `
     <div class="d-flex justify-content-end mb-3">
-      <button class="btn btn-sm btn-outline-secondary print-btn" data-id="${entry.id}">
+      <button 
+        class="btn btn-sm btn-outline-secondary" 
+        data-id="${entry.id}" 
+        data-action="print"
+      >
         <i class="fas fa-print"></i> Print Invoice
       </button>
     </div>`;
@@ -180,7 +184,7 @@ export function renderInvoiceDetail(entry, user) {
 
   /* ✅ FIXED: Deposits use correct key = appliedDeposits */
   const depositsHTML =
-    (entry.appliedDeposits || [])
+    (entry.applied_deposits || [])
       .map(
         (d) => `
           <p>
