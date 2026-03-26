@@ -52,9 +52,10 @@ export const STATUS_ACTION_MATRIX = {
 
   /* ======================== 🧾 INVOICE ======================== */
   invoice:{
-    unpaid:["collect","cancel","void","print"],
-    partial:["collect","void","print"],
-    paid:["print"],
+    draft:["edit","delete","void"],
+    unpaid:["collect","deposit","waiver","void","print"],
+    partial:["collect","deposit","waiver","refund","void","print"],
+    paid:["refund","reverse","print"],
     cancelled:["restore"],
     voided:["restore"],
     deleted:["restore"]
@@ -323,6 +324,9 @@ export function buildActionButtons({
   );
 
   let allowed = STATUS_ACTION_MATRIX[module]?.[status] || [];
+
+  /* 🔥 FIX: REMOVE DUPLICATES */
+  allowed = [...new Set(allowed)];
   /* ========================= NORMALIZE PATIENT TOGGLE ========================= */
   if (module === "patient") {
     allowed = allowed.map(a =>
@@ -426,6 +430,13 @@ export function buildActionButtons({
     clear: "fa-check-double",
     revert: "fa-undo-alt",
 
+
+    collect: "fa-money-bill-wave",
+    deposit: "fa-piggy-bank",
+    waiver: "fa-file-invoice-dollar",
+    refund: "fa-undo",
+    reverse: "fa-rotate-left",
+    
     /* 👍 Decisions */
     approve: "fa-thumbs-up",
     reject: "fa-thumbs-down",

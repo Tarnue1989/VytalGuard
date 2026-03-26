@@ -1,8 +1,8 @@
-// 📦 finance-filter-main.js – FINAL (ISO date safe, fully wired)
+// 📦 finance-filter-main.js – FINAL PRO (Enterprise synced)
 // ============================================================
-// 🔹 Loads all finance report sections
-// 🔹 Uses daterangepicker ISO output only
-// 🔹 Safe against empty / partial responses
+// 🔹 Fully synced with advanced finance report (discounts, waivers)
+// 🔹 Safe API handling + UX improvements
+// 🔹 Supports future analytics (daily, charts, etc.)
 // ============================================================
 
 import {
@@ -40,44 +40,73 @@ export async function initFinanceReportModule() {
 }
 
 /* ============================================================
-   📊 Load Reports
+   📊 Load Reports (FULL SYNC)
 ============================================================ */
 async function loadReports() {
+  const applyBtn = document.getElementById("financeApplyBtn");
+
   try {
     showLoading();
+    applyBtn?.setAttribute("disabled", true);
 
     const params = new URLSearchParams();
     const input = document.getElementById("financeDateRange");
 
-    // ✅ Always use daterangepicker values (ISO safe)
+    /* ========================================================
+       📅 DATE RANGE (ISO SAFE)
+    ======================================================== */
+    let from, to;
+
     if (input && $(input).data("daterangepicker")) {
       const picker = $(input).data("daterangepicker");
 
-      const from = picker.startDate.format("YYYY-MM-DD");
-      const to   = picker.endDate.format("YYYY-MM-DD");
-
-      params.set("from", from);
-      params.set("to", to);
+      from = picker.startDate.format("YYYY-MM-DD");
+      to   = picker.endDate.format("YYYY-MM-DD");
+    } else {
+      const today = new Date().toISOString().slice(0, 10);
+      from = today;
+      to = today;
     }
 
+    params.set("from", from);
+    params.set("to", to);
+
+    const query = params.toString();
+
+    /* ========================================================
+       🚀 PARALLEL API CALLS
+    ======================================================== */
     const [
       summaryRes,
       servicesRes,
       paymentsRes,
       depositsRes,
     ] = await Promise.all([
-      authFetch(`/api/reports/finance/summary?${params.toString()}`),
-      authFetch(`/api/reports/finance/services?${params.toString()}`),
-      authFetch(`/api/reports/finance/payments?${params.toString()}`),
-      authFetch(`/api/reports/finance/deposits?${params.toString()}`),
+      authFetch(`/api/reports/finance/summary?${query}`),
+      authFetch(`/api/reports/finance/services?${query}`),
+      authFetch(`/api/reports/finance/payments?${query}`),
+      authFetch(`/api/reports/finance/deposits?${query}`),
     ]);
 
-    const summaryJson  = await summaryRes.json();
-    const servicesJson = await servicesRes.json();
-    const paymentsJson = await paymentsRes.json();
-    const depositsJson = await depositsRes.json();
+    /* ========================================================
+       🛡 SAFE RESPONSE HANDLING
+    ======================================================== */
+    const summaryJson  = summaryRes.ok  ? await summaryRes.json()  : {};
+    const servicesJson = servicesRes.ok ? await servicesRes.json() : {};
+    const paymentsJson = paymentsRes.ok ? await paymentsRes.json() : {};
+    const depositsJson = depositsRes.ok ? await depositsRes.json() : {};
 
-    // 🔹 Render sections (safe defaults)
+    /* ========================================================
+       🔍 DEBUG (DEV ONLY)
+    ======================================================== */
+    console.log("Finance Summary:", summaryJson);
+    console.log("Services:", servicesJson);
+    console.log("Payments:", paymentsJson);
+    console.log("Deposits:", depositsJson);
+
+    /* ========================================================
+       🎨 RENDER ALL SECTIONS
+    ======================================================== */
     renderFinanceSummary(summaryJson?.data || {});
     renderServiceTable(servicesJson?.data || []);
     renderPaymentsTable(paymentsJson?.data || []);
@@ -87,5 +116,6 @@ async function loadReports() {
     console.error("❌ Finance report load failed", err);
   } finally {
     hideLoading();
+    applyBtn?.removeAttribute("disabled");
   }
 }
