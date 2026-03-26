@@ -11,6 +11,7 @@ import { isSuperAdmin } from "../utils/role-utils.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
 import { validate } from "../utils/validation.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (ORGANIZATION CONTROLLER)
@@ -228,7 +229,7 @@ export const getOrganizationById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL ORGANIZATIONS LITE
+   📌 GET ALL ORGANIZATIONS LITE (FINAL SAFE)
 ============================================================ */
 export const getAllOrganizationsLite = async (req, res) => {
   try {
@@ -247,10 +248,35 @@ export const getAllOrganizationsLite = async (req, res) => {
       [Op.and]: [],
     };
 
+    /* ========================================================
+       🔐 TENANT SCOPE
+    ======================================================== */
+    const { orgId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    /* ========================================================
+       🔒 ORG RESTRICTION (FAIL-SAFE)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({ id: req.user.organization_id });
+
+      if (orgId) {
+        where[Op.and].push({ id: orgId });
+      } else {
+        // 🚨 FAIL CLOSED (VERY IMPORTANT)
+        where[Op.and].push({ id: "__NO_MATCH__" });
+      }
+
+    } else {
+      if (orgId) {
+        where.id = orgId;
+      }
     }
 
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -260,27 +286,48 @@ export const getAllOrganizationsLite = async (req, res) => {
       });
     }
 
-    const records = await Organization.findAll({
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
+    const organizations = await Organization.findAll({
       where,
       attributes: ["id", "name", "code"],
       order: [["name", "ASC"]],
-      limit: 20,
+      limit: 100,
     });
 
+    /* ========================================================
+       🧠 OUTPUT
+    ======================================================== */
+    const records = organizations.map((o) => ({
+      id: o.id,
+      name: o.name,
+      code: o.code || "",
+    }));
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { q: q || null, count: records.length },
+      details: {
+        q: q || null,
+        count: records.length,
+        orgId: orgId || null,
+      },
     });
 
-    return success(res, "✅ Organizations loaded (lite)", { records });
+    return success(res, "✅ Organizations loaded (lite)", {
+      records,
+    });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load organizations (lite)", err);
   }
 };
-
 /* ============================================================
    📌 CREATE ORGANIZATION
 ============================================================ */

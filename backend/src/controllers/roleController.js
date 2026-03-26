@@ -27,6 +27,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 import {
   syncOrgAdminForRole,
 } from "../services/roleProvisioningService.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
 
 const MODULE_KEY = "roles";
 
@@ -547,7 +548,7 @@ export const getRoleById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ROLES LITE (AUTOCOMPLETE)
+   📌 GET ROLES LITE (FINAL ENTERPRISE SAFE)
 ============================================================ */
 export const getAllRolesLite = async (req, res) => {
   try {
@@ -559,34 +560,69 @@ export const getAllRolesLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, organization_id, facility_id } = req.query;
+    const { q } = req.query;
 
     const where = {
       status: ROLE_STATUS[0],
       [Op.and]: [],
     };
 
-    if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
-      where.organization_id = organization_id;
-    } else if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    /* ========================================================
+       🔐 TENANT SCOPE (STANDARDIZED)
+    ======================================================== */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    /* ========================================================
+       🔒 ORG RESTRICTION (FAIL SAFE)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+
+      if (orgId) {
+        where.organization_id = orgId;
+      } else {
+        where[Op.and].push({ id: "__NO_MATCH__" });
+      }
+
+    } else {
+      if (orgId) {
+        where.organization_id = orgId;
+      }
     }
 
+    /* ========================================================
+       🔒 FACILITY LOGIC (CONSISTENT WITH SYSTEM)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        [Op.or]: [
-          { facility_id: null },
-          ...(facility_id && /^[0-9a-f-]{36}$/i.test(facility_id)
-            ? [{ facility_id }]
-            : []),
-        ],
-      });
-    }
 
-    if (!isSuperAdmin(req.user)) {
+      if (!isOrgLevelUser(req.user)) {
+        if (facilityId) {
+          where[Op.and].push({
+            [Op.or]: [
+              { facility_id: null },
+              { facility_id: facilityId },
+            ],
+          });
+        } else {
+          // 🚨 FAIL CLOSED
+          where[Op.and].push({ id: "__NO_MATCH__" });
+        }
+      }
+
+      // hide system roles for non-super
       where.role_type = { [Op.ne]: "system" };
+
+    } else {
+      if (facilityId) {
+        where.facility_id = facilityId;
+      }
     }
 
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -597,14 +633,20 @@ export const getAllRolesLite = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const roles = await Role.findAll({
       where,
       attributes: ["id", "name", "code", "description", "role_type"],
       order: [["name", "ASC"]],
-      limit: 50,
+      limit: 100,
     });
 
-    const result = roles.map(r => ({
+    /* ========================================================
+       🧠 OUTPUT
+    ======================================================== */
+    const records = roles.map((r) => ({
       id: r.id,
       name: r.name,
       code: r.code || "",
@@ -612,19 +654,23 @@ export const getAllRolesLite = async (req, res) => {
       is_system: r.role_type === "system",
     }));
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
       details: {
-        count: result.length,
+        count: records.length,
         q: q || null,
-        organization_id: where.organization_id || null,
-        facility_id: facility_id || null,
+        orgId: orgId || null,
+        facilityId: facilityId || null,
       },
     });
 
-    return success(res, "✅ Roles loaded (lite)", { records: result });
+    return success(res, "✅ Roles loaded (lite)", { records });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load roles (lite)", err);

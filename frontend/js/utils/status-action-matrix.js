@@ -200,8 +200,7 @@ export const STATUS_ACTION_MATRIX = {
     order:{
     draft:["edit","submit",
     "delete","void"],
-    pending:["edit",
-    "activate","cancel",
+    pending:["activate","cancel",
     "void"],
     in_progress:["complete",
     "cancel","void"],
@@ -436,7 +435,7 @@ export function buildActionButtons({
     waiver: "fa-file-invoice-dollar",
     refund: "fa-undo",
     reverse: "fa-rotate-left",
-    
+
     /* 👍 Decisions */
     approve: "fa-thumbs-up",
     reject: "fa-thumbs-down",
