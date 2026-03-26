@@ -712,6 +712,7 @@ export const getBillableItemById = async (req, res) => {
    - Tenant safe
    - Super admin supports global + facility
    - 🔥 Supports module → billable via code
+   - 🔥 FIXED: category filter + safe include + scalable
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
@@ -726,7 +727,7 @@ export const getAllBillableItemsLite = async (req, res) => {
     /* ============================================================
        🧾 QUERY PARAMS
     ============================================================ */
-    const { q, category_id, category, code } = req.query; // 🔥 NEW
+    const { q, category_id, category, code, limit } = req.query;
 
     /* ============================================================
        🧱 BASE WHERE
@@ -766,16 +767,23 @@ export const getAllBillableItemsLite = async (req, res) => {
     }
 
     /* ============================================================
-       🧩 CATEGORY FILTER
+       🧩 CATEGORY FILTER (FIXED – RELATION SAFE)
     ============================================================ */
-    if (category_id) where.category_id = category_id;
-    if (category) where["$category.code$"] = category;
+    const categoryWhere = {};
+
+    if (category_id) {
+      where.category_id = category_id;
+    }
+
+    if (category) {
+      categoryWhere.code = category;
+    }
 
     /* ============================================================
-       🔥 MODULE → BILLABLE LINK (KEY FIX)
+       🔥 MODULE → BILLABLE LINK (IMPROVED)
     ============================================================ */
     if (code) {
-      where.code = code; // 👈 THIS ENABLES YOUR FEATURE
+      where.code = { [Op.iLike]: `%${code}%` };
     }
 
     /* ============================================================
@@ -802,11 +810,14 @@ export const getAllBillableItemsLite = async (req, res) => {
           model: MasterItemCategory,
           as: "category",
           attributes: ["id", "name", "code"],
+          ...(category ? { where: categoryWhere } : {}),
+          required: !!category, // 🔥 ensures proper filtering
         },
       ],
       attributes: ["id", "name", "code", "price", "currency"],
       order: [["name", "ASC"]],
-      limit: 600,
+      limit: parseInt(limit) || 500, // 🔥 scalable
+      subQuery: false, // 🔥 prevents join issues
     });
 
     /* ============================================================
@@ -839,7 +850,7 @@ export const getAllBillableItemsLite = async (req, res) => {
         q,
         category,
         category_id,
-        code, // 🔥 TRACK THIS
+        code,
       },
     });
 

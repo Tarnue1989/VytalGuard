@@ -24,6 +24,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 import { validate } from "../utils/validation.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
 
 const MODULE_KEY = "departments";
 
@@ -424,7 +425,7 @@ export const toggleDepartmentStatus = async (req, res) => {
   }
 };
 /* ============================================================
-   📌 GET ALL DEPARTMENTS LITE (MASTER PARITY)
+   📌 GET ALL DEPARTMENTS LITE (ENTERPRISE SMART SCOPE)
 ============================================================ */
 export const getAllDepartmentsLite = async (req, res) => {
   try {
@@ -444,24 +445,32 @@ export const getAllDepartmentsLite = async (req, res) => {
     };
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER PATTERN)
+       🔐 TENANT SCOPE (USING LITE UTIL)
     ======================================================== */
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
 
+    // Apply organization scope
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    // Apply facility logic
+    if (!isSuperAdmin(req.user)) {
       if (!isOrgLevelUser(req.user)) {
         where[Op.and].push({
           [Op.or]: [
             { facility_id: null },
-            { facility_id: req.user.facility_id },
+            { facility_id: facilityId },
           ],
         });
       }
     } else {
-      if (req.query.organization_id)
-        where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        where.facility_id = req.query.facility_id;
+      if (facilityId) {
+        where.facility_id = facilityId;
+      }
     }
 
     /* ========================================================
@@ -476,33 +485,66 @@ export const getAllDepartmentsLite = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📦 QUERY (WITH CONTEXT)
+    ======================================================== */
     const departments = await Department.findAll({
       where,
-      attributes: ["id", "name", "code"],
+      attributes: ["id", "name", "code", "organization_id", "facility_id"],
+      include: [
+        {
+          model: Organization,
+          as: "organization",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Facility,
+          as: "facility",
+          attributes: ["id", "name"],
+        },
+      ],
       order: [["name", "ASC"]],
-      limit: 50,
+      limit: 100,
     });
 
+    /* ========================================================
+       🧠 SMART LABELING (ORG / FACILITY AWARE)
+    ======================================================== */
     const records = departments.map((d) => ({
       id: d.id,
-      name: d.name,
+      name:
+        d.facility?.name
+          ? `${d.name} (Facility: ${d.facility.name})`
+          : d.organization?.name
+          ? `${d.name} (Org: ${d.organization.name})`
+          : d.name,
       code: d.code || "",
+      organization_id: d.organization_id,
+      facility_id: d.facility_id,
     }));
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: records.length, q: q || null },
+      details: {
+        count: records.length,
+        q: q || null,
+        orgId: orgId || null,
+        facilityId: facilityId || null,
+      },
     });
 
     return success(res, "✅ Departments loaded (lite)", { records });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load departments (lite)", err);
   }
 };
-
 
 /* ============================================================
    📌 DELETE DEPARTMENT (MASTER PARITY)

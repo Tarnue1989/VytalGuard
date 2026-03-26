@@ -47,20 +47,14 @@ export const MASTER_ITEM_FORM_RULES = [
   /* =========================
      Facility (facility-scoped users only)
   ========================= */
-{
-  id: "facilitySelect",
-  message: "Facility is required",
-  when: () => {
-    const role = (localStorage.getItem("userRole") || "").toLowerCase();
-
-    // ❌ super admin → optional
-    if (role.includes("super")) return false;
-
-    // ✅ org admin → REQUIRED
-    if (role.includes("org")) return true;
-
-    // ❌ facility/staff → hidden, so skip validation
-    return false;
+  {
+    id: "facilitySelect",
+    message: "Facility is required",
+    when: () => {
+      const role = (localStorage.getItem("userRole") || "").toLowerCase();
+      if (role.includes("super")) return false;
+      if (role.includes("org")) return false;
+      return true;
+    },
   },
-},
 ];

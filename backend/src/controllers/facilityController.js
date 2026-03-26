@@ -23,6 +23,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 import { validate } from "../utils/validation.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
 
 const MODULE_KEY = "facilities";
 
@@ -606,7 +607,7 @@ export const getAllFacilities = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ALL FACILITIES LITE (MASTER PARITY)
+   📌 GET ALL FACILITIES LITE (FINAL SAFE)
 ============================================================ */
 export const getAllFacilitiesLite = async (req, res) => {
   try {
@@ -625,18 +626,41 @@ export const getAllFacilitiesLite = async (req, res) => {
       [Op.and]: [],
     };
 
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: req.user.organization_id,
-      });
+    /* ========================================================
+       🔐 TENANT SCOPE
+    ======================================================== */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
 
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    /* ========================================================
+       🔒 FACILITY RESTRICTION (🔥 FIXED)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
       if (!isOrgLevelUser(req.user)) {
-        where[Op.and].push({
-          id: req.user.facility_id,
-        });
+
+        if (facilityId) {
+          where[Op.and].push({ id: facilityId });
+        } else {
+          // 🚨 FAIL CLOSED (VERY IMPORTANT)
+          where[Op.and].push({ id: "__NO_MATCH__" });
+        }
+
+      }
+    } else {
+      if (facilityId) {
+        where.id = facilityId;
       }
     }
 
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -646,23 +670,54 @@ export const getAllFacilitiesLite = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const facilities = await Facility.findAll({
       where,
-      attributes: ["id", "name", "code"],
+      attributes: ["id", "name", "code", "organization_id"],
+      include: [
+        {
+          model: Organization,
+          as: "organization",
+          attributes: ["id", "name"],
+        },
+      ],
       order: [["name", "ASC"]],
-      limit: 20,
+      limit: 100,
     });
 
+    /* ========================================================
+       🧠 LABEL
+    ======================================================== */
+    const records = facilities.map((f) => ({
+      id: f.id,
+      name: f.organization?.name
+        ? `${f.name} (Org: ${f.organization.name})`
+        : f.name,
+      code: f.code || "",
+      organization_id: f.organization_id,
+    }));
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { q: q || null, count: facilities.length },
+      details: {
+        q: q || null,
+        count: records.length,
+        orgId: orgId || null,
+        facilityId: facilityId || null,
+      },
     });
 
     return success(res, "✅ Facilities loaded (lite)", {
-      records: facilities,
+      records,
     });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load facilities (lite)", err);
