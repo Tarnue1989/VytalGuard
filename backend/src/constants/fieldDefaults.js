@@ -240,12 +240,26 @@ export const FIELD_DEFAULTS_LETTERHEAD_TEMPLATE = {
 /* -------------------- Organization Branding -------------------- */
 export const FIELD_DEFAULTS_ORGANIZATION_BRANDING = {
   admin: FIELD_ORDER_ORGANIZATION_BRANDING,
+
   manager: [
-    "organization_id", "status", "theme",
-    "logo_url", "logo_print_url", "favicon_url",
-    "default_letterhead_id", "contact", "meta"
+    "organization_id",
+    "status",
+
+    "company_name",
+    "theme",
+
+    "logo_url",
+    "logo_print_url",
+    "favicon_url",
+
+    "currency",
+    "timezone",
   ],
-  staff: ["status", "logo_url", "favicon_url"]
+
+  staff: [
+    "status",
+    "logo_url",
+  ],
 };
 
 /* -------------------- Plan -------------------- */

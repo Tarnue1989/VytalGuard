@@ -15,7 +15,8 @@ import {
 } from "../../../utils/index.js";
 import { authFetch } from "../../../authSession.js";
 import { renderCard, renderInvoiceDetail } from "./invoice-render.js";
-import { printInvoiceReceipt } from "./invoice-receipt.js";
+import { buildInvoiceReceiptHTML } from "./invoice-receipt.js";
+import { printDocument } from "../../../templates/printTemplate.js";
 import {
   PAYMENT_METHODS,
   DISCOUNT_TYPE,
@@ -159,12 +160,11 @@ export function setupActionHandlers({
 
       return openModal(actionModalMap[action], id, entry, extra);
     }
-
     /* =========================
       🖨️ Print
     ========================= */
     if (action === "print") {
-      if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
+      if (!hasPerm("invoices:print"))
         return showToast("⛔ No permission to print invoices");
       return handlePrint(entry);
     }
@@ -257,7 +257,14 @@ export function setupActionHandlers({
         throw new Error(data?.message || "❌ Failed to load invoice for print");
       }
 
-      printInvoiceReceipt(data.data);
+      const html = buildInvoiceReceiptHTML(data.data);
+
+    await printDocument(html, {
+      title: "Invoice Receipt",
+      invoice: data.data,
+      branding: JSON.parse(localStorage.getItem("branding") || "{}"), // 🔥 ADD THIS
+    });
+
       showToast("🖨️ Printing invoice receipt...");
     } catch (err) {
       showToast(err.message || "❌ Failed to print receipt");
@@ -508,7 +515,7 @@ export function setupActionHandlers({
     );
 
   window.viewEntry = (id) => {
-    if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
+    if (!hasPerm("invoices:view"))
       return showToast("⛔ No permission to view invoices");
     const entry = findEntry(id);
     entry ? handleView(entry) : showToast("❌ Invoice not found");
@@ -538,7 +545,7 @@ export function setupActionHandlers({
   });
 
   window.printInvoice = (id) => {
-    if (!hasPerm("invoices:view") && !hasPerm("invoices:print"))
+    if (!hasPerm("invoices:print"))
       return showToast("⛔ No permission to print invoices");
     const entry = findEntry(id);
     entry ? handlePrint(entry) : showToast("❌ Invoice not found");

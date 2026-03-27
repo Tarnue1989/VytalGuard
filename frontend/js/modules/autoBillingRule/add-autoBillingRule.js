@@ -1,13 +1,15 @@
-// 📦 add-autoBillingRule.js – ENTERPRISE MASTER ORCHESTRATOR (UPGRADED)
+// 📦 add-autoBillingRule.js – ENTERPRISE MASTER ORCHESTRATOR (FINAL)
 // ============================================================================
-// 🧭 FULL ALIGNMENT with add-registration-log.js MASTER
-// 🔹 Pure orchestration layer (NO loaders, NO API, NO RBAC here)
-// 🔹 Delegates ALL logic to autoBillingRule-form.js
-// 🔹 Handles reset + session coordination only
-// 🔹 Clean, scalable, enterprise-ready
+// ✔ PURE orchestration
+// ✔ Delegates ALL logic to form
+// ✔ Pills reset FIXED (role-style, no globals)
+// ✔ MASTER aligned
 // ============================================================================
 
-import { setupAutoBillingRuleFormSubmission } from "./autoBillingRule-form.js";
+import {
+  setupAutoBillingRuleFormSubmission,
+  getAutoBillingFormState, // ✅ NEW
+} from "./autoBillingRule-form.js";
 
 import {
   initPageGuard,
@@ -27,7 +29,7 @@ const token = initPageGuard(
 initLogoutWatcher();
 
 /* ============================================================
-   🌐 Shared State (Enterprise Pattern)
+   🌐 Shared State
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
@@ -41,64 +43,84 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Helper (Add Mode)
+   🧠 FORM STATE (🔥 SAME AS ROLE MODULE)
+============================================================ */
+const { resetPills } = getAutoBillingFormState();
+
+/* ============================================================
+   🧹 FULL RESET (FINAL)
 ============================================================ */
 function resetForm() {
   if (!form) return;
 
+  // 1. Reset native form
   form.reset();
-  sharedState.currentEditIdRef.value = null;
 
-  // Clear edit session
+  // 2. Clear session
   sessionStorage.removeItem("autoBillingRuleEditId");
   sessionStorage.removeItem("autoBillingRuleEditPayload");
 
-  // Reset selects
+  // 3. Reset shared state
+  sharedState.currentEditIdRef.value = null;
+
+  // 4. 🔥 RESET PILLS (CORRECT WAY)
+  resetPills();
+
+  // 5. Reset pills UI fallback
+  const pills = document.getElementById("billablePillsContainer");
+  if (pills) {
+    pills.innerHTML =
+      `<p class="text-muted">No billable items added yet.</p>`;
+  }
+
+  // 6. Reset category + search
+  const category = document.getElementById("categorySelect");
+  if (category) category.value = "";
+
+  const search = document.getElementById("billableSearch");
+  if (search) search.value = "";
+
+  // 7. Reset trigger
+  const trigger = document.getElementById("triggerModuleInput");
+  if (trigger) {
+    trigger.value = "";
+    delete trigger.dataset.key;
+    delete trigger.dataset.id;
+  }
+
+  // 8. Reset selects
   [
     "organizationSelect",
     "facilitySelect",
     "featureModuleSelect",
-    "billableItemSelect",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset trigger module
-  const triggerInput = document.getElementById("triggerModuleInput");
-  if (triggerInput) {
-    triggerInput.value = "";
-    delete triggerInput.dataset.key;
-    delete triggerInput.dataset.id;
-  }
+  // 9. Reset numeric + checkbox
+  const price = document.getElementById("defaultPrice");
+  if (price) price.value = "";
 
-  // Reset inputs
-  ["chargeMode", "defaultPrice"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
-  // Reset checkbox
   const autoGen = document.getElementById("autoGenerate");
   if (autoGen) autoGen.checked = false;
 
-  // Reset UI
+  // 10. Reset UI text
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Auto Billing Rule";
 
   const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn)
-    submitBtn.innerHTML =
-      `<i class="ri-add-line me-1"></i> Add Rule`;
+  if (submitBtn) {
+    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Rule`;
+  }
 }
 
 /* ============================================================
-   🚀 Init (Page Entry)
+   🚀 Init
 ============================================================ */
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // 🔥 Delegate ALL business logic to form module
   setupAutoBillingRuleFormSubmission({
     form,
     token,
@@ -120,8 +142,8 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ============================================================
-   🔁 Reserved Sync Hook (Future)
+   🔁 Reserved Hook
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for enterprise reactive syncing
+  // future
 }

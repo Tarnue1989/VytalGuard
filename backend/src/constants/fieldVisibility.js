@@ -234,12 +234,33 @@ export const FIELD_VISIBILITY_LETTERHEAD_TEMPLATE = {
 
 /* -------------------- Organization Branding -------------------- */
 export const FIELD_VISIBILITY_ORGANIZATION_BRANDING = {
-    superadmin: FIELD_ORDER_ORGANIZATION_BRANDING,
+  superadmin: FIELD_ORDER_ORGANIZATION_BRANDING,
   organization_admin: FIELD_ORDER_ORGANIZATION_BRANDING,
-  manager: ["id", "organization_id", "theme", "logo_url", "logo_print_url", "favicon_url", "default_letterhead_id", "status"],
-  staff: ["id", "organization_id", "theme", "logo_url", "status"]
-};
 
+  manager: [
+    "id",
+    "organization_id",
+
+    "company_name",
+    "theme",
+
+    "logo_url",
+    "logo_print_url",
+    "favicon_url",
+
+    "currency",
+    "timezone",
+
+    "status",
+  ],
+
+  staff: [
+    "id",
+    "company_name",
+    "logo_url",
+    "status",
+  ],
+};
 /* -------------------- Plan -------------------- */
 export const FIELD_VISIBILITY_PLAN = {
     superadmin: FIELD_ORDER_PLAN,

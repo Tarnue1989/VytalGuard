@@ -47,12 +47,23 @@ const AUTOBILLINGRULE_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA (FK-DRIVEN | ENTERPRISE FINAL)
+   📋 ROLE-AWARE JOI SCHEMA (MULTI BILLABLE | FINAL)
 ============================================================ */
 function buildAutoBillingRuleSchema(user, mode = "create") {
   const base = {
     trigger_feature_module_id: Joi.string().uuid().required(),
-    billable_item_id: Joi.string().uuid().required(),
+
+    // ❌ OLD (REMOVE)
+    // billable_item_id: Joi.string().uuid().required(),
+
+    // ✅ NEW (MULTI SUPPORT)
+    billable_item_id: Joi.forbidden(),
+
+    billable_item_ids: Joi.array()
+      .items(Joi.string().uuid())
+      .min(1)
+      .required(),
+
     auto_generate: Joi.boolean().default(true),
 
     charge_mode: Joi.string()
@@ -64,7 +75,7 @@ function buildAutoBillingRuleSchema(user, mode = "create") {
     // 🔒 backend controlled
     status: Joi.forbidden(),
 
-    // ✅ ALLOW (MASTER PATTERN)
+    // ✅ MASTER PATTERN
     organization_id: Joi.string().uuid().allow(null, ""),
     facility_id: Joi.string().uuid().allow(null, ""),
   };
@@ -82,11 +93,11 @@ function buildAutoBillingRuleSchema(user, mode = "create") {
 
   return Joi.object(base);
 }
-
 /* ============================================================
    📌 CREATE AUTO BILLING RULE
-   ✅ Multi-module allowed
-   ✅ Unique billable item per facility/org
+   ✅ Multi-create (RolePermission style)
+   ✅ Duplicate-safe
+   ✅ Tenant-safe (MASTER)
 ============================================================ */
 export const createAutoBillingRule = async (req, res) => {
   const t = await sequelize.transaction();
@@ -140,7 +151,7 @@ export const createAutoBillingRule = async (req, res) => {
     }
 
     /* ========================================================
-       🔒 NORMALIZE (VERY IMPORTANT)
+       🔒 NORMALIZE
     ======================================================== */
     facilityId = facilityId || null;
 
@@ -154,85 +165,105 @@ export const createAutoBillingRule = async (req, res) => {
       return error(res, "Facility is required", null, 400);
     }
 
-/* ========================================================
-   🔒 DUPLICATE CHECK (WITH FULL DEBUG)
-======================================================== */
-const moduleId = String(value.trigger_feature_module_id || "").trim();
-const billableId = String(value.billable_item_id || "").trim();
-const facId = facilityId || null;
+    /* ========================================================
+       🔥 MULTI INPUT NORMALIZATION
+    ======================================================== */
+    const billableIds =
+      value.billable_item_ids ||
+      (value.billable_item_id ? [value.billable_item_id] : []);
 
-console.log("🧪 DUP CHECK INPUT:", {
-  orgId,
-  facId,
-  moduleId,
-  billableId,
-});
-
-const exists = await AutoBillingRule.findOne({
-  where: {
-    organization_id: orgId,
-    facility_id: facId,
-    trigger_feature_module_id: moduleId,
-    billable_item_id: billableId,
-  },
-  attributes: ["id", "billable_item_id", "trigger_feature_module_id", "facility_id"],
-  paranoid: false,
-  transaction: t,
-});
-
-console.log("🧪 DUP CHECK RESULT:", exists);
-
-if (exists) {
-  console.log("🚨 DUPLICATE FOUND:", {
-    found_id: exists.id,
-    found_billable: exists.billable_item_id,
-    found_module: exists.trigger_feature_module_id,
-    found_facility: exists.facility_id,
-  });
-
-  await t.rollback();
-  return error(
-    res,
-    "⚠️ This billable item is already assigned to this module in this facility.",
-    exists,
-    400
-  );
-}
+    if (!billableIds.length) {
+      await t.rollback();
+      return error(res, "At least one billable item is required", null, 400);
+    }
 
     /* ========================================================
-       ➕ CREATE
+       🔁 MULTI CREATE (ROLE PERMISSION STYLE)
     ======================================================== */
-    const created = await AutoBillingRule.create(
-      {
-        trigger_feature_module_id: value.trigger_feature_module_id,
-        billable_item_id: value.billable_item_id,
-        auto_generate: value.auto_generate,
-        charge_mode: value.charge_mode,
-        default_price: value.default_price,
-        organization_id: orgId,
-        facility_id: facilityId,
-        status: AUTO_BILLING_RULE_STATUS[0],
-        created_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
+    const createdRecords = [];
+
+    for (const bid of billableIds) {
+      const moduleId = String(value.trigger_feature_module_id || "").trim();
+      const billableId = String(bid || "").trim();
+
+      console.log("🧪 DUP CHECK INPUT:", {
+        orgId,
+        facilityId,
+        moduleId,
+        billableId,
+      });
+
+      const exists = await AutoBillingRule.findOne({
+        where: {
+          organization_id: orgId,
+          facility_id: facilityId,
+          trigger_feature_module_id: moduleId,
+          billable_item_id: billableId,
+        },
+        paranoid: false,
+        transaction: t,
+      });
+
+      if (exists) {
+        console.log("⚠️ SKIPPED DUPLICATE:", {
+          billableId,
+          moduleId,
+        });
+        continue;
+      }
+
+      const created = await AutoBillingRule.create(
+        {
+          trigger_feature_module_id: moduleId,
+          billable_item_id: billableId,
+          auto_generate: value.auto_generate,
+          charge_mode: value.charge_mode,
+          default_price: value.default_price,
+          organization_id: orgId,
+          facility_id: facilityId,
+          status: AUTO_BILLING_RULE_STATUS[0],
+          created_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
+
+      createdRecords.push(created);
+    }
 
     await t.commit();
 
-    const full = await AutoBillingRule.findOne({
-      where: { id: created.id },
+    /* ========================================================
+       📦 LOAD FULL RECORDS
+    ======================================================== */
+    const fullRecords = await AutoBillingRule.findAll({
+      where: { id: createdRecords.map((r) => r.id) },
       include: AUTOBILLINGRULE_INCLUDES,
     });
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: "auto_billing_rule",
       action: "create",
-      entityId: created.id,
-      entity: full,
+      details: {
+        organization_id: orgId,
+        facility_id: facilityId,
+        created_count: fullRecords.length,
+      },
     });
 
-    return success(res, "✅ Auto Billing Rule created", full);
+    /* ========================================================
+       📤 RESPONSE
+    ======================================================== */
+    return success(
+      res,
+      fullRecords.length === 0
+        ? "⚠️ All selected rules already exist"
+        : `✅ ${fullRecords.length} auto billing rule(s) created`,
+      { records: fullRecords }
+    );
 
   } catch (err) {
     await t.rollback();
@@ -240,7 +271,7 @@ if (exists) {
     if (err.name === "SequelizeUniqueConstraintError") {
       return error(
         res,
-        "⚠️ This billable item is already assigned to this module in this facility.",
+        "⚠️ Duplicate rule detected",
         null,
         400
       );

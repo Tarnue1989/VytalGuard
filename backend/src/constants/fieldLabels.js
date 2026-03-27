@@ -203,12 +203,44 @@ export const FIELD_LABELS_FACILITY_BRANDING = {
 
 /* -------------------- Organization Branding -------------------- */
 export const FIELD_LABELS_ORGANIZATION_BRANDING = {
-  id: "ID", organization_id: "Organization",
+  id: "ID",
+  organization_id: "Organization",
+
   status: `Status (${joinValues(THEME_STATUS)})`,
-  theme: "Theme", logo_url: "Logo", logo_print_url: "Print Logo", favicon_url: "Favicon",
-  default_letterhead_id: "Default Letterhead", contact: "Contact Info", meta: "Meta Data",
-  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
-  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+
+  theme: "Theme",
+  logo_url: "Logo",
+  logo_print_url: "Print Logo",
+  favicon_url: "Favicon",
+
+  company_name: "Company Name",
+  tagline: "Tagline",
+
+  letterhead_header: "Letterhead Header",
+  letterhead_footer: "Letterhead Footer",
+  default_letterhead_id: "Default Letterhead",
+
+  contact: "Contact Info",
+  social_links: "Social Links",
+
+  email_from_name: "Email From Name",
+  email_footer: "Email Footer",
+
+  currency: "Currency",
+  locale: "Locale",
+  timezone: "Timezone",
+
+  ui_settings: "UI Settings",
+
+  meta: "Meta Data",
+
+  created_at: "Created At",
+  updated_at: "Updated At",
+  deleted_at: "Deleted At",
+
+  created_by_id: "Created By",
+  updated_by_id: "Updated By",
+  deleted_by_id: "Deleted By",
 };
 
 /* -------------------- Letterhead Template -------------------- */

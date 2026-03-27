@@ -149,7 +149,7 @@ export function setupActionHandlers({
     }
 
     if (cls.contains("print-btn")) {
-      if (!hasPerm("deposits:view"))
+      if (!hasPerm("deposits:print"))
         return showToast("⛔ No permission to print deposits");
       return handlePrint(entry);
     }
@@ -383,7 +383,7 @@ export function setupActionHandlers({
   );
 
   window.printDeposit = (id) => {
-    if (!hasPerm("deposits:view"))
+    if (!hasPerm("deposits:print"))
       return showToast("⛔ No permission to print deposits");
     const entry = findEntry(id);
     if (entry) handlePrint(entry);

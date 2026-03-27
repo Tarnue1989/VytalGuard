@@ -161,12 +161,45 @@ export const FIELD_ORDER_FACILITY_BRANDING = [
 
 /* -------------------- Organization Branding -------------------- */
 export const FIELD_ORDER_ORGANIZATION_BRANDING = [
-  "id", "organization_id",
+  "id",
+  "organization_id",
+
   "status",
-  "theme", "logo_url", "logo_print_url", "favicon_url",
-  "default_letterhead_id", "contact", "meta",
-  "created_at", "updated_at", "deleted_at",
-  "created_by_id", "updated_by_id", "deleted_by_id"
+
+  "company_name",
+  "tagline",
+
+  "theme",
+
+  "logo_url",
+  "logo_print_url",
+  "favicon_url",
+
+  "letterhead_header",
+  "letterhead_footer",
+  "default_letterhead_id",
+
+  "contact",
+  "social_links",
+
+  "email_from_name",
+  "email_footer",
+
+  "currency",
+  "locale",
+  "timezone",
+
+  "ui_settings",
+
+  "meta",
+
+  "created_at",
+  "updated_at",
+  "deleted_at",
+
+  "created_by_id",
+  "updated_by_id",
+  "deleted_by_id",
 ];
 
 /* -------------------- Letterhead Template -------------------- */

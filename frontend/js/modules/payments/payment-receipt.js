@@ -1,18 +1,16 @@
 // 📁 frontend/js/modules/payments/payment-receipt.js
 // ============================================================================
-// 💳 Payment Receipt Printer (Enterprise FINAL – Deposit Parity)
-// 🔹 Audit-first user resolution (createdBy → auth_user → currentUser → System)
-// 🔹 Auth-user fallback (NO UI globals)
-// 🔹 Silent + print-safe
-// 🔹 Footer + branding handled ONLY by receipt-utils
-// 🔹 Structure & formatting MATCH deposit-receipt.js
+// 💳 Payment Receipt (INVOICE-STYLE PARITY)
+// 🔹 Matches invoice-receipt.js structure EXACTLY
+// 🔹 Clean grid + totals layout
+// 🔹 Uses unified printTemplate (logo + branding + watermark)
 // ============================================================================
 
-import { printReceipt } from "../../utils/receipt-utils.js";
+import { printDocument } from "../../templates/printTemplate.js";
 
-/* --------------------------------------------------
-   Utilities
--------------------------------------------------- */
+/* ============================================================
+   📅 Date Formatter
+============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -24,105 +22,161 @@ function formatDate(dateStr) {
   });
 }
 
-function resolvePrintedBy(payment) {
-  if (payment?.createdBy?.first_name || payment?.createdBy?.last_name) {
-    return [payment.createdBy.first_name, payment.createdBy.last_name]
-      .filter(Boolean)
-      .join(" ");
+/* ============================================================
+   👤 Resolve Printed By
+============================================================ */
+function getPrintedBy(payment) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (payment?.createdBy
+        ? `${payment.createdBy.first_name} ${payment.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch {
+    return "Unknown User";
   }
-
-  const authUser =
-    JSON.parse(localStorage.getItem("auth_user") || "null") ||
-    JSON.parse(localStorage.getItem("currentUser") || "null");
-
-  if (!authUser) return "System";
-
-  if (authUser.first_name || authUser.last_name) {
-    return [authUser.first_name, authUser.last_name]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return authUser.name || "System";
 }
 
-/* --------------------------------------------------
-   Receipt Printer
--------------------------------------------------- */
-export function printPaymentReceipt(payment) {
-  const printedBy = resolvePrintedBy(payment);
+/* ============================================================
+   🧾 BUILD RECEIPT HTML (INVOICE STYLE)
+============================================================ */
+function buildPaymentReceiptHTML(payment) {
+  const printedBy = getPrintedBy(payment);
   const printedAt = new Date().toLocaleString();
 
-  /* ---------------- Invoice Resolution ---------------- */
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+
   const invoiceLabel = payment.invoice
-    ? `${payment.invoice.invoice_number || "—"} (Bal: $${Number(
-        payment.invoice.balance ?? 0
-      ).toFixed(2)})`
-    : payment.invoice_id
-    ? `Invoice ID: ${payment.invoice_id}`
-    : "—";
+    ? `${payment.invoice.invoice_number || "—"}`
+    : payment.invoice_id || "—";
 
-  /* ---------------- Patient Resolution ---------------- */
-  const patientLabel =
-    payment.patient?.pat_no ||
-    payment.patient?.first_name ||
-    payment.patient?.last_name
-      ? `${payment.patient?.pat_no || "—"} - ${payment.patient?.first_name || ""} ${
-          payment.patient?.last_name || ""
-        }`
-      : "—";
-
-  /* ---------------- Optional Paid-To-Date ---------------- */
-  const paidToDate = Number(payment.invoice?.total_paid || 0);
+  const paidToDateValue = Number(payment.invoice?.total_paid || 0);
   const paidToDateHTML =
-    paidToDate > 0
-      ? `<div><strong>Paid To Date:</strong> $${paidToDate.toFixed(2)}</div>`
+    paidToDateValue > 0
+      ? `<div><span>Paid:</span><span>${money(paidToDateValue)}</span></div>`
       : "";
 
-  /* --------------------------------------------------
-     Body Content (Deposit Parity Structure)
-  -------------------------------------------------- */
-  const bodyHTML = `
-    <div class="facility-info">
-      <p><strong>Facility:</strong> ${payment.facility?.name || "—"}</p>
+  return `
+    <!-- 🏢 Facility -->
+    <div style="margin-bottom:10px; font-size:13px;">
+      <strong>Facility:</strong> ${payment.facility?.name || "—"}
     </div>
 
-    <div class="invoice-meta">
-      <div><strong>Payment ID:</strong> ${payment.payment_ref || payment.id || "—"}</div>
-      <div><strong>Invoice:</strong> ${invoiceLabel}</div>
-      <div><strong>Patient:</strong> ${patientLabel}</div>
-      <div><strong>Method:</strong> ${payment.method || "—"}</div>
-      <div><strong>Reference:</strong> ${payment.transaction_ref || "—"}</div>
-      <div><strong>Status:</strong> ${payment.status || "—"}</div>
-      <div><strong>Date:</strong> ${formatDate(payment.created_at)}</div>
-      <div><strong>Received By:</strong> ${printedBy}</div>
-      <div style="grid-column: 1 / -1;">
-        <strong>Reason:</strong> ${payment.reason || "—"}
-      </div>
-      <div style="grid-column: 1 / -1;">
-        <strong>Notes:</strong> ${payment.notes || "—"}
-      </div>
-    </div>
+    <!-- 🔥 GRID HEADER -->
+    <div class="grid-2">
 
-    <h5>Amount Summary</h5>
-    <div class="invoice-meta">
-      <div><strong>Payment Amount:</strong> $${Number(payment.amount || 0).toFixed(2)}</div>
-      <div><strong>Invoice Total:</strong> $${Number(payment.invoice?.total || 0).toFixed(2)}</div>
-      ${paidToDateHTML}
       <div>
-        <strong>Invoice Balance:</strong>
-        <strong>$${Number(payment.invoice?.balance || 0).toFixed(2)}</strong>
+        <div><strong>Patient:</strong> ${
+          payment.patient?.first_name || ""
+        } ${payment.patient?.last_name || ""}</div>
+
+        <div><strong>Patient ID:</strong> ${
+          payment.patient?.pat_no || ""
+        }</div>
       </div>
+
+      <div>
+        <div><strong>Payment #:</strong> ${
+          payment.payment_ref || payment.id || ""
+        }</div>
+
+        <div><strong>Date:</strong> ${formatDate(
+          payment.created_at
+        )}</div>
+
+        <div><strong>Status:</strong> ${payment.status || ""}</div>
+      </div>
+
     </div>
 
-    <div class="print-meta">
+    <!-- 📦 DETAILS -->
+    <h4 style="margin-top:15px;">Payment Details</h4>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Invoice</td>
+          <td>${invoiceLabel}</td>
+        </tr>
+        <tr>
+          <td>Payment Method</td>
+          <td>${payment.method || "—"}</td>
+        </tr>
+        <tr>
+          <td>Transaction Ref</td>
+          <td>${payment.transaction_ref || "—"}</td>
+        </tr>
+        <tr>
+          <td>Reason</td>
+          <td>${payment.reason || "—"}</td>
+        </tr>
+        <tr>
+          <td>Notes</td>
+          <td>${payment.notes || "—"}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 💵 TOTALS (MATCH INVOICE STYLE) -->
+    <div class="totals">
+
+      <div><span>Payment Amount:</span><span>${money(
+        payment.amount
+      )}</span></div>
+
+      <div><span>Invoice Total:</span><span>${money(
+        payment.invoice?.total
+      )}</span></div>
+
+      ${paidToDateHTML}
+
+      <div class="final">
+        <span>Balance:</span>
+        <span>${money(payment.invoice?.balance)}</span>
+      </div>
+
+    </div>
+
+    <!-- 🕓 AUDIT -->
+    <div style="margin-top:20px; font-size:11px;">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-  `;
 
-  /* --------------------------------------------------
-     Print Dispatch (Branding via receipt-utils ONLY)
-  -------------------------------------------------- */
-  printReceipt("Payment Receipt", bodyHTML, payment.organization_id);
+    <!-- 🧾 FOOTER -->
+    <div style="margin-top:15px; font-size:12px;">
+      Thank you for your business.
+    </div>
+  `;
+}
+
+/* ============================================================
+   🖨️ PRINT
+============================================================ */
+export function printPaymentReceipt(payment) {
+  const html = buildPaymentReceiptHTML(payment);
+
+  printDocument(html, {
+    title: "Payment Receipt",
+
+    // 🔥 required for watermark + org override
+    invoice: {
+      organization: payment.organization,
+      status: payment.status,
+    },
+
+    // 🔥 prevents logo disappearing
+    branding: JSON.parse(localStorage.getItem("branding") || "{}"),
+  });
 }

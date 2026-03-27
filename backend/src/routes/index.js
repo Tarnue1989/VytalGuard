@@ -22,6 +22,7 @@ import userFacilityRoutes from "./userFacilityRoutes.js";
 import patientRoutes from "./patientRoutes.js";
 import permissionRoutes from "./permissionRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
+import organizationBrandingRoutes from "./organizationBrandingRoutes.js";
 
 /* ============================================================
    📌 Inventory & Items
@@ -110,6 +111,7 @@ router.use("/roles", roleRoutes);
 router.use("/users", userRoutes);
 router.use("/user-facilities", userFacilityRoutes);
 router.use("/patients", patientRoutes);
+router.use("/organization-branding", organizationBrandingRoutes);
 
 /* ============================================================
    📌 Inventory & Items

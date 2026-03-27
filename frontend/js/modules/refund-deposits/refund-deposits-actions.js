@@ -17,6 +17,7 @@ import {
 
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./refund-deposits-render.js";
+import { printRefundDepositReceipt } from "./refund-deposits-receipt.js";
 
 /* ============================================================
    🛡️ EVENT BIND GUARD (CRITICAL FIX)
@@ -111,6 +112,12 @@ export function setupRefundDepositActionHandlers({
 
     const cls = btn.classList;
 
+    if (cls.contains("print-btn")) {
+      if (!hasPerm("refund-deposits:print"))
+        return showToast("⛔ No permission to print refund deposits");
+      return handlePrint(entry);
+    }
+
     if (cls.contains("view-btn")) {
       if (!hasPerm("refund-deposits:view"))
         return showToast("⛔ No permission to view refund deposits");
@@ -197,7 +204,12 @@ export function setupRefundDepositActionHandlers({
       hideLoading();
     }
   }
-
+  
+  if (cls.contains("print-btn")) {
+    if (!hasPerm("refund-deposits:print"))
+      return showToast("⛔ No permission to print refund deposits");
+    return handlePrint(entry);
+  }
   async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(
       `Proceed to ${action} this deposit refund?`
@@ -333,6 +345,13 @@ export function setupRefundDepositActionHandlers({
       return showToast("⛔ No permission to delete refund deposits");
     await handleDelete(id);
   };
+  window.printRefundDeposit = (id) => {
+    if (!hasPerm("refund-deposits:print"))
+      return showToast("⛔ No permission to print refund deposits");
+
+    const entry = findEntry(id);
+    if (entry) handlePrint(entry);
+  }; 
 
   [
     "review",
