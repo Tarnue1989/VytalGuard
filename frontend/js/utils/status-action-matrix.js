@@ -29,8 +29,8 @@ export const STATUS_ACTION_MATRIX = {
 
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
-    pending:["edit","clear","cancel","void","delete"],
-    cleared:["apply","void","reverse"],
+    pending:["edit","clear","cancel","void","delete", "print"],
+    cleared:["apply","void","reverse", "print"],
     applied:["apply","reverse","verify","void","print"],
     verified:["print"],
     cancelled:["restore"],
@@ -86,7 +86,7 @@ export const STATUS_ACTION_MATRIX = {
   refund:{
     pending:["edit","approve","reject","cancel","void","delete"],
     approved:["process","cancel","void"],
-    processed:["reverse","void","print"],
+    processed:["print"],
     reversed:["restore"],
     rejected:["restore"],
     cancelled:["restore"],
@@ -95,22 +95,18 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 💰 REFUND DEPOSIT (DEPOSIT REFUNDS) ======================== */
-    refund_deposit: {
-      pending:   ["review", "edit", "cancel", "void"],
-      review:    ["approve", "reject", "cancel", "void"],
-      approved:  ["process", "void"],
-      processed: ["reverse"],
+  refund_deposit: {
+    pending:   ["review", "edit", "cancel", "void", "print"],   // ✅
+    review:    ["approve", "reject", "cancel", "void", "print"],// ✅
+    approved:  ["process", "void", "print"],                    // ✅
+    processed: ["print"],                            // ✅
 
-      // ❌ NO restore here
-      rejected:  [],
-      cancelled: [],
+    rejected:  [],
+    cancelled: [],
 
-      // ✅ restore allowed
-      reversed:  ["restore"],
-      voided:    ["restore"],
-    },
-
-
+    reversed:  ["restore", "print"],                            // ✅ optional
+    voided:    ["restore"],
+  },
 
   /* ======================== 🩹 SURGERY ======================== */
   surgery:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},

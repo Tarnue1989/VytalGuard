@@ -16,7 +16,7 @@ import {
 } from "../../utils/index.js";
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./refund-render.js";
-
+import { printRefundReceipt } from "./refund-receipt.js";
 /**
  * Unified permission-aware action handler for Refund module
  */
@@ -104,6 +104,11 @@ export function setupRefundActionHandlers({
 
     const cls = btn.classList;
 
+    if (cls.contains("print-btn")) {
+      if (!hasPerm("refunds:print"))
+        return showToast("⛔ No permission to print refunds");
+      return handlePrint(entry);
+    }
     if (cls.contains("view-btn")) {
       if (!hasPerm("refunds:view"))
         return showToast("⛔ No permission to view refunds");
@@ -179,7 +184,14 @@ export function setupRefundActionHandlers({
       hideLoading();
     }
   }
-
+  function handlePrint(entry) {
+    try {
+      printRefundReceipt(entry);
+      showToast("🖨️ Printing refund receipt...");
+    } catch {
+      showToast("❌ Failed to print refund receipt");
+    }
+  }
   async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(`Proceed to ${action} this refund?`);
     if (!confirmed) return;
@@ -300,7 +312,13 @@ export function setupRefundActionHandlers({
       return showToast("⛔ No permission to delete refunds");
     await handleDelete(id);
   };
+  window.printRefund = (id) => {
+    if (!hasPerm("refunds:print"))
+      return showToast("⛔ No permission to print refunds");
 
+    const entry = findEntry(id);
+    if (entry) handlePrint(entry);
+  };
   ["approve", "process", "reject", "cancel", "reverse", "void", "restore"].forEach(
     (action) => {
       window[`${action}Refund`] = async (id) => {

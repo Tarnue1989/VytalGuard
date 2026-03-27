@@ -10,18 +10,16 @@
 // ============================================================================
 
 export const AUTO_BILLING_RULE_FORM_RULES = [
-  // ================= Identity =================
   {
     id: "featureModuleSelect",
     message: "Feature module is required",
   },
 
   {
-    id: "billableItemSelect",
-    message: "Billable item is required",
+    id: "billablePillsContainer",
+    message: "At least one billable item is required",
   },
 
-  // ================= Rule Configuration =================
   {
     id: "chargeMode",
     message: "Charge mode is required",
@@ -30,23 +28,21 @@ export const AUTO_BILLING_RULE_FORM_RULES = [
   {
     id: "defaultPrice",
     message: "Default price must be valid",
-    when: () => false, // optional per controller (can be null)
+    when: () => false,
   },
 
   {
     id: "autoGenerate",
     message: "Auto generate flag is required",
-    when: () => false, // optional checkbox (defaults true backend)
+    when: () => false,
   },
 
-  // ================= Derived / Display =================
   {
     id: "triggerModuleInput",
     message: "Trigger module must be resolved",
-    when: () => false, // auto-filled, not user-required
+    when: () => false,
   },
 
-  // ================= Scope =================
   {
     id: "organizationSelect",
     message: "Organization is required",
@@ -67,10 +63,9 @@ export const AUTO_BILLING_RULE_FORM_RULES = [
     },
   },
 
-  // ================= System / Hidden =================
   {
     id: "status_active",
     message: "Status is required",
-    when: () => false, // backend controlled
+    when: () => false,
   },
 ];

@@ -12,6 +12,7 @@ import DepartmentModel from "./Department.js";
 import EmployeeModel from "./Employee.js";
 import RefreshTokenModel from "./RefreshToken.js";
 import PasswordHistoryModel from "./PasswordHistory.js";
+import OrganizationBrandingModel from "./OrganizationBranding.js";
 
 // 📦 Feature Modules
 import FeatureAccessModel from "./FeatureAccess.js";
@@ -120,7 +121,7 @@ const models = {
   Employee: EmployeeModel(sequelize),
   RefreshToken: RefreshTokenModel(sequelize),
   PasswordHistory: PasswordHistoryModel(sequelize),
-
+  OrganizationBranding: OrganizationBrandingModel(sequelize),
     // 🔹 RBAC
   Permission: PermissionModel(sequelize),
   RolePermission: RolePermissionModel(sequelize),
@@ -219,7 +220,7 @@ Object.values(models).forEach((m) => typeof m.associate === "function" && m.asso
 export const {
   Organization, Facility, User, Role, UserFacility, Department, Employee,
   RefreshToken, PasswordHistory, Permission, RolePermission, FeatureAccess, FeatureModule,
-
+  OrganizationBranding,
   // Billing & Refunds
   Invoice, InvoiceItem, InvoiceLineExtension, Payment,
   Refund,

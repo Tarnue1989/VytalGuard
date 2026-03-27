@@ -265,12 +265,12 @@ export const ULTRASOUND_STATUS = [
 // 🔹 Letterhead Templates
 // ============================================================
 export const LETTERHEAD_STATUS = ['active', 'inactive'];
-export const LETTERHEAD_TEMPLATE_STATUS = ['active', 'inactive'];
+export const LETTERHEAD_TEMPLATE_STATUS = ['active', 'inactive', 'archived'];
 
 // ============================================================
 // 🔹 Branding (Org / Facility)
 // ============================================================
-export const THEME_STATUS = ['active', 'inactive'];
+export const THEME_STATUS = ['active', 'inactive', 'archived'];
 
 // ============================================================
 // 🔹 Home Content

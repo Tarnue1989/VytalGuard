@@ -1,19 +1,17 @@
-// 📁 frontend/js/modules/refunds/refund-receipt.js – Enterprise FINAL (MASTER–ALIGNED)
+// 📁 frontend/js/modules/refunds/refund-receipt.js
 // ============================================================================
-// 🧾 Refund Receipt Printer (Enterprise Final)
-// 🔹 FULL parity with refundDeposit-receipt.js MASTER
-// 🔹 Audit-first user resolution
-// 🔹 Auth-user fallback
-// 🔹 Silent + print-safe
-// 🔹 Footer + branding handled ONLY by receipt-utils
-// 🔹 NO org-config, NO inline footer, NO UI bleed
+// 🧾 Refund Receipt (INVOICE-STYLE PARITY — FINAL)
+// 🔹 SAME pattern as deposit-receipt.js (printDocument)
+// 🔹 SAME printedBy logic
+// 🔹 Multi-tenant safe
+// 🔹 Clean enterprise output
 // ============================================================================
 
-import { printReceipt } from "../../utils/receipt-utils.js";
+import { printDocument } from "../../templates/printTemplate.js";
 
-/* --------------------------------------------------
-   Utilities
--------------------------------------------------- */
+/* ============================================================
+   📅 Date Formatter
+============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -25,55 +23,40 @@ function formatDate(dateStr) {
   });
 }
 
-function resolvePrintedBy(refund) {
-  if (
-    refund?.createdBy?.first_name ||
-    refund?.createdBy?.last_name
-  ) {
-    return [
-      refund.createdBy.first_name,
-      refund.createdBy.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ");
+/* ============================================================
+   👤 Resolve Current User (INVOICE PARITY — EXACT)
+============================================================ */
+function getPrintedBy(refund) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (refund?.createdBy
+        ? `${refund.createdBy.first_name} ${refund.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch {
+    return "Unknown User";
   }
-
-  const authUser =
-    JSON.parse(localStorage.getItem("auth_user") || "null") ||
-    JSON.parse(localStorage.getItem("currentUser") || "null");
-
-  if (!authUser) return "System";
-
-  if (authUser.first_name || authUser.last_name) {
-    return [
-      authUser.first_name,
-      authUser.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return authUser.name || "System";
 }
 
-/* --------------------------------------------------
-   Receipt Printer
--------------------------------------------------- */
-export function printRefundReceipt(refund) {
-  const printedBy = resolvePrintedBy(refund);
+/* ============================================================
+   🧾 BUILD RECEIPT HTML
+============================================================ */
+function buildRefundReceiptHTML(refund) {
+  const printedBy = getPrintedBy(refund);
   const printedAt = new Date().toLocaleString();
+
+  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 
   const refundRef =
     refund.refund_ref ||
     refund.refund_no ||
     refund.id ||
     "—";
-
-  const patient = refund.patient
-    ? `${refund.patient.pat_no || "—"} - ${
-        refund.patient.first_name || ""
-      } ${refund.patient.last_name || ""}`.trim()
-    : "—";
 
   const linkedInvoice =
     refund.invoice?.invoice_number ||
@@ -87,40 +70,98 @@ export function printRefundReceipt(refund) {
 
   const refundAmount = Number(refund.amount ?? 0);
 
-  const bodyHTML = `
-    <div class="facility-info">
-      <p><strong>Facility:</strong> ${refund.facility?.name || "—"}</p>
+  return `
+    <!-- 🏢 Facility -->
+    <div style="margin-bottom:12px; font-size:13px;">
+      <strong>Facility:</strong> ${refund.facility?.name || "—"}
     </div>
 
-    <div class="invoice-meta">
-      <div><strong>Refund ID:</strong> ${refundRef}</div>
-      <div><strong>Patient:</strong> ${patient}</div>
-      <div><strong>Invoice:</strong> ${linkedInvoice}</div>
-      <div><strong>Payment:</strong> ${linkedPayment}</div>
-      <div><strong>Method:</strong> ${refund.method || "—"}</div>
-      <div><strong>Status:</strong> ${refund.status || "—"}</div>
-      <div><strong>Reason:</strong> ${refund.reason || "—"}</div>
-      <div><strong>Date:</strong> ${formatDate(refund.created_at)}</div>
-      <div><strong>Processed By:</strong> ${printedBy}</div>
-    </div>
+    <!-- 🔥 GRID HEADER -->
+    <div class="grid-2">
 
-    <h5>Amount Summary</h5>
-    <div class="invoice-meta">
       <div>
-        <strong>Refund Amount:</strong>
-        <strong>$${refundAmount.toFixed(2)}</strong>
+        <div><strong>Patient:</strong> ${
+          refund.patient?.first_name || ""
+        } ${refund.patient?.last_name || ""}</div>
+
+        <div><strong>Patient ID:</strong> ${
+          refund.patient?.pat_no || ""
+        }</div>
       </div>
+
+      <div>
+        <div><strong>Refund #:</strong> ${refundRef}</div>
+
+        <div><strong>Date:</strong> ${formatDate(
+          refund.created_at
+        )}</div>
+
+        <div><strong>Status:</strong> ${refund.status || "—"}</div>
+      </div>
+
     </div>
 
-    <div class="print-meta">
+    <!-- 📦 DETAILS -->
+    <h4 style="margin-top:18px;">Refund Details</h4>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice</th>
+          <th>Payment</th>
+          <th>Method</th>
+          <th>Reason</th>
+          <th>Processed By</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${linkedInvoice}</td>
+          <td>${linkedPayment}</td>
+          <td>${refund.method || "—"}</td>
+          <td>${refund.reason || "—"}</td>
+          <td>${printedBy}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 💵 TOTALS -->
+    <div class="totals">
+
+      <div class="final">
+        <span>Refund Amount:</span>
+        <span>${money(refundAmount)}</span>
+      </div>
+
+    </div>
+
+    <!-- 🕓 AUDIT -->
+    <div style="margin-top:20px; font-size:11px;">
       Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-  `;
 
-  printReceipt(
-    "Refund Receipt",
-    bodyHTML,
-    refund.organization_id
-  );
+    <!-- 🧾 FOOTER -->
+    <div style="margin-top:15px; font-size:12px;">
+      Refund processed successfully.
+    </div>
+  `;
+}
+
+/* ============================================================
+   🖨️ PRINT (MATCHES DEPOSIT EXACTLY)
+============================================================ */
+export function printRefundReceipt(refund) {
+  const html = buildRefundReceiptHTML(refund);
+
+  printDocument(html, {
+    title: "Refund Receipt",
+
+    invoice: {
+      organization: refund.organization,
+      status: refund.status,
+    },
+
+    branding: JSON.parse(localStorage.getItem("branding") || "{}"),
+  });
 }
