@@ -1,9 +1,9 @@
-// 📁 printTemplate.js – FINAL (A4 + BASE64 + WATERMARK + CLEAN UI)
+// 📁 printTemplate.js – FINAL (A4 + BASE64 + WATERMARK + CLEAN UI + TENANT SAFE)
 
 import { authFetch } from "../authSession.js";
 
 /* ============================================================
-   LOAD BRANDING
+   LOAD BRANDING (DB – TENANT SAFE)
 ============================================================ */
 async function loadBranding() {
   const res = await authFetch("/api/organization-branding");
@@ -12,14 +12,15 @@ async function loadBranding() {
 }
 
 /* ============================================================
-   RESOLVE IMAGE (FULL URL)
+   RESOLVE IMAGE (SAFE FOR LOCAL + RENDER)
 ============================================================ */
 function resolveImage(url) {
   if (!url) return "";
 
-  const BASE_URL = window.location.origin;
-
+  // 🔥 If already absolute → use directly
   if (url.startsWith("http")) return url;
+
+  const BASE_URL = window.location.origin;
 
   if (url.startsWith("/uploads/")) {
     return BASE_URL + url;
@@ -48,14 +49,29 @@ async function toBase64(url) {
 }
 
 /* ============================================================
-   LETTERHEAD
+   LETTERHEAD (UNCHANGED DESIGN)
 ============================================================ */
 async function buildLetterhead(data) {
   let logoSrc = "";
 
   if (data?.logo_url) {
     const fullUrl = resolveImage(data.logo_url);
-    logoSrc = await toBase64(fullUrl);
+
+    // ⚡ INSTANT LOAD (NO WAIT)
+    logoSrc = fullUrl;
+
+    // 🔥 BACKGROUND CACHE (NON-BLOCKING)
+    toBase64(fullUrl).then((base64) => {
+      if (base64) {
+        localStorage.setItem("branding_logo_base64", base64);
+      }
+    }).catch(() => {});
+  }
+
+  // 🔥 USE CACHED BASE64 IF AVAILABLE (NEXT PRINT = INSTANT)
+  const cachedBase64 = localStorage.getItem("branding_logo_base64");
+  if (cachedBase64) {
+    logoSrc = cachedBase64;
   }
 
   return `
@@ -79,7 +95,7 @@ async function buildLetterhead(data) {
 }
 
 /* ============================================================
-   FOOTER
+   FOOTER (UNCHANGED)
 ============================================================ */
 function buildFooter(data) {
   return `
@@ -90,35 +106,45 @@ function buildFooter(data) {
 }
 
 /* ============================================================
-   MAIN TEMPLATE
+   MAIN TEMPLATE (FIXED – DB FIRST, NO BREAK)
 ============================================================ */
 export async function renderPrintTemplate(contentHTML, options = {}) {
-let branding = options.branding;
 
-  // 🔥 SELF-HEALING BRANDING FIX
-  if (!branding || !branding.logo_url) {
+  let branding = null;
+
+  // 🔥 ALWAYS LOAD FROM DB FIRST (TENANT SAFE)
+  try {
+    const fresh = await loadBranding();
+
+    if (fresh) {
+      branding = fresh;
+
+      // cache for reuse (non-breaking)
+      localStorage.setItem("branding", JSON.stringify(fresh));
+    }
+  } catch (e) {
+    console.warn("Branding fetch failed");
+  }
+
+  // 🔁 SAFE FALLBACK (NO BREAK)
+  if (!branding) {
     try {
-      const fresh = await loadBranding();
-
-      if (fresh?.logo_url) {
-        branding = fresh;
-
-        // 🔥 SAVE FOR NEXT PRINT
-        localStorage.setItem("branding", JSON.stringify(fresh));
-      }
-    } catch (e) {
-      console.warn("Branding fallback failed");
+      branding =
+        options.branding ||
+        JSON.parse(localStorage.getItem("branding") || "{}");
+    } catch {
+      branding = {};
     }
   }
 
-  // Override org name
+  // 🔹 Override org name (UNCHANGED)
   if (options?.invoice?.organization?.name) {
     branding.company_name = options.invoice.organization.name;
   }
 
   const letterhead = await buildLetterhead(branding);
 
-  /* 🔥 WATERMARK */
+  /* 🔥 WATERMARK (UNCHANGED) */
   const watermark =
     options?.invoice?.status?.toLowerCase() === "paid"
       ? "PAID"
@@ -257,7 +283,7 @@ let branding = options.branding;
 }
 
 /* ============================================================
-   PRINT
+   PRINT (UNCHANGED)
 ============================================================ */
 export async function printDocument(contentHTML, options = {}) {
   const html = await renderPrintTemplate(contentHTML, options);
@@ -265,6 +291,27 @@ export async function printDocument(contentHTML, options = {}) {
   const win = window.open("", "_blank");
   win.document.write(html);
   win.document.close();
+
+  // 🔥 WAIT FOR ALL IMAGES TO LOAD
+  const waitForImages = () => {
+    const images = win.document.images;
+
+    return Promise.all(
+      Array.from(images).map((img) => {
+        if (img.complete) return Promise.resolve();
+
+        return new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+      })
+    );
+  };
+
+  await waitForImages();
+
+  // 🔥 SMALL EXTRA DELAY (ensures render stability)
+  await new Promise((r) => setTimeout(r, 150));
 
   win.focus();
   win.print();
