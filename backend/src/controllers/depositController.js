@@ -520,7 +520,7 @@ export const getAllDepositsLite = async (req, res) => {
     }
 
     /* ========================================================
-       🎯 REFUND SAFETY FILTERS (NEW)
+       🎯 REFUND SAFETY FILTERS
     ======================================================== */
     where[Op.and].push({
       remaining_balance: { [Op.gt]: 0 },
@@ -531,7 +531,7 @@ export const getAllDepositsLite = async (req, res) => {
         [Op.in]: [
           DEPOSIT_STATUS[1], // CLEARED
           DEPOSIT_STATUS[2], // APPLIED
-          DEPOSIT_STATUS[6], // VERIFIED (if used)
+          DEPOSIT_STATUS[6], // VERIFIED
         ],
       },
     });
@@ -540,11 +540,14 @@ export const getAllDepositsLite = async (req, res) => {
       where[Op.and].push({ patient_id });
     }
 
+    /* ========================================================
+       🔍 GLOBAL SEARCH (ENUM-SAFE)
+    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
           { transaction_ref: { [Op.iLike]: `%${q}%` } },
-          { method: { [Op.iLike]: `%${q}%` } },
+          // ❌ REMOVED method search (ENUM unsafe)
         ],
       });
     }
@@ -585,7 +588,7 @@ export const getAllDepositsLite = async (req, res) => {
     ======================================================== */
     const records = deposits.map((d) => ({
       id: d.id,
-      label: d.transaction_ref || d.id, // ✅ IDENTIFIER ONLY
+      label: d.transaction_ref || d.id,
       amount: d.amount,
       remaining_balance: d.remaining_balance,
       method: d.method,
@@ -598,7 +601,6 @@ export const getAllDepositsLite = async (req, res) => {
         : "",
       created_at: d.created_at,
     }));
-
 
     await auditService.logAction({
       user: req.user,

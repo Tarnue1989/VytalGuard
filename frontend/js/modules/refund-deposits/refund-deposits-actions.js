@@ -1,10 +1,11 @@
-// 📦 refund-deposits-actions.js – Enterprise MASTER–ALIGNED (Consultation Parity)
+// 📦 refund-deposits-actions.js – Enterprise MASTER–ALIGNED (FINAL)
 // ============================================================================
-// 🔹 Pattern Source: deposit-actions.js / refund-actions.js (Enterprise MASTER)
-// 🔹 Permission-driven + superadmin-aware (role + roleNames)
-// 🔹 Unified lifecycle dispatcher (view / edit / delete / review / approve / process / reject / cancel / reverse / void / restore)
-// 🔹 Safe fallback fetch (MASTER safety)
-// 🔹 100% API preservation (NO endpoint changes)
+// 🔹 Parity Source: refund-actions.js (STRICT MASTER MATCH)
+// 🔹 Permission-driven + superadmin-aware
+// 🔹 Unified dispatcher (ALL actions)
+// 🔹 Safe fallback fetch
+// 🔹 Clean lifecycle + print
+// 🔹 NO duplication / NO broken scopes
 // ============================================================================
 
 import {
@@ -20,13 +21,8 @@ import { renderCard } from "./refund-deposits-render.js";
 import { printRefundDepositReceipt } from "./refund-deposits-receipt.js";
 
 /* ============================================================
-   🛡️ EVENT BIND GUARD (CRITICAL FIX)
+   🚀 ENTRY
 ============================================================ */
-let refundDepositHandlersBound = false;
-
-/**
- * Unified permission-aware action handler for Refund Deposit module
- */
 export function setupRefundDepositActionHandlers({
   entries,
   token,
@@ -36,10 +32,8 @@ export function setupRefundDepositActionHandlers({
   sharedState,
   user,
 }) {
-  if (refundDepositHandlersBound) return;
-  refundDepositHandlersBound = true;
-
   const { currentEditIdRef } = sharedState || {};
+
   const tableBody = document.getElementById("refundDepositTableBody");
   const cardContainer = document.getElementById("refundDepositList");
   const modalBody = document.getElementById("viewModalBody");
@@ -50,9 +44,6 @@ export function setupRefundDepositActionHandlers({
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
   if (modalBody) modalBody.addEventListener("click", handleActions);
 
-  /* ============================================================
-     🔑 Normalize Permissions (MASTER PATTERN)
-  ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -82,14 +73,12 @@ export function setupRefundDepositActionHandlers({
   const hasPerm = (key) =>
     isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
 
-  /* ============================================================
-     🎯 Main Dispatcher
-  ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
 
     const id = btn.dataset.id;
+
     let entry =
       (window.latestRefundDepositEntries || entries || []).find(
         (x) => String(x.id) === String(id)
@@ -113,28 +102,28 @@ export function setupRefundDepositActionHandlers({
     const cls = btn.classList;
 
     if (cls.contains("print-btn")) {
-      if (!hasPerm("refund-deposits:print"))
+      if (!hasPerm("refund_deposits:print"))
         return showToast("⛔ No permission to print refund deposits");
       return handlePrint(entry);
     }
 
     if (cls.contains("view-btn")) {
-      if (!hasPerm("refund-deposits:view"))
+      if (!hasPerm("refund_deposits:view"))
         return showToast("⛔ No permission to view refund deposits");
       return handleView(entry);
     }
 
     if (cls.contains("edit-btn")) {
       if (
-        !hasPerm("refund-deposits:edit") &&
-        !hasPerm("refund-deposits:create")
+        !hasPerm("refund_deposits:edit") &&
+        !hasPerm("refund_deposits:create")
       )
         return showToast("⛔ No permission to edit refund deposits");
       return handleEdit(entry);
     }
 
     if (cls.contains("delete-btn")) {
-      if (!hasPerm("refund-deposits:delete"))
+      if (!hasPerm("refund_deposits:delete"))
         return showToast("⛔ No permission to delete refund deposits");
       return await handleDelete(id);
     }
@@ -152,7 +141,7 @@ export function setupRefundDepositActionHandlers({
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
-        if (!hasPerm(`refund-deposits:${action}`))
+        if (!hasPerm(`refund_deposits:${action}`))
           return showToast(`⛔ No permission to ${action} refund deposits`);
 
         if (["reject", "cancel", "void"].includes(action)) {
@@ -164,21 +153,22 @@ export function setupRefundDepositActionHandlers({
     }
   }
 
-  /* ============================================================
-     ⚙️ Action Handlers
-  ============================================================ */
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
-    openViewModal("Deposit Refund Info", html);
+    openViewModal(
+      "Deposit Refund Info",
+      renderCard(entry, visibleFields, user)
+    );
   }
 
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
+
     sessionStorage.setItem("refundDepositEditId", entry.id);
     sessionStorage.setItem(
       "refundDepositEditPayload",
       JSON.stringify(entry)
     );
+
     window.location.href = "add-refund-deposit.html";
   }
 
@@ -188,14 +178,16 @@ export function setupRefundDepositActionHandlers({
 
     try {
       showLoading();
+
       const res = await authFetch(`/api/refund-deposits/${id}`, {
         method: "DELETE",
       });
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete deposit refund");
+      if (!res.ok) throw new Error(data.message);
 
       showToast("✅ Deposit refund deleted successfully");
+
       window.latestRefundDepositEntries = [];
       await loadEntries(currentPage || 1);
     } catch (err) {
@@ -204,12 +196,16 @@ export function setupRefundDepositActionHandlers({
       hideLoading();
     }
   }
-  
-  if (cls.contains("print-btn")) {
-    if (!hasPerm("refund-deposits:print"))
-      return showToast("⛔ No permission to print refund deposits");
-    return handlePrint(entry);
+
+  function handlePrint(entry) {
+    try {
+      printRefundDepositReceipt(entry);
+      showToast("🖨️ Printing refund deposit receipt...");
+    } catch {
+      showToast("❌ Failed to print refund deposit receipt");
+    }
   }
+
   async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(
       `Proceed to ${action} this deposit refund?`
@@ -218,17 +214,17 @@ export function setupRefundDepositActionHandlers({
 
     try {
       showLoading();
+
       const res = await authFetch(
         `/api/refund-deposits/${id}/${action}`,
         { method: "PATCH" }
       );
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(
-          data.message || `❌ Failed to ${action} deposit refund`
-        );
+      if (!res.ok) throw new Error(data.message);
 
       showToast(`✅ Deposit refund ${action} successful`);
+
       window.latestRefundDepositEntries = [];
       await loadEntries(currentPage || 1);
     } catch (err) {
@@ -238,20 +234,13 @@ export function setupRefundDepositActionHandlers({
     }
   }
 
-  /* ============================================================
-    🚫 REJECT / CANCEL / VOID — MODAL ONLY (FIX)
-  ============================================================ */
   function openReasonModal(entry, action) {
     openViewModal(
       `${action.toUpperCase()} Deposit Refund`,
       `
         <div class="mb-3">
           <label class="form-label">Reason</label>
-          <textarea
-            id="refundReasonInput"
-            class="form-control"
-            rows="3"
-            placeholder="Enter reason..."></textarea>
+          <textarea id="refundReasonInput" class="form-control" rows="3"></textarea>
         </div>
 
         <div class="alert alert-danger small">
@@ -269,14 +258,10 @@ export function setupRefundDepositActionHandlers({
       `
     );
 
-    // Cancel → just close modal
-    document
-      .getElementById("cancelReasonBtn")
-      ?.addEventListener("click", () => {
-        document.getElementById("viewModal")?.classList.add("hidden");
-      });
+    document.getElementById("cancelReasonBtn")?.addEventListener("click", () => {
+      document.getElementById("viewModal")?.classList.add("hidden");
+    });
 
-    // Confirm → validate reason, call API, close modal
     document
       .getElementById("confirmReasonBtn")
       ?.addEventListener("click", async () => {
@@ -288,6 +273,7 @@ export function setupRefundDepositActionHandlers({
 
         try {
           showLoading();
+
           const res = await authFetch(
             `/api/refund-deposits/${entry.id}/${action}`,
             {
@@ -298,13 +284,12 @@ export function setupRefundDepositActionHandlers({
           );
 
           const data = await res.json().catch(() => ({}));
-          if (!res.ok)
-            throw new Error(
-              data.message || `❌ Failed to ${action} deposit refund`
-            );
+          if (!res.ok) throw new Error(data.message);
 
           document.getElementById("viewModal")?.classList.add("hidden");
+
           showToast(`✅ Deposit refund ${action} successful`);
+
           window.latestRefundDepositEntries = [];
           await loadEntries(currentPage || 1);
         } catch (err) {
@@ -315,16 +300,13 @@ export function setupRefundDepositActionHandlers({
       });
   }
 
-  /* ============================================================
-     🌍 Global Helpers (MASTER + Backward Compatible)
-  ============================================================ */
   const findEntry = (id) =>
     (window.latestRefundDepositEntries || entries || []).find(
       (x) => String(x.id) === String(id)
     );
 
   window.viewRefundDeposit = (id) => {
-    if (!hasPerm("refund-deposits:view"))
+    if (!hasPerm("refund_deposits:view"))
       return showToast("⛔ No permission to view refund deposits");
     const entry = findEntry(id);
     if (entry) handleView(entry);
@@ -332,8 +314,8 @@ export function setupRefundDepositActionHandlers({
 
   window.editRefundDeposit = (id) => {
     if (
-      !hasPerm("refund-deposits:edit") &&
-      !hasPerm("refund-deposits:create")
+      !hasPerm("refund_deposits:edit") &&
+      !hasPerm("refund_deposits:create")
     )
       return showToast("⛔ No permission to edit refund deposits");
     const entry = findEntry(id);
@@ -341,17 +323,17 @@ export function setupRefundDepositActionHandlers({
   };
 
   window.deleteRefundDeposit = async (id) => {
-    if (!hasPerm("refund-deposits:delete"))
+    if (!hasPerm("refund_deposits:delete"))
       return showToast("⛔ No permission to delete refund deposits");
     await handleDelete(id);
   };
-  window.printRefundDeposit = (id) => {
-    if (!hasPerm("refund-deposits:print"))
-      return showToast("⛔ No permission to print refund deposits");
 
+  window.printRefundDeposit = (id) => {
+    if (!hasPerm("refund_deposits:print"))
+      return showToast("⛔ No permission to print refund deposits");
     const entry = findEntry(id);
     if (entry) handlePrint(entry);
-  }; 
+  };
 
   [
     "review",
@@ -364,12 +346,15 @@ export function setupRefundDepositActionHandlers({
     "restore",
   ].forEach((action) => {
     window[`${action}RefundDeposit`] = async (id) => {
-      if (!hasPerm(`refund-deposits:${action}`))
+      if (!hasPerm(`refund_deposits:${action}`))
         return showToast(`⛔ No permission to ${action} refund deposits`);
+
       const entry = findEntry(id);
       if (!entry) return;
+
       if (["reject", "cancel", "void"].includes(action))
         return openReasonModal(entry, action);
+
       await handleLifecycle(id, action);
     };
   });

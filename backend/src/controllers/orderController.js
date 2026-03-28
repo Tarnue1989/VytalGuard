@@ -631,6 +631,7 @@ export const getOrderById = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL ORDERS — MASTER (STRICT + FILTERS + SUMMARY)
+   🔥 FIXED: Audit-based date filter (created_at)
 ============================================================ */
 export const getAllOrders = async (req, res) => {
   try {
@@ -667,24 +668,27 @@ export const getAllOrders = async (req, res) => {
     safeQuery.page = page;
     req.query = safeQuery;
 
+    /* 🔥 FIX: use created_at for sorting (audit) */
     const options = buildQueryOptions(
       req,
-      "order_date",
+      "created_at",
       "DESC",
       visibleFields
     );
 
     options.where = { [Op.and]: [] };
 
+    /* 🔥 FIX: use created_at for date filtering */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
         options.where[Op.and].push({
-          order_date: { [Op.between]: [start, end] },
+          created_at: { [Op.between]: [start, end] },
         });
       }
     }
 
+    /* ================= TENANT SCOPING ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -708,6 +712,7 @@ export const getAllOrders = async (req, res) => {
       }
     }
 
+    /* ================= FILTERS ================= */
     if (patient_id) options.where[Op.and].push({ patient_id });
     if (provider_id) options.where[Op.and].push({ provider_id });
     if (department_id) options.where[Op.and].push({ department_id });
@@ -723,6 +728,7 @@ export const getAllOrders = async (req, res) => {
       });
     }
 
+    /* ================= SEARCH ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -733,6 +739,7 @@ export const getAllOrders = async (req, res) => {
       });
     }
 
+    /* ================= QUERY ================= */
     const { count, rows } = await Order.findAndCountAll({
       where: options.where,
       include: ORDER_INCLUDES,
@@ -742,6 +749,7 @@ export const getAllOrders = async (req, res) => {
       distinct: true,
     });
 
+    /* ================= SUMMARY ================= */
     const summary = { total: count };
 
     const statusCounts = await Order.findAll({
@@ -758,6 +766,7 @@ export const getAllOrders = async (req, res) => {
       summary[s] = found ? Number(found.get("count")) : 0;
     });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
@@ -784,7 +793,6 @@ export const getAllOrders = async (req, res) => {
     return error(res, "❌ Failed to load orders", err);
   }
 };
-
 /* ============================================================
    📌 GET ALL ORDERS — LITE (MASTER SAFE)
 ============================================================ */

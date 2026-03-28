@@ -284,9 +284,9 @@ export function renderCard(entry, visibleFields, user) {
         <summary>Audit</summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatSafeDate(entry.created_at))}
+          ${row("Created At", formatDateTime(entry.created_at))}
           ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatSafeDate(entry.updated_at))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
         </div>
       </details>
 
