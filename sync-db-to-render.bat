@@ -2,7 +2,7 @@
 REM ==========================================
 REM VytalGuard PostgreSQL Sync Script
 REM Local PostgreSQL -> Render PostgreSQL
-REM Safe + Progress Output
+REM CLEAN + SAFE + FK-CORRECT
 REM ==========================================
 
 REM ---------- CONFIG ----------
@@ -29,7 +29,7 @@ echo.
 
 REM ---------- STEP 1: DUMP LOCAL DATABASE ----------
 
-echo [1/2] Dumping local database...
+echo [1/3] Dumping local database...
 echo.
 
 set PGPASSWORD=%LOCAL_PASSWORD%
@@ -39,6 +39,8 @@ set PGPASSWORD=%LOCAL_PASSWORD%
  -U %LOCAL_USER% ^
  -d %LOCAL_DB% ^
  -Fc ^
+ --no-owner ^
+ --no-acl ^
  -f %DUMP_FILE%
 
 IF %ERRORLEVEL% NEQ 0 (
@@ -52,12 +54,35 @@ echo.
 echo ✔ Local dump completed
 echo.
 
-REM ---------- STEP 2: RESTORE TO RENDER ----------
+REM ---------- STEP 2: CLEAN RENDER DATABASE (CRITICAL) ----------
 
-echo [2/2] Restoring database to Render...
+echo [2/3] Cleaning Render database (dropping schema)...
 echo.
 
 set PGPASSWORD=%RENDER_PASSWORD%
+
+"%PG_BIN%\psql.exe" ^
+ -h %RENDER_HOST% ^
+ -p %RENDER_PORT% ^
+ -U %RENDER_USER% ^
+ -d %RENDER_DB% ^
+ -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+IF %ERRORLEVEL% NEQ 0 (
+ echo.
+ echo ❌ ERROR: Failed to clean Render database
+ pause
+ exit /b 1
+)
+
+echo.
+echo ✔ Render database cleaned
+echo.
+
+REM ---------- STEP 3: RESTORE TO RENDER ----------
+
+echo [3/3] Restoring database to Render...
+echo.
 
 "%PG_BIN%\pg_restore.exe" -v ^
  -h %RENDER_HOST% ^
@@ -68,7 +93,6 @@ set PGPASSWORD=%RENDER_PASSWORD%
  --if-exists ^
  --no-owner ^
  --no-acl ^
- --disable-triggers ^
  %DUMP_FILE%
 
 IF %ERRORLEVEL% NEQ 0 (

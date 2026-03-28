@@ -1,14 +1,11 @@
-// 📦 refund-deposits-render.js – Entity Card System (REFUND DEPOSIT | ENTERPRISE FINAL)
+// 📦 refund-deposits-render.js – Entity Card System (FINAL MASTER PARITY)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH refund-render.js
-// 🔹 Table = flat | Card = RICH + structured
-// 🔹 Field-selector safe
-// 🔹 Backend sorting bridge
-// 🔹 Column resize + drag enabled
-// 🔹 Status-action-matrix driven actions
-// 🔹 Full lifecycle + audit visibility (DATE + TIME)
-// 🔹 Export-safe (no object leaks)
-// 🔹 ALL existing refund-deposit logic & DOM IDs preserved
+// 🔹 STRICT parity with refund-render.js
+// 🔹 Table + Card dual system
+// 🔹 Sorting + resize + drag
+// 🔹 Status-action-matrix driven
+// 🔹 Export safe
+// 🔹 ALL DOM + API preserved
 // ============================================================================
 
 import { FIELD_LABELS_REFUND_DEPOSIT } from "./refund-deposits-constants.js";
@@ -19,7 +16,7 @@ import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🔃 SORTABLE FIELDS (MASTER PARITY)
+   🔃 SORTABLE FIELDS (MASTER)
 ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "organization_id",
@@ -51,21 +48,21 @@ function toggleSort(field) {
 }
 
 /* ============================================================
-   🎛️ ACTIONS
+   🎛️ ACTIONS (MASTER)
 ============================================================ */
 function getRefundDepositActionButtons(entry, user) {
   return buildActionButtons({
-    module: "refund_deposit",
+    module: "refund_deposits",
     status: (entry.status || "").toLowerCase(),
     entry,
     entryId: entry.id,
     user,
-    permissionPrefix: "refund-deposits",
+    permissionPrefix: "refund_deposits",
   });
 }
 
 /* ============================================================
-   🧱 TABLE HEAD (SORT + RESIZE + DRAG)
+   🧱 TABLE HEAD (MASTER)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -127,7 +124,7 @@ export function renderDynamicTableHead(visibleFields) {
 }
 
 /* ============================================================
-   🔠 HELPERS
+   🔠 HELPERS (MASTER)
 ============================================================ */
 const safe = (v) => (v !== null && v !== undefined && v !== "" ? v : "—");
 
@@ -158,13 +155,12 @@ function renderDeposit(entry) {
   const ref = d.transaction_ref || d.id || "—";
   const amt = Number(d.amount || 0).toFixed(2);
   const bal = Number(d.remaining_balance ?? d.balance ?? 0).toFixed(2);
-  const method = (d.method || "").toUpperCase();
 
-  return `${ref}<br><small>$${amt} | Bal: $${bal} | ${method}</small>`;
+  return `${ref} | $${amt} | Bal: $${bal}`;
 }
 
 /* ============================================================
-   🧩 VALUE RENDERER (DATE + TIME SAFE)
+   🧠 VALUE ENGINE (MASTER)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -242,7 +238,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH
+   🗂️ CARD (MASTER)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -278,18 +274,7 @@ export function renderCard(entry, visibleFields, user) {
 
       <div class="entity-card-body">
         ${visibleFields
-          .filter(
-            (f) =>
-              ![
-                "actions",
-                "createdBy",
-                "created_at",
-                "updatedBy",
-                "updated_at",
-                "deletedBy",
-                "deleted_at",
-              ].includes(f)
-          )
+          .filter((f) => !["actions"].includes(f))
           .map((f) =>
             row(
               FIELD_LABELS_REFUND_DEPOSIT[f] || f,
@@ -298,16 +283,6 @@ export function renderCard(entry, visibleFields, user) {
           )
           .join("")}
       </div>
-
-      <details class="entity-notes">
-        <summary>Audit</summary>
-        <div class="entity-card-body">
-          ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDateTime(entry.created_at))}
-          ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDateTime(entry.updated_at))}
-        </div>
-      </details>
 
       ${
         has("actions")
@@ -321,7 +296,7 @@ export function renderCard(entry, visibleFields, user) {
 }
 
 /* ============================================================
-   📋 LIST RENDERER
+   📋 LIST (MASTER)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("refundDepositTableBody");
@@ -347,10 +322,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getRefundDepositActionButtons(
-                e,
-                user
-              )}</td>`
+            ? `<td class="actions-cell export-ignore">${getRefundDepositActionButtons(e, user)}</td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -371,7 +343,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT (MASTER)
 ============================================================ */
 let exportHandlersBound = false;
 function setupExportHandlers(entries) {
@@ -379,12 +351,15 @@ function setupExportHandlers(entries) {
   exportHandlersBound = true;
 
   const title = "Deposit Refunds Report";
+
   document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
     exportData({ type: "csv", data: entries, title })
   );
+
   document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
     exportData({ type: "xlsx", data: entries, title })
   );
+
   document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
     exportData({
       type: "pdf",

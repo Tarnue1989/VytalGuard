@@ -39,7 +39,7 @@ import { DEPOSIT_REFUND_STATUS } from "../constants/enums.js";
 /* ============================================================
    🔐 MODULE
 ============================================================ */
-const MODULE_KEY = "refund_deposit";
+const MODULE_KEY = "refund_deposits";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE

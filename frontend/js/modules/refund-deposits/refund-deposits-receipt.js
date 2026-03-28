@@ -1,16 +1,16 @@
 // 📁 frontend/js/modules/refundDeposits/refundDeposit-receipt.js
 // ============================================================================
-// 🧾 Deposit Refund Receipt (INVOICE-STYLE PARITY — FINAL)
-// 🔹 SAME pattern as deposit-receipt.js (printDocument)
-// 🔹 SAME printedBy logic
-// 🔹 Multi-tenant safe
-// 🔹 Clean enterprise output
+// 🧾 Deposit Refund Receipt (ENTERPRISE MASTER PARITY — FINAL CLEAN)
+// 🔹 Matches deposit + invoice EXACTLY
+// 🔹 Audit-first printedBy (NO redundancy)
+// 🔹 No legacy fallbacks
+// 🔹 Clean + deterministic output
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
 
 /* ============================================================
-   📅 Date Formatter
+   📅 Date Formatter (MASTER)
 ============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
@@ -24,27 +24,33 @@ function formatDate(dateStr) {
 }
 
 /* ============================================================
-   👤 Resolve Current User (INVOICE PARITY — EXACT)
+   👤 Resolve Printed By (AUDIT-FIRST — MASTER EXACT)
 ============================================================ */
 function getPrintedBy(refund) {
   try {
-    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+    // 🔥 STRICT AUDIT PRIORITY (NO redundancy)
+    if (refund?.processedBy) {
+      return `${refund.processedBy.first_name} ${refund.processedBy.last_name}`;
+    }
 
-    return (
-      authSession?.name ||
-      (refund?.createdBy
-        ? `${refund.createdBy.first_name} ${refund.createdBy.last_name}`
-        : null) ||
-      localStorage.getItem("userName") ||
-      "Unknown User"
-    );
+    if (refund?.approvedBy) {
+      return `${refund.approvedBy.first_name} ${refund.approvedBy.last_name}`;
+    }
+
+    if (refund?.createdBy) {
+      return `${refund.createdBy.first_name} ${refund.createdBy.last_name}`;
+    }
+
+    // 👤 ONLY fallback (MASTER)
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+    return authSession?.name || "System";
   } catch {
-    return "Unknown User";
+    return "System";
   }
 }
 
 /* ============================================================
-   🧾 BUILD RECEIPT HTML
+   🧾 BUILD RECEIPT HTML (MASTER CLEAN)
 ============================================================ */
 function buildRefundDepositReceiptHTML(refund) {
   const printedBy = getPrintedBy(refund);
@@ -68,8 +74,8 @@ function buildRefundDepositReceiptHTML(refund) {
   const refundAmount = Number(refund.refund_amount ?? 0);
   const closingBalance = Number(
     refund.deposit?.balance_after ??
-      refund.deposit?.remaining_balance ??
-      0
+    refund.deposit?.remaining_balance ??
+    0
   );
 
   return `
@@ -128,13 +134,15 @@ function buildRefundDepositReceiptHTML(refund) {
     <!-- 💵 TOTALS -->
     <div class="totals">
 
-      <div><span>Opening Balance:</span><span>${money(
-        openingBalance
-      )}</span></div>
+      <div>
+        <span>Opening Balance:</span>
+        <span>${money(openingBalance)}</span>
+      </div>
 
-      <div><span>Refund Amount:</span><span>${money(
-        refundAmount
-      )}</span></div>
+      <div>
+        <span>Refund Amount:</span>
+        <span>${money(refundAmount)}</span>
+      </div>
 
       <div class="final">
         <span>Closing Balance:</span>
@@ -151,13 +159,13 @@ function buildRefundDepositReceiptHTML(refund) {
 
     <!-- 🧾 FOOTER -->
     <div style="margin-top:15px; font-size:12px;">
-      Refund processed successfully.
+      Deposit refund processed successfully.
     </div>
   `;
 }
 
 /* ============================================================
-   🖨️ PRINT (MATCHES DEPOSIT EXACTLY)
+   🖨️ PRINT (MASTER EXACT)
 ============================================================ */
 export function printRefundDepositReceipt(refund) {
   const html = buildRefundDepositReceiptHTML(refund);

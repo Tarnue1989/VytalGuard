@@ -1,14 +1,12 @@
-// 📦 refund-deposits-filter-main.js – ENTERPRISE MASTER–ALIGNED (Refund ← Deposit Parity)
+// 📦 refund-deposits-filter-main.js – ENTERPRISE MASTER–ALIGNED (FINAL)
 // ============================================================================
-// 🔹 FULL parity with refund-filter-main.js MASTER
+// 🔹 STRICT parity with refund-filter-main.js MASTER
 // 🔹 Auto search + auto filters
 // 🔹 Sorting + pagination parity
 // 🔹 UI-only dateRange (MASTER)
 // 🔹 View toggle + summary + export
-// 🔹 Role-aware org / facility handling (MASTER)
-// 🔹 Suggestion inputs (patient → deposit)
-// 🔹 NO new fields, NO new API params
-// 🔹 ALL EXISTING DOM + API CALLS PRESERVED
+// 🔹 Suggestion dependency (patient → deposits)
+// 🔹 NO DOM changes, NO API changes
 // ============================================================================
 
 import {
@@ -27,6 +25,7 @@ import { authFetch } from "../../authSession.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
+  loadPaymentsLite, // 🔥 MASTER parity
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../utils/data-loaders.js";
@@ -184,7 +183,7 @@ function getFilters() {
 }
 
 /* ============================================================
-   📦 LOAD REFUND DEPOSITS
+   📦 LOAD ENTRIES (MASTER)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -225,16 +224,22 @@ async function loadEntries(page = 1) {
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
     /* ========================================================
-       🧾 SUMMARY DATE NORMALIZATION (MASTER)
+       🧾 SUMMARY FIX (MATCH REFUND MASTER)
     ======================================================== */
-    if (data.summary?.metrics) {
-      const m = data.summary.metrics;
-      if (m.last_approved_at)  m.last_approved_at  = formatDateTime(m.last_approved_at);
-      if (m.last_processed_at) m.last_processed_at = formatDateTime(m.last_processed_at);
+    if (data.summary?.refund_summary?.metrics) {
+      const m = data.summary.refund_summary.metrics;
+
+      if (m.last_approved_at) {
+        m.last_approved_at = formatDateTime(m.last_approved_at);
+      }
+
+      if (m.last_processed_at) {
+        m.last_processed_at = formatDateTime(m.last_processed_at);
+      }
     }
 
-    data.summary &&
-      renderModuleSummary(data.summary, "moduleSummary", {
+    data.summary?.refund_summary &&
+      renderModuleSummary(data.summary.refund_summary, "moduleSummary", {
         moduleLabel: "REFUND DEPOSITS",
       });
 
@@ -323,7 +328,7 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
 });
 
 /* ============================================================
-   🚀 INIT
+   🚀 INIT (MASTER FIX: PATIENT → DEPOSIT DEPENDENCY)
 ============================================================ */
 export async function initRefundDepositModule() {
   renderDynamicTableHead(visibleFields);
@@ -339,9 +344,24 @@ export async function initRefundDepositModule() {
     filterPatient,
     filterPatientSuggestions,
     "/api/lite/patients",
-    (selected) => {
+    async (selected) => {
       filterPatientHidden.value = selected?.id || "";
       filterPatient.value = selected?.label || "";
+
+      if (selected?.id) {
+        const deposits = await loadPaymentsLite({ patient_id: selected.id }); // reuse loader
+        setupSelectOptions(
+          filterDeposit,
+          deposits,
+          "id",
+          "label",
+          "-- All Deposits --"
+        );
+      } else {
+        setupSelectOptions(filterDeposit, [], "id", "label", "-- All Deposits --");
+        filterDepositHidden.value = "";
+      }
+
       loadEntries(1);
     },
     "label"

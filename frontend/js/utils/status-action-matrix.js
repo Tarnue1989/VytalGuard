@@ -95,7 +95,7 @@ export const STATUS_ACTION_MATRIX = {
   },
 
   /* ======================== 💰 REFUND DEPOSIT (DEPOSIT REFUNDS) ======================== */
-  refund_deposit: {
+  refund_deposits: {
     pending:   ["review", "edit", "cancel", "void", "print"],   // ✅
     review:    ["approve", "reject", "cancel", "void", "print"],// ✅
     approved:  ["process", "void", "print"],                    // ✅
@@ -354,7 +354,7 @@ export function buildActionButtons({
   const isDiscount       = module === "discount";
   const isDiscountWaiver = module === "discount_waiver" || module === "discount-waiver";
   const isRefund         = module === "refund";
-  const isRefundDeposit  = module === "refund_deposit";
+  const isRefundDeposit  = module === "refund_deposits";
   const isPharmacyTx     = module === "pharmacy_transaction";
   const isUser           = module === "user";
 

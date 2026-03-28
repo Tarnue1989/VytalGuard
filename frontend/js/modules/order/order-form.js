@@ -179,6 +179,10 @@ export async function setupOrderFormSubmission({
   const notesInput = document.getElementById("notes");
   const itemNotesInput = document.getElementById("itemNotes");
   const dateInput = document.getElementById("order_date");
+  // ✅ AUTO-SET TODAY'S DATE (ONLY FOR NEW FORM)
+  if (!isEdit && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split("T")[0];
+  }
   const priorityInput = document.getElementById("is_priority");
 
   /* ============================================================
@@ -378,15 +382,18 @@ export async function setupOrderFormSubmission({
       return;
     }
 
+    const normalizedDate = normalizeDate(dateInput.value);
+
     const payload = {
       patient_id: normalizeUUID(patientInput.dataset.value),
       provider_id: normalizeUUID(providerInput.dataset.value),
       department_id: normalizeUUID(deptSelect.value),
       consultation_id: normalizeUUID(consultationInput.dataset.value),
       registration_log_id: normalizeUUID(regLogInput.dataset.value),
-      order_date: dateInput.value,
+
       notes: notesInput.value || null,
       is_priority: !!priorityInput.checked,
+
       items: selectedItems.map((i) => ({
         billable_item_id: i.billable_item_id,
         quantity: i.quantity || 1,
@@ -394,6 +401,10 @@ export async function setupOrderFormSubmission({
       })),
     };
 
+    // ✅ ONLY ADD DATE IF VALID
+    if (normalizedDate) {
+      payload.order_date = normalizedDate;
+    }
     try {
       showLoading();
 
