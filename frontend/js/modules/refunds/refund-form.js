@@ -154,9 +154,34 @@ export async function setupRefundFormSubmission({ form }) {
           is_deposit: "false",
         });
 
+/* ===================== ✅ FIX START ===================== */
+const formattedPayments = payments.map((p) => {
+  const base =
+    p.payment_number ||
+    p.transaction_ref ||
+    (p.label ? p.label.split(" - ")[0] : "") || // ✅ strip amount
+    p.id;
+
+  const amount = Number(p.amount || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  const balance = Number(p.remaining_balance || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return {
+    ...p,
+    label: `${base} — LR$ ${amount} — Bal: LR$ ${balance}`,
+  };
+});
+        /* ===================== ✅ FIX END ===================== */
+
         setupSelectOptions(
           paymentSelect,
-          payments,
+          formattedPayments,
           "id",
           "label",
           "-- Select Payment --"
@@ -169,7 +194,7 @@ export async function setupRefundFormSubmission({ form }) {
           methodSelect.value = p.method || "";
           invoiceHidden.value = p.invoice_id || "";
 
-          const bal = Number(p.refundable_balance || 0);
+          const bal = Number(p.remaining_balance || 0);
           amountInput.value = bal.toFixed(2);
           amountInput.max = bal.toFixed(2);
         };
@@ -201,13 +226,11 @@ export async function setupRefundFormSubmission({ form }) {
 
       if (!entry) return;
 
-      // Patient (locked)
       patientHidden.value = entry.patient_id || "";
       patientInput.value = entry.patient
         ? `${entry.patient.pat_no || ""} ${entry.patient.first_name || ""} ${entry.patient.last_name || ""}`.trim()
         : "";
 
-      // Payment (single locked option)
       setupSelectOptions(
         paymentSelect,
         [
@@ -221,14 +244,12 @@ export async function setupRefundFormSubmission({ form }) {
       );
       paymentSelect.value = entry.payment_id;
 
-      // Mirrors
       invoiceHidden.value = entry.invoice_id || "";
       methodSelect.value = entry.method || "";
 
       amountInput.value = entry.amount ?? "";
       reasonInput.value = entry.reason ?? "";
 
-      // Lock immutable fields
       patientInput.disabled = true;
       paymentSelect.disabled = true;
 
@@ -267,7 +288,6 @@ export async function setupRefundFormSubmission({ form }) {
       reason: reasonInput.value || null,
     };
 
-    // payment_id ONLY on create
     if (!isEdit) {
       payload.payment_id = normalizeUUID(paymentSelect.value);
     }

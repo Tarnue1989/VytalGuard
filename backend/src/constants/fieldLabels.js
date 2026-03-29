@@ -364,7 +364,7 @@ export const FIELD_LABELS_CONSULTATION = {
 };
 
 /* -------------------- Deposit -------------------- */
-export const FIELD_LABELS_DEPOSIT = {
+export const FIELD_LABELS_DEPOSIT = {deposit_number: "Deposit No",
   id: "ID", patient_id: "Patient", organization_id: "Organization", facility_id: "Facility",
   applied_invoice_id: "Invoice", amount: "Amount", applied_amount: "Applied Amount",
   remaining_balance: "Remaining Balance", unapplied_amount: "Unapplied Amount",
@@ -387,7 +387,7 @@ export const FIELD_LABELS_FINANCIAL_LEDGER = {
 };
 
 /* -------------------- Refund -------------------- */
-export const FIELD_LABELS_REFUND = {
+export const FIELD_LABELS_REFUND = {refund_number: "Refund No",
   id: "ID", patient_id: "Patient", invoice_id: "Invoice", deposit_id: "Deposit", payment_id: "Payment",
   organization_id: "Organization", facility_id: "Facility",
   amount: "Amount", method: "Payment Method", currency: "Currency",
@@ -402,7 +402,7 @@ export const FIELD_LABELS_REFUND = {
 };
 
 /* -------------------- Refund Deposit -------------------- */
-export const FIELD_LABELS_REFUND_DEPOSIT = {
+export const FIELD_LABELS_REFUND_DEPOSIT = {refund_deposit_number: "Refund Deposit No",
   id: "ID", deposit_id: "Deposit", patient_id: "Patient",
   organization_id: "Organization", facility_id: "Facility",
   refund_amount: "Refund Amount", method: "Method", reason: "Reason",
@@ -949,7 +949,7 @@ export const FIELD_LABELS_TRIAGE_RECORD = {
 };
 
 /* -------------------- Payment -------------------- */
-export const FIELD_LABELS_PAYMENT = {
+export const FIELD_LABELS_PAYMENT = {payment_number: "Payment No",
   id: "ID", invoice_id: "Invoice", patient_id: "Patient",
   organization_id: "Organization", facility_id: "Facility",
   amount: "Amount",

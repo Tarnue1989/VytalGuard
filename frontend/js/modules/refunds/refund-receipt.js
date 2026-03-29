@@ -5,6 +5,7 @@
 // 🔹 SAME printedBy logic
 // 🔹 Multi-tenant safe
 // 🔹 Clean enterprise output
+// 🔹 ADDED refund_number (NO UUID)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
@@ -52,11 +53,8 @@ function buildRefundReceiptHTML(refund) {
 
   const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 
-  const refundRef =
-    refund.refund_ref ||
-    refund.refund_no ||
-    refund.id ||
-    "—";
+  // ✅ ONLY use refund_number (NO UUID fallback)
+  const refundRef = refund.refund_number || "—";
 
   const linkedInvoice =
     refund.invoice?.invoice_number ||

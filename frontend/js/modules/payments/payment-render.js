@@ -8,6 +8,7 @@
 // 🔹 Full audit section
 // 🔹 Permission-driven actions
 // 🔹 Export-safe (no object leaks)
+// 🔹 ADDED payment_number (safe display, no break)
 // ============================================================================
 
 import { FIELD_LABELS_PAYMENT } from "./payment-constants.js";
@@ -148,6 +149,9 @@ function renderPatient(entry) {
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
+    case "payment_number":
+      return safe(entry.payment_number);
+
     case "status": {
       const s = (entry.status || "").toLowerCase();
       const cls =
@@ -253,6 +257,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-context">
+        ${entry.payment_number ? `<div>🆔 ${entry.payment_number}</div>` : ""}
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
         ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
         ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
@@ -260,6 +265,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-body">
+        ${row("Payment #", entry.payment_number)}
         ${row("Amount", `$${Number(entry.amount || 0).toFixed(2)}`)}
         ${row("Invoice", renderValue(entry, "invoice"))}
         ${row("Status", status.toUpperCase())}
@@ -374,7 +380,7 @@ export function renderPaymentDetail(entry, user) {
     </div>
 
     <div class="row g-3">
-      <div class="col-md-6"><strong>Payment ID:</strong> ${entry.id || "—"}</div>
+      <div class="col-md-6"><strong>Payment #:</strong> ${entry.payment_number || "—"}</div>
       <div class="col-md-6"><strong>Status:</strong> ${renderValue(entry, "status")}</div>
       <div class="col-md-6"><strong>Patient:</strong> ${renderValue(entry, "patient")}</div>
       <div class="col-md-6"><strong>Invoice:</strong> ${renderValue(entry, "invoice")}</div>

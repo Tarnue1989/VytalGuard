@@ -6,6 +6,7 @@
 // 🔹 Status-action-matrix driven
 // 🔹 Export safe
 // 🔹 ALL DOM + API preserved
+// 🔹 ADDED refund_deposit_number (safe display)
 // ============================================================================
 
 import { FIELD_LABELS_REFUND_DEPOSIT } from "./refund-deposits-constants.js";
@@ -164,6 +165,9 @@ function renderDeposit(entry) {
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
+    case "refund_deposit_number":
+      return safe(entry.refund_deposit_number);
+
     case "status": {
       const s = (entry.status || "").toLowerCase();
       const map = {
@@ -267,6 +271,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-context">
+        ${entry.refund_deposit_number ? `<div>🆔 ${entry.refund_deposit_number}</div>` : ""}
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
         ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
         ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}

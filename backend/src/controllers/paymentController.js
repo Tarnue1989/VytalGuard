@@ -583,7 +583,6 @@ export const getAllPayments = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= STRICT PAGINATION (MASTER) ================= */
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
       maxLimit: 200,
@@ -593,7 +592,6 @@ export const getAllPayments = async (req, res) => {
     const visibleFields =
       FIELD_VISIBILITY_PAYMENT[role] || FIELD_VISIBILITY_PAYMENT.staff;
 
-    /* ================= STRIP UI-ONLY PARAMS ================= */
     const { dateRange, ...safeQuery } = req.query;
     safeQuery.limit = limit;
     safeQuery.page = page;
@@ -607,7 +605,6 @@ export const getAllPayments = async (req, res) => {
     );
     options.where = { [Op.and]: [] };
 
-    /* ================= DATE RANGE (created_at) ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -617,19 +614,16 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
-    /* ================= TENANT SCOPE (MASTER) ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
       if (!isOrgLevelUser(req.user)) {
-        // staff / facility users → locked
         options.where[Op.and].push({
           facility_id: req.user.facility_id,
         });
       } else if (req.query.facility_id) {
-        // org admin → filter allowed
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
@@ -648,7 +642,6 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
-    /* ================= FILTERS (EXACT MATCH) ================= */
     if (req.query.invoice_id) {
       options.where[Op.and].push({ invoice_id: req.query.invoice_id });
     }
@@ -662,16 +655,16 @@ export const getAllPayments = async (req, res) => {
       options.where[Op.and].push({ status: req.query.status });
     }
 
-    /* ================= GLOBAL SEARCH (MASTER SAFE) ================= */
+    /* ================= GLOBAL SEARCH (FIXED) ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
+          { payment_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
-    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Payment.findAndCountAll({
       where: options.where,
       include: PAYMENT_INCLUDES,
@@ -681,7 +674,6 @@ export const getAllPayments = async (req, res) => {
       distinct: true,
     });
 
-    /* ================= SUMMARY (FULL DATASET) ================= */
     const summary = { total: count };
 
     const statusCounts = await Payment.findAll({
@@ -698,7 +690,6 @@ export const getAllPayments = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
-    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -710,7 +701,6 @@ export const getAllPayments = async (req, res) => {
       },
     });
 
-    /* ================= RESPONSE ================= */
     return success(res, "✅ Payments loaded", {
       records: rows,
       summary,
@@ -723,6 +713,166 @@ export const getAllPayments = async (req, res) => {
     });
   } catch (err) {
     return error(res, "❌ Failed to load payments", err);
+  }
+};
+
+
+/* ============================================================
+   📌 GET ALL PAYMENTS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
+============================================================ */
+export const getAllPaymentsLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { q, patient_id } = req.query;
+    const where = { [Op.and]: [] };
+
+    /* ========================================================
+       🔐 TENANT SCOPE (MASTER)
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+    }
+
+    /* ========================================================
+       👤 FILTERS
+    ======================================================== */
+    if (patient_id) {
+      where[Op.and].push({ patient_id });
+    }
+
+    /* ========================================================
+       🔍 SEARCH (MASTER)
+    ======================================================== */
+    if (q) {
+      where[Op.and].push({
+        [Op.or]: [
+          { payment_number: { [Op.iLike]: `%${q}%` } },
+          { transaction_ref: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
+    }
+
+    /* ========================================================
+       💰 FETCH PAYMENTS + REFUNDS
+    ======================================================== */
+    const payments = await Payment.findAll({
+      where,
+      attributes: [
+        "id",
+        "payment_number",
+        "invoice_id",
+        "patient_id",
+        "amount",
+        "method",
+        "transaction_ref",
+        "status",
+        "created_at",
+      ],
+      include: [
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
+        {
+          model: Invoice,
+          as: "invoice",
+          attributes: ["id", "invoice_number"],
+        },
+        {
+          model: Refund,
+          as: "refunds",
+          attributes: ["amount", "status"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    /* ========================================================
+       🔁 MAP + FILTER (REFUND-SAFE)
+    ======================================================== */
+    const records = payments
+      .map((p) => {
+        const refunded = (p.refunds || [])
+          .filter(
+            (r) => r.status === "approved" || r.status === "processed"
+          )
+          .reduce((sum, r) => sum + Number(r.amount || 0), 0);
+
+        const remaining = Number(p.amount || 0) - refunded;
+
+        return {
+          id: p.id,
+          invoice_id: p.invoice_id,
+          patient_id: p.patient_id,
+
+          label: `${p.payment_number || p.transaction_ref || p.id} - ${p.amount}`,
+
+          amount: p.amount,
+          refunded_amount: refunded,
+          remaining_balance: remaining,
+
+          method: p.method,
+          status: p.status,
+
+          patient: p.patient
+            ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
+            : "",
+
+          invoice: p.invoice ? p.invoice.invoice_number : "",
+
+          created_at: p.created_at,
+        };
+      })
+      // ✅ ONLY SHOW PAYMENTS THAT CAN STILL BE REFUNDED
+      .filter((r) => r.remaining_balance > 0);
+
+    /* ========================================================
+       📊 AUDIT
+    ======================================================== */
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: {
+        count: records.length,
+        patient_id: patient_id || null,
+        query: q || null,
+      },
+    });
+
+    return success(res, "Payments loaded (lite)", {
+      records,
+    });
+  } catch (err) {
+    return error(res, "❌ Failed to load payments (lite)", err);
   }
 };
 
@@ -773,121 +923,6 @@ export const getPaymentById = async (req, res) => {
     return success(res, "✅ Payment loaded", record);
   } catch (err) {
     return error(res, "❌ Failed to load payment", err);
-  }
-};
-
-/* ============================================================
-   📌 GET ALL PAYMENTS (LITE – AUTOCOMPLETE PARITY)
-============================================================ */
-export const getAllPaymentsLite = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { q, patient_id } = req.query;
-    const where = { [Op.and]: [] };
-
-    /* ================= TENANT SCOPE (MASTER) ================= */
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: req.user.organization_id,
-      });
-
-      if (isFacilityHead(req.user)) {
-        where[Op.and].push({
-          facility_id: req.user.facility_id,
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
-        where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      }
-    }
-
-    if (patient_id) {
-      where[Op.and].push({ patient_id });
-    }
-
-    /* ================= SEARCH (SAFE – ENUM PROTECTED) ================= */
-    if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { transaction_ref: { [Op.iLike]: `%${q}%` } },
-          // ❌ DO NOT ilike enum method (caused your error)
-        ],
-      });
-    }
-
-    const payments = await Payment.findAll({
-      where,
-      attributes: [
-        "id",
-        "invoice_id",     // ✅ REQUIRED FOR REFUNDS
-        "patient_id",     // ✅ REQUIRED FOR REFUNDS
-        "amount",
-        "method",
-        "transaction_ref",
-        "status",
-        "created_at",
-      ],
-      include: [
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "pat_no", "first_name", "last_name"],
-        },
-        {
-          model: Invoice,
-          as: "invoice",
-          attributes: ["id", "invoice_number"],
-        },
-      ],
-      order: [["created_at", "DESC"]],
-      limit: 20,
-    });
-
-    const records = payments.map((p) => ({
-      id: p.id,
-      invoice_id: p.invoice_id,     // ✅ UI NEEDS THIS
-      patient_id: p.patient_id,     // ✅ UI NEEDS THIS
-      label: `${p.transaction_ref || p.id} - ${p.amount}`,
-      amount: p.amount,
-      method: p.method,
-      patient: p.patient
-        ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
-        : "",
-      invoice: p.invoice ? p.invoice.invoice_number : "",
-      created_at: p.created_at,
-    }));
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: {
-        count: records.length,
-        patient_id: patient_id || null,
-        query: q || null,
-      },
-    });
-
-    return success(res, "Payments loaded (lite)", {
-      records,
-    });
-  } catch (err) {
-    return error(res, "❌ Failed to load payments (lite)", err);
   }
 };
 

@@ -9,6 +9,7 @@
    🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_REFUND_DEPOSIT = {
+  refund_deposit_number: "Refund Deposit #",
   organization: "Organization",
   facility: "Facility",
 
@@ -49,6 +50,7 @@ export const FIELD_LABELS_REFUND_DEPOSIT = {
    📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_REFUND_DEPOSIT = [
+  "refund_deposit_number",
   "organization",
   "facility",
 
@@ -92,6 +94,7 @@ export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
 
   // 👔 Manager (scoped lifecycle)
   manager: [
+    "refund_deposit_number",
     "facility",
     "patient",
     "deposit",
@@ -115,6 +118,7 @@ export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
 
   // 👷 Staff (essential only)
   staff: [
+    "refund_deposit_number",
     "facility",
     "patient",
     "deposit",

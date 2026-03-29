@@ -44,7 +44,7 @@ const MODULE_KEY = "refund_deposits";
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("refundDepositController", DEBUG_OVERRIDE);
 
 /* ============================================================
@@ -137,15 +137,25 @@ function buildRefundDepositSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE Deposit Refund (status → PENDING) — MASTER PARITY
+   📌 CREATE Deposit Refund (status → PENDING) — DEBUG SAFE
 ============================================================ */
 export const createRefundDeposit = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    debug.error("createRefundDeposit → REQUEST", {
+    /* ================= DEBUG: REQUEST ================= */
+    debug.error("🚀 createRefundDeposit → REQUEST", {
       userId: req.user?.id,
+      rawBody: req.body,
       depositId: req.body?.deposit_id,
     });
+
+    /* ================= DEBUG: DB ================= */
+    try {
+      const [dbName] = await sequelize.query("select current_database()");
+      debug.error("🧠 DB CONNECTED:", dbName);
+    } catch (e) {
+      debug.error("⚠️ DB NAME CHECK FAILED", e.message);
+    }
 
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -161,20 +171,33 @@ export const createRefundDeposit = async (req, res) => {
       buildRefundDepositSchema(role, "create"),
       req.body
     );
+
     if (errors) {
+      debug.error("❌ VALIDATION FAILED", errors);
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
 
     /* ========================================================
-       🔒 LOCK DEPOSIT (SOURCE OF TRUTH — TENANT INHERITANCE)
+       🔍 DEBUG: CHECK DEPOSIT (NO TX)
+    ======================================================== */
+    const depositNoTx = await Deposit.findByPk(value.deposit_id);
+    debug.error("🔎 DEPOSIT (NO TX):", depositNoTx ? depositNoTx.toJSON() : null);
+
+    /* ========================================================
+       🔍 DEBUG: CHECK DEPOSIT (WITH TX — NO LOCK)
     ======================================================== */
     const deposit = await Deposit.findByPk(value.deposit_id, {
       transaction: t,
-      lock: t.LOCK.UPDATE,
     });
 
+    debug.error("🔎 DEPOSIT (WITH TX):", deposit ? deposit.toJSON() : null);
+
     if (!deposit) {
+      debug.error("❌ DEPOSIT NOT FOUND INSIDE TX", {
+        deposit_id: value.deposit_id,
+      });
+
       await t.rollback();
       return error(res, "❌ Deposit not found", null, 404);
     }
@@ -183,6 +206,7 @@ export const createRefundDeposit = async (req, res) => {
     const facilityId = deposit.facility_id || null;
 
     if (!orgId) {
+      debug.error("❌ DEPOSIT HAS NO ORG", deposit.toJSON());
       await t.rollback();
       return error(res, "❌ Deposit has no organization", null, 400);
     }
@@ -190,6 +214,11 @@ export const createRefundDeposit = async (req, res) => {
     /* ========================================================
        💰 CREATE REFUND (LEDGER FIRST)
     ======================================================== */
+    debug.error("💰 CREATING REFUND...", {
+      deposit_id: value.deposit_id,
+      amount: value.refund_amount,
+    });
+
     const result = await refundDepositService.createRefund({
       deposit_id: value.deposit_id,
       amount: value.refund_amount,
@@ -201,12 +230,16 @@ export const createRefundDeposit = async (req, res) => {
       t,
     });
 
+    debug.error("✅ REFUND CREATED (SERVICE)", result);
+
     await t.commit();
 
     const full = await RefundDeposit.findOne({
       where: { id: result.refund.id },
       include: REFUND_DEPOSIT_INCLUDES,
     });
+
+    debug.error("📦 FINAL RESPONSE RECORD", full?.toJSON());
 
     await auditService.logAction({
       user: req.user,
@@ -218,11 +251,12 @@ export const createRefundDeposit = async (req, res) => {
 
     return success(res, "✅ Deposit refund created (pending)", full);
   } catch (err) {
+    debug.error("🔥 CREATE REFUND DEPOSIT FAILED", err);
+
     if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to create deposit refund", err);
   }
 };
-
 /* ============================================================
    📌 UPDATE Deposit Refund (PENDING only) — MASTER PARITY
 ============================================================ */
@@ -533,9 +567,11 @@ export const getAllRefundDeposits = async (req, res) => {
     if (req.query.method)
       options.where[Op.and].push({ method: req.query.method });
 
+    /* ================= GLOBAL SEARCH (FIXED) ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
+          { refund_deposit_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
           { reason: { [Op.iLike]: `%${options.search}%` } },
           { method: { [Op.iLike]: `%${options.search}%` } },
           { "$patient.first_name$": { [Op.iLike]: `%${options.search}%` } },
@@ -588,6 +624,110 @@ export const getAllRefundDeposits = async (req, res) => {
       return error(res, err.message, null, 400);
     }
     return error(res, "❌ Failed to load deposit refunds", err);
+  }
+};
+
+
+/* ============================================================
+   📌 GET Deposit Refunds (LITE – MASTER AUTOCOMPLETE)
+============================================================ */
+export const getAllRefundDepositsLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const where = { [Op.and]: [] };
+
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (isFacilityHead(req.user)) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+    }
+
+    if (req.query.q) {
+      const term = `%${req.query.q}%`;
+      where[Op.and].push({
+        [Op.or]: [
+          { refund_deposit_number: { [Op.iLike]: term } }, // ✅ FIX
+          { reason: { [Op.iLike]: term } },
+          { status: { [Op.iLike]: term } },
+        ],
+      });
+    }
+
+    const rows = await RefundDeposit.findAll({
+      where,
+      attributes: [
+        "id",
+        "refund_deposit_number", // ✅ ADD
+        "refund_amount",
+        "method",
+        "status",
+        "created_at",
+      ],
+      include: [
+        {
+          model: Deposit,
+          as: "deposit",
+          attributes: ["id"],
+        },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["pat_no", "first_name", "last_name"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    const records = rows.map((r) => ({
+      id: r.id,
+      refund_amount: r.refund_amount,
+      method: r.method,
+      status: r.status,
+      label: r.refund_deposit_number || r.id, // ✅ FIX
+      patient: r.patient
+        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
+        : "",
+      created_at: r.created_at,
+    }));
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: {
+        count: records.length,
+        query: req.query.q || null,
+      },
+    });
+
+    return success(res, "✅ Deposit refunds loaded (lite)", { records });
+  } catch (err) {
+    return error(res, "❌ Failed to load deposit refunds (lite)", err);
   }
 };
 
@@ -701,99 +841,6 @@ export const deleteRefundDeposit = async (req, res) => {
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete deposit refund", err);
-  }
-};
-
-/* ============================================================
-   📌 GET Deposit Refunds (LITE – MASTER AUTOCOMPLETE)
-============================================================ */
-export const getAllRefundDepositsLite = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const where = { [Op.and]: [] };
-
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: req.user.organization_id,
-      });
-
-      if (isFacilityHead(req.user)) {
-        where[Op.and].push({
-          facility_id: req.user.facility_id,
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
-        where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      }
-    }
-
-    if (req.query.q) {
-      const term = `%${req.query.q}%`;
-      where[Op.and].push({
-        [Op.or]: [
-          { reason: { [Op.iLike]: term } },
-          { status: { [Op.iLike]: term } },
-        ],
-      });
-    }
-
-    const rows = await RefundDeposit.findAll({
-      where,
-      include: [
-        {
-          model: Deposit,
-          as: "deposit",
-          attributes: ["id"],
-        },
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["pat_no", "first_name", "last_name"],
-        },
-      ],
-      order: [["created_at", "DESC"]],
-      limit: 20,
-    });
-
-    const records = rows.map((r) => ({
-      id: r.id,
-      refund_amount: r.refund_amount,
-      method: r.method,
-      status: r.status,
-      patient: r.patient
-        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
-        : "",
-      created_at: r.created_at,
-    }));
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: {
-        count: records.length,
-        query: req.query.q || null,
-      },
-    });
-
-    return success(res, "✅ Deposit refunds loaded (lite)", { records });
-  } catch (err) {
-    return error(res, "❌ Failed to load deposit refunds (lite)", err);
   }
 };
 

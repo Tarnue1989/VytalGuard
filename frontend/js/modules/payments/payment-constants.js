@@ -10,6 +10,7 @@
    🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_PAYMENT = {
+  payment_number: "Payment #",
   organization: "Organization",
   facility: "Facility",
   patient: "Patient",
@@ -33,6 +34,7 @@ export const FIELD_LABELS_PAYMENT = {
    📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_PAYMENT = [
+  "payment_number",
   "organization",
   "facility",
   "patient",
@@ -57,6 +59,7 @@ export const FIELD_ORDER_PAYMENT = [
 ============================================================ */
 export const FIELD_DEFAULTS_PAYMENT = {
   superadmin: [
+    "payment_number",
     "organization",
     "facility",
     "patient",
@@ -77,6 +80,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
   ],
 
   admin: [
+    "payment_number",
     "organization",
     "facility",
     "patient",
@@ -97,6 +101,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
   ],
 
   manager: [
+    "payment_number",
     "facility",
     "patient",
     "invoice",
@@ -114,6 +119,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
   ],
 
   staff: [
+    "payment_number",
     "facility",
     "patient",
     "invoice",

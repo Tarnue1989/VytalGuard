@@ -396,7 +396,6 @@ export const getAllRefunds = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ================= STRICT PAGINATION (MASTER) ================= */
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
       maxLimit: 200,
@@ -406,13 +405,11 @@ export const getAllRefunds = async (req, res) => {
     const visibleFields =
       FIELD_VISIBILITY_REFUND[role] || FIELD_VISIBILITY_REFUND.staff;
 
-    /* ================= STRIP UI-ONLY PARAMS (MASTER) ================= */
     const { dateRange, ...safeQuery } = req.query;
     safeQuery.limit = limit;
     safeQuery.page = page;
     req.query = safeQuery;
 
-    /* ================= BASE QUERY OPTIONS ================= */
     const options = buildQueryOptions(
       req,
       "created_at",
@@ -421,7 +418,6 @@ export const getAllRefunds = async (req, res) => {
     );
     options.where = { [Op.and]: [] };
 
-    /* ================= DATE RANGE (created_at) ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -431,7 +427,6 @@ export const getAllRefunds = async (req, res) => {
       }
     }
 
-    /* ================= TENANT SCOPE (PAYMENT PARITY) ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -459,7 +454,6 @@ export const getAllRefunds = async (req, res) => {
       }
     }
 
-    /* ================= FILTERS (EXACT MATCH) ================= */
     if (req.query.payment_id)
       options.where[Op.and].push({ payment_id: req.query.payment_id });
 
@@ -475,11 +469,12 @@ export const getAllRefunds = async (req, res) => {
     if (req.query.method)
       options.where[Op.and].push({ method: req.query.method });
 
-    /* ================= GLOBAL SEARCH (ENUM-SAFE) ================= */
+    /* ================= GLOBAL SEARCH (FIXED) ================= */
     if (options.search) {
       const term = `%${options.search}%`;
       options.where[Op.and].push({
         [Op.or]: [
+          { refund_number: { [Op.iLike]: term } }, // ✅ FIX
           { reason: { [Op.iLike]: term } },
           sequelize.where(
             sequelize.cast(sequelize.col("Refund.status"), "text"),
@@ -493,7 +488,6 @@ export const getAllRefunds = async (req, res) => {
       });
     }
 
-    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Refund.findAndCountAll({
       where: options.where,
       include: REFUND_INCLUDES,
@@ -503,7 +497,6 @@ export const getAllRefunds = async (req, res) => {
       distinct: true,
     });
 
-    /* ================= SUMMARY (TENANT-ENFORCED) ================= */
     const summaryOptions = {
       ...options,
       where: { ...options.where },
@@ -560,6 +553,102 @@ export const getAllRefunds = async (req, res) => {
       return error(res, err.message, null, 400);
     }
     return error(res, "❌ Failed to load refunds", err);
+  }
+};
+
+
+/* ============================================================
+   📌 GET Refunds Lite (MASTER AUTOCOMPLETE)
+============================================================ */
+export const getAllRefundsLite = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
+    const { q } = req.query;
+    const where = { [Op.and]: [] };
+
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
+      if (req.user?.facility_id) {
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+    }
+
+    /* ================= SEARCH (FIXED) ================= */
+    if (q) {
+      where[Op.and].push({
+        [Op.or]: [
+          { refund_number: { [Op.iLike]: `%${q}%` } }, // ✅ FIX
+          { reason: { [Op.iLike]: `%${q}%` } },
+          sequelize.where(
+            sequelize.cast(sequelize.col("Refund.status"), "text"),
+            { [Op.iLike]: `%${q}%` }
+          ),
+        ],
+      });
+    }
+
+    const refunds = await Refund.findAll({
+      where,
+      attributes: [
+        "id",
+        "refund_number", // ✅ ADD
+        "amount",
+        "reason",
+        "status",
+        "created_at",
+      ],
+      include: [
+        {
+          model: Payment,
+          as: "payment",
+          attributes: ["id", "transaction_ref", "method"],
+        },
+        {
+          model: Patient,
+          as: "patient",
+          attributes: ["id", "pat_no", "first_name", "last_name"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    const records = refunds.map((r) => ({
+      id: r.id,
+      amount: r.amount,
+      status: r.status,
+      reason: r.reason,
+      method: r.payment?.method || "",
+      payment: r.payment?.transaction_ref || "",
+      label: r.refund_number || r.payment?.transaction_ref || r.id, // ✅ FIX
+      patient: r.patient
+        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
+        : "",
+      created_at: r.created_at,
+    }));
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list_lite",
+      details: { count: records.length, query: q || null },
+    });
+
+    return success(res, "✅ Refunds loaded (lite)", { records });
+  } catch (err) {
+    return error(res, "❌ Failed to load refunds (lite)", err);
   }
 };
 
@@ -685,89 +774,6 @@ export const deleteRefund = async (req, res) => {
   } catch (err) {
     if (t && !t.finished) await t.rollback();
     return error(res, "❌ Failed to delete refund", err);
-  }
-};
-
-
-/* ============================================================
-   📌 GET Refunds Lite (MASTER AUTOCOMPLETE)
-============================================================ */
-export const getAllRefundsLite = async (req, res) => {
-  try {
-    const allowed = await authzService.checkPermission({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "read",
-      res,
-    });
-    if (!allowed) return;
-
-    const { q } = req.query;
-    const where = { [Op.and]: [] };
-
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: req.user.organization_id,
-      });
-
-      if (req.user?.facility_id) {
-        where[Op.and].push({
-          facility_id: req.user.facility_id,
-        });
-      }
-    }
-
-    if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { reason: { [Op.iLike]: `%${q}%` } },
-          { status: { [Op.iLike]: `%${q}%` } },
-        ],
-      });
-    }
-
-    const refunds = await Refund.findAll({
-      where,
-      attributes: ["id", "amount", "reason", "status", "created_at"],
-      include: [
-        {
-          model: Payment,
-          as: "payment",
-          attributes: ["id", "transaction_ref", "method"],
-        },
-        {
-          model: Patient,
-          as: "patient",
-          attributes: ["id", "pat_no", "first_name", "last_name"],
-        },
-      ],
-      order: [["created_at", "DESC"]],
-      limit: 20,
-    });
-
-    const records = refunds.map((r) => ({
-      id: r.id,
-      amount: r.amount,
-      status: r.status,
-      reason: r.reason,
-      method: r.payment?.method || "",
-      payment: r.payment?.transaction_ref || "",
-      patient: r.patient
-        ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
-        : "",
-      created_at: r.created_at,
-    }));
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: { count: records.length, query: q || null },
-    });
-
-    return success(res, "✅ Refunds loaded (lite)", { records });
-  } catch (err) {
-    return error(res, "❌ Failed to load refunds (lite)", err);
   }
 };
 

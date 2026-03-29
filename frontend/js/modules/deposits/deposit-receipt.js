@@ -5,6 +5,7 @@
 // 🔹 Multi-tenant safe
 // 🔹 Audit-safe fallback chain
 // 🔹 Clean enterprise output
+// 🔹 UUID REMOVED (ONLY uses deposit_number)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
@@ -42,6 +43,7 @@ function getPrintedBy(deposit) {
     return "Unknown User";
   }
 }
+
 /* ============================================================
    🧾 BUILD RECEIPT HTML
 ============================================================ */
@@ -76,7 +78,7 @@ function buildDepositReceiptHTML(deposit) {
 
       <div>
         <div><strong>Deposit #:</strong> ${
-          deposit.deposit_ref || deposit.id || ""
+          deposit.deposit_number || "—"
         }</div>
 
         <div><strong>Date:</strong> ${formatDate(
