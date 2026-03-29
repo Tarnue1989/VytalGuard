@@ -11,7 +11,7 @@ import {
   formatKeyLabel,
   getBadgeStyle,
 } from "./dashboard-constants.js";
-
+import { getGreetingMeta } from "../utils/greeting.js";
 /* ====================== ⭐ TOP KPI KEYS ====================== */
 const TOP_KPI_KEYS = [
   "patients",
@@ -143,15 +143,40 @@ function renderUserInfo() {
   const sidebarName = document.getElementById("sidebarName");
   if (sidebarName) sidebarName.textContent = fullName;
 
+  const greetingMeta = getGreetingMeta(u);
+  const displayName = fullName || "User";
+
   const headerName = document.getElementById("headerName");
-  if (headerName) headerName.textContent = fullName;
+  if (headerName) {
+    headerName.textContent = displayName;
+  }
 
   const sidebarRole = document.getElementById("sidebarRole");
   if (sidebarRole) sidebarRole.textContent = u.department || u.role || "";
 
-  const headerRole = document.getElementById("headerRole");
-  if (headerRole) headerRole.textContent = u.department || u.role || "";
+  const roleMap = {
+    admin: "Super Admin",
+    superadmin: "Super Admin",
+    doctor: "Doctor",
+    nurse: "Nurse"
+  };
 
+  const rawRole =
+    (u.roleNames?.[0] || u.storedRole || u.role || "").toLowerCase();
+
+  const headerRole = document.getElementById("headerRole");
+  if (headerRole) {
+    headerRole.textContent = roleMap[rawRole] || rawRole || "";
+  }
+
+  const greetingEl = document.getElementById("breadcrumbGreeting");
+  if (greetingEl) {
+    greetingEl.innerHTML = `
+      <i class="${greetingMeta.icon} me-1 text-${greetingMeta.theme}"></i>
+      ${greetingMeta.text}, ${displayName}
+    `;
+  }
+  
   ["sidebarAvatar", "headerAvatar"].forEach((id) => {
     const img = document.getElementById(id);
     if (img) {

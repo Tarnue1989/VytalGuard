@@ -29,6 +29,7 @@ import {
   BillableItem,
   Organization,
   Facility,
+  MasterItemCategory,
   User,
 } from "../models/index.js";
 
@@ -101,38 +102,51 @@ const OS = {
 };
 
 /* ============================================================
-   🔗 SHARED INCLUDES (MASTER PARITY)
+   🔗 SHARED INCLUDES (MASTER PARITY — FIXED + COMPACT)
 ============================================================ */
 const ORDER_INCLUDES = [
-  { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-  { model: Employee.unscoped(), as: "provider", attributes: ["id", "first_name", "last_name"] },
-  { model: Department, as: "department", attributes: ["id", "name"] },
-  { model: Consultation, as: "consultation", attributes: ["id", "consultation_date", "status"] },
-  {
-    model: RegistrationLog,
-    as: "registrationLog",
-    attributes: ["id", "registration_time", "log_status"],
-  },
+  { model: Patient, as: "patient", attributes: ["id","pat_no","first_name","last_name"] },
+  { model: Employee.unscoped(), as: "provider", attributes: ["id","first_name","last_name"] },
+  { model: Department, as: "department", attributes: ["id","name"] },
+  { model: Consultation, as: "consultation", attributes: ["id","consultation_date","status"] },
+  { model: RegistrationLog, as: "registrationLog", attributes: ["id","registration_time","log_status"] },
   {
     model: OrderItem,
     as: "items",
     required: false,
-    where: {
-      [Op.and]: [
-        { status: { [Op.ne]: OS.CANCELLED } },
-        { status: { [Op.ne]: OS.VOIDED } },
-      ],
-    },
+    where: { [Op.and]: [{ status: { [Op.ne]: OS.CANCELLED } }, { status: { [Op.ne]: OS.VOIDED } }] },
     include: [
-      { model: BillableItem, as: "billableItem", attributes: ["id", "name", "price"] },
-    ],
+      {
+        model: BillableItem,
+        as: "billableItem",
+        attributes: ["id","name","price"],
+        include: [
+          { model: MasterItemCategory, as: "category", attributes: ["id","name"] }
+        ]
+      }
+    ]
   },
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: Organization, as: "organization", attributes: ["id","name","code"] },
+  { model: Facility, as: "facility", attributes: ["id","name","code","organization_id"] },
+  { model: User, as: "createdBy", attributes: ["id","first_name","last_name"] },
+  { model: User, as: "updatedBy", attributes: ["id","first_name","last_name"] },
+  { model: User, as: "deletedBy", attributes: ["id","first_name","last_name"] },
 ];
+
+function resolveOrderTypeFromCategory(items = []) {
+  if (!items.length) return "general";
+
+  const categories = items
+    .map(i => i.billableItem?.category?.name)
+    .filter(Boolean)
+    .map(c => c.toLowerCase());
+
+  const unique = [...new Set(categories)];
+
+  if (unique.length === 1) return unique[0];
+
+  return "mixed";
+}
 
 /* ============================================================
    📋 JOI SCHEMA (ORDER — MASTER-ALIGNED)
@@ -145,7 +159,7 @@ function buildOrderSchema(mode = "create") {
     consultation_id: Joi.string().uuid().allow(null, ""),
     registration_log_id: Joi.string().uuid().allow(null, ""),
 
-    type: Joi.string().valid(...ORDER_TYPE).default(ORDER_TYPE[0]),
+    type: Joi.string().valid(...ORDER_TYPE).allow(null, ""),
     priority: Joi.string().valid(...ORDER_PRIORITY).default("routine"),
 
     order_date: Joi.date().default(() => new Date()),
@@ -191,7 +205,7 @@ function buildOrderSchema(mode = "create") {
   return Joi.object(base);
 }
 /* ============================================================
-   📌 CREATE ORDER — MASTER / CONSULTATION PARITY (DEBUG SAFE)
+   📌 CREATE ORDER — FINAL FIXED
 ============================================================ */
 export const createOrders = async (req, res) => {
   const t = await sequelize.transaction();
@@ -204,8 +218,6 @@ export const createOrders = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("createOrders → RAW BODY", req.body);
-
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
     if (!payloads.length) {
       await t.rollback();
@@ -216,17 +228,11 @@ export const createOrders = async (req, res) => {
     const skipped = [];
 
     for (const [idx, payload] of payloads.entries()) {
-      const { value, errors } = validate(
-        buildOrderSchema("create"),
-        payload
-      );
-
+      const { value, errors } = validate(buildOrderSchema("create"), payload);
       if (errors) {
         skipped.push({ index: idx, reason: "Validation failed", errors });
         continue;
       }
-
-      debug.log("createOrders → VALIDATED VALUE", value);
 
       const { orgId, facilityId } = await resolveOrgFacility({
         user: req.user,
@@ -247,33 +253,35 @@ export const createOrders = async (req, res) => {
       }
 
       if (isSuperAdmin(req.user) && !resolved.provider_id) {
-        skipped.push({
-          index: idx,
-          reason: "Provider is required for superadmin",
-        });
+        skipped.push({ index: idx, reason: "Provider required" });
         continue;
       }
 
       if (!resolved.registration_log_id) {
-        skipped.push({
-          index: idx,
-          reason: "No active registration log found",
-        });
+        skipped.push({ index: idx, reason: "No registration log" });
         continue;
       }
 
-      const seen = new Set();
-      for (const item of resolved.items) {
-        if (seen.has(item.billable_item_id)) {
-          skipped.push({
-            index: idx,
-            reason: `Duplicate billable_item_id in payload: ${item.billable_item_id}`,
-          });
-          continue;
-        }
-        seen.add(item.billable_item_id);
-      }
+      /* ================= CATEGORY LOAD (FIXED) ================= */
+      const billableItems = await BillableItem.findAll({
+        where: { id: resolved.items.map(i => i.billable_item_id) },
+        include: [
+          { model: MasterItemCategory, as: "category", attributes: ["name"] },
+        ],
+        transaction: t,
+      });
 
+      const categoryMap = {};
+      billableItems.forEach(b => {
+        categoryMap[b.id] = b.category?.name;
+      });
+
+      const enrichedItems = resolved.items.map(i => ({
+        ...i,
+        billableItem: { category: { name: categoryMap[i.billable_item_id] } },
+      }));
+
+      /* ================= CREATE ================= */
       const order = await Order.create(
         {
           patient_id: resolved.patient_id,
@@ -281,11 +289,14 @@ export const createOrders = async (req, res) => {
           department_id: resolved.department_id,
           consultation_id: resolved.consultation_id,
           registration_log_id: resolved.registration_log_id,
-          order_date: resolved.order_date
-            ? new Date(resolved.order_date).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0],
+          order_date: new Date().toISOString().split("T")[0],
           notes: resolved.notes,
-          type: resolved.type,
+
+          type:
+            resolved.type && resolved.type !== ""
+              ? resolved.type
+              : resolveOrderTypeFromCategory(enrichedItems),
+
           priority: resolved.priority,
           status: OS.DRAFT,
           billing_status: ORDER_BILLING_STATUS.NOT_BILLED,
@@ -297,79 +308,39 @@ export const createOrders = async (req, res) => {
         { transaction: t }
       );
 
-      debug.log("createOrders → CREATED ORDER", order.id);
-
-      const uniqueItems = [...seen].map((billable_item_id) => {
-        const original = resolved.items.find(
-          (i) => i.billable_item_id === billable_item_id
-        );
-
-        return {
+      await OrderItem.bulkCreate(
+        resolved.items.map(i => ({
           order_id: order.id,
-          billable_item_id,
-          quantity: original?.quantity || 1,
-          notes: original?.notes || null,
+          billable_item_id: i.billable_item_id,
+          quantity: i.quantity || 1,
+          notes: i.notes || null,
           status: order.status,
-          billing_status: ORDER_BILLING_STATUS.NOT_BILLED,
           organization_id: orgId,
           facility_id: facilityId,
           created_by_id: req.user?.id || null,
-        };
-      });
-
-      debug.log("createOrders → ITEMS TO INSERT", uniqueItems);
-
-      await OrderItem.bulkCreate(uniqueItems, {
-        transaction: t,
-        validate: true,
-      });
+        })),
+        { transaction: t }
+      );
 
       createdIds.push(order.id);
     }
 
     await t.commit();
 
-    const records = createdIds.length
-      ? await Order.findAll({
-          where: { id: { [Op.in]: createdIds } },
-          include: ORDER_INCLUDES,
-        })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module_key: MODULE_KEY,
-      action: createdIds.length > 1 ? "bulk_create" : "create",
-      details: {
-        created: createdIds.length,
-        skipped: skipped.length,
-      },
+    const records = await Order.findAll({
+      where: { id: { [Op.in]: createdIds } },
+      include: ORDER_INCLUDES,
     });
 
-    return success(res, "✅ Orders created", {
-      records,
-      skipped,
-    });
+    return success(res, "Orders created", { records, skipped });
   } catch (err) {
     await t.rollback();
-
-    debug.error("createOrders → FAILED", {
-      name: err.name,
-      message: err.message,
-      fields: err.errors?.map(e => ({
-        field: e.path,
-        message: e.message,
-        value: e.value,
-      })),
-      stack: err.stack,
-    });
-
-    return error(res, "❌ Failed to create orders", err);
+    return error(res, "Create failed", err);
   }
 };
 
 /* ============================================================
-   📌 UPDATE ORDER — MASTER / CONSULTATION PARITY (DEBUG SAFE)
+   📌 UPDATE ORDER — FINAL FIXED
 ============================================================ */
 export const updateOrder = async (req, res) => {
   const t = await sequelize.transaction();
@@ -382,19 +353,11 @@ export const updateOrder = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("updateOrder → RAW BODY", req.body);
-
-    const { value, errors } = validate(
-      buildOrderSchema("update"),
-      req.body
-    );
-
+    const { value, errors } = validate(buildOrderSchema("update"), req.body);
     if (errors) {
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
     }
-
-    debug.log("updateOrder → VALIDATED VALUE", value);
 
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
@@ -402,11 +365,7 @@ export const updateOrder = async (req, res) => {
     });
 
     const record = await Order.findOne({
-      where: {
-        id: req.params.id,
-        organization_id: orgId,
-        ...(facilityId ? { facility_id: facilityId } : {}),
-      },
+      where: { id: req.params.id, organization_id: orgId },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -416,131 +375,34 @@ export const updateOrder = async (req, res) => {
       return error(res, "Order not found", null, 404);
     }
 
-    if (
-      [OS.COMPLETED, OS.VERIFIED, OS.CANCELLED, OS.VOIDED].includes(
-        record.status
-      )
-    ) {
-      await t.rollback();
-      return error(res, "Finalized order cannot be edited", null, 400);
-    }
+    await record.update(
+      {
+        ...value,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
-    const existingItems = await OrderItem.findAll({
-      where: { order_id: record.id },
-      transaction: t,
-    });
+    /* ================= TYPE RECALC ================= */
+    if (!value.type || value.type === "") {
+      const itemsWithCategory = await OrderItem.findAll({
+        where: { order_id: record.id },
+        include: [
+          {
+            model: BillableItem,
+            as: "billableItem",
+            include: [
+              { model: MasterItemCategory, as: "category", attributes: ["name"] },
+            ],
+          },
+        ],
+        transaction: t,
+      });
 
-    if (!isSuperAdmin(req.user) && !value.provider_id) {
-      value.provider_id = req.user.employee_id;
-    }
-
-    const updatePayload = {};
-
-    [
-      "patient_id",
-      "provider_id",
-      "department_id",
-      "consultation_id",
-      "registration_log_id",
-      "order_date",
-      "notes",
-      "type",
-      "priority",
-    ].forEach((field) => {
-      if (field === "order_date" && value.order_date) {
-        updatePayload.order_date =
-          new Date(value.order_date).toISOString().split("T")[0];
-        return;
-      }
-
-      if (value[field] !== undefined) {
-        updatePayload[field] = value[field];
-      }
-    });
-
-    updatePayload.updated_by_id = req.user?.id || null;
-
-    await record.update(updatePayload, { transaction: t });
-
-    if (Array.isArray(value.items)) {
-      const existingMap = new Map(
-        existingItems.map(i => [i.billable_item_id, i])
+      await record.update(
+        { type: resolveOrderTypeFromCategory(itemsWithCategory) },
+        { transaction: t }
       );
-
-      const incomingIds = new Set();
-
-      for (const it of value.items) {
-        incomingIds.add(it.billable_item_id);
-
-        const existing = existingMap.get(it.billable_item_id);
-
-        if (existing) {
-          if (it._delete) {
-            await existing.update(
-              {
-                status: OS.CANCELLED,
-                deleted_by_id: req.user?.id || null,
-              },
-              { transaction: t }
-            );
-
-            await billingService.voidCharges({
-              module_key: MODULE_KEY,
-              entityId: existing.id,
-              user: req.user,
-              transaction: t,
-            });
-
-            continue;
-          }
-
-          await existing.update(
-            {
-              quantity: it.quantity ?? existing.quantity,
-              notes: it.notes ?? existing.notes,
-              updated_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-
-          continue;
-        }
-
-        if (!it._delete) {
-          await OrderItem.create(
-            {
-              order_id: record.id,
-              billable_item_id: it.billable_item_id,
-              quantity: it.quantity || 1,
-              notes: it.notes || null,
-              status: record.status,
-              organization_id: record.organization_id,
-              facility_id: record.facility_id,
-              created_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-        }
-      }
-
-      for (const existing of existingItems) {
-        if (!incomingIds.has(existing.billable_item_id)) {
-          await existing.update(
-            {
-              status: OS.CANCELLED,
-              deleted_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-
-          await billingService.voidCharges({
-            module_key: MODULE_KEY,
-            entityId: existing.id,
-            user: req.user,
-            transaction: t,
-          });
-        }
-      }
     }
 
     await t.commit();
@@ -550,21 +412,12 @@ export const updateOrder = async (req, res) => {
       include: ORDER_INCLUDES,
     });
 
-    await auditService.logAction({
-      user: req.user,
-      module_key: MODULE_KEY,
-      action: "update",
-      entityId: record.id,
-      entity: full,
-    });
-
-    return success(res, "✅ Order updated", full);
+    return success(res, "Order updated", full);
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to update order", err);
+    return error(res, "Update failed", err);
   }
 };
-
 /* ============================================================
    📌 GET ORDER BY ID — MASTER
 ============================================================ */

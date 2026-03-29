@@ -74,33 +74,41 @@ function renderPatient(entry) {
 function renderItems(entry) {
   if (!Array.isArray(entry.items) || !entry.items.length) return "—";
 
-  return `
-    <ul class="mb-0 ps-3">
-      ${entry.items
-        .map((i) => {
-          const name = i.billableItem?.name || "—";
-          const qty = i.quantity || 0;
-          const price =
-            i.unit_price || i.billableItem?.price || 0;
-          const total =
-            i.total_price || qty * price;
+  const count = entry.items.length;
 
-          return `
-            <li>
-              <strong>${name}</strong>
-              <div class="text-muted small">
-                Qty: ${qty} |
-                Unit: ${price} |
-                Total: ${total}
-              </div>
-            </li>
-          `;
-        })
-        .join("")}
-    </ul>
+  return `
+    <div class="order-items-wrapper">
+
+      <!-- 🔹 SUMMARY (CLICKABLE) -->
+      <div class="order-items-toggle" onclick="this.nextElementSibling.classList.toggle('d-none')">
+        📦 ${count} item${count > 1 ? "s" : ""} (Click to view)
+      </div>
+
+      <!-- 🔹 HIDDEN LIST -->
+      <ul class="order-items-list d-none mt-1 ps-3">
+        ${entry.items
+          .map((i) => {
+            const name = i.billableItem?.name || "—";
+            const qty = i.quantity || 0;
+            const price =
+              i.unit_price || i.billableItem?.price || 0;
+            const total = i.total_price || qty * price;
+
+            return `
+              <li>
+                <strong>${name}</strong>
+                <div class="text-muted small">
+                  Qty: ${qty} | Unit: ${price} | Total: ${total}
+                </div>
+              </li>
+            `;
+          })
+          .join("")}
+      </ul>
+
+    </div>
   `;
 }
-
 /* ============================================================
    🧩 VALUE RENDERER (FIXED KEYS)
 ============================================================ */
@@ -133,7 +141,35 @@ function renderValue(entry, field) {
       return renderItems(entry);
 
     case "order_date":
-      return formatClinicalDate(entry.order_date);
+      return entry[field]
+        ? formatClinicalDate(
+            entry[field].includes("T")
+              ? entry[field].split("T")[0]
+              : entry[field]
+          )
+        : "—";
+
+    /* ✅ FIX START (OBJECT → VALUE) */
+    case "consultation":
+    case "consultation_id":
+      return entry.consultation?.consultation_date
+        ? formatClinicalDate(
+            entry.consultation.consultation_date.includes("T")
+              ? entry.consultation.consultation_date.split("T")[0]
+              : entry.consultation.consultation_date
+          )
+        : "—";
+    case "registrationLog":
+    case "registration_log_id":
+      return entry.registrationLog?.registration_time
+        ? formatClinicalDate(entry.registrationLog.registration_time.split("T")[0])
+        : "—";
+    case "createdBy":
+      return renderUserName(entry.createdBy);
+
+    case "updatedBy":
+      return renderUserName(entry.updatedBy);
+    /* ✅ FIX END */
 
     case "created_at":
     case "updated_at":
@@ -149,7 +185,6 @@ function renderValue(entry, field) {
       return safe(entry[field]);
   }
 }
-
 /* ============================================================
    🧱 TABLE HEAD (MASTER)
 ============================================================ */
@@ -187,7 +222,7 @@ export function renderDynamicTableHead(visibleFields) {
 }
 
 /* ============================================================
-   🗂 CARD (FINAL FIXED – ENTERPRISE)
+   🗂 CARD (FINAL FIXED – ENTERPRISE | DATE ONLY + LR$ FORMAT)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -195,6 +230,13 @@ export function renderCard(entry, visibleFields, user) {
 
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
+
+  /* ===================== 💰 MONEY FORMAT ===================== */
+  const money = (v) =>
+    `LR$ ${Number(v || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
@@ -205,12 +247,6 @@ export function renderCard(entry, visibleFields, user) {
       </div>
     `;
   };
-
-  /* ===================== AUDIT FIELDS ===================== */
-  const AUDIT_FIELDS = [
-    "createdBy","updatedBy","deletedBy",
-    "created_at","updated_at","deleted_at"
-  ];
 
   /* ===================== TOTAL ===================== */
   const calculateTotal = () => {
@@ -230,6 +266,15 @@ export function renderCard(entry, visibleFields, user) {
     entry.total_amount && Number(entry.total_amount) > 0
       ? Number(entry.total_amount)
       : calculateTotal();
+
+  /* ===================== DATE ONLY ===================== */
+  const orderDate = entry.order_date
+    ? formatClinicalDate(
+        entry.order_date.includes("T")
+          ? entry.order_date.split("T")[0]
+          : entry.order_date
+      )
+    : "—";
 
   return `
     <div class="entity-card order-card">
@@ -255,11 +300,11 @@ export function renderCard(entry, visibleFields, user) {
       <!-- 🔹 QUICK CORE -->
       <!-- ===================================================== -->
       <div class="entity-card-body">
-        ${row("Order Date", formatDateTime(entry.order_date))}
+        ${row("Order Date", orderDate)}
         ${row("Type", entry.type)}
         ${row("Priority", entry.priority)}
         ${row("Billing Status", entry.billing_status)}
-        ${row("Total Amount", `LRD ${total}`)}
+        ${row("Total Amount", money(total))}
       </div>
 
       <!-- ===================================================== -->
@@ -287,9 +332,19 @@ export function renderCard(entry, visibleFields, user) {
                   "facility",
                   "provider",
                   "department",
+                  "patient",
+                  "patient_id",
                   "items",
                   "notes",
-                  ...AUDIT_FIELDS,
+
+                  /* 🔒 AUDIT REMOVED FROM DETAILS */
+                  "createdBy","updatedBy","deletedBy",
+                  "approvedBy","processedBy","reversedBy","voidedBy",
+                  "restoredBy","reviewedBy","rejectedBy","cancelledBy",
+
+                  "created_at","updated_at","deleted_at",
+                  "approved_at","processed_at","reversed_at","voided_at",
+                  "restored_at","reviewed_at","rejected_at","cancelled_at",
                 ].includes(f)
             )
             .map((f) =>
@@ -328,15 +383,45 @@ export function renderCard(entry, visibleFields, user) {
       }
 
       <!-- ===================================================== -->
-      <!-- 🔍 AUDIT (DATE + TIME) -->
+      <!-- 🔍 AUDIT -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
+
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDateTime(entry.created_at))}
+
           ${row("Updated By", renderUserName(entry.updatedBy))}
           ${row("Updated At", formatDateTime(entry.updated_at))}
+
+          ${row("Approved By", renderUserName(entry.approvedBy))}
+          ${row("Approved At", formatDateTime(entry.approved_at))}
+
+          ${row("Processed By", renderUserName(entry.processedBy))}
+          ${row("Processed At", formatDateTime(entry.processed_at))}
+
+          ${row("Reviewed By", renderUserName(entry.reviewedBy))}
+          ${row("Reviewed At", formatDateTime(entry.reviewed_at))}
+
+          ${row("Rejected By", renderUserName(entry.rejectedBy))}
+          ${row("Rejected At", formatDateTime(entry.rejected_at))}
+
+          ${row("Cancelled By", renderUserName(entry.cancelledBy))}
+          ${row("Cancelled At", formatDateTime(entry.cancelled_at))}
+
+          ${row("Reversed By", renderUserName(entry.reversedBy))}
+          ${row("Reversed At", formatDateTime(entry.reversed_at))}
+
+          ${row("Voided By", renderUserName(entry.voidedBy))}
+          ${row("Voided At", formatDateTime(entry.voided_at))}
+
+          ${row("Restored By", renderUserName(entry.restoredBy))}
+          ${row("Restored At", formatDateTime(entry.restored_at))}
+
+          ${row("Deleted By", renderUserName(entry.deletedBy))}
+          ${row("Deleted At", formatDateTime(entry.deleted_at))}
+
         </div>
       </details>
 

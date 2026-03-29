@@ -12,7 +12,7 @@
 
 import { FIELD_LABELS_DEPOSIT } from "./deposit-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
@@ -223,7 +223,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH (MASTER)
+   🗂️ CARD RENDERER — RICH (DEPOSIT | MASTER PARITY)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -269,7 +269,9 @@ export function renderCard(entry, visibleFields, user) {
   return `
     <div class="entity-card deposit-card">
 
-      <!-- ================= HEADER ================= -->
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
@@ -284,29 +286,29 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
-      <!-- ================= CONTEXT ================= -->
-      <div class="entity-card-context">
-        ${entry.deposit_number ? `<div>🆔 ${entry.deposit_number}</div>` : ""}
-        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
-        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
-        ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
-        ${entry.transaction_ref ? `<div>🔗 ${entry.transaction_ref}</div>` : ""}
-      </div>
-
-      <!-- ================= QUICK CORE (COMPACT) ================= -->
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE (LIGHT — MASTER PARITY) -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
+        ${row("Deposit #", entry.deposit_number)}
         ${row("Amount", money(entry.amount))}
         ${row("Available", money(entry.remaining_balance))}
         ${hasRefund ? row("Refunded", money(refundedAmount)) : ""}
+        ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>
 
-      <!-- ================= DETAILS ================= -->
+      <!-- ===================================================== -->
+      <!-- 📄 DETAILS -->
+      <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Details</strong></summary>
         <div class="entity-card-body">
 
-          ${row("Deposit #", entry.deposit_number)}
+          ${row("Organization", entry.organization?.name)}
+          ${row("Facility", entry.facility?.name)}
+          ${row("Transaction Ref", entry.transaction_ref)}
+
           ${row("Applied Amount", money(entry.applied_amount))}
 
           ${
@@ -318,9 +320,6 @@ export function renderCard(entry, visibleFields, user) {
               : ""
           }
 
-          ${row("Reason", entry.reason)}
-          ${row("Notes", entry.notes)}
-
           ${visibleFields
             .filter(
               (f) =>
@@ -331,6 +330,8 @@ export function renderCard(entry, visibleFields, user) {
                   "refund_amount",
                   "status",
                   "deposit_number",
+                  "method",
+                  "transaction_ref",
                   "applied_amount",
                   "reason",
                   "notes",
@@ -348,18 +349,50 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
-      <!-- ================= AUDIT ================= -->
+      <!-- ===================================================== -->
+      <!-- 📝 REASON -->
+      <!-- ===================================================== -->
+      ${
+        entry.reason
+          ? `<details class="entity-section">
+               <summary><strong>Reason</strong></summary>
+               <div class="entity-card-body">
+                 ${entry.reason}
+               </div>
+             </details>`
+          : ""
+      }
+
+      <!-- ===================================================== -->
+      <!-- 📝 NOTES -->
+      <!-- ===================================================== -->
+      ${
+        entry.notes
+          ? `<details class="entity-section">
+               <summary><strong>Notes</strong></summary>
+               <div class="entity-card-body">
+                 ${entry.notes}
+               </div>
+             </details>`
+          : ""
+      }
+
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT -->
+      <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDate(entry.created_at))}
+          ${row("Created At", formatDateTime(entry.created_at))}
           ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDate(entry.updated_at))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
         </div>
       </details>
 
-      <!-- ================= ACTIONS ================= -->
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
+      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
