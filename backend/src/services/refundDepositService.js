@@ -20,33 +20,39 @@ import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
 
 export const refundDepositService = {
 
-  /* =========================================================================
-     1️⃣ CREATE (→ PENDING)
-     ========================================================================= */
-  async createRefund({ deposit_id, amount, method, reason, user }) {
-    return sequelize.transaction(async (t) => {
+    /* =========================================================================
+      1️⃣ CREATE (→ PENDING) — FIXED (NO TENANT FILTER BUG)
+      ========================================================================= */
+    async createRefund({ deposit_id, amount, method, reason, user, t }) {
 
-      const roles = (user.roleNames || []).map(r => r.toLowerCase());
-      const isSuper = roles.includes("superadmin");
+      /* ============================================================
+        🔍 FETCH DEPOSIT (NO TENANT FILTER — TRUST CONTROLLER)
+      ============================================================ */
+      const deposit = await Deposit.findByPk(deposit_id, {
+        transaction: t,
+      });
 
-      const where = { id: deposit_id };
-      if (!isSuper) {
-        where.organization_id = user.organization_id;
-        where.facility_id = user.facility_id;
+      if (!deposit) {
+        throw new Error("Deposit not found");
       }
 
-      const deposit = await Deposit.findOne({ where, transaction: t });
-      if (!deposit) throw new Error("Deposit not found");
-
+      /* ============================================================
+        💰 VALIDATIONS
+      ============================================================ */
       const balance = Number(deposit.remaining_balance ?? 0);
       const refundAmount = Number(amount);
 
-      if (refundAmount <= 0)
+      if (refundAmount <= 0) {
         throw new Error("Refund amount must be greater than zero");
+      }
 
-      if (refundAmount > balance)
+      if (refundAmount > balance) {
         throw new Error(`Refund amount exceeds available balance (${balance})`);
+      }
 
+      /* ============================================================
+        🧾 CREATE REFUND
+      ============================================================ */
       const refund = await RefundDeposit.create(
         {
           deposit_id,
@@ -62,7 +68,9 @@ export const refundDepositService = {
         { transaction: t, user }
       );
 
-      // ✅ lifecycle + audit
+      /* ============================================================
+        🔁 LIFECYCLE + AUDIT
+      ============================================================ */
       await applyLifecycleTransition({
         entity: refund,
         action: "created",
@@ -73,9 +81,7 @@ export const refundDepositService = {
       });
 
       return { refund };
-    });
-  },
-
+    },
   /* =========================================================================
      2️⃣ REVIEW (PENDING → REVIEW)
      ========================================================================= */

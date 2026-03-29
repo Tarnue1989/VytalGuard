@@ -10,6 +10,7 @@
    🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_REFUND = {
+  refund_number: "Refund #",
   organization: "Organization",
   facility: "Facility",
 
@@ -51,6 +52,7 @@ export const FIELD_LABELS_REFUND = {
    📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_REFUND = [
+  "refund_number",
   "organization",
   "facility",
 
@@ -95,6 +97,7 @@ export const FIELD_DEFAULTS_REFUND = {
 
   // 👔 Manager (scoped lifecycle)
   manager: [
+    "refund_number",
     "facility",
     "patient",
     "invoice",
@@ -119,6 +122,7 @@ export const FIELD_DEFAULTS_REFUND = {
 
   // 👷 Staff (essential only)
   staff: [
+    "refund_number",
     "facility",
     "patient",
     "invoice",

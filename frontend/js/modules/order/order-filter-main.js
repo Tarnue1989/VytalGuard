@@ -376,3 +376,4 @@ export async function initOrderModule() {
 document.readyState === "loading"
   ? document.addEventListener("DOMContentLoaded", initOrderModule)
   : initOrderModule();
+

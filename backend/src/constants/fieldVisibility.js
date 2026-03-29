@@ -351,12 +351,12 @@ export const FIELD_VISIBILITY_CONSULTATION = {
 export const FIELD_VISIBILITY_DEPOSIT = {
     superadmin: FIELD_ORDER_DEPOSIT,
   organization_admin: FIELD_ORDER_DEPOSIT,
-  manager: [
+  manager: ["deposit_number", 
     "id", "patient_id", "organization_id", "facility_id", "applied_invoice_id",
     "amount", "applied_amount", "remaining_balance", "unapplied_amount",
     "method", "transaction_ref", "status", "notes", "reason"
   ],
-  staff: [
+  staff: ["deposit_number", 
     "id", "patient_id", "amount", "remaining_balance", "unapplied_amount",
     "method", "status"
   ]
@@ -396,21 +396,21 @@ export const FIELD_VISIBILITY_INVOICE_ITEM = {
 export const FIELD_VISIBILITY_REFUND = {
     superadmin: FIELD_ORDER_REFUND,
   organization_admin: FIELD_ORDER_REFUND,
-  manager: [
+  manager: ["refund_number", 
     "id", "payment_id", "invoice_id", "amount", "method", "reason", "status",
     "approved_by_id", "approved_at",
     "rejected_by_id", "rejected_at",
     "processed_by_id", "processed_at",
     "cancelled_by_id", "cancelled_at"
   ],
-  staff: ["id", "invoice_id", "amount", "method", "status"]
+  staff: ["refund_number", "id", "invoice_id", "amount", "method", "status"]
 };
 
 /* -------------------- Refund Deposit -------------------- */
 export const FIELD_VISIBILITY_REFUND_DEPOSIT = {
     superadmin: FIELD_ORDER_REFUND_DEPOSIT,
   organization_admin: FIELD_ORDER_REFUND_DEPOSIT,
-  manager: [
+  manager: ["refund_deposit_number",
     "id", "deposit_id", "patient_id",
     "refund_amount", "method", "reason", "status",
     "reviewed_by_id", "reviewed_at",
@@ -420,7 +420,7 @@ export const FIELD_VISIBILITY_REFUND_DEPOSIT = {
     "restored_by_id", "restored_at",
     "created_by_id", "created_at"
   ],
-  staff: [
+  staff: ["refund_deposit_number",
     "id", "refund_amount", "method", "reason", "status"
   ]
 };
@@ -956,11 +956,11 @@ export const FIELD_VISIBILITY_INSURANCE_PROVIDER = {
 export const FIELD_VISIBILITY_PAYMENT = {
     superadmin: FIELD_ORDER_PAYMENT,
   organization_admin: FIELD_ORDER_PAYMENT,
-  manager: [
+  manager: ["payment_number", 
     "id", "invoice_id", "patient_id",
     "amount", "method", "status", "transaction_ref", "is_deposit", "reason", 
   ],
-  staff: [
+  staff: ["payment_number", 
     "id", "invoice_id", "patient_id",
     "amount", "status", "method"
   ],

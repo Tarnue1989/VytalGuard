@@ -1,7 +1,7 @@
 // 📁 backend/src/models/Deposit.js
 import { DataTypes, Model } from "sequelize";
 import { DEPOSIT_STATUS, PAYMENT_METHODS } from "../constants/enums.js";
-import { recalcInvoice } from "../utils/invoiceUtil.js"
+import { recalcInvoice } from "../utils/invoiceUtil.js";
 
 /* ============================================================
    🔖 Local enum map
@@ -16,15 +16,12 @@ const DS = {
 export default (sequelize) => {
   class Deposit extends Model {
     static associate(models) {
-      // 🔹 Patient + Tenant scope
       Deposit.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
       Deposit.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
       Deposit.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
 
-      // 🔹 Applied to invoice (optional)
       Deposit.belongsTo(models.Invoice, { as: "appliedInvoice", foreignKey: "applied_invoice_id" });
 
-      // 🔹 Audit trail
       Deposit.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       Deposit.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       Deposit.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -39,6 +36,13 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
+      // 🔢 Number
+      deposit_number: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        unique: true,
+      },
+
       // 🔗 Links
       patient_id: { type: DataTypes.UUID, allowNull: false },
       organization_id: { type: DataTypes.UUID, allowNull: false },
@@ -51,41 +55,37 @@ export default (sequelize) => {
         allowNull: false,
         validate: { min: 0 },
       },
+
       applied_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
       remaining_balance: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
 
-      // 🆕 Step 1: Refund amount added
       refund_amount: {
         type: DataTypes.DECIMAL(12, 2),
         defaultValue: 0,
       },
 
-      // 🆕 Unapplied amount (amount not applied and not refunded)
-      unapplied_amount: { 
+      unapplied_amount: {
         type: DataTypes.VIRTUAL(DataTypes.DECIMAL(12, 2), ["amount", "applied_amount", "refund_amount"]),
         get() {
           const amt = parseFloat(this.getDataValue("amount") || 0);
           const applied = parseFloat(this.getDataValue("applied_amount") || 0);
           const refunded = parseFloat(this.getDataValue("refund_amount") || 0);
-
-          return amt - applied - refunded;  // 🔥 Correct new formula
-        }
+          return amt - applied - refunded;
+        },
       },
-
 
       method: { type: DataTypes.ENUM(...PAYMENT_METHODS), allowNull: false },
       transaction_ref: { type: DataTypes.STRING },
 
-      // 📌 Lifecycle
       status: {
         type: DataTypes.ENUM(...DEPOSIT_STATUS),
         allowNull: false,
         defaultValue: DS.PENDING,
       },
+
       notes: { type: DataTypes.TEXT },
       reason: { type: DataTypes.TEXT },
 
-      // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },
       deleted_by_id: { type: DataTypes.UUID },
@@ -100,9 +100,11 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by_id"] },
       },
+
       scopes: {
         withDeleted: { paranoid: false },
         pending:   { where: { status: DS.PENDING, deleted_at: null } },
@@ -113,37 +115,63 @@ export default (sequelize) => {
           return facilityId ? { where: { facility_id: facilityId } } : {};
         },
       },
+
       indexes: [
         { fields: ["patient_id"] },
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
         { fields: ["status"] },
+        { fields: ["deposit_number"], unique: true }, // ✅ important
       ],
     }
   );
 
   /* ============================================================
-     🔁 Hooks (No refund logic yet — Step 1 only)
+     🔁 Hooks
   ============================================================ */
 
+  // ✅ Generate number (MATCH INVOICE PATTERN)
+  Deposit.beforeValidate(async (deposit) => {
+    if (!deposit.deposit_number) {
+      const last = await Deposit.findOne({
+        where: {
+          organization_id: deposit.organization_id,
+          facility_id: deposit.facility_id,
+        },
+        order: [["created_at", "DESC"]],
+      });
+
+      let seq = 1;
+
+      if (last?.deposit_number) {
+        const match = last.deposit_number.match(/(\d+)$/);
+        if (match) seq = parseInt(match[1], 10) + 1;
+      }
+
+      const year = new Date().getFullYear();
+      deposit.deposit_number = `DEP-${year}-${String(seq).padStart(5, "0")}`;
+    }
+  });
+
+  // ✅ Initialize balance
   Deposit.beforeCreate((deposit) => {
     deposit.remaining_balance = deposit.amount;
   });
 
-  // ✅ Ensure applied + refund ≤ amount and update balance correctly
+  // ✅ Validate + maintain balance
   Deposit.beforeUpdate((deposit) => {
     const amount = parseFloat(deposit.amount || 0);
     const applied = parseFloat(deposit.applied_amount || 0);
     const refunded = parseFloat(deposit.refund_amount || 0);
 
     if (applied + refunded > amount) {
-      throw new Error("Applied amount + refunded amount cannot exceed deposit amount");
+      throw new Error("Applied + refunded cannot exceed deposit amount");
     }
 
     deposit.remaining_balance = amount - applied - refunded;
   });
 
-
+  // ✅ Recalculate invoice
   Deposit.afterUpdate(async (deposit, options) => {
     if (deposit.status === DS.APPLIED && deposit.applied_invoice_id) {
       await recalcInvoice(deposit.applied_invoice_id, options?.transaction);

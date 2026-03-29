@@ -149,6 +149,9 @@ function renderPatient(entry) {
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
+    case "deposit_number":
+      return safe(entry.deposit_number);
+
     case "status": {
       const s = (entry.status || "").toLowerCase();
       const cls =
@@ -238,7 +241,6 @@ export function renderCard(entry, visibleFields, user) {
     `;
   };
 
-  // UI-only derived clarity helpers (NO backend mutation)
   const refundedAmount = Number(entry.refund_amount || 0);
   const hasRefund = refundedAmount > 0;
 
@@ -268,6 +270,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-context">
+        ${entry.deposit_number ? `<div>🆔 ${entry.deposit_number}</div>` : ""}
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
         ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
         ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
@@ -275,18 +278,12 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-body">
+        ${row("Deposit #", entry.deposit_number)}
         ${row("Amount", money(entry.amount))}
         ${row("Applied Amount", money(entry.applied_amount))}
-
-        <!-- 🔁 UI clarity rename -->
         ${row("Available Balance", money(entry.remaining_balance))}
-
-        <!-- 💸 Refund visibility (ONLY when exists) -->
         ${hasRefund ? row("Refunded Amount", money(refundedAmount)) : ""}
-
         ${row("Status", status.toUpperCase())}
-
-        <!-- 🧠 Lifecycle hint (UI only) -->
         ${
           lifecycleHint
             ? row(
@@ -295,7 +292,6 @@ export function renderCard(entry, visibleFields, user) {
               )
             : ""
         }
-
         ${row("Reason", entry.reason)}
         ${row("Notes", entry.notes)}
       </div>
@@ -320,7 +316,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
-
 
 /* ============================================================
    📋 LIST RENDERER

@@ -290,12 +290,12 @@ export const FIELD_DEFAULTS_CONSULTATION = {
 /* -------------------- Deposit -------------------- */
 export const FIELD_DEFAULTS_DEPOSIT = {
   admin: FIELD_ORDER_DEPOSIT,
-  manager: [
+  manager: [ "deposit_number",   
     "patient_id", "organization_id", "facility_id", "applied_invoice_id",
     "amount", "applied_amount", "remaining_balance", "unapplied_amount",
     "method", "transaction_ref", "status", "notes", "reason"
   ],
-  staff: ["amount", "method", "transaction_ref", "status", "reason"]
+  staff: [ "deposit_number", "amount", "method", "transaction_ref", "status", "reason"]
 };
 
 /* -------------------- Financial Ledger -------------------- */
@@ -326,7 +326,7 @@ export const FIELD_DEFAULTS_INVOICE_ITEM = {
 /* -------------------- Refund -------------------- */
 export const FIELD_DEFAULTS_REFUND = {
   admin: FIELD_ORDER_REFUND,
-  manager: [
+  manager: ["refund_number",
     "payment_id", "invoice_id", "organization_id", "facility_id",
     "amount", "method", "reason", "status",
     "approved_by_id", "approved_at",
@@ -334,19 +334,19 @@ export const FIELD_DEFAULTS_REFUND = {
     "processed_by_id", "processed_at",
     "cancelled_by_id", "cancelled_at"
   ],
-  staff: ["amount", "method", "reason", "status"]
+  staff: ["refund_number","amount", "method", "reason", "status"]
 };
 
 /* -------------------- Refund Deposit -------------------- */
 export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
   superadmin: FIELD_ORDER_REFUND_DEPOSIT,
   admin: FIELD_ORDER_REFUND_DEPOSIT,
-  manager: [
+  manager: ["refund_deposit_number", 
     "id","deposit_id","patient_id","organization_id","facility_id",
     "refund_amount","method","reason","status",
     "created_by_id","created_at"
   ],
-  staff: ["refund_amount","method","reason"]
+  staff: ["refund_deposit_number", "refund_amount","method","reason"]
 };
 
 /* -------------------- Refund Transaction -------------------- */
@@ -845,11 +845,11 @@ export const FIELD_DEFAULTS_RADIOLOGY_RECORD = {
 /* -------------------- Payment -------------------- */
 export const FIELD_DEFAULTS_PAYMENT = {
   admin: FIELD_ORDER_PAYMENT,
-  manager: [
+  manager: [ "payment_number", 
     "invoice_id", "patient_id", "organization_id", "facility_id",
     "amount", "method", "status", "transaction_ref", "is_deposit", "reason"
   ],
-  staff: [
+  staff: [ "payment_number", 
     "invoice_id", "patient_id",
     "amount", "method", "status", "reason"
   ],

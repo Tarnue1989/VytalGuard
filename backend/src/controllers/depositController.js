@@ -295,9 +295,6 @@ export const updateDeposit = async (req, res) => {
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
-    /* ========================================================
-       🔐 AUTHORIZATION
-    ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -306,9 +303,6 @@ export const getAllDeposits = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ========================================================
-       🔎 STRICT PAGINATION (MASTER)
-    ======================================================== */
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
       maxLimit: 200,
@@ -318,9 +312,6 @@ export const getAllDeposits = async (req, res) => {
     const visibleFields =
       FIELD_VISIBILITY_DEPOSIT[role] || FIELD_VISIBILITY_DEPOSIT.staff;
 
-    /* ========================================================
-       🧹 STRIP UI-ONLY PARAMS (MASTER)
-    ======================================================== */
     const { dateRange, ...safeQuery } = req.query;
     safeQuery.limit = limit;
     safeQuery.page = page;
@@ -332,11 +323,9 @@ export const getAllDeposits = async (req, res) => {
       "DESC",
       visibleFields
     );
+
     options.where = { [Op.and]: [] };
 
-    /* ========================================================
-       📅 DATE RANGE (created_at)
-    ======================================================== */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -346,9 +335,6 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
-    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -372,9 +358,6 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       🎯 FILTERS (EXACT MATCH)
-    ======================================================== */
     if (req.query.patient_id) {
       options.where[Op.and].push({
         patient_id: req.query.patient_id,
@@ -400,20 +383,18 @@ export const getAllDeposits = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (SAFE)
+       🔍 GLOBAL SEARCH (FIXED)
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
+          { deposit_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
           { notes: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
-    /* ========================================================
-       🗂️ MAIN QUERY
-    ======================================================== */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -423,9 +404,6 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
-    /* ========================================================
-       🔢 SUMMARY (FULL DATASET – PAGINATION SAFE)
-    ======================================================== */
     const summary = { total: count };
 
     const statusCounts = await Deposit.findAll({
@@ -442,9 +420,6 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
-    /* ========================================================
-       🧾 AUDIT LOG
-    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -456,9 +431,6 @@ export const getAllDeposits = async (req, res) => {
       },
     });
 
-    /* ========================================================
-       ✅ RESPONSE (MASTER CONTRACT)
-    ======================================================== */
     return success(res, "✅ Deposits loaded", {
       records: rows,
       summary,
@@ -478,7 +450,7 @@ export const getAllDeposits = async (req, res) => {
   }
 };
 /* ============================================================
-   📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY, REFUND-SAFE)
+   📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
 ============================================================ */
 export const getAllDepositsLite = async (req, res) => {
   try {
@@ -520,7 +492,14 @@ export const getAllDepositsLite = async (req, res) => {
     }
 
     /* ========================================================
-       🎯 REFUND SAFETY FILTERS
+       👤 FILTERS
+    ======================================================== */
+    if (patient_id) {
+      where[Op.and].push({ patient_id });
+    }
+
+    /* ========================================================
+       💰 BUSINESS RULE
     ======================================================== */
     where[Op.and].push({
       remaining_balance: { [Op.gt]: 0 },
@@ -529,36 +508,35 @@ export const getAllDepositsLite = async (req, res) => {
     where[Op.and].push({
       status: {
         [Op.in]: [
-          DEPOSIT_STATUS[1], // CLEARED
-          DEPOSIT_STATUS[2], // APPLIED
-          DEPOSIT_STATUS[6], // VERIFIED
+          DEPOSIT_STATUS[1],
+          DEPOSIT_STATUS[2],
+          DEPOSIT_STATUS[6],
         ],
       },
     });
 
-    if (patient_id) {
-      where[Op.and].push({ patient_id });
-    }
-
     /* ========================================================
-       🔍 GLOBAL SEARCH (ENUM-SAFE)
+       🔍 SEARCH
     ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
+          { deposit_number: { [Op.iLike]: `%${q}%` } },
           { transaction_ref: { [Op.iLike]: `%${q}%` } },
-          // ❌ REMOVED method search (ENUM unsafe)
         ],
       });
     }
 
     /* ========================================================
-       🗂️ QUERY
+       💰 FETCH
     ======================================================== */
     const deposits = await Deposit.findAll({
       where,
       attributes: [
         "id",
+        "deposit_number",
+        "applied_invoice_id", // ✅ FIXED
+        "patient_id",
         "amount",
         "applied_amount",
         "remaining_balance",
@@ -575,7 +553,7 @@ export const getAllDepositsLite = async (req, res) => {
         },
         {
           model: Invoice,
-          as: "appliedInvoice",
+          as: "appliedInvoice", // ✅ correct alias
           attributes: ["id", "invoice_number"],
         },
       ],
@@ -584,24 +562,41 @@ export const getAllDepositsLite = async (req, res) => {
     });
 
     /* ========================================================
-      📦 LITE RECORDS (DATA ONLY – MASTER SAFE)
+       🔁 MAP
     ======================================================== */
-    const records = deposits.map((d) => ({
-      id: d.id,
-      label: d.transaction_ref || d.id,
-      amount: d.amount,
-      remaining_balance: d.remaining_balance,
-      method: d.method,
-      status: d.status,
-      patient: d.patient
-        ? `${d.patient.pat_no} - ${d.patient.first_name} ${d.patient.last_name}`
-        : "",
-      invoice: d.appliedInvoice
-        ? d.appliedInvoice.invoice_number
-        : "",
-      created_at: d.created_at,
-    }));
+    const records = deposits.map((d) => {
+      return {
+        id: d.id,
 
+        // ✅ PARITY OUTPUT (mapped correctly)
+        invoice_id: d.applied_invoice_id, // 🔥 KEY FIX
+        patient_id: d.patient_id,
+        deposit_number: d.deposit_number,
+
+        label: `${d.deposit_number || d.transaction_ref || d.id} - ${d.amount}`,
+
+        amount: d.amount,
+        applied_amount: d.applied_amount,
+        remaining_balance: d.remaining_balance,
+
+        method: d.method,
+        status: d.status,
+
+        patient: d.patient
+          ? `${d.patient.pat_no} - ${d.patient.first_name} ${d.patient.last_name}`
+          : "",
+
+        invoice: d.appliedInvoice
+          ? d.appliedInvoice.invoice_number
+          : "",
+
+        created_at: d.created_at,
+      };
+    });
+
+    /* ========================================================
+       📊 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -620,7 +615,6 @@ export const getAllDepositsLite = async (req, res) => {
     return error(res, "❌ Failed to load deposits (lite)", err);
   }
 };
-
 /* ============================================================
    📌 GET DEPOSIT BY ID (MASTER PARITY)
 ============================================================ */

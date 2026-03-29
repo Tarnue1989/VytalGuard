@@ -18,20 +18,13 @@ const RS = {
 export default (sequelize) => {
   class Refund extends Model {
     static associate(models) {
-      // 🔹 Parent Payment
       Refund.belongsTo(models.Payment, { as: "payment", foreignKey: "payment_id" });
-
-      // 🔹 Parent Invoice
       Refund.belongsTo(models.Invoice, { as: "invoice", foreignKey: "invoice_id" });
-
-      // 🔹 Patient
       Refund.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
 
-      // 🔹 Org / Facility
       Refund.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
       Refund.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
 
-      // 🔹 Audit (users)
       Refund.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       Refund.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       Refund.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -41,7 +34,6 @@ export default (sequelize) => {
       Refund.belongsTo(models.User, { as: "processedBy", foreignKey: "processed_by_id" });
       Refund.belongsTo(models.User, { as: "cancelledBy", foreignKey: "cancelled_by_id" });
 
-      // 🔹 Linked Transactions
       Refund.hasMany(models.RefundTransaction, {
         as: "transactions",
         foreignKey: "refund_id",
@@ -58,34 +50,35 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      /* ============================================================
-         🔗 Foreign Keys (Parent Entities)
-      ============================================================ */
+      // 🔢 Human-readable number
+      refund_number: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        unique: true,
+      },
+
+      /* ============================================================ */
       payment_id: { type: DataTypes.UUID, allowNull: false },
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
-      /* ============================================================
-         🏢 Tenant Scope
-      ============================================================ */
+      /* ============================================================ */
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
-      /* ============================================================
-         💵 Refund Details
-      ============================================================ */
+      /* ============================================================ */
       amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
         validate: { min: 0 },
       },
+
       reason: { type: DataTypes.TEXT },
 
-      // 🧾 Payment method copied from Payment for summary/reporting
       method: {
         type: DataTypes.STRING,
         allowNull: true,
-        comment: "Copied from payment.method for reporting consistency",
+        comment: "Copied from payment.method",
       },
 
       status: {
@@ -94,9 +87,7 @@ export default (sequelize) => {
         defaultValue: RS.PENDING,
       },
 
-      /* ============================================================
-         🔹 Lifecycle Audit Fields
-      ============================================================ */
+      /* ============================================================ */
       approved_by_id: { type: DataTypes.UUID },
       approved_at: { type: DataTypes.DATE },
 
@@ -109,7 +100,6 @@ export default (sequelize) => {
       cancelled_by_id: { type: DataTypes.UUID },
       cancelled_at: { type: DataTypes.DATE },
 
-      // 🔹 Generic audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },
       deleted_by_id: { type: DataTypes.UUID },
@@ -149,7 +139,8 @@ export default (sequelize) => {
         { fields: ["invoice_id"] },
         { fields: ["patient_id"] },
         { fields: ["status"] },
-        { fields: ["method"] }, // ✅ index for summary aggregation
+        { fields: ["method"] },
+        { fields: ["refund_number"], unique: true }, // ✅ important
       ],
     }
   );
@@ -157,36 +148,81 @@ export default (sequelize) => {
   /* ============================================================
      🔁 Hooks
   ============================================================ */
-  Refund.beforeCreate(async (refund) => {
-    const { Payment } = await import("../models/index.js");
-    const payment = await Payment.findByPk(refund.payment_id, { include: ["invoice"] });
-    if (!payment) throw new Error("Invalid payment_id for refund");
 
-    refund.organization_id = payment.organization_id;
-    refund.facility_id = payment.facility_id;
-    refund.invoice_id = payment.invoice_id;
-    refund.patient_id = payment.invoice?.patient_id || payment.patient_id || null;
-    refund.method = payment.method || null; // ✅ Auto-copy method from payment
+  // ✅ Generate number + sync payment (MATCH INVOICE PATTERN)
+  Refund.beforeValidate(async (refund) => {
+    const { Payment } = await import("../models/index.js");
+
+    // 🔹 Ensure tenant fields exist BEFORE numbering
+    if (!refund.organization_id || !refund.facility_id) {
+      const payment = await Payment.findByPk(refund.payment_id, { include: ["invoice"] });
+      if (!payment) throw new Error("Invalid payment_id for refund");
+
+      refund.organization_id = payment.organization_id;
+      refund.facility_id = payment.facility_id;
+      refund.invoice_id = payment.invoice_id;
+      refund.patient_id = payment.invoice?.patient_id || payment.patient_id || null;
+      refund.method = payment.method || null;
+    }
+
+    // 🔹 Generate refund number
+    if (!refund.refund_number) {
+      const last = await Refund.findOne({
+        where: {
+          organization_id: refund.organization_id,
+          facility_id: refund.facility_id,
+        },
+        order: [["created_at", "DESC"]],
+      });
+
+      let seq = 1;
+
+      if (last?.refund_number) {
+        const match = last.refund_number.match(/(\d+)$/);
+        if (match) seq = parseInt(match[1], 10) + 1;
+      }
+
+      const year = new Date().getFullYear();
+      refund.refund_number = `REF-${year}-${String(seq).padStart(5, "0")}`;
+    }
   });
 
+  // ✅ Lifecycle + audit + recalculation
   Refund.afterUpdate(async (refund, options) => {
     const userId = options?.user?.id || null;
     const now = new Date();
 
     if (refund.changed("status")) {
       const updates = {};
-      if (refund.status === RS.APPROVED)  { updates.approved_by_id  = userId; updates.approved_at  = now; }
-      if (refund.status === RS.REJECTED)  { updates.rejected_by_id  = userId; updates.rejected_at  = now; }
-      if (refund.status === RS.PROCESSED) { updates.processed_by_id = userId; updates.processed_at = now; }
-      if (refund.status === RS.CANCELLED) { updates.cancelled_by_id = userId; updates.cancelled_at = now; }
+
+      if (refund.status === RS.APPROVED) {
+        updates.approved_by_id = userId;
+        updates.approved_at = now;
+      }
+
+      if (refund.status === RS.REJECTED) {
+        updates.rejected_by_id = userId;
+        updates.rejected_at = now;
+      }
+
+      if (refund.status === RS.PROCESSED) {
+        updates.processed_by_id = userId;
+        updates.processed_at = now;
+      }
+
+      if (refund.status === RS.CANCELLED) {
+        updates.cancelled_by_id = userId;
+        updates.cancelled_at = now;
+      }
 
       if (Object.keys(updates).length) {
-        // ✅ Prevent recursion
-        await refund.update(updates, { transaction: options?.transaction, hooks: false });
+        await refund.update(updates, {
+          transaction: options?.transaction,
+          hooks: false, // ✅ prevent recursion
+        });
       }
     }
 
-    // 🔁 Auto-recalculate invoice on status change
     if ([RS.APPROVED, RS.PROCESSED].includes(refund.status) && refund.invoice_id) {
       await recalcInvoice(refund.invoice_id, options?.transaction);
     }

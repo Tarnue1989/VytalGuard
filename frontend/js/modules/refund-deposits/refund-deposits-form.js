@@ -154,14 +154,28 @@ export async function setupRefundDepositFormSubmission({ form }) {
         patient_id: selected.id,
       });
 
-      const readable = deposits.map((d) => ({
-        ...d,
-        label: `Deposit ${d.label} — Amount ${Number(d.amount || 0).toFixed(
-          2
-        )} — Balance ${Number(d.remaining_balance || 0).toFixed(2)} — ${(
-          d.method || ""
-        ).toUpperCase()}`,
-      }));
+const readable = deposits.map((d) => {
+  const base =
+    d.deposit_number ||
+    d.transaction_ref ||
+    (d.label ? d.label.split(" - ")[0] : "") ||
+    d.id;
+
+  const amount = Number(d.amount || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  const balance = Number(d.remaining_balance || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return {
+    ...d,
+    label: `${base} — LR$ ${amount} — Bal: LR$ ${balance}`,
+  };
+});
 
       setupSelectOptions(
         depositInput,

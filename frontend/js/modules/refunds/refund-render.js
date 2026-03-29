@@ -9,6 +9,7 @@
 // 🔹 Full lifecycle + audit visibility (DATE + TIME)
 // 🔹 Export-safe (no object leaks)
 // 🔹 ALL existing refund logic & DOM IDs preserved
+// 🔹 ADDED refund_number (safe display)
 // ============================================================================
 
 import { FIELD_LABELS_REFUND } from "./refund-constants.js";
@@ -66,7 +67,7 @@ function getRefundActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 TABLE HEAD (SORT + RESIZE + DRAG)
+   🧱 TABLE HEAD
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -165,10 +166,13 @@ function renderPayment(entry) {
 }
 
 /* ============================================================
-   🧩 VALUE RENDERER (DATE + TIME SAFE)
+   🧩 VALUE RENDERER
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
+    case "refund_number":
+      return safe(entry.refund_number);
+
     case "status": {
       const s = (entry.status || "").toLowerCase();
       const map = {
@@ -238,7 +242,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH
+   🗂️ CARD RENDERER
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -267,6 +271,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <div class="entity-card-context">
+        ${entry.refund_number ? `<div>🆔 ${entry.refund_number}</div>` : ""}
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
         ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
         ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}

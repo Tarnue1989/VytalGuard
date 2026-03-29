@@ -285,7 +285,7 @@ export const FIELD_ORDER_CONSULTATION = [
 
 
 /* -------------------- Deposit -------------------- */
-export const FIELD_ORDER_DEPOSIT = [
+export const FIELD_ORDER_DEPOSIT = ["deposit_number", 
   "id", "patient_id", "organization_id", "facility_id",
   "applied_invoice_id",
   "amount", "applied_amount", "remaining_balance", "unapplied_amount",
@@ -317,7 +317,7 @@ export const FIELD_ORDER_INVOICE_ITEM = [
 
 
 /* -------------------- Refund -------------------- */
-export const FIELD_ORDER_REFUND = [
+export const FIELD_ORDER_REFUND = ["refund_number", 
   "id", "patient_id", "invoice_id", "deposit_id", "payment_id",
   "organization_id", "facility_id",
   "amount", "currency", "reason", "note", "status",
@@ -331,7 +331,7 @@ export const FIELD_ORDER_REFUND = [
   "actions"
 ];
 /* -------------------- Refund Deposit -------------------- */
-export const FIELD_ORDER_REFUND_DEPOSIT = [
+export const FIELD_ORDER_REFUND_DEPOSIT = ["refund_deposit_number",
   "id", "deposit_id", "patient_id",
   "organization_id", "facility_id",
   "refund_amount", "method", "reason", "status",
@@ -789,7 +789,7 @@ export const FIELD_ORDER_RECOMMENDATION = [
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
 /* -------------------- Payment -------------------- */
-export const FIELD_ORDER_PAYMENT = [
+export const FIELD_ORDER_PAYMENT = ["payment_number", 
   "id", "invoice_id", "patient_id", "organization_id", "facility_id",
   "amount", "method", "status", "transaction_ref", "is_deposit",
   "reason", "created_at", "updated_at", "deleted_at",

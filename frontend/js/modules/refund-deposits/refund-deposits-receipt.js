@@ -5,6 +5,7 @@
 // 🔹 Audit-first printedBy (NO redundancy)
 // 🔹 No legacy fallbacks
 // 🔹 Clean + deterministic output
+// 🔹 ADDED refund_deposit_number (NO UUID)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
@@ -28,7 +29,6 @@ function formatDate(dateStr) {
 ============================================================ */
 function getPrintedBy(refund) {
   try {
-    // 🔥 STRICT AUDIT PRIORITY (NO redundancy)
     if (refund?.processedBy) {
       return `${refund.processedBy.first_name} ${refund.processedBy.last_name}`;
     }
@@ -41,7 +41,6 @@ function getPrintedBy(refund) {
       return `${refund.createdBy.first_name} ${refund.createdBy.last_name}`;
     }
 
-    // 👤 ONLY fallback (MASTER)
     const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
     return authSession?.name || "System";
   } catch {
@@ -58,11 +57,8 @@ function buildRefundDepositReceiptHTML(refund) {
 
   const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 
-  const refundRef =
-    refund.refund_ref ||
-    refund.refund_no ||
-    refund.id ||
-    "—";
+  // ✅ ONLY use refund_deposit_number (NO UUID fallback)
+  const refundRef = refund.refund_deposit_number || "—";
 
   const depositRef =
     refund.deposit?.transaction_ref ||

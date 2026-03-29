@@ -1,7 +1,8 @@
 // 📁 backend/src/models/Payment.js
 import { DataTypes, Model } from "sequelize";
 import { PAYMENT_METHODS, PAYMENT_STATUS } from "../constants/enums.js";
-import { recalcInvoice } from "../utils/invoiceUtil.js"
+import { recalcInvoice } from "../utils/invoiceUtil.js";
+
 /* ============================================================
    🔖 Local enum map
 ============================================================ */
@@ -43,6 +44,13 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
+      // 🔢 Human-readable number
+      payment_number: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        unique: true,
+      },
+
       // 🔗 Parent
       invoice_id: { type: DataTypes.UUID, allowNull: false },
 
@@ -59,16 +67,19 @@ export default (sequelize) => {
         allowNull: false,
         validate: { min: 0 },
       },
+
       method: { type: DataTypes.ENUM(...PAYMENT_METHODS), allowNull: false },
+
       status: {
         type: DataTypes.ENUM(...PAYMENT_STATUS),
         allowNull: false,
         defaultValue: PS.PENDING,
       },
+
       transaction_ref: { type: DataTypes.STRING },
       is_deposit: { type: DataTypes.BOOLEAN, defaultValue: false },
 
-      // 📝 Reason for update (for audit)
+      // 📝 Reason for update
       reason: { type: DataTypes.TEXT },
 
       // 🔹 Audit
@@ -86,9 +97,11 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by_id"] },
       },
+
       scopes: {
         withDeleted: { paranoid: false },
         pending: { where: { status: PS.PENDING, deleted_at: null } },
@@ -100,6 +113,7 @@ export default (sequelize) => {
           return { where: { facility_id: facilityId } };
         },
       },
+
       indexes: [
         { fields: ["organization_id"], name: "idx_payments_org_id" },
         { fields: ["facility_id"], name: "idx_payments_facility_id" },
@@ -107,6 +121,7 @@ export default (sequelize) => {
         { fields: ["patient_id"], name: "idx_payments_patient_id" },
         { fields: ["status"], name: "idx_payments_status" },
         { fields: ["method"], name: "idx_payments_method" },
+        { fields: ["payment_number"], unique: true }, // ✅ important
       ],
     }
   );
@@ -114,17 +129,41 @@ export default (sequelize) => {
   /* ============================================================
      🔁 Hooks
   ============================================================ */
-  // ✅ Sync org/facility/patient from parent invoice before saving
-  Payment.beforeCreate(async (payment) => {
-    const { Invoice } = await import("../models/index.js");
-    const invoice = await Invoice.findByPk(payment.invoice_id, {
-      include: [{ association: "patient" }],
-    });
-    if (!invoice) throw new Error("Invalid invoice_id for payment");
 
-    payment.organization_id = invoice.organization_id;
-    payment.facility_id = invoice.facility_id;
-    payment.patient_id = invoice.patient_id;
+  // ✅ Generate number + sync invoice (MATCHES INVOICE PATTERN)
+  Payment.beforeValidate(async (payment) => {
+    const { Invoice } = await import("../models/index.js");
+
+    // 🔹 Ensure tenant fields exist BEFORE numbering
+    if (!payment.organization_id || !payment.facility_id) {
+      const invoice = await Invoice.findByPk(payment.invoice_id);
+      if (!invoice) throw new Error("Invalid invoice_id for payment");
+
+      payment.organization_id = invoice.organization_id;
+      payment.facility_id = invoice.facility_id;
+      payment.patient_id = invoice.patient_id;
+    }
+
+    // 🔹 Generate payment number
+    if (!payment.payment_number) {
+      const last = await Payment.findOne({
+        where: {
+          organization_id: payment.organization_id,
+          facility_id: payment.facility_id,
+        },
+        order: [["created_at", "DESC"]],
+      });
+
+      let seq = 1;
+
+      if (last?.payment_number) {
+        const match = last.payment_number.match(/(\d+)$/);
+        if (match) seq = parseInt(match[1], 10) + 1;
+      }
+
+      const year = new Date().getFullYear();
+      payment.payment_number = `PAY-${year}-${String(seq).padStart(5, "0")}`;
+    }
   });
 
   // ✅ Auto-recalculate invoice when payment is completed

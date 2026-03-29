@@ -4,6 +4,7 @@
 // 🔹 Matches invoice-receipt.js structure EXACTLY
 // 🔹 Clean grid + totals layout
 // 🔹 Uses unified printTemplate (logo + branding + watermark)
+// 🔹 UUID REMOVED (ONLY uses payment_number)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
@@ -82,7 +83,7 @@ function buildPaymentReceiptHTML(payment) {
 
       <div>
         <div><strong>Payment #:</strong> ${
-          payment.payment_ref || payment.id || ""
+          payment.payment_number || "—"
         }</div>
 
         <div><strong>Date:</strong> ${formatDate(
@@ -170,13 +171,11 @@ export function printPaymentReceipt(payment) {
   printDocument(html, {
     title: "Payment Receipt",
 
-    // 🔥 required for watermark + org override
     invoice: {
       organization: payment.organization,
       status: payment.status,
     },
 
-    // 🔥 prevents logo disappearing
     branding: JSON.parse(localStorage.getItem("branding") || "{}"),
   });
 }

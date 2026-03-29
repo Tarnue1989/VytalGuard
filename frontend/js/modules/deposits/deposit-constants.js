@@ -10,6 +10,7 @@
    🏷️ FIELD LABELS (Enterprise Standard)
 ============================================================ */
 export const FIELD_LABELS_DEPOSIT = {
+  deposit_number: "Deposit #",
   organization: "Organization",
   facility: "Facility",
   patient: "Patient",
@@ -35,6 +36,7 @@ export const FIELD_LABELS_DEPOSIT = {
    📋 FIELD ORDER (Enterprise-Consistent)
 ============================================================ */
 export const FIELD_ORDER_DEPOSIT = [
+  "deposit_number",
   "organization",
   "facility",
   "patient",
@@ -64,6 +66,7 @@ export const FIELD_ORDER_DEPOSIT = [
 // 🧩 Staff: essential operational fields only
 export const FIELD_DEFAULTS_DEPOSIT = {
   superadmin: [
+    "deposit_number",
     "organization",
     "facility",
     "patient",
@@ -86,6 +89,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
   ],
 
   admin: [
+    "deposit_number",
     "organization",
     "facility",
     "patient",
@@ -108,6 +112,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
   ],
 
   manager: [
+    "deposit_number",
     "facility",
     "patient",
     "appliedInvoice",
@@ -127,6 +132,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
   ],
 
   staff: [
+    "deposit_number",
     "facility",
     "patient",
     "appliedInvoice",
