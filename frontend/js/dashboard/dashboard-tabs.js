@@ -41,10 +41,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  /* ===============================
-     ✅ DEFAULT LOAD
-     =============================== */
-  showDashboard();
+    /* ===============================
+      ✅ DEFAULT LOAD (SMART)
+    =============================== */
+    const savedTab = sessionStorage.getItem("openDashboardTab");
+
+    if (savedTab === "modules") {
+      showModules();
+
+      // activate modules tab button
+      tabs.forEach((b) => b.classList.remove("active"));
+      document.querySelector('#dashboardTabs button[data-tab="modules"]')?.classList.add("active");
+
+      sessionStorage.removeItem("openDashboardTab");
+    } else {
+      showDashboard();
+    }
 
   /* ===============================
      🧠 DASHBOARD SHOW
