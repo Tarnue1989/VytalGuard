@@ -214,8 +214,8 @@ function renderValue(entry, field) {
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
-
+      return entry[field] ? formatDateTime(entry[field]) : "—";
+      
     default: {
       const v = entry[field];
       if (v === null || v === undefined || v === "") return "—";

@@ -90,8 +90,13 @@
               </a>
               <div class="dropdown-menu dropdown-menu-end shadow-lg">
                 <div class="px-3 py-2">
-                  <span id="headerRole" class="small">Admin</span>
-                  <h6 id="headerName" class="m-0">Dr. Iris Jimenez</h6>
+
+                  <!-- 🔹 ROLE (dynamic) -->
+                  <div id="headerRole" class="text-muted small mb-1"></div>
+
+                  <!-- 🔹 NAME (dynamic) -->
+                  <div id="headerName" class="fw-semibold"></div>
+
                 </div>
                 <div class="mx-3 my-2 d-grid">
                   <button id="logoutBtn" class="btn btn-danger mb-2">
@@ -111,29 +116,41 @@
         <!-- App header ends -->
 
         <!-- App hero header -->
-        <div class="app-hero-header d-flex align-items-center">
-          <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="dashboard.html"><i class="ri-home-3-line"></i></a></li>
-            <li id="breadcrumbRole" class="breadcrumb-item text-primary" aria-current="page">Dentist Admin</li>
-          </ol>
-            <div class="ms-auto d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 mt-2 mt-sm-0">
-              <label for="abc" class="form-label fw-semibold text-muted mb-0 small">
+        <div class="app-hero-header px-3 py-2">
+
+          <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-3">
+
+            <!-- 🌤️ GREETING -->
+            <div id="breadcrumbGreeting"
+                class="text-primary fw-semibold d-flex align-items-center">
+              Welcome
+            </div>
+
+            <!-- 📅 DATE FILTER -->
+            <div class="date-filter-wrapper d-flex align-items-center gap-2 ms-md-auto">
+
+              <!-- Desktop label only -->
+              <span class="text-muted small d-none d-md-inline">
                 <i class="ri-filter-3-line text-primary me-1"></i>
-                Filter Date Range:
-              </label>
-              <div class="input-group input-group-sm" style="width: 100%; max-width: 230px;">
+                Date:
+              </span>
+
+              <div class="input-group input-group-sm date-input-compact">
                 <span class="input-group-text bg-primary-lighten">
                   <i class="ri-calendar-2-line text-primary"></i>
                 </span>
+
                 <input
                   type="text"
                   id="abc"
                   class="form-control custom-daterange"
-                  placeholder="Select date range"
-                  aria-label="Filter by date range"
+                  placeholder="Date"
                 />
               </div>
+
             </div>
+
+          </div>
 
         </div>
         <!-- ================= DASHBOARD TABS ================= -->
