@@ -248,65 +248,132 @@ export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
+
   const row = (label, value) =>
     value
       ? `<div class="entity-field">
            <span class="entity-label">${label}</span>
-           <span class="entity-value">${value}</span>
+           <span class="entity-value">${safe(value)}</span>
          </div>`
       : "";
 
+  const amount = Number(entry.amount || 0).toFixed(2);
+
+  /* ===================== AUDIT FIELDS ===================== */
+  const AUDIT_FIELDS = [
+    "createdBy",
+    "updatedBy",
+    "deletedBy",
+    "approvedBy",
+    "processedBy",
+    "reversedBy",
+    "voidedBy",
+    "restoredBy",
+    "reviewedBy",
+    "rejectedBy",
+    "cancelledBy",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "approved_at",
+    "processed_at",
+    "reversed_at",
+    "voided_at",
+    "restored_at",
+    "reviewed_at",
+    "rejected_at",
+    "cancelled_at",
+  ];
+
   return `
     <div class="entity-card refund-card">
+
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">$${Number(entry.amount || 0).toFixed(2)}</div>
+          <div class="entity-primary">$${amount}</div>
         </div>
         ${
           has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
             : ""
         }
       </div>
 
-      <div class="entity-card-context">
-        ${entry.refund_number ? `<div>🆔 ${entry.refund_number}</div>` : ""}
-        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
-        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
-        ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
-      </div>
-
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE (COMPACT) -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
-        ${visibleFields
-          .filter(
-            (f) =>
-              ![
-                "actions",
-                "createdBy",
-                "created_at",
-                "updatedBy",
-                "updated_at",
-                "deletedBy",
-                "deleted_at",
-              ].includes(f)
-          )
-          .map((f) =>
-            row(FIELD_LABELS_REFUND[f] || f, renderValue(entry, f))
-          )
-          .join("")}
+        ${row("Refund #", entry.refund_number)}
+        ${row("Amount", `$${amount}`)}
+        ${row("Method", entry.method)}
+        ${row("Status", status.toUpperCase())}
       </div>
 
-      <details class="entity-notes">
-        <summary>Audit</summary>
+      <!-- ===================================================== -->
+      <!-- 📄 DETAILS (NO AUDIT MIX) -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
+        <div class="entity-card-body">
+
+          ${row("Organization", entry.organization?.name)}
+          ${row("Facility", entry.facility?.name)}
+
+          ${visibleFields
+            .filter(
+              (f) =>
+                ![
+                  "actions",
+                  "refund_number",
+                  "amount",
+                  "method",
+                  "status",
+                  "organization",
+                  "facility",
+                  ...AUDIT_FIELDS,
+                ].includes(f)
+            )
+            .map((f) =>
+              row(
+                FIELD_LABELS_REFUND[f] || f,
+                renderValue(entry, f)
+              )
+            )
+            .join("")}
+
+        </div>
+      </details>
+
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT (STRICT) -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDateTime(entry.created_at))}
           ${row("Updated By", renderUserName(entry.updatedBy))}
           ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${row("Processed By", renderUserName(entry.processedBy))}
+          ${row("Processed At", formatDateTime(entry.processed_at))}
+          ${row("Cancelled By", renderUserName(entry.cancelledBy))}
+          ${row("Cancelled At", formatDateTime(entry.cancelled_at))}
+          ${row("Voided By", renderUserName(entry.voidedBy))}
+          ${row("Voided At", formatDateTime(entry.voided_at))}
         </div>
       </details>
 
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
+      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -314,10 +381,10 @@ export function renderCard(entry, visibleFields, user) {
              </div>`
           : ""
       }
+
     </div>
   `;
 }
-
 /* ============================================================
    📋 LIST RENDERER
 ============================================================ */

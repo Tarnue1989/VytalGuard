@@ -1,25 +1,26 @@
-// 📁 user-render.js – User Table & Card Renderers (Enterprise-Aligned)
+// 📁 user-render.js – User Table & Card Renderers (ENTERPRISE MASTER UPGRADED)
 // ============================================================================
-// 🧭 Master Pattern: role-render.js
-// 🔹 Permission-aware UI via STATUS_ACTION_MATRIX + buildActionButtons
-// 🔹 Table + Card parity
-// 🔹 Export-safe, tooltip-safe
-// 🔹 100% ID-safe (userTableBody / userList)
+// 🔹 Card upgraded to ENTITY SYSTEM (same as payment / deposit / refund)
+// 🔹 Full audit section (DATE + TIME)
+// 🔹 Field-selector safe
+// 🔹 No duplication (org handled once)
+// 🔹 Action matrix preserved
+// 🔹 MASTER parity applied
 // ============================================================================
 
 import { FIELD_LABELS_USER } from "./user-constants.js";
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 
 /* ============================================================
-   🎛️ Action Buttons (Centralized, Permission-Aware)
+   🎛️ Action Buttons
 ============================================================ */
 function getUserActionButtons(entry, user) {
   return buildActionButtons({
-    module: "user", // STATUS_ACTION_MATRIX.user
+    module: "user",
     status: (entry.status || "").toLowerCase(),
-    entry,          // ✅ REQUIRED
+    entry,
     entryId: entry.id,
     user,
     permissionPrefix: "users",
@@ -27,7 +28,7 @@ function getUserActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head Renderer
+   🧱 Dynamic Table Head
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -47,14 +48,20 @@ export function renderDynamicTableHead(visibleFields) {
 }
 
 /* ============================================================
-   🔠 Field Render Helpers
+   🔠 HELPERS
 ============================================================ */
+const safe = (v) =>
+  v !== null && v !== undefined && v !== "" ? v : "—";
+
 function renderUserRef(user) {
   if (!user) return "—";
   const parts = [user.first_name, user.last_name].filter(Boolean);
   return parts.length ? parts.join(" ") : user.username || user.email || "—";
 }
 
+/* ============================================================
+   🧩 VALUE RENDERER
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
@@ -68,11 +75,7 @@ function renderValue(entry, field) {
       };
 
       return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">
-             <i class="fas ${
-               raw === "active" ? "fa-user-check" : "fa-user-slash"
-             } me-1"></i>${label}
-           </span>`
+        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
         : "—";
     }
 
@@ -106,7 +109,7 @@ function renderValue(entry, field) {
     case "deleted_at":
     case "last_login_at":
     case "locked_until":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default:
       return entry[field] ?? "—";
@@ -114,36 +117,112 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ Card Renderer
+   🗂️ CARD RENDERER — ENTERPRISE
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  const details = visibleFields
-    .filter((f) => f !== "actions")
-    .map(
-      (f) => `
-        <p><strong>${FIELD_LABELS_USER[f] || f}:</strong>
-        ${renderValue(entry, f)}</p>`
-    )
-    .join("");
+  const has = (f) => visibleFields.includes(f);
+  const status = (entry.status || "").toLowerCase();
 
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getUserActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === "") return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
+  };
+
+  const AUDIT_FIELDS = [
+    "createdByUser","updatedByUser","deletedByUser",
+    "created_at","updated_at","deleted_at","last_login_at","locked_until"
+  ];
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${details}</div>
-      ${footer}
-    </div>`;
+    <div class="entity-card user-card">
+
+      <!-- 🔹 HEADER -->
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-primary">${renderValue(entry, "full_name")}</div>
+          <div class="entity-secondary">${safe(entry.email)}</div>
+        </div>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            : ""
+        }
+      </div>
+
+      <!-- 🔹 QUICK CORE -->
+      <div class="entity-card-body">
+        ${row("Username", entry.username)}
+        ${row("Roles", renderValue(entry, "roles"))}
+        ${row("Organization", entry.organization?.name)}
+        ${row("Status", status.toUpperCase())}
+      </div>
+
+      <!-- 📄 DETAILS -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
+        <div class="entity-card-body">
+
+          ${row("Facilities", renderValue(entry, "facilities"))}
+
+          ${visibleFields
+            .filter(
+              (f) =>
+                ![
+                  "actions",
+                  "username",
+                  "roles",
+                  "organization",
+                  "status",
+                  "facilities",
+                  ...AUDIT_FIELDS,
+                ].includes(f)
+            )
+            .map((f) =>
+              row(
+                FIELD_LABELS_USER[f] || f,
+                renderValue(entry, f)
+              )
+            )
+            .join("")}
+
+        </div>
+      </details>
+
+      <!-- 🔍 AUDIT -->
+      <details class="entity-section">
+        <summary><strong>Audit</strong></summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderValue(entry, "createdByUser"))}
+          ${row("Created At", formatDateTime(entry.created_at))}
+          ${row("Updated By", renderValue(entry, "updatedByUser"))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${row("Deleted By", renderValue(entry, "deletedByUser"))}
+          ${row("Deleted At", formatDateTime(entry.deleted_at))}
+          ${row("Last Login", formatDateTime(entry.last_login_at))}
+          ${row("Locked Until", formatDateTime(entry.locked_until))}
+        </div>
+      </details>
+
+      <!-- ⚙️ ACTIONS -->
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getUserActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+
+    </div>
+  `;
 }
 
 /* ============================================================
-   📋 Main List Renderer
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("userTableBody");
@@ -208,7 +287,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 Export Handlers
+   📤 EXPORT
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -237,7 +316,7 @@ function setupExportHandlers(entries) {
 }
 
 /* ============================================================
-   🪟 View Modal (REQUIRED BY user-actions.js)
+   🪟 MODAL
 ============================================================ */
 export function showUserModal(title, bodyHtml) {
   let modalEl = document.getElementById("userActionModal");
