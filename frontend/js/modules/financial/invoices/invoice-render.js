@@ -241,12 +241,14 @@ export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
-  const row = (label, value) => `
-    <div class="entity-field">
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
+
+  const row = (label, value) =>
+    `<div class="entity-field">
       <span class="entity-label">${label}</span>
-      <span class="entity-value">${value ?? "—"}</span>
-    </div>
-  `;
+      <span class="entity-value">${safe(value)}</span>
+    </div>`;
 
   const badge = (val) =>
     `<span class="entity-status ${val}">${val.toUpperCase()}</span>`;
@@ -254,28 +256,52 @@ export function renderCard(entry, visibleFields, user) {
   const renderPatient = () => {
     if (!entry.patient) return "—";
     return `${entry.patient.pat_no || "—"} - ${
-      [entry.patient.first_name, entry.patient.last_name].filter(Boolean).join(" ")
+      [entry.patient.first_name, entry.patient.last_name]
+        .filter(Boolean)
+        .join(" ")
     }`;
   };
 
+  /* ================= ITEMS (ENTERPRISE UPGRADE) ================= */
   const renderItems = () => {
     if (!Array.isArray(entry.items) || !entry.items.length) return "—";
 
     const LIMIT = 3;
 
-    const formatItem = (i) =>
-      `<li>${i.description || "Item"} - $${Number(i.total_price || 0).toFixed(2)}</li>`;
+    const formatItem = (i) => {
+      const name = i.description || i.name || "Item";
+      const qty = Number(i.quantity || 1);
+      const unit = Number(i.unit_price || i.price || 0);
+      const total = Number(i.total_price || qty * unit);
 
-    // show all if small
+      return `
+        <li>
+          <div><strong>${name}</strong></div>
+          <div class="text-muted small">
+            Qty: ${qty} | Unit: $${unit.toFixed(2)} | Total: $${total.toFixed(2)}
+          </div>
+        </li>
+      `;
+    };
+
+    const subtotal = entry.items.reduce((sum, i) => {
+      const qty = Number(i.quantity || 1);
+      const unit = Number(i.unit_price || i.price || 0);
+      return sum + qty * unit;
+    }, 0);
+
     if (entry.items.length <= LIMIT) {
       return `
         <ul class="mb-0 ps-3">
           ${entry.items.map(formatItem).join("")}
         </ul>
+
+        <div class="entity-summary text-end mt-2">
+          <strong>Subtotal: $${subtotal.toFixed(2)}</strong>
+        </div>
       `;
     }
 
-    // split items
     const visible = entry.items.slice(0, LIMIT);
     const hidden = entry.items.slice(LIMIT);
 
@@ -284,12 +310,18 @@ export function renderCard(entry, visibleFields, user) {
         ${visible.map(formatItem).join("")}
       </ul>
 
-      <details class="entity-notes mt-1">
-        <summary>View ${hidden.length} more item${hidden.length > 1 ? "s" : ""}</summary>
+      <details class="entity-section mt-1">
+        <summary>View ${hidden.length} more item${
+      hidden.length > 1 ? "s" : ""
+    }</summary>
         <ul class="mb-0 ps-3 mt-1">
           ${hidden.map(formatItem).join("")}
         </ul>
       </details>
+
+      <div class="entity-summary text-end mt-2">
+        <strong>Subtotal: $${subtotal.toFixed(2)}</strong>
+      </div>
     `;
   };
 
@@ -300,24 +332,26 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient()}</div>
-          <div class="entity-primary">Invoice #${entry.invoice_number || "—"}</div>
+          <div class="entity-primary">
+            Invoice #${entry.invoice_number || "—"}
+          </div>
         </div>
         ${has("status") ? badge(status) : ""}
       </div>
 
       <!-- ================= CONTEXT ================= -->
       <div class="entity-card-context">
-        <div>🏥 ${entry.organization?.name || "—"}</div>
-        <div>📍 ${entry.facility?.name || "—"}</div>
+        <div>🏥 ${safe(entry.organization?.name)}</div>
+        <div>📍 ${safe(entry.facility?.name)}</div>
         <div>👤 ${renderPatient()}</div>
       </div>
 
-      <!-- ================= CORE ================= -->
+      <!-- ================= QUICK CORE ================= -->
       <div class="entity-card-body">
         ${row("Date", formatDate(entry.created_at))}
-        ${row("Status", status.toUpperCase())}
         ${row("Total", entry.total ? `$${Number(entry.total).toFixed(2)}` : "—")}
         ${row("Balance", entry.balance ? `$${Number(entry.balance).toFixed(2)}` : "—")}
+        ${row("Status", status.toUpperCase())}
       </div>
 
       <!-- ================= ITEMS ================= -->
@@ -332,15 +366,14 @@ export function renderCard(entry, visibleFields, user) {
       ${
         entry.payments?.length
           ? `<details class="entity-section">
-              <summary>Payments</summary>
+              <summary><strong>Payments</strong></summary>
               <div class="entity-card-body">
                 ${entry.payments
-                  .map(
-                    (p) =>
-                      row(
-                        p.method,
-                        `$${Number(p.amount).toFixed(2)} (${p.status})`
-                      )
+                  .map((p) =>
+                    row(
+                      p.method,
+                      `$${Number(p.amount).toFixed(2)} (${p.status})`
+                    )
                   )
                   .join("")}
               </div>
@@ -352,17 +385,16 @@ export function renderCard(entry, visibleFields, user) {
       ${
         entry.appliedDeposits?.length
           ? `<details class="entity-section">
-              <summary>Deposits</summary>
+              <summary><strong>Deposits</strong></summary>
               <div class="entity-card-body">
                 ${entry.appliedDeposits
-                  .map(
-                    (d) =>
-                      row(
-                        "Deposit",
-                        `$${Number(d.applied_amount).toFixed(2)} (Remaining: $${Number(
-                          d.remaining_balance
-                        ).toFixed(2)})`
-                      )
+                  .map((d) =>
+                    row(
+                      "Deposit",
+                      `$${Number(d.applied_amount).toFixed(2)} (Remaining: $${Number(
+                        d.remaining_balance
+                      ).toFixed(2)})`
+                    )
                   )
                   .join("")}
               </div>
@@ -372,7 +404,7 @@ export function renderCard(entry, visibleFields, user) {
 
       <!-- ================= AUDIT ================= -->
       <details class="entity-section">
-        <summary>Audit</summary>
+        <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDate(entry.created_at))}
@@ -393,7 +425,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
-
 /* ============================================================================
    📋 Main List Renderer
 ============================================================================ */

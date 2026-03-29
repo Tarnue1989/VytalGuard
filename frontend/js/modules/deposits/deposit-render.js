@@ -229,6 +229,9 @@ export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
+
   const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 
   const row = (label, value) => {
@@ -253,8 +256,20 @@ export function renderCard(entry, visibleFields, user) {
       ? "Voided"
       : "";
 
+  /* ===================== AUDIT FIELDS ===================== */
+  const AUDIT_FIELDS = [
+    "createdBy",
+    "updatedBy",
+    "deletedBy",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+  ];
+
   return `
     <div class="entity-card deposit-card">
+
+      <!-- ================= HEADER ================= -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
@@ -269,6 +284,7 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
+      <!-- ================= CONTEXT ================= -->
       <div class="entity-card-context">
         ${entry.deposit_number ? `<div>🆔 ${entry.deposit_number}</div>` : ""}
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
@@ -277,27 +293,64 @@ export function renderCard(entry, visibleFields, user) {
         ${entry.transaction_ref ? `<div>🔗 ${entry.transaction_ref}</div>` : ""}
       </div>
 
+      <!-- ================= QUICK CORE (COMPACT) ================= -->
       <div class="entity-card-body">
-        ${row("Deposit #", entry.deposit_number)}
         ${row("Amount", money(entry.amount))}
-        ${row("Applied Amount", money(entry.applied_amount))}
-        ${row("Available Balance", money(entry.remaining_balance))}
-        ${hasRefund ? row("Refunded Amount", money(refundedAmount)) : ""}
+        ${row("Available", money(entry.remaining_balance))}
+        ${hasRefund ? row("Refunded", money(refundedAmount)) : ""}
         ${row("Status", status.toUpperCase())}
-        ${
-          lifecycleHint
-            ? row(
-                "Lifecycle",
-                `<span class="text-muted">${lifecycleHint}</span>`
-              )
-            : ""
-        }
-        ${row("Reason", entry.reason)}
-        ${row("Notes", entry.notes)}
       </div>
 
-      <details class="entity-notes">
-        <summary>Audit</summary>
+      <!-- ================= DETAILS ================= -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
+        <div class="entity-card-body">
+
+          ${row("Deposit #", entry.deposit_number)}
+          ${row("Applied Amount", money(entry.applied_amount))}
+
+          ${
+            lifecycleHint
+              ? row(
+                  "Lifecycle",
+                  `<span class="text-muted">${lifecycleHint}</span>`
+                )
+              : ""
+          }
+
+          ${row("Reason", entry.reason)}
+          ${row("Notes", entry.notes)}
+
+          ${visibleFields
+            .filter(
+              (f) =>
+                ![
+                  "actions",
+                  "amount",
+                  "remaining_balance",
+                  "refund_amount",
+                  "status",
+                  "deposit_number",
+                  "applied_amount",
+                  "reason",
+                  "notes",
+                  ...AUDIT_FIELDS,
+                ].includes(f)
+            )
+            .map((f) =>
+              row(
+                FIELD_LABELS_DEPOSIT?.[f] || f,
+                renderValue(entry, f)
+              )
+            )
+            .join("")}
+
+        </div>
+      </details>
+
+      <!-- ================= AUDIT ================= -->
+      <details class="entity-section">
+        <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDate(entry.created_at))}
@@ -306,6 +359,7 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
+      <!-- ================= ACTIONS ================= -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -313,10 +367,10 @@ export function renderCard(entry, visibleFields, user) {
              </div>`
           : ""
       }
+
     </div>
   `;
 }
-
 /* ============================================================
    📋 LIST RENDERER
 ============================================================ */

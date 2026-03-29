@@ -190,31 +190,29 @@ export function renderDynamicTableHead(visibleFields) {
    🗂 CARD (FINAL FIXED – ENTERPRISE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
+  const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const row = (label, value) => `
-    <div class="entity-field">
-      <span class="entity-label">${label}</span>
-      <span class="entity-value">${safe(value)}</span>
-    </div>
-  `;
-
-  /* ✅ SAFE DATE FIX */
-  const formatSafeDate = (d) => {
-    if (!d) return "—";
-    const date = new Date(d);
-    if (isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    });
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === "") return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
   };
 
-  /* ✅ TOTAL FALLBACK */
+  /* ===================== AUDIT FIELDS ===================== */
+  const AUDIT_FIELDS = [
+    "createdBy","updatedBy","deletedBy",
+    "created_at","updated_at","deleted_at"
+  ];
+
+  /* ===================== TOTAL ===================== */
   const calculateTotal = () => {
     if (!Array.isArray(entry.items)) return 0;
 
@@ -236,52 +234,104 @@ export function renderCard(entry, visibleFields, user) {
   return `
     <div class="entity-card order-card">
 
-      <!-- HEADER -->
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
           <div class="entity-primary">Order</div>
         </div>
-        <span class="entity-status ${status}">
-          ${status.toUpperCase()}
-        </span>
+        ${
+          has("status")
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
+            : ""
+        }
       </div>
 
-      <!-- CONTEXT -->
-      <div class="entity-card-context">
-        <div>🏥 ${safe(entry.organization?.name)}</div>
-        <div>📍 ${safe(entry.facility?.name)}</div>
-        <div>👨‍⚕️ ${renderUserName(entry.provider)}</div>
-        <div>🏬 ${safe(entry.department?.name || "No Department")}</div>
-      </div>
-
-      <!-- CORE -->
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
-        ${row("Order Date", formatSafeDate(entry.order_date))}
+        ${row("Order Date", formatDateTime(entry.order_date))}
         ${row("Type", entry.type)}
         ${row("Priority", entry.priority)}
         ${row("Billing Status", entry.billing_status)}
         ${row("Total Amount", `LRD ${total}`)}
       </div>
 
-      <!-- ITEMS -->
-      <div class="entity-section">
-        <div class="entity-section-title">Items</div>
+      <!-- ===================================================== -->
+      <!-- 📄 DETAILS -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
+        <div class="entity-card-body">
+
+          ${row("Organization", entry.organization?.name)}
+          ${row("Facility", entry.facility?.name)}
+          ${row("Provider", renderUserName(entry.provider))}
+          ${row("Department", entry.department?.name || "No Department")}
+
+          ${visibleFields
+            .filter(
+              (f) =>
+                ![
+                  "actions",
+                  "order_date",
+                  "type",
+                  "priority",
+                  "billing_status",
+                  "organization",
+                  "facility",
+                  "provider",
+                  "department",
+                  "items",
+                  "notes",
+                  ...AUDIT_FIELDS,
+                ].includes(f)
+            )
+            .map((f) =>
+              row(
+                FIELD_LABELS_ORDER?.[f] || f,
+                renderValue(entry, f)
+              )
+            )
+            .join("")}
+
+        </div>
+      </details>
+
+      <!-- ===================================================== -->
+      <!-- 📦 ITEMS -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Items</strong></summary>
         <div class="entity-card-body">
           ${renderItems(entry)}
         </div>
-      </div>
+      </details>
 
-      <!-- NOTES -->
+      <!-- ===================================================== -->
+      <!-- 📝 NOTES -->
+      <!-- ===================================================== -->
       ${
         entry.notes
-          ? `<div class="entity-card-body">${row("Notes", entry.notes)}</div>`
+          ? `<details class="entity-section">
+               <summary><strong>Notes</strong></summary>
+               <div class="entity-card-body">
+                 ${safe(entry.notes)}
+               </div>
+             </details>`
           : ""
       }
 
-      <!-- AUDIT -->
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT (DATE + TIME) -->
+      <!-- ===================================================== -->
       <details class="entity-section">
-        <summary>Audit</summary>
+        <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDateTime(entry.created_at))}
@@ -290,14 +340,17 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
-      <!-- ACTIONS -->
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
+      <!-- ===================================================== -->
       ${
-        visibleFields.includes("actions")
+        has("actions")
           ? `<div class="entity-card-footer export-ignore">
                ${getOrderActionButtons(entry, user)}
              </div>`
           : ""
       }
+
     </div>
   `;
 }

@@ -513,6 +513,45 @@
   padding:6px 8px;
   border-radius:8px;
 }
+/* ================= REFUND DEPOSIT STATUS ================= */
+
+.refund-deposit-card .entity-status.pending{background:#f59e0b;color:#111}
+.refund-deposit-card .entity-status.review{background:#f59e0b;color:#111}
+.refund-deposit-card .entity-status.approved{background:#198754;color:#fff}
+.refund-deposit-card .entity-status.processed{background:#198754;color:#fff}
+.refund-deposit-card .entity-status.rejected{background:#dc3545;color:#fff}
+.refund-deposit-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.refund-deposit-card .entity-status.reversed{background:#dc3545;color:#fff}
+.refund-deposit-card .entity-status.voided{background:#111827;color:#fff}
+.refund-deposit-card .entity-status.restored{background:#20c997;color:#111}
+
+/* ================= REFUND DEPOSIT BODY ================= */
+
+.refund-deposit-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+/* ================= REFUND STATUS ================= */
+
+.refund-card .entity-status.pending{background:#f59e0b;color:#111}
+.refund-card .entity-status.approved{background:#198754;color:#fff}
+.refund-card .entity-status.processed{background:#198754;color:#fff}
+.refund-card .entity-status.rejected{background:#dc3545;color:#fff}
+.refund-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.refund-card .entity-status.reversed{background:#dc3545;color:#fff}
+
+/* ================= REFUND BODY ================= */
+
+.refund-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
+
+
 /* ================= INVOICE STATUS ================= */
 
 .invoice-card .entity-status.unpaid{background:#dc3545;color:#fff}

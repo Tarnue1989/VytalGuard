@@ -13,7 +13,7 @@
 
 import { FIELD_LABELS_PAYMENT } from "./payment-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
@@ -244,6 +244,10 @@ export function renderCard(entry, visibleFields, user) {
 
   return `
     <div class="entity-card payment-card">
+
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
@@ -256,32 +260,59 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
-      <div class="entity-card-context">
-        ${entry.payment_number ? `<div>🆔 ${entry.payment_number}</div>` : ""}
-        ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
-        ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
-        ${entry.method ? `<div>💳 ${entry.method}</div>` : ""}
-        ${entry.transaction_ref ? `<div>🔗 ${entry.transaction_ref}</div>` : ""}
-      </div>
-
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE (LIGHT) -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Payment #", entry.payment_number)}
         ${row("Amount", `$${Number(entry.amount || 0).toFixed(2)}`)}
-        ${row("Invoice", renderValue(entry, "invoice"))}
+        ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
-        ${row("Reason", entry.reason)}
       </div>
 
-      <details class="entity-notes">
-        <summary>Audit</summary>
+      <!-- ===================================================== -->
+      <!-- 📄 DETAILS (replaces context) -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
         <div class="entity-card-body">
-          ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDate(entry.created_at))}
-          ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDate(entry.updated_at))}
+          ${row("Organization", entry.organization?.name)}
+          ${row("Facility", entry.facility?.name)}
+          ${row("Transaction Ref", entry.transaction_ref)}
+          ${row("Invoice", renderValue(entry, "invoice"))}
         </div>
       </details>
 
+      <!-- ===================================================== -->
+      <!-- 📝 REASON (if exists) -->
+      <!-- ===================================================== -->
+      ${
+        entry.reason
+          ? `<details class="entity-section">
+               <summary><strong>Reason</strong></summary>
+               <div class="entity-card-body">
+                 ${entry.reason}
+               </div>
+             </details>`
+          : ""
+      }
+
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Audit</strong></summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDateTime(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+        </div>
+      </details>
+
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
+      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -289,10 +320,10 @@ export function renderCard(entry, visibleFields, user) {
              </div>`
           : ""
       }
+
     </div>
   `;
 }
-
 /* ============================================================
    📋 LIST RENDERER
 ============================================================ */

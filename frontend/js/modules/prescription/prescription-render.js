@@ -276,7 +276,9 @@ export function renderCard(entry, visibleFields, user) {
   return `
     <div class="entity-card prescription-card">
 
-      <!-- HEADER -->
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
@@ -285,39 +287,56 @@ export function renderCard(entry, visibleFields, user) {
         ${has("status") ? badge(status) : ""}
       </div>
 
-      <!-- CONTEXT -->
-      <div class="entity-card-context">
-        <div>🏥 ${entry.organization?.name || "—"}</div>
-        <div>📍 ${entry.facility?.name || "—"}</div>
-        <div>👨‍⚕️ ${renderUserName(entry.doctor)}</div>
-        <div>🏬 ${entry.department?.name || "—"}</div>
-      </div>
-
-      <!-- CORE -->
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Prescription Date", formatClinicalDate(entry.prescription_date))}
+        ${row("Doctor", renderUserName(entry.doctor))}
         ${row("Emergency", yesNo(entry.is_emergency))}
-        ${row("Status", status.toUpperCase())}
       </div>
 
-      <!-- MEDICATIONS (ALWAYS VISIBLE) -->
-      <div class="entity-section">
-        <div class="entity-section-title">Medications</div>
+      <!-- ===================================================== -->
+      <!-- 📄 DETAILS (renamed from Context) -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Details</strong></summary>
+        <div class="entity-card-body">
+          ${row("Organization", entry.organization?.name)}
+          ${row("Facility", entry.facility?.name)}
+          ${row("Department", entry.department?.name)}
+        </div>
+      </details>
+
+      <!-- ===================================================== -->
+      <!-- 💊 MEDICATIONS -->
+      <!-- ===================================================== -->
+      <details class="entity-section">
+        <summary><strong>Medications</strong></summary>
         <div class="entity-card-body">
           ${renderItems(entry)}
         </div>
-      </div>
+      </details>
 
-      <!-- NOTES -->
+      <!-- ===================================================== -->
+      <!-- 📝 NOTES -->
+      <!-- ===================================================== -->
       ${
         entry.notes
-          ? `<div class="entity-card-body">${row("Notes", entry.notes)}</div>`
+          ? `<details class="entity-section">
+               <summary><strong>Notes</strong></summary>
+               <div class="entity-card-body">
+                 ${entry.notes}
+               </div>
+             </details>`
           : ""
       }
 
-      <!-- AUDIT -->
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT -->
+      <!-- ===================================================== -->
       <details class="entity-section">
-        <summary>Audit</summary>
+        <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row("Created At", formatDateTime(entry.created_at))}
@@ -330,7 +349,9 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
-      <!-- ACTIONS -->
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
+      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -338,6 +359,7 @@ export function renderCard(entry, visibleFields, user) {
              </div>`
           : ""
       }
+
     </div>
   `;
 }
