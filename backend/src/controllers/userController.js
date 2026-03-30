@@ -462,7 +462,9 @@ export const getAllUsers = async (req, res) => {
     /* ========================================================
        🔐 TENANT
     ======================================================== */
-    options.where = applyTenantWhere(options.where, req);
+    options.where = applyTenantWhere(options.where, req, {
+      useFacilityJoin: true,
+    });
 
     /* ========================================================
        🔍 GLOBAL SEARCH (SAFE ONLY)
