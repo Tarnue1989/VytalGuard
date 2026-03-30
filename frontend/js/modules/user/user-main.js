@@ -1,9 +1,10 @@
-// 📦 user-main.js – Form-only loader for Users (Enterprise-Aligned)
+// 📦 user-main.js – MASTER UPGRADE (ROLE PARITY)
 // ============================================================================
-// 🧭 Master Pattern: role-main.js / vital-main.js
-// 🔹 Shared state, visibility restore, resetForm()
-// 🔹 Permission auto-resolution (users:create / users:edit)
-// 🔹 Preserves all original HTML IDs
+// 🔹 Matches role-main.js EXACTLY
+// 🔹 Ensures form always initialized
+// 🔹 Clean visibility + reset lifecycle
+// 🔹 Field selector aligned
+// 🔹 Preserves ALL IDs + behavior
 // ============================================================================
 
 import {
@@ -23,20 +24,17 @@ import {
 import { setupFieldSelector } from "../../utils/ui-utils.js";
 
 /* ============================================================
-   🔐 Auth + Global Guards
+   🔐 AUTH GUARD + GLOBAL STATE
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   📎 DOM Refs
+   📎 DOM REFS
 ============================================================ */
 const form = document.getElementById("userForm");
 const formContainer = document.getElementById("formContainer");
@@ -45,43 +43,30 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Form Helper
+   🧹 RESET FORM (MASTER)
 ============================================================ */
 function resetForm() {
   sharedState.currentEditIdRef.value = null;
-  if (form) form.reset();
+  form?.reset();
 
-  // Clear cached edit session
   sessionStorage.removeItem("userEditId");
   sessionStorage.removeItem("userEditPayload");
 
-  // Explicitly clear text fields
   ["username", "email", "first_name", "last_name", "password"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // 🔴 HARD reset dropdowns
-  const orgSelect = document.getElementById("organization_id");
-  if (orgSelect) orgSelect.value = "";
+  ["organization_id", "facility_id", "role_id"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
 
-  const facilitySelect = document.getElementById("facility_id");
-  if (facilitySelect) {
-    facilitySelect.innerHTML = `<option value="">-- Select Facility --</option>`;
-  }
-
-  const roleSelect = document.getElementById("role_id");
-  if (roleSelect) {
-    roleSelect.innerHTML = `<option value="">-- Select Role --</option>`;
-  }
-
-  // Default status → active
-  const activeRadio = document.getElementById("status_active");
-  if (activeRadio) activeRadio.checked = true;
+  document.getElementById("status_active")?.setAttribute("checked", true);
 }
 
 /* ============================================================
-   🧭 Form Visibility
+   🧭 FORM VISIBILITY
 ============================================================ */
 function showForm() {
   formContainer?.classList.remove("hidden");
@@ -96,31 +81,48 @@ function hideForm() {
   localStorage.setItem("userFormVisible", "false");
 }
 
-// 🔁 Expose globally (matches role-main.js)
+// expose globally (same as role)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   🔘 Button Wiring
+   🔘 BUTTONS
 ============================================================ */
-if (clearBtn) clearBtn.onclick = resetForm;
-
-if (cancelBtn) {
-  cancelBtn.onclick = () => {
+cancelBtn &&
+  (cancelBtn.onclick = () => {
     resetForm();
-    window.location.href = "/users-list.html"; // ✅ plural redirect
-  };
-}
+    window.location.href = "/users-list.html";
+  });
 
-if (desktopAddBtn) {
-  desktopAddBtn.onclick = () => {
-    // Purge stale edit data
+clearBtn && (clearBtn.onclick = resetForm);
+
+desktopAddBtn &&
+  (desktopAddBtn.onclick = () => {
     sessionStorage.removeItem("userEditId");
     sessionStorage.removeItem("userEditPayload");
 
     resetForm();
     showForm();
+  });
 
+/* ============================================================
+   🧰 LOADER (NO-OP)
+============================================================ */
+async function loadEntries() {
+  return;
+}
+
+/* ============================================================
+   🚀 INIT (MASTER)
+============================================================ */
+export async function initUser() {
+  /* -------- restore visibility -------- */
+  localStorage.getItem("userFormVisible") === "true"
+    ? showForm()
+    : hideForm();
+
+  /* -------- ALWAYS INIT FORM (🔥 FIX) -------- */
+  form &&
     setupUserFormSubmission({
       form,
       token,
@@ -128,26 +130,10 @@ if (desktopAddBtn) {
       resetForm,
       loadEntries,
     });
-  };
-}
 
-/* ============================================================
-   🧰 Loader (no-op)
-============================================================ */
-async function loadEntries() {
-  return; // list page handles this
-}
+  localStorage.setItem("userPanelVisible", "false");
 
-/* ============================================================
-   🚀 Module Initializer
-============================================================ */
-export async function initUser() {
-  // Restore last form visibility
-  const visible = localStorage.getItem("userFormVisible") === "true";
-  if (visible) showForm();
-  else hideForm();
-
-  /* --------------------- Role Normalization --------------------- */
+  /* -------- role normalization -------- */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -155,21 +141,16 @@ export async function initUser() {
   else if (role.includes("admin")) role = "admin";
   else role = "staff";
 
-  /* --------------------- Field Selector --------------------- */
+  /* -------- field selector -------- */
   setupFieldSelector({
     module: "user",
     fieldLabels: FIELD_LABELS_USER,
     fieldOrder: FIELD_ORDER_USER,
     defaultFields: FIELD_DEFAULTS_USER[role],
   });
-
-  // Hide list panel on standalone form
-  localStorage.setItem("userPanelVisible", "false");
 }
 
 /* ============================================================
-   🔁 Sync Helper (reserved)
+   🔁 SYNC (RESERVED)
 ============================================================ */
-export function syncRefsToState() {
-  // Reserved for advanced reactive behavior
-}
+export function syncRefsToState() {}

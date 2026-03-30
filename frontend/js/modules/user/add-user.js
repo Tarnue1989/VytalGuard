@@ -1,9 +1,10 @@
-// 📁 add-user.js – User Form (Add/Edit) Page Controller (Enterprise-Aligned)
+// 📦 add-user.js – FINAL MASTER (CLEAN + STABLE)
 // ============================================================================
-// 🧭 Master Pattern: role-main.js / vital-main.js
-// 🔹 Enterprise auth guard + role normalization
-// 🔹 Shared state + reset/edit/add flow
-// 🔹 Preserves all original HTML IDs
+// 🔹 ROLE parity (exact pattern)
+// 🔹 No optional chaining in unsafe places
+// 🔹 Fixed selector (.mb-3)
+// 🔹 Stable dropdown loading + cascade
+// 🔹 Edit mode fully aligned
 // ============================================================================
 
 import { setupUserFormSubmission } from "./user-form.js";
@@ -17,23 +18,30 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
+import {
+  loadOrganizationsLite,
+  loadFacilitiesLite,
+  loadRolesLite,
+  setupSelectOptions,
+} from "../../utils/data-loaders.js";
+
 import { authFetch } from "../../authSession.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH GUARD
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 /* ============================================================
-   🧠 Shared State
+   🧠 SHARED STATE
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
 /* ============================================================
-   🧩 User Role Normalization (CRITICAL)
+   🧩 ROLE NORMALIZATION
 ============================================================ */
 function resolveUserRole() {
   const raw = (localStorage.getItem("userRole") || "").toLowerCase();
@@ -48,7 +56,7 @@ function resolveUserRole() {
 const userRole = resolveUserRole();
 
 /* ============================================================
-   🧹 Reset Form Helper → Back to Add Mode
+   🧹 RESET FORM
 ============================================================ */
 function resetForm() {
   const form = document.getElementById("userForm");
@@ -67,121 +75,125 @@ function resetForm() {
 
   document.getElementById("status_active")?.setAttribute("checked", true);
 
-  const orgSelect = document.getElementById("organization_id");
-  if (orgSelect) orgSelect.value = "";
+  const org = document.getElementById("organization_id");
+  if (org) org.value = "";
 
-  const facSelect = document.getElementById("facility_id");
-  if (facSelect) {
-    facSelect.innerHTML = `<option value="">-- Select Facility --</option>`;
+  const fac = document.getElementById("facility_id");
+  if (fac) {
+    fac.innerHTML = `<option value="">-- Select Facility --</option>`;
   }
 
-  const roleSelect = document.getElementById("role_id");
-  if (roleSelect) {
-    roleSelect.innerHTML = `<option value="">-- Select Role --</option>`;
+  const role = document.getElementById("role_id");
+  if (role) {
+    role.innerHTML = `<option value="">-- Select Role --</option>`;
   }
 
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add User";
+  const title = document.querySelector(".card-title");
+  if (title) title.textContent = "Add User";
 
-  const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Create User`;
-  }
-}
-
-/* ============================================================
-   🧩 Load Assignment Options (ORG / FAC / ROLE)
-============================================================ */
-async function loadAssignmentOptions(selected = {}) {
-  try {
-    const orgSelect = document.getElementById("organization_id");
-    const facSelect = document.getElementById("facility_id");
-    const roleSelect = document.getElementById("role_id");
-
-    /* ---------------- ORGS ---------------- */
-    if (orgSelect) {
-      if (userRole === "superadmin") {
-        const res = await authFetch("/api/organizations/lite/list");
-        const data = await res.json();
-        const orgs = data?.data?.records || [];
-
-        orgSelect.innerHTML = `<option value="">-- Select Organization --</option>`;
-        orgs.forEach((o) => {
-          const opt = document.createElement("option");
-          opt.value = o.id;
-          opt.textContent = o.name || o.code || o.id;
-          orgSelect.appendChild(opt);
-        });
-
-        if (selected.organization_id) {
-          orgSelect.value = selected.organization_id;
-        }
-      } else {
-        orgSelect.closest(".form-group")?.classList.add("hidden");
-      }
-    }
-
-    /* ---------------- FACILITIES ---------------- */
-    if (facSelect) {
-      facSelect.innerHTML = `<option value="">-- Select Facility --</option>`;
-
-      const facUrl = selected.organization_id
-        ? `/api/facilities/lite/list?organization_id=${selected.organization_id}`
-        : `/api/facilities/lite/list`;
-
-      const res = await authFetch(facUrl);
-      const data = await res.json();
-      const facs = data?.data?.records || [];
-
-      facs.forEach((f) => {
-        const opt = document.createElement("option");
-        opt.value = f.id;
-        opt.textContent = f.name || f.code || f.id;
-        facSelect.appendChild(opt);
-      });
-
-      if (selected.facility_id) {
-        facSelect.value = selected.facility_id;
-      }
-    }
-
-    /* ---------------- ROLES ---------------- */
-    if (!roleSelect) return;
-
-    roleSelect.innerHTML = `<option value="">-- Select Role --</option>`;
-
-    const roleUrl = selected.organization_id
-      ? `/api/roles/lite/list?organization_id=${selected.organization_id}`
-      : `/api/roles/lite/list`;
-
-    const roleRes = await authFetch(roleUrl);
-    const roleData = await roleRes.json();
-    const roles = roleData?.data?.records || [];
-
-    roles.forEach((r) => {
-      const opt = document.createElement("option");
-      opt.value = r.id;
-      opt.textContent = r.name || r.code || r.id;
-      roleSelect.appendChild(opt);
-    });
-
-    if (selected.role_id) {
-      roleSelect.value = selected.role_id;
-    }
-
-  } catch (err) {
-    console.error("❌ Failed to load assignment options:", err);
-    showToast("❌ Could not load assignments");
+  const btn = form.querySelector("button[type=submit]");
+  if (btn) {
+    btn.innerHTML = `<i class="ri-add-line me-1"></i> Add User`;
   }
 }
 
 /* ============================================================
-   🚀 Main Init
+   🚀 INIT
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("userForm");
   if (!form) return;
 
+  const orgSelect = document.getElementById("organization_id");
+  const facSelect = document.getElementById("facility_id");
+  const roleSelect = document.getElementById("role_id");
+
+  /* ============================================================
+     🏢 LOAD DROPDOWNS
+  ============================================================ */
+  try {
+    if (userRole === "superadmin") {
+      /* -------- LOAD ORGS -------- */
+      const orgs = await loadOrganizationsLite();
+      setupSelectOptions(
+        orgSelect,
+        orgs,
+        "id",
+        "name",
+        "-- Select Organization --"
+      );
+
+      /* -------- CASCADE -------- */
+      async function reloadAll(orgId = null) {
+        const facs = await loadFacilitiesLite(
+          orgId ? { organization_id: orgId } : {},
+          true
+        );
+
+        setupSelectOptions(
+          facSelect,
+          facs,
+          "id",
+          "name",
+          "-- Select Facility --"
+        );
+
+        const roles = await loadRolesLite(
+          orgId ? { organization_id: orgId } : {}
+        );
+
+        setupSelectOptions(
+          roleSelect,
+          roles,
+          "id",
+          "name",
+          "-- Select Role --"
+        );
+      }
+
+      await reloadAll();
+
+      if (orgSelect) {
+        orgSelect.addEventListener("change", () => {
+          reloadAll(orgSelect.value || null);
+        });
+      }
+    }
+
+    /* -------- NON SUPERADMIN -------- */
+    else {
+      if (orgSelect) {
+        const wrapper = orgSelect.closest(".mb-3");
+        if (wrapper) wrapper.classList.add("hidden");
+      }
+
+      const facs = await loadFacilitiesLite({}, true);
+      setupSelectOptions(
+        facSelect,
+        facs,
+        "id",
+        "name",
+        "-- Select Facility --"
+      );
+
+      const roles = await loadRolesLite();
+      setupSelectOptions(
+        roleSelect,
+        roles,
+        "id",
+        "name",
+        "-- Select Role --"
+      );
+    }
+
+  } catch (err) {
+    console.error("❌ Dropdown load failed:", err);
+    showToast("❌ Failed to load dropdown data");
+  }
+
+  /* ============================================================
+     🧾 FORM SETUP
+  ============================================================ */
   setupUserFormSubmission({
     form,
     token,
@@ -190,6 +202,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadEntries: null,
   });
 
+  /* ============================================================
+     ✏️ EDIT PREFILL
+  ============================================================ */
   const editId = sessionStorage.getItem("userEditId");
   const rawPayload = sessionStorage.getItem("userEditPayload");
 
@@ -200,24 +215,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("last_name").value = entry.last_name || "";
 
     if (entry.status) {
-      document
-        .getElementById(`status_${entry.status.toLowerCase()}`)
-        ?.click();
+      const el = document.getElementById(`status_${entry.status}`);
+      if (el) el.checked = true;
     }
 
-    await loadAssignmentOptions({
-      organization_id: entry.organization?.id || entry.organization_id,
-      facility_id: entry.facilities?.[0]?.id || null,
-      role_id: entry.roles?.[0]?.id || null,
-    });
+    if (entry.organization_id && orgSelect) {
+      orgSelect.value = entry.organization_id;
+      orgSelect.dispatchEvent(new Event("change"));
+    }
 
-    const titleEl = document.querySelector(".card-title");
-    if (titleEl) titleEl.textContent = "Edit User";
+    setTimeout(() => {
+      if (entry.facilities?.[0]?.id && facSelect) {
+        facSelect.value = entry.facilities[0].id;
+      }
 
-    const submitBtn = form.querySelector("button[type=submit]");
-    if (submitBtn) {
-      submitBtn.innerHTML =
-        `<i class="ri-save-3-line me-1"></i> Update User`;
+      if (entry.roles?.[0]?.id && roleSelect) {
+        roleSelect.value = entry.roles[0].id;
+      }
+    }, 300);
+
+    const title = document.querySelector(".card-title");
+    if (title) title.textContent = "Edit User";
+
+    const btn = form.querySelector("button[type=submit]");
+    if (btn) {
+      btn.innerHTML = `<i class="ri-save-3-line me-1"></i> Update User`;
     }
   }
 
@@ -226,19 +248,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     await applyPrefill(JSON.parse(rawPayload));
   } else {
     const id = new URLSearchParams(window.location.search).get("id");
+
     if (id) {
       try {
         showLoading();
+
         const res = await authFetch(`/api/users/${id}`);
         const result = await res.json();
-        if (!res.ok || !result?.data)
+
+        if (!res.ok || !result?.data) {
           throw new Error(result.message || "Failed to load user");
+        }
 
         sharedState.currentEditIdRef.value = id;
         await applyPrefill(result.data);
+
       } catch (err) {
-        console.error("❌ Load user failed:", err);
-        showToast(err.message || "❌ Failed to load user for editing");
+        console.error(err);
+        showToast(err.message || "❌ Failed to load user");
       } finally {
         hideLoading();
       }
@@ -248,17 +275,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ============================================================
-     🚪 Cancel & Clear
+     🚪 CANCEL / CLEAR
   ============================================================ */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("userEditId");
-    sessionStorage.removeItem("userEditPayload");
-    window.location.href = "/users-list.html";
-  });
+  const cancelBtn = document.getElementById("cancelBtn");
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      sessionStorage.clear();
+      window.location.href = "/users-list.html";
+    };
+  }
 
-  document.getElementById("clearBtn")?.addEventListener("click", () => {
-    sessionStorage.removeItem("userEditId");
-    sessionStorage.removeItem("userEditPayload");
-    resetForm();
-  });
+  const clearBtn = document.getElementById("clearBtn");
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      sessionStorage.clear();
+      resetForm();
+    };
+  }
 });

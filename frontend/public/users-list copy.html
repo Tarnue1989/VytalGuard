@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Users</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Manage Users">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <div class="app-container">
+
+      <!-- Header -->
+      <div class="app-header d-flex align-items-center"></div>
+
+      <!-- Hero Header -->
+      <div class="app-hero-header d-flex align-items-center">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+          </li>
+          <li class="breadcrumb-item">Users</li>
+          <li class="breadcrumb-item text-primary" aria-current="page">User List</li>
+        </ol>
+
+        <div class="ms-auto d-lg-flex d-none flex-row">
+          <div class="input-group">
+            <span class="input-group-text bg-primary-lighten">
+              <i class="ri-calendar-2-line text-primary"></i>
+            </span>
+            <input type="text" id="dateRange" class="form-control custom-daterange">
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="app-body">
+        <div class="row gx-4">
+          <div class="col-sm-12">
+
+            <div class="card">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title">Users</h5>
+                <a href="add-user.html" class="btn btn-primary ms-auto">
+                  <i class="ri-add-line me-1"></i> Add
+                </a>
+              </div>
+
+              <div class="card-body">
+
+                <!-- Filters -->
+                <div class="card panel-card mb-3">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-filter me-1"></i> Filters
+                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                      </button>
+                    </div>
+
+                    <!-- ✅ Export Buttons -->
+                    <div class="view-actions d-flex gap-2">
+                      <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-file-csv me-1"></i> CSV
+                      </button>
+                      <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-file-excel me-1"></i> Excel
+                      </button>
+                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                        <i class="fas fa-file-pdf me-1"></i> PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id="filterCollapse" class="card-body filter-body">
+                    <div class="section-label mb-2"><strong>Filter Users</strong></div>
+                    <div class="row g-3 filter-grid compact">
+
+                      <!-- Organization (superadmin only) -->
+                      <div class="col-md-3">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="filterOrganization">Organization</label>
+                          <select class="form-select" id="filterOrganization" name="organization_id">
+                            <option value="">All</option>
+                            <!-- dynamically populated for superadmin -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-md-3">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="filterFacility">Facility</label>
+                          <select class="form-select" id="filterFacility" name="facility_id">
+                            <option value="">All</option>
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Role -->
+                      <div class="col-md-3">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="filterRole">Role</label>
+                          <select class="form-select" id="filterRole" name="role_id">
+                            <option value="">-- Select Role --</option>
+                            <!-- dynamically populated -->
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterUsername" class="form-label">Username</label>
+                          <input type="text" id="filterUsername" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="filterEmail" class="form-label">Email</label>
+                          <input type="text" id="filterEmail" class="form-control" autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterStatus" class="form-label">Status</label>
+                          <select id="filterStatus" class="form-select">
+                            <option value="">🔄 All</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterLockedTo" class="form-label">Locked To</label>
+                          <input type="date" id="filterLockedTo" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterLastLoginFrom" class="form-label">Last Login From</label>
+                          <input type="date" id="filterLastLoginFrom" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterLastLoginTo" class="form-label">Last Login To</label>
+                          <input type="date" id="filterLastLoginTo" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterCreatedFrom" class="form-label">Created From</label>
+                          <input type="date" id="filterCreatedFrom" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-md-2">
+                        <div class="field-wrapper">
+                          <label for="filterCreatedTo" class="form-label">Created To</label>
+                          <input type="date" id="filterCreatedTo" class="form-control" />
+                        </div>
+                      </div>
+
+                      <div class="col-12 d-flex gap-2 filter-actions">
+                        <button id="filterBtn" class="btn btn-primary btn-sm">
+                          <i class="fas fa-search me-1"></i> Search
+                        </button>
+                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                          <i class="fas fa-times me-1"></i> Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- View Toggle -->
+                <div class="d-flex mb-2 view-toggle compact">
+                  <div class="dropdown relative-wrapper export-ignore">
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
+                            id="fieldSelectorBtn"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                      <i class="fas fa-columns me-1"></i> Select Fields
+                    </button>
+                    <div class="dropdown-menu p-2 field-selector-dropdown"
+                         id="fieldSelectorDropdown"
+                         style="min-width:240px;">
+                      <!-- dynamic checkboxes -->
+                    </div>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
+                      <i class="fas fa-th me-1"></i> Card View
+                    </button>
+                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
+                      <i class="fas fa-table me-1"></i> Table View
+                    </button>
+                  </div>
+
+                  <!-- Records per page -->
+                  <div class="d-flex align-items-center gap-1 ms-2">
+                    <label for="recordsPerPage" class="fw-semibold text-muted small mb-0">Show</label>
+                    <select id="recordsPerPage"
+                            class="form-select form-select-sm py-0 px-1"
+                            style="width: 65px; height: calc(1.5em + 0.5rem);">
+                      <option value="10">10</option>
+                      <option value="25" selected>25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                    <span class="text-muted small">records</span>
+                  </div>
+                </div>
+
+
+                <!-- Table -->
+                <div class="table-responsive table-container active">
+                  <table class="table m-0 align-middle data-table print-table">
+                    <thead id="dynamicTableHead"></thead>
+                    <tbody id="userTableBody"></tbody>
+                  </table>
+                </div>
+
+                <!-- Card list -->
+                <div id="userList" class="card-list"></div>
+
+                <!-- Pagination -->
+                <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
+
+              </div>
+            </div>
+            <!-- /card -->
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="app-footer">
+        <span>© VytalGuard HMS 2025</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlays / modals / toasts -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner-box"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+  </div>
+
+  <!-- View Modal -->
+  <div id="viewModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="viewModalTitle">Details</h2>
+        <button id="closeViewModal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="viewModalBody"></div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <!-- Module Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script type="module" src="/js/logout.js"></script>
+  <script type="module" src="/js/authSession.js"></script>
+
+  <!-- User scripts -->
+  <script type="module" src="/js/modules/user/user-filter-main.js"></script>
+
+<script type="module" src="/js/utils/navigation.js"></script>
+</body>
+</html>
