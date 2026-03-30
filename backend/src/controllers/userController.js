@@ -1,8 +1,14 @@
 // 📁 controllers/userController.js
+// ============================================================================
+// 👤 USER CONTROLLER — MASTER UPGRADE (STEP 1: IMPORT → SCHEMA)
+// ============================================================================
+
 import Joi from "joi";
 import { Op } from "sequelize";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+
 import {
   sequelize,
   User,
@@ -13,781 +19,972 @@ import {
   RefreshToken,
   Organization
 } from "../models/index.js";
+
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { validate } from "../utils/validation.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
+import { applyTenantWhere } from "../utils/setTenantScope.js";
+import {
+  isSuperAdmin,
+  isOrgLevelUser,
+  isFacilityHead
+} from "../utils/role-utils.js";
+import { makeModuleLogger } from "../utils/debugLogger.js";
+
 import { USER_STATUS } from "../constants/enums.js";
 import { FIELD_VISIBILITY_USER } from "../constants/fieldVisibility.js";
+
+import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
-import crypto from "crypto";
 
 /* ============================================================
-   📌 HELPER: Resolve Scope
-   ============================================================ */
-function resolveScope(req) {
-  if (req.user?.roleNames?.includes("superadmin")) {
-    return { scope: "superadmin", facility_id: null, organization_id: null };
+   🔐 MODULE
+============================================================ */
+const MODULE_KEY = "users";
+
+/* ============================================================
+   🔧 DEBUG LOGGER
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = makeModuleLogger("userController", DEBUG_OVERRIDE);
+
+/* ============================================================
+   🔗 SHARED INCLUDES (MASTER)
+============================================================ */
+const USER_INCLUDES = [
+  {
+    model: Facility,
+    as: "facilities",
+    attributes: ["id", "name", "code", "organization_id"],
+    through: { attributes: [] },
+    required: false,
+  },
+  {
+    model: Role,
+    as: "roles",
+    attributes: ["id", "name", "requires_facility"],
+    through: { attributes: [] },
+    required: false,
+  },
+  {
+    model: Organization,
+    as: "organization",
+    attributes: ["id", "name", "code"],
+  },
+  {
+    model: User,
+    as: "createdByUser",
+    attributes: ["id", "first_name", "last_name", "username"],
+  },
+  {
+    model: User,
+    as: "updatedByUser",
+    attributes: ["id", "first_name", "last_name", "username"],
+  },
+  {
+    model: User,
+    as: "deletedByUser",
+    attributes: ["id", "first_name", "last_name", "username"],
+  },
+];
+
+/* ============================================================
+   📋 JOI SCHEMA BUILDER (DEPARTMENT STYLE - CLEAN)
+============================================================ */
+function buildUserSchema(mode = "create", userRole = "staff") {
+  const base = {
+    username: Joi.string().max(80),
+    email: Joi.string().email().max(150),
+    password: Joi.string().min(6),
+
+    first_name: Joi.string().max(150).allow("", null),
+    last_name: Joi.string().max(150).allow("", null),
+
+    status: Joi.string().valid(...USER_STATUS),
+
+    // ✅ NEW (flat structure)
+    role_id: Joi.string().uuid(),
+
+    // ✅ scope fields (controlled by role)
+    organization_id: Joi.string().uuid().optional(),
+    facility_id: Joi.string().uuid().allow(null).optional(),
+  };
+
+  /* ================= CREATE ================= */
+  if (mode === "create") {
+    base.username = base.username.required();
+    base.email = base.email.required();
+    base.password = base.password.required();
+
+    base.role_id = base.role_id.required();   // 🔥 REQUIRED now
+    base.status = base.status.default("active");
   }
-  if (req.user?.organization_id) {
-    return {
-      scope: "organization",
-      organization_id: req.user.organization_id,
-      facility_id: null,
-    };
+
+  /* ================= UPDATE ================= */
+  if (mode === "update") {
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
+    });
   }
-  if (req.user?.facility_id) {
-    return {
-      scope: "facility",
-      facility_id: req.user.facility_id,
-      organization_id: null,
-    };
+
+  /* ============================================================
+     🔐 ROLE-BASED CONTROL (LIKE DEPARTMENT)
+  ============================================================ */
+
+  // 🔹 SUPERADMIN → can send org + facility
+  if (userRole === "superadmin") {
+    // allow both (already optional)
   }
-  return { scope: "none", facility_id: null, organization_id: null };
+
+  // 🔹 ORG LEVEL → cannot send org
+  else if (["organization_admin", "org_admin", "org_owner"].includes(userRole)) {
+    base.organization_id = Joi.forbidden();   // 🔥 force backend to use req.user
+  }
+
+  // 🔹 FACILITY LEVEL → cannot send org or facility
+  else {
+    base.organization_id = Joi.forbidden();
+    base.facility_id = Joi.forbidden();
+  }
+
+  return Joi.object(base);
 }
-
-
 /* ============================================================
-   📌 CREATE USER (FULL TRACE LOGGING – VERIFIED)
+   📌 CREATE USER — FINAL (DEPARTMENT STYLE)
 ============================================================ */
 export const createUser = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
-    console.log("🧪 [CREATE USER] RAW BODY ↓↓↓");
-    console.log(JSON.stringify(req.body, null, 2));
-
-    const { scope, facility_id, organization_id } = resolveScope(req);
-    console.log("🧪 [CREATE USER] RESOLVED SCOPE:", {
-      scope,
-      facility_id,
-      organization_id,
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "create",
+      res,
     });
+    if (!allowed) return;
 
-    let schema = Joi.object({
-      username: Joi.string().max(80).required(),
-      email: Joi.string().email().max(150).required(),
-      password: Joi.string().min(6).required(),
-      first_name: Joi.string().max(150).allow("", null),
-      last_name: Joi.string().max(150).allow("", null),
-      status: Joi.string().valid(...USER_STATUS).default("active"),
+    debug.log("createUser → incoming body", req.body);
 
-      assignments: Joi.array()
-        .items(
-          Joi.object({
-            facility_id: Joi.string().uuid().allow(null),
-            organization_id: Joi.string().uuid().allow(null),
-            role_id: Joi.string().uuid().required(),
-          }).xor("facility_id", "organization_id")
-        )
-        .default([]),
-    });
+    const { value, errors } = validate(
+      buildUserSchema("create", req.user?.roleNames?.[0]),
+      req.body
+    );
 
-    if (scope === "superadmin") {
-      schema = schema.append({
-        organization_id: Joi.string().uuid().optional(),
-      });
+    if (errors) {
+      await t.rollback();
+      return error(res, "Validation failed", errors, 400);
+    }
+
+    /* ========================================================
+       🧭 ROLE-BASED SCOPE (LIKE DEPARTMENT)
+    ======================================================== */
+    let orgId = null;
+    let facilityId = null;
+
+    if (isSuperAdmin(req.user)) {
+      orgId = value.organization_id;
+      facilityId = value.facility_id || null;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = value.facility_id || null;
+
     } else {
-      schema = schema.append({
-        organization_id: Joi.any().strip(),
-      });
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
     }
 
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-
-    if (validationError) {
-      console.error("❌ [CREATE USER] VALIDATION ERROR:", validationError.details);
+    if (!orgId) {
       await t.rollback();
-      return error(res, validationError.details[0].message, {}, 400);
+      return error(res, "Missing organization assignment", null, 400);
     }
 
-    console.log("🧪 [CREATE USER] VALIDATED PAYLOAD ↓↓↓");
-    console.log(JSON.stringify(value, null, 2));
-
-    if (!value.assignments.length) {
-      await t.rollback();
-      return error(res, "❌ User must have at least one role", {}, 400);
-    }
-
-    /* ---------------- SCOPE ENFORCEMENT ---------------- */
-    if (scope === "facility") {
-      console.log("🏥 [CREATE USER] FACILITY SCOPE FORCED:", facility_id);
-
-      const fac = await Facility.findByPk(facility_id, { transaction: t });
-      if (!fac) throw new Error("Facility not found");
-
-      value.organization_id = fac.organization_id;
-      value.assignments = value.assignments.map(a => ({
-        ...a,
-        facility_id,
-        organization_id: null,
-      }));
-    }
-
-    if (scope === "organization") {
-      console.log("🏢 [CREATE USER] ORG SCOPE FORCED:", organization_id);
-
-      value.organization_id = organization_id;
-      value.assignments = value.assignments.map(a => ({
-        ...a,
-        organization_id,
-        facility_id: null,
-      }));
-    }
-
-    console.log("🧪 [CREATE USER] FINAL ASSIGNMENTS ↓↓↓");
-    console.log(JSON.stringify(value.assignments, null, 2));
-
-    /* ---------------- CREATE USER ---------------- */
+    /* ================= PASSWORD ================= */
     const password_hash = await bcrypt.hash(value.password, 10);
     delete value.password;
 
+    /* ================= CREATE USER ================= */
     const user = await User.create(
       {
-        ...value,
+        username: value.username,
+        email: value.email,
         password_hash,
-        created_by_id: req.user.id,
+        first_name: value.first_name,
+        last_name: value.last_name,
+        status: value.status,
+        organization_id: orgId,
+        created_by_id: req.user?.id || null,
       },
       { transaction: t }
     );
 
-    console.log("✅ [CREATE USER] USER ID:", user.id);
-
-    for (const a of value.assignments) {
-      console.log("➡️ [CREATE USERFACILITY]", {
+    /* ================= CREATE ROLE LINK ================= */
+    await UserFacility.create(
+      {
         user_id: user.id,
-        organization_id: a.organization_id || null,
-        facility_id: a.facility_id || null,
-        role_id: a.role_id,
-      });
-
-      await UserFacility.create(
-        {
-          user_id: user.id,
-          organization_id: a.organization_id || null,
-          facility_id: a.facility_id || null,
-          role_id: a.role_id,
-          created_by_id: req.user.id,
-        },
-        { transaction: t }
-      );
-    }
+        organization_id: orgId,
+        facility_id: facilityId,
+        role_id: value.role_id,
+        created_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
     await t.commit();
 
-    const snapshot = await UserFacility.findAll({
-      where: { user_id: user.id },
-      raw: true,
+    const full = await User.findOne({
+      where: { id: user.id },
+      include: USER_INCLUDES,
     });
 
-    console.log("🧪 [CREATE USER] FINAL USERFACILITY SNAPSHOT ↓↓↓");
-    console.log(snapshot);
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "create",
+      entityId: user.id,
+      entity: full,
+    });
 
-    return success(res, "✅ User created", user);
+    return success(res, "✅ User created", full);
+
   } catch (err) {
-    console.error("💥 [CREATE USER ERROR]", err);
     await t.rollback();
-    return error(res, "❌ Failed to create user", err, 500);
+    debug.error("createUser → FAILED", err);
+    return error(res, "❌ Failed to create user", err);
   }
 };
 
-
 /* ============================================================
-   📌 UPDATE USER (FULL TRACE + ORG ADMIN FIX)
+   📌 UPDATE USER — FINAL (DEPARTMENT STYLE)
 ============================================================ */
 export const updateUser = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
-    console.log("🧪 [UPDATE USER] RAW BODY ↓↓↓");
-    console.log(JSON.stringify(req.body, null, 2));
-    console.log("🧪 [UPDATE USER] PARAM ID:", req.params.id);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
 
-    const { scope, organization_id } = resolveScope(req);
-    console.log("🧪 [UPDATE USER] RESOLVED SCOPE:", { scope, organization_id });
+    debug.log("updateUser → incoming body", req.body);
 
-    let schema = Joi.object({
-      username: Joi.string().optional(),
-      email: Joi.string().email().optional(),
-      password: Joi.string().min(6).allow("", null).optional(),
-      first_name: Joi.string().allow("", null).optional(),
-      last_name: Joi.string().allow("", null).optional(),
-      status: Joi.string().valid(...USER_STATUS).optional(),
+    const { value, errors } = validate(
+      buildUserSchema("update", req.user?.roleNames?.[0]),
+      req.body
+    );
 
-      assignments: Joi.array()
-        .items(
-          Joi.object({
-            facility_id: Joi.string().uuid().allow(null),
-            organization_id: Joi.string().uuid().allow(null),
-            role_id: Joi.string().uuid().required(),
-          }).xor("facility_id", "organization_id")
-        )
-        .optional(),
+    if (errors) {
+      await t.rollback();
+      return error(res, "Validation failed", errors, 400);
+    }
+
+    const record = await User.findByPk(req.params.id, {
+      transaction: t,
     });
 
-    if (scope === "superadmin") {
-      schema = schema.append({
-        organization_id: Joi.string().uuid().optional(),
-      });
+    if (!record) {
+      await t.rollback();
+      return error(res, "User not found", null, 404);
+    }
+
+    /* ========================================================
+       🧭 ROLE-BASED SCOPE
+    ======================================================== */
+    let orgId = null;
+    let facilityId = null;
+
+    if (isSuperAdmin(req.user)) {
+      orgId = value.organization_id;
+      facilityId = value.facility_id || null;
+
+    } else if (isOrgLevelUser(req.user)) {
+      orgId = req.user.organization_id;
+      facilityId = value.facility_id || null;
+
     } else {
-      schema = schema.append({
-        organization_id: Joi.any().strip(),
-      });
+      orgId = req.user.organization_id;
+      facilityId = req.user.facility_id ?? null;
     }
 
-    const { error: validationError, value } = schema.validate(req.body, {
-      stripUnknown: true,
-    });
-
-    if (validationError) {
-      console.error("❌ [UPDATE USER] VALIDATION ERROR:", validationError.details);
-      await t.rollback();
-      return error(res, validationError.details[0].message, {}, 400);
-    }
-
-    console.log("🧪 [UPDATE USER] VALIDATED VALUE ↓↓↓");
-    console.log(JSON.stringify(value, null, 2));
-
-    const user = await User.findByPk(req.params.id, { transaction: t });
-    if (!user) {
-      await t.rollback();
-      return error(res, "❌ User not found", {}, 404);
-    }
-
-    /* ---------------- FORCE ORG SCOPE FOR ORG ADMINS ---------------- */
-    if (scope === "organization" && value.assignments) {
-      console.log("🔒 [UPDATE USER] FORCING ORG INTO ASSIGNMENTS:", organization_id);
-
-      value.assignments = value.assignments.map(a => ({
-        ...a,
-        organization_id: a.facility_id ? null : organization_id,
-      }));
-    }
-
-    console.log("🧪 [UPDATE USER] FINAL ASSIGNMENTS ↓↓↓");
-    console.log(JSON.stringify(value.assignments, null, 2));
-
+    /* ================= PASSWORD ================= */
     if (value.password) {
       value.password_hash = await bcrypt.hash(value.password, 10);
       delete value.password;
     }
 
-    await user.update(
-      { ...value, updated_by_id: req.user.id },
+    /* ================= UPDATE USER ================= */
+    await record.update(
+      {
+        ...value,
+        organization_id: orgId || record.organization_id,
+        updated_by_id: req.user?.id || null,
+      },
       { transaction: t }
     );
 
-    if (value.assignments) {
-      console.log("🧨 [UPDATE USER] CLEARING OLD USERFACILITY");
-      await UserFacility.destroy({
-        where: { user_id: user.id },
-        force: true,
-        transaction: t,
-      });
+    /* ================= UPDATE ROLE LINK ================= */
+    await UserFacility.destroy({
+      where: { user_id: record.id },
+      force: true,
+      transaction: t,
+    });
 
-      for (const a of value.assignments) {
-        console.log("➡️ [RECREATE USERFACILITY]", {
-          user_id: user.id,
-          organization_id: a.organization_id || null,
-          facility_id: a.facility_id || null,
-          role_id: a.role_id,
-        });
-
-        await UserFacility.create(
-          {
-            user_id: user.id,
-            organization_id: a.organization_id || null,
-            facility_id: a.facility_id || null,
-            role_id: a.role_id,
-            created_by_id: req.user.id,
-          },
-          { transaction: t }
-        );
-      }
-    }
+    await UserFacility.create(
+      {
+        user_id: record.id,
+        organization_id: orgId,
+        facility_id: facilityId,
+        role_id: value.role_id,
+        created_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
     await t.commit();
 
-    const snapshot = await UserFacility.findAll({
-      where: { user_id: user.id },
-      raw: true,
+    const full = await User.findOne({
+      where: { id: record.id },
+      include: USER_INCLUDES,
     });
 
-    console.log("🧪 [UPDATE USER] FINAL USERFACILITY SNAPSHOT ↓↓↓");
-    console.log(snapshot);
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "update",
+      entityId: record.id,
+      entity: full,
+    });
 
-    return success(res, "✅ User updated", user);
+    return success(res, "✅ User updated", full);
+
   } catch (err) {
-    console.error("💥 [UPDATE USER ERROR]", err);
     await t.rollback();
-    return error(res, "❌ Failed to update user", err, 500);
+    debug.error("updateUser → FAILED", err);
+    return error(res, "❌ Failed to update user", err);
   }
 };
 
 
 /* ============================================================
-   📌 GET ALL USERS (Advanced filter + pagination + scoping)
-   ============================================================ */
+   📌 GET ALL USERS — FINAL MASTER (ABSOLUTE SAFE)
+============================================================ */
 export const getAllUsers = async (req, res) => {
   try {
-    console.log("🧪 [getAllUsers] RAW QUERY:", JSON.stringify(req.query, null, 2));
-
-    for (const key of Object.keys(req.query)) {
-      if (key.includes("$") || key.includes(".")) {
-        console.warn("🛡️ [getAllUsers] STRIPPED UNSAFE QUERY KEY:", key);
-        delete req.query[key];
-      }
-    }
-
-    console.log("🧼 [getAllUsers] SANITIZED QUERY:", JSON.stringify(req.query, null, 2));
-
-    const { scope, facility_id, organization_id } = resolveScope(req);
-    console.log("🧪 [getAllUsers] RESOLVED SCOPE:", {
-      scope,
-      facility_id,
-      organization_id,
+    /* ========================================================
+       🔐 AUTHORIZATION
+    ======================================================== */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "read",
+      res,
     });
+    if (!allowed) return;
 
-    const role = (req.user?.roleNames?.[0] || "staff")
-      .toLowerCase()
-      .replace(/\s+/g, "");
-
-    console.log("🧪 [getAllUsers] NORMALIZED ROLE:", role);
+    /* ========================================================
+       👤 ROLE + FIELD VISIBILITY
+    ======================================================== */
+    const role =
+      (req.user?.roleNames?.[0] || "staff")
+        .toLowerCase()
+        .replace(/\s+/g, "");
 
     const visibleFields =
       FIELD_VISIBILITY_USER[role] || FIELD_VISIBILITY_USER.staff;
 
+    /* ========================================================
+       ⚙️ BASE QUERY OPTIONS
+    ======================================================== */
     const options = buildQueryOptions(req, "username", "ASC", visibleFields);
-    options.where = options.where || {};
 
+    /* ========================================================
+       🚫 REMOVE INVALID / RELATION / VIRTUAL / SENSITIVE
+    ======================================================== */
+    const FORBIDDEN_FIELDS = [
+      "password",
+      "password_hash",
+      "full_name",
+      "organization",   // 🔥 FIX
+      "facility",
+      "facilities",
+      "roles",
+      "permissions",
+    ];
+
+    if (options.attributes) {
+      options.attributes = options.attributes.filter(
+        (f) => !FORBIDDEN_FIELDS.includes(f)
+      );
+    }
+
+    /* ========================================================
+       🚫 FIX INVALID SORT
+    ======================================================== */
+    if (options.order?.length) {
+      options.order = options.order.map(([field, dir]) => {
+        if (FORBIDDEN_FIELDS.includes(field)) {
+          return ["username", "ASC"]; // safe fallback
+        }
+        return [field, dir];
+      });
+    }
+
+    /* ========================================================
+       🧹 REMOVE UI FILTERS
+    ======================================================== */
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
+
+    /* ========================================================
+       🧱 WHERE ROOT
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      options.where[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🔐 TENANT
+    ======================================================== */
+    options.where = applyTenantWhere(options.where, req);
+
+    /* ========================================================
+       🔍 GLOBAL SEARCH (SAFE ONLY)
+    ======================================================== */
     if (options.search) {
-      console.log("🔍 [getAllUsers] SEARCH TERM:", options.search);
-      options.where = {
-        [Op.and]: [
-          options.where,
-          {
-            [Op.or]: [
-              { username: { [Op.iLike]: `%${options.search}%` } },
-              { email: { [Op.iLike]: `%${options.search}%` } },
-              { first_name: { [Op.iLike]: `%${options.search}%` } },
-              { last_name: { [Op.iLike]: `%${options.search}%` } },
-            ],
-          },
+      options.where[Op.and].push({
+        [Op.or]: [
+          { username: { [Op.iLike]: `%${options.search}%` } },
+          { email: { [Op.iLike]: `%${options.search}%` } },
+          { first_name: { [Op.iLike]: `%${options.search}%` } },
+          { last_name: { [Op.iLike]: `%${options.search}%` } },
         ],
-      };
+      });
     }
 
-    const facilityInclude = {
-      model: Facility,
-      as: "facilities",
-      attributes: ["id", "name", "code", "organization_id"],
-      through: { attributes: [] },
-      required: false,
-    };
-
-    const roleInclude = {
-      model: Role,
-      as: "roles",
-      attributes: ["id", "name", "requires_facility"],
-      through: { attributes: [] },
-      required: false,
-    };
-
-    if (scope === "facility") {
-      facilityInclude.where = { id: facility_id };
-      facilityInclude.required = true;
+    /* ========================================================
+       📌 STATUS FILTER
+    ======================================================== */
+    if (req.query.status && USER_STATUS.includes(req.query.status)) {
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
     }
 
-    if (scope === "organization") {
-      options.where.organization_id = organization_id;
-      facilityInclude.where = { organization_id };
-      facilityInclude.required = false;
+    /* ========================================================
+       📌 ORGANIZATION FILTER (REAL COLUMN ONLY)
+    ======================================================== */
+    if (isSuperAdmin(req.user) && req.query.organization_id) {
+      options.where[Op.and].push({
+        organization_id: req.query.organization_id,
+      });
     }
 
-    console.log("🧪 [getAllUsers] FINAL WHERE:", options.where);
+    /* ========================================================
+       📌 FACILITY FILTER (RELATION SAFE)
+    ======================================================== */
+    if (req.query.facility_id) {
+      options.where[Op.and].push({
+        "$facilities.id$": req.query.facility_id,
+      });
+    }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const { count, rows } = await User.findAndCountAll({
       where: options.where,
       attributes: options.attributes
         ? [...new Set(["id", ...options.attributes])]
         : undefined,
-      include: [
-        facilityInclude,
-        roleInclude,
-        { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-        { model: User, as: "createdByUser", attributes: ["id", "first_name", "last_name", "username"] },
-        { model: User, as: "updatedByUser", attributes: ["id", "first_name", "last_name", "username"] },
-        { model: User, as: "deletedByUser", attributes: ["id", "first_name", "last_name", "username"] },
-      ],
+      include: USER_INCLUDES,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
+      distinct: true,
+      subQuery: false,
     });
 
-    console.log("🧪 [getAllUsers] RESULT COUNT:", count);
+    /* ========================================================
+       📊 SUMMARY
+    ======================================================== */
+    const summary = {
+      total: count,
+      active: rows.filter((r) => r.status === "active").length,
+      inactive: rows.filter((r) => r.status === "inactive").length,
+      suspended: rows.filter((r) => r.status === "suspended").length,
+    };
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "list",
-      details: { returned: count, query: req.query },
+      details: {
+        query: req.query,
+        returned: count,
+        dateRange: dateRange || null,
+      },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Users loaded", {
       records: rows,
+      summary,
       pagination: {
         total: count,
         page: options.pagination.page,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
     });
+
   } catch (err) {
-    console.error("💥 [getAllUsers ERROR]", err);
-    return error(res, "❌ Failed to load users", err, 500);
+    debug.error("getAllUsers → FAILED", err);
+    return error(res, "❌ Failed to load users", err);
   }
 };
-
-
 /* ============================================================
-   📌 GET ALL USERS (Lite, with ?q= support)
-   ============================================================ */
+   📌 GET ALL USERS LITE — MASTER (FINAL)
+============================================================ */
 export const getAllUsersLite = async (req, res) => {
   try {
-    /* ------------------------------------------------------------
-       🧪 DEBUG + 🛡️ FINAL QUERY GUARD
-    ------------------------------------------------------------ */
-    console.log("🧪 [getAllUsersLite] RAW req.query:", JSON.stringify(req.query, null, 2));
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
 
-    for (const key of Object.keys(req.query)) {
-      if (key.includes("$") || key.includes(".")) {
-        console.warn("🛡️ [getAllUsersLite] Stripped unsafe query key:", key);
-        delete req.query[key];
+    const { q } = req.query;
+
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    /* ================= BASE WHERE ================= */
+    const where = {
+      status: "active",
+      [Op.and]: [],
+    };
+
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    if (!isSuperAdmin(req.user)) {
+      if (!isOrgLevelUser(req.user)) {
+        if (facilityId) {
+          where[Op.and].push({
+            [Op.or]: [
+              { "$facilities.id$": facilityId },
+              { "$facilities.id$": null },
+            ],
+          });
+        }
+      }
+    } else {
+      if (facilityId) {
+        where[Op.and].push({
+          "$facilities.id$": facilityId,
+        });
       }
     }
 
-    console.log("🧼 [getAllUsersLite] SANITIZED req.query:", JSON.stringify(req.query, null, 2));
-
-    const { scope, facility_id, organization_id } = resolveScope(req);
-    const { q } = req.query;
-
-    const baseAttrs = ["id", "username", "email", "first_name", "last_name"];
-
-    let where = { status: "active" };
-
+    /* ================= SEARCH ================= */
     if (q) {
-      where[Op.or] = [
-        { username: { [Op.iLike]: `%${q}%` } },
-        { email: { [Op.iLike]: `%${q}%` } },
-        { first_name: { [Op.iLike]: `%${q}%` } },
-        { last_name: { [Op.iLike]: `%${q}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { username: { [Op.iLike]: `%${q}%` } },
+          { email: { [Op.iLike]: `%${q}%` } },
+          { first_name: { [Op.iLike]: `%${q}%` } },
+          { last_name: { [Op.iLike]: `%${q}%` } },
+        ],
+      });
     }
 
-    let users;
+    /* ================= QUERY ================= */
+    const rows = await User.findAll({
+      where,
+      attributes: ["id", "username", "email", "first_name", "last_name"],
+      include: [
+        {
+          model: Facility,
+          as: "facilities",
+          attributes: ["id", "organization_id"],
+          through: { attributes: [] },
+          required: false,
+        },
+      ],
+      order: [["username", "ASC"]],
+      limit: 20,
+      subQuery: false,
+      distinct: true,
+    });
 
-    if (scope === "superadmin") {
-      users = await User.findAll({
-        where,
-        attributes: baseAttrs,
-        include: [
-          {
-            model: Facility,
-            as: "facilities",
-            attributes: ["id", "organization_id"],
-            required: false,
-            through: { attributes: [] },
-          },
-          { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } },
-          { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-        ],
-        order: [["username", "ASC"]],
-        limit: 20,
-      });
-
-    } else if (scope === "organization") {
-      users = await User.findAll({
-        where: { ...where, organization_id },
-        attributes: baseAttrs,
-        include: [
-          {
-            model: Facility,
-            as: "facilities",
-            attributes: ["id", "organization_id"],
-            where: { organization_id },
-            required: false,
-            through: { attributes: [] },
-          },
-          { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } },
-          { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-        ],
-        order: [["username", "ASC"]],
-        limit: 20,
-      });
-
-    } else if (scope === "facility") {
-      users = await User.findAll({
-        where,
-        attributes: baseAttrs,
-        include: [
-          {
-            model: Facility,
-            as: "facilities",
-            where: { id: facility_id },
-            required: true,
-            through: { attributes: [] },
-          },
-          { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } },
-          { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-        ],
-        order: [["username", "ASC"]],
-        limit: 20,
-      });
-
-    } else {
-      return error(res, "❌ Not authorized to load users (lite)", {}, 403);
-    }
-
-    const result = users.map(u => ({
+    /* ================= FORMAT ================= */
+    const records = rows.map((u) => ({
       id: u.id,
       username: u.username,
       email: u.email || "",
-      full_name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim(),
+      full_name: [u.first_name, u.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim(),
     }));
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "list_lite",
-      details: { count: result.length, query: q || null },
+      details: {
+        count: records.length,
+        q: q || null,
+      },
     });
 
-    return success(res, "✅ Users loaded (lite)", { records: result });
+    /* ================= RESPONSE ================= */
+    return success(res, "✅ Users loaded (lite)", { records });
+
   } catch (err) {
-    console.error("❌ getAllUsersLite error:", err);
-    return error(res, "❌ Failed to load users (lite)", err, 500);
+    debug.error("getAllUsersLite → FAILED", err);
+    return error(res, "❌ Failed to load users (lite)", err);
   }
 };
 
-
 /* ============================================================
-   📌 GET USER BY ID
-   ============================================================ */
+   📌 GET USER BY ID — MASTER (FINAL)
+============================================================ */
 export const getUserById = async (req, res) => {
   try {
-    const { scope, facility_id, organization_id } = resolveScope(req);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "read",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
-    // 🔑 Normalize role name → lowercase + no spaces
-    const role = (req.user?.roleNames?.[0] || "staff")
-      .toLowerCase()
-      .replace(/\s+/g, "");
+    const role =
+      (req.user?.roleNames?.[0] || "staff")
+        .toLowerCase()
+        .replace(/\s+/g, "");
+
     const visibleFields =
       FIELD_VISIBILITY_USER[role] || FIELD_VISIBILITY_USER.staff;
 
-    const user = await User.findByPk(id, {
-      attributes: visibleFields,
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "name", "code", "organization_id"], through: { attributes: [] } },
-        { model: Role, as: "roles", attributes: ["id", "name", "requires_facility"], through: { attributes: [] } },
-        { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-        { model: User, as: "createdByUser", attributes: ["id", "username", "first_name", "last_name"] },
-        { model: User, as: "updatedByUser", attributes: ["id", "username", "first_name", "last_name"] },
-        { model: User, as: "deletedByUser", attributes: ["id", "username", "first_name", "last_name"] },
-      ],
+    /* ================= BASE WHERE ================= */
+    const where = {
+      [Op.and]: [{ id }],
+    };
+
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
     });
 
-    if (!user) return error(res, "❌ User not found", {}, 404);
+    if (!isSuperAdmin(req.user)) {
+      if (orgId) {
+        where[Op.and].push({ organization_id: orgId });
+      }
 
-    // Scope enforcement
-    if (scope === "facility") {
-      const inFacility = user.facilities.some((f) => f.id === facility_id);
-      if (!inFacility) return error(res, "❌ Not authorized", {}, 403);
-    } else if (scope === "organization") {
-      const inOrg =
-        user.organization_id === organization_id ||
-        user.facilities.some((f) => f.organization_id === organization_id);
-      if (!inOrg) return error(res, "❌ Not authorized", {}, 403);
+      if (!isOrgLevelUser(req.user) && facilityId) {
+        where[Op.and].push({ "$facilities.id$": facilityId });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          "$facilities.id$": req.query.facility_id,
+        });
+      }
     }
 
-    await auditService.logAction({
-      user: req.user,
-      module: "user",
-      action: "view",
-      entityId: id,
-      entity: user,
+    /* ================= QUERY ================= */
+    const record = await User.findOne({
+      where,
+      attributes: visibleFields,
+      include: USER_INCLUDES,
     });
 
-    return success(res, "✅ User loaded", user);
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
+    }
+
+    /* ================= AUDIT ================= */
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "view",
+      entityId: id,
+      entity: record,
+    });
+
+    /* ================= RESPONSE ================= */
+    return success(res, "✅ User loaded", record);
+
   } catch (err) {
-    return error(res, "❌ Failed to load user", err, 500);
+    debug.error("getUserById → FAILED", err);
+    return error(res, "❌ Failed to load user", err);
   }
 };
 
 /* ============================================================
-   📌 TOGGLE USER STATUS
-   ============================================================ */
+   📌 TOGGLE USER STATUS — MASTER
+============================================================ */
 export const toggleUserStatus = async (req, res) => {
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "update",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
+
     if (req.user.id === id) {
-      return error(res, "❌ Cannot disable your own account", {}, 403);
+      return error(res, "❌ Cannot disable your own account", null, 403);
     }
 
-    const user = await User.findByPk(id, {
+    const record = await User.findByPk(id, {
       paranoid: false,
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "organization_id"], required: false },
-        { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] }, required: false },
-      ],
+      include: USER_INCLUDES,
     });
 
-    if (!user) return error(res, `❌ User not found for ID ${id}`, {}, 404);
-
-    // Protect critical accounts
-    if (user.is_system) return error(res, "❌ Cannot change status of system accounts", {}, 403);
-    if (user.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Cannot change status of superadmin accounts", {}, 403);
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
     }
 
-    // Scope enforcement
-    const { scope, facility_id, organization_id } = resolveScope(req);
-    if (scope === "facility") {
-      const inFacility = user.facilities.some((f) => f.id === facility_id);
-      if (!inFacility) return error(res, "❌ Not authorized", {}, 403);
-    } else if (scope === "organization") {
-      const inOrg =
-        user.organization_id === organization_id ||
-        user.facilities.some((f) => f.organization_id === organization_id);
-      if (!inOrg) return error(res, "❌ Not authorized", {}, 403);
+    if (record.is_system) {
+      return error(res, "❌ Cannot change system accounts", null, 403);
     }
 
-    // Toggle status
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      return error(res, "❌ Cannot change superadmin accounts", null, 403);
+    }
+
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    if (!isSuperAdmin(req.user)) {
+      if (orgId && record.organization_id !== orgId) {
+        return error(res, "❌ Not authorized", null, 403);
+      }
+
+      if (!isOrgLevelUser(req.user)) {
+        const inFacility = record.facilities?.some(
+          (f) => f.id === facilityId
+        );
+        if (!inFacility) {
+          return error(res, "❌ Not authorized", null, 403);
+        }
+      }
+    }
+
     const [ACTIVE, INACTIVE] = USER_STATUS;
-    const newStatus = user.status === ACTIVE ? INACTIVE : ACTIVE;
-    const oldStatus = user.status;
+    const newStatus = record.status === ACTIVE ? INACTIVE : ACTIVE;
+    const oldStatus = record.status;
 
-    await user.update(
-      { status: newStatus, updated_by_id: req.user.id },
-      { returning: true }
-    );
+    await record.update({
+      status: newStatus,
+      updated_by_id: req.user?.id || null,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "toggle_status",
       entityId: id,
       details: { from: oldStatus, to: newStatus },
     });
 
-    return success(res, `✅ User ${newStatus}`, { id: user.id, status: newStatus });
+    return success(res, `✅ User ${newStatus}`, {
+      id: record.id,
+      status: newStatus,
+    });
   } catch (err) {
-    return error(res, "❌ Failed to toggle status", err, 500);
+    debug.error("toggleUserStatus → FAILED", err);
+    return error(res, "❌ Failed to toggle status", err);
   }
 };
 
 
 /* ============================================================
-   📌 DELETE USER (Soft delete)
-   ============================================================ */
+   📌 DELETE USER — MASTER
+============================================================ */
 export const deleteUser = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { scope, facility_id, organization_id } = resolveScope(req);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
     if (req.user.id === id) {
       await t.rollback();
-      return error(res, "❌ Cannot delete your own account", {}, 403);
+      return error(res, "❌ Cannot delete your own account", null, 403);
     }
 
-    const user = await User.findByPk(id, {
+    const record = await User.findByPk(id, {
       paranoid: false,
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "organization_id"], required: false },
-        { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] }, required: false },
-      ],
+      include: USER_INCLUDES,
+      transaction: t,
     });
-    if (!user) {
+
+    if (!record) {
       await t.rollback();
-      return error(res, `❌ User not found for ID ${id}`, {}, 404);
+      return error(res, "❌ User not found", null, 404);
     }
 
-    if (user.is_system) {
+    if (record.is_system) {
       await t.rollback();
-      return error(res, "❌ Cannot delete system accounts", {}, 403);
-    }
-    if (user.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
-      await t.rollback();
-      return error(res, "❌ Cannot delete superadmin accounts", {}, 403);
+      return error(res, "❌ Cannot delete system accounts", null, 403);
     }
 
-    // Scope checks
-    if (scope === "facility") {
-      const inFacility = user.facilities.some((f) => f.id === facility_id);
-      if (!inFacility) {
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      await t.rollback();
+      return error(res, "❌ Cannot delete superadmin accounts", null, 403);
+    }
+
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    if (!isSuperAdmin(req.user)) {
+      if (orgId && record.organization_id !== orgId) {
         await t.rollback();
-        return error(res, "❌ Not authorized to delete this user", {}, 403);
+        return error(res, "❌ Not authorized", null, 403);
       }
-    } else if (scope === "organization") {
-      const inOrg =
-        user.organization_id === organization_id ||
-        user.facilities.some((f) => f.organization_id === organization_id);
-      if (!inOrg) {
-        await t.rollback();
-        return error(res, "❌ Not authorized to delete this user", {}, 403);
+
+      if (!isOrgLevelUser(req.user)) {
+        const inFacility = record.facilities?.some(
+          (f) => f.id === facilityId
+        );
+        if (!inFacility) {
+          await t.rollback();
+          return error(res, "❌ Not authorized", null, 403);
+        }
       }
     }
 
-    await user.update({ deleted_by_id: req.user?.id || null }, { transaction: t });
-    await user.destroy({ transaction: t });
+    await record.update(
+      { deleted_by_id: req.user?.id || null },
+      { transaction: t }
+    );
+
+    await record.destroy({ transaction: t });
 
     await t.commit();
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "delete",
       entityId: id,
-      entity: user,
+      entity: record,
     });
 
     return success(res, "✅ User deleted", { id });
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed to delete user", err, 500);
+    debug.error("deleteUser → FAILED", err);
+    return error(res, "❌ Failed to delete user", err);
   }
 };
-
 /* ============================================================
-   📌 RESET PASSWORD TO DEFAULT (with PasswordHistory)
-   ============================================================ */
+   📌 RESET USER PASSWORD — MASTER
+============================================================ */
 export const resetUserPassword = async (req, res) => {
   try {
-    const { scope, facility_id, organization_id } = resolveScope(req);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "reset-password",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
-    const user = await User.findByPk(id, {
+    const record = await User.findByPk(id, {
       paranoid: false,
       attributes: ["id", "organization_id"],
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "organization_id"], required: false },
-      ],
+      include: USER_INCLUDES,
     });
-    if (!user) return error(res, `❌ User not found for ID ${id}`, {}, 404);
 
-    // Scope enforcement
-    if (scope === "facility") {
-      if (!user.facilities.some((f) => f.id === facility_id)) {
-        return error(res, "❌ Not authorized", {}, 403);
-      }
-    } else if (scope === "organization") {
-      const inOrg = user.organization_id === organization_id ||
-                    user.facilities.some((f) => f.organization_id === organization_id);
-      if (!inOrg) return error(res, "❌ Not authorized", {}, 403);
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
     }
 
-    const newPassword = `Temp-${crypto.randomBytes(4).toString("hex")}`;
-    const newHash = await bcrypt.hash(newPassword, 10);
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
 
-    await user.update({
+    if (!isSuperAdmin(req.user)) {
+      if (orgId && record.organization_id !== orgId) {
+        return error(res, "❌ Not authorized", null, 403);
+      }
+
+      if (!isOrgLevelUser(req.user)) {
+        const inFacility = record.facilities?.some(
+          (f) => f.id === facilityId
+        );
+        if (!inFacility) {
+          return error(res, "❌ Not authorized", null, 403);
+        }
+      }
+    }
+
+    /* ================= RESET ================= */
+    const tempPassword = `Temp-${crypto.randomBytes(4).toString("hex")}`;
+    const newHash = await bcrypt.hash(tempPassword, 10);
+
+    await record.update({
       password_hash: newHash,
       password_reset_token: null,
       password_reset_expiry: null,
@@ -797,100 +994,163 @@ export const resetUserPassword = async (req, res) => {
       updated_by_id: req.user?.id || null,
     });
 
-    await PasswordHistory.create({ user_id: user.id, password_hash: newHash });
+    await PasswordHistory.create({
+      user_id: record.id,
+      password_hash: newHash,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "reset_password",
       entityId: id,
       details: { tempPassword: true },
     });
 
-    return success(res, "✅ Password reset to temporary and account unlocked", { id: user.id, tempPassword: newPassword });
+    return success(res, "✅ Password reset", {
+      id: record.id,
+      tempPassword,
+    });
   } catch (err) {
-    return error(res, "❌ Failed to reset password", err, 500);
+    debug.error("resetUserPassword → FAILED", err);
+    return error(res, "❌ Failed to reset password", err);
   }
 };
 
+
 /* ============================================================
-   📌 ADMIN GENERATE RESET TOKEN
-   ============================================================ */
+   📌 ADMIN GENERATE RESET TOKEN — MASTER
+============================================================ */
 export const adminGenerateResetToken = async (req, res) => {
   try {
-    const { scope, facility_id, organization_id } = resolveScope(req);
-    const { user_id } = req.body;
-    if (!user_id) return error(res, "❌ User ID is required", {}, 400);
-
-    const user = await User.findByPk(user_id, {
-      paranoid: false,
-      attributes: ["id", "organization_id", "password_reset_token", "password_reset_expiry"],
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "organization_id"], required: false },
-      ],
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "generate-token",
+      res,
     });
-    if (!user) return error(res, `❌ User not found for ID ${user_id}`, {}, 404);
+    if (!allowed) return;
 
-    // Scope enforcement
-    if (scope === "facility") {
-      if (!user.facilities.some((f) => f.id === facility_id)) return error(res, "❌ Not authorized", {}, 403);
-    } else if (scope === "organization") {
-      const inOrg = user.organization_id === organization_id ||
-                    user.facilities.some((f) => f.organization_id === organization_id);
-      if (!inOrg) return error(res, "❌ Not authorized", {}, 403);
+    const { user_id } = req.body;
+    if (!user_id) {
+      return error(res, "❌ User ID required", null, 400);
     }
 
-    const resetSecret = process.env.JWT_RESET_SECRET || process.env.JWT_SECRET;
-    if (!resetSecret) return error(res, "❌ Reset token secret not configured", {}, 500);
+    const record = await User.findByPk(user_id, {
+      paranoid: false,
+      attributes: [
+        "id",
+        "organization_id",
+        "password_reset_token",
+        "password_reset_expiry",
+      ],
+      include: USER_INCLUDES,
+    });
 
-    if (user.password_reset_token && user.password_reset_expiry > new Date()) {
-      return error(res, "❌ Reset token already active. Wait until expiry or reset manually.", {}, 429);
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
     }
 
-    const payload = { id: user.id, type: "password_reset" };
-    const resetToken = jwt.sign(payload, resetSecret, { expiresIn: "30m" });
+    /* ================= TENANT ================= */
+    const { orgId, facilityId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
 
-    await user.update({
-      password_reset_token: resetToken,
-      password_reset_expiry: new Date(Date.now() + 30 * 60 * 1000),
+    if (!isSuperAdmin(req.user)) {
+      if (orgId && record.organization_id !== orgId) {
+        return error(res, "❌ Not authorized", null, 403);
+      }
+
+      if (!isOrgLevelUser(req.user)) {
+        const inFacility = record.facilities?.some(
+          (f) => f.id === facilityId
+        );
+        if (!inFacility) {
+          return error(res, "❌ Not authorized", null, 403);
+        }
+      }
+    }
+
+    const resetSecret =
+      process.env.JWT_RESET_SECRET || process.env.JWT_SECRET;
+
+    if (!resetSecret) {
+      return error(res, "❌ Reset secret not configured", null, 500);
+    }
+
+    if (
+      record.password_reset_token &&
+      record.password_reset_expiry > new Date()
+    ) {
+      return error(
+        res,
+        "❌ Reset token already active",
+        null,
+        429
+      );
+    }
+
+    const token = jwt.sign(
+      { id: record.id, type: "password_reset" },
+      resetSecret,
+      { expiresIn: "30m" }
+    );
+
+    const expiry = new Date(Date.now() + 30 * 60 * 1000);
+
+    await record.update({
+      password_reset_token: token,
+      password_reset_expiry: expiry,
       updated_by_id: req.user?.id || null,
     });
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "generate_reset_token",
-      entityId: user.id,
-      details: { expiry: user.password_reset_expiry },
+      entityId: record.id,
+      details: { expiry },
     });
 
-    return success(res, "✅ Reset token generated", { id: user.id, token: resetToken, exp: user.password_reset_expiry });
+    return success(res, "✅ Reset token generated", {
+      id: record.id,
+      token,
+      exp: expiry,
+    });
   } catch (err) {
-    return error(res, "❌ Failed to generate reset token", err, 500);
+    debug.error("adminGenerateResetToken → FAILED", err);
+    return error(res, "❌ Failed to generate reset token", err);
   }
 };
 
+
 /* ============================================================
-   📌 MANUAL PASSWORD RESET VIA TOKEN (with PasswordHistory)
-   ============================================================ */
+   📌 MANUAL RESET PASSWORD — MASTER
+============================================================ */
 export const manualResetPassword = async (req, res) => {
   try {
     const { email, token, newPassword } = req.body;
+
     if (!email || !token || !newPassword) {
-      return error(res, "❌ All fields are required", {}, 400);
+      return error(res, "❌ All fields required", null, 400);
     }
 
-    const resetSecret = process.env.JWT_RESET_SECRET || process.env.JWT_SECRET;
-    if (!resetSecret) return error(res, "❌ Reset token secret not configured", {}, 500);
+    const resetSecret =
+      process.env.JWT_RESET_SECRET || process.env.JWT_SECRET;
+
+    if (!resetSecret) {
+      return error(res, "❌ Reset secret not configured", null, 500);
+    }
 
     let decoded;
     try {
       decoded = jwt.verify(token, resetSecret);
     } catch {
-      return error(res, "❌ Invalid or expired reset token", {}, 401);
+      return error(res, "❌ Invalid or expired token", null, 401);
     }
 
-    const user = await User.findOne({
+    const record = await User.findOne({
       where: {
         email,
         id: decoded.id,
@@ -899,21 +1159,32 @@ export const manualResetPassword = async (req, res) => {
       },
       paranoid: false,
     });
-    if (!user) return error(res, "❌ Invalid or expired reset request", {}, 401);
 
-    const lastHashes = await PasswordHistory.findAll({
-      where: { user_id: user.id },
+    if (!record) {
+      return error(res, "❌ Invalid reset request", null, 401);
+    }
+
+    /* ================= PASSWORD HISTORY ================= */
+    const last = await PasswordHistory.findAll({
+      where: { user_id: record.id },
       order: [["created_at", "DESC"]],
       limit: 5,
     });
-    for (const ph of lastHashes) {
+
+    for (const ph of last) {
       if (await bcrypt.compare(newPassword, ph.password_hash)) {
-        return error(res, "❌ Cannot reuse one of your last 5 passwords", {}, 400);
+        return error(
+          res,
+          "❌ Cannot reuse last 5 passwords",
+          null,
+          400
+        );
       }
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    await user.update({
+
+    await record.update({
       password_hash: newHash,
       password_reset_token: null,
       password_reset_expiry: null,
@@ -923,94 +1194,139 @@ export const manualResetPassword = async (req, res) => {
       updated_by_id: req.user?.id || null,
     });
 
-    await PasswordHistory.create({ user_id: user.id, password_hash: newHash });
+    await PasswordHistory.create({
+      user_id: record.id,
+      password_hash: newHash,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "manual_reset_password",
-      entityId: user.id,
+      entityId: record.id,
       details: { email },
     });
 
-    return success(res, "✅ Password reset successful", { id: user.id });
+    return success(res, "✅ Password reset successful", {
+      id: record.id,
+    });
   } catch (err) {
-    return error(res, "❌ Failed to reset password", err, 500);
+    debug.error("manualResetPassword → FAILED", err);
+    return error(res, "❌ Failed to reset password", err);
   }
 };
 
 
 /* ============================================================
-   📌 TOGGLE USER ROLE STATUS (via UserFacility)
-   ============================================================ */
+   📌 TOGGLE USER ROLE STATUS — MASTER
+============================================================ */
 export const toggleUserRoleStatus = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { scope, facility_id, organization_id } = resolveScope(req);
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "toggle-role",
+      res,
+    });
+    if (!allowed) return;
+
     const { userId, facilityId, roleId } = req.params;
 
-    const user = await User.findByPk(userId, {
-      include: [
-        { model: Facility, as: "facilities", attributes: ["id", "organization_id"] },
-        { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } },
-      ],
+    const record = await User.findByPk(userId, {
+      include: USER_INCLUDES,
       transaction: t,
     });
-    if (!user) return error(res, "❌ User not found", {}, 404);
+
+    if (!record) {
+      await t.rollback();
+      return error(res, "❌ User not found", null, 404);
+    }
 
     const role = await Role.findByPk(roleId);
-    if (!role) return error(res, "❌ Role not found", {}, 404);
+    if (!role) {
+      await t.rollback();
+      return error(res, "❌ Role not found", null, 404);
+    }
 
-    if (user.is_system) return error(res, "❌ Cannot modify system accounts", {}, 403);
-    if (user.roles?.some(r => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Cannot modify roles for superadmin accounts", {}, 403);
+    if (record.is_system) {
+      await t.rollback();
+      return error(res, "❌ Cannot modify system accounts", null, 403);
+    }
+
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      await t.rollback();
+      return error(res, "❌ Cannot modify superadmin roles", null, 403);
     }
 
     if (role.requires_facility && !facilityId) {
-      return error(res, "❌ This role requires a facility assignment", {}, 400);
-    }
-    if (!role.requires_facility && facilityId) {
-      return error(res, "❌ This role cannot be tied to a facility", {}, 400);
+      await t.rollback();
+      return error(res, "❌ Role requires facility", null, 400);
     }
 
-    if (scope === "facility" && facilityId !== facility_id) {
-      return error(res, "❌ Not authorized to change roles in this facility", {}, 403);
-    } else if (scope === "organization") {
-      if (facilityId) {
-        const facility = await Facility.findByPk(facilityId);
-        if (!facility || facility.organization_id !== organization_id) {
-          return error(res, "❌ Not authorized", {}, 403);
+    if (!role.requires_facility && facilityId) {
+      await t.rollback();
+      return error(res, "❌ Role cannot be tied to facility", null, 400);
+    }
+
+    /* ================= TENANT ================= */
+    const { orgId, facilityId: fId } = resolveTenantScopeLite({
+      user: req.user,
+      query: req.query,
+    });
+
+    if (!isSuperAdmin(req.user)) {
+      if (orgId && record.organization_id !== orgId) {
+        await t.rollback();
+        return error(res, "❌ Not authorized", null, 403);
+      }
+
+      if (!isOrgLevelUser(req.user)) {
+        if (facilityId !== fId) {
+          await t.rollback();
+          return error(res, "❌ Not authorized", null, 403);
         }
-      } else if (user.organization_id !== organization_id) {
-        return error(res, "❌ Not authorized", {}, 403);
       }
     }
 
     const existing = await UserFacility.findOne({
-      where: { user_id: userId, facility_id: facilityId || null, role_id: roleId },
+      where: {
+        user_id: userId,
+        facility_id: facilityId || null,
+        role_id: roleId,
+      },
       transaction: t,
     });
 
     let result;
+
     if (existing) {
       await existing.destroy({ transaction: t });
       result = { removed: role.id };
+
       await auditService.logAction({
         user: req.user,
-        module: "user",
+        module_key: MODULE_KEY,
         action: "role_removed",
         entityId: userId,
         details: { role: role.name, facilityId },
       });
     } else {
       await UserFacility.create(
-        { user_id: userId, facility_id: facilityId || null, role_id: roleId, created_by_id: req.user?.id || null },
+        {
+          user_id: userId,
+          facility_id: facilityId || null,
+          role_id: roleId,
+          created_by_id: req.user?.id || null,
+        },
         { transaction: t }
       );
+
       result = { added: role.id };
+
       await auditService.logAction({
         user: req.user,
-        module: "user",
+        module_key: MODULE_KEY,
         action: "role_added",
         entityId: userId,
         details: { role: role.name, facilityId },
@@ -1018,197 +1334,384 @@ export const toggleUserRoleStatus = async (req, res) => {
     }
 
     await t.commit();
+
     return success(res, "✅ Role toggled", result);
   } catch (err) {
     if (!t.finished) await t.rollback();
-    return error(res, "❌ Failed to toggle role status", err, 500);
+    debug.error("toggleUserRoleStatus → FAILED", err);
+    return error(res, "❌ Failed to toggle role status", err);
   }
 };
-
 /* ============================================================
-   📌 LOGIN (with account lockout + must_reset_password check)
-   ============================================================ */
+   📌 LOGIN — MASTER (FINAL)
+============================================================ */
 export const login = async (req, res) => {
   try {
     const { usernameOrEmail, password } = req.body;
 
-    const user = await User.findOne({
-      where: { [Op.or]: [{ username: usernameOrEmail }, { email: usernameOrEmail }] },
+    /* ================= BASIC VALIDATION ================= */
+    if (!usernameOrEmail || !password) {
+      return error(res, "❌ Username/email and password required", null, 400);
+    }
+
+    /* ================= FIND USER ================= */
+    const record = await User.findOne({
+      where: {
+        [Op.or]: [
+          { username: usernameOrEmail },
+          { email: usernameOrEmail },
+        ],
+      },
       include: [
-        { model: Role, as: "roles", attributes: ["id", "name", "requires_facility"], through: { attributes: [] } },
-        { model: Facility, as: "facilities", attributes: ["id", "name", "organization_id"], through: { attributes: [] } },
+        {
+          model: Role,
+          as: "roles",
+          attributes: ["id", "name", "requires_facility"],
+          through: { attributes: [] },
+        },
+        {
+          model: Facility,
+          as: "facilities",
+          attributes: ["id", "name", "organization_id"],
+          through: { attributes: [] },
+        },
       ],
     });
-    if (!user) return error(res, "❌ Invalid credentials", { code: "INVALID_CREDENTIALS" }, 401);
 
-    if (user.is_system) return error(res, "❌ System accounts cannot login", { code: "SYSTEM_ACCOUNT_LOGIN_FORBIDDEN" }, 403);
-    if (user.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Superadmin accounts cannot login directly", { code: "SUPERADMIN_LOGIN_FORBIDDEN" }, 403);
-    }
-
-    if (user.locked_until && user.locked_until > new Date()) {
-      return error(res, `❌ Account locked until ${user.locked_until.toLocaleString()}`, { code: "ACCOUNT_LOCKED", locked_until: user.locked_until }, 403);
-    }
-
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      user.login_attempts += 1;
-      if (user.login_attempts >= 5) {
-        user.locked_until = new Date(Date.now() + 15 * 60 * 1000);
-        await user.save();
-        await auditService.logAction({ user, module: "auth", action: "login_failed_locked", entityId: user.id });
-        return error(res, "❌ Account locked for 15 minutes due to failed attempts", { code: "ACCOUNT_TEMP_LOCKED" }, 403);
-      }
-      await user.save();
-      await auditService.logAction({ user, module: "auth", action: "login_failed", entityId: user.id });
+    if (!record) {
       return error(res, "❌ Invalid credentials", { code: "INVALID_CREDENTIALS" }, 401);
     }
 
-    if (user.must_reset_password) {
-      return error(res, "❌ You must reset your password before logging in", { code: "PASSWORD_RESET_REQUIRED", userId: user.id, email: user.email }, 403);
+    /* ================= SECURITY CHECKS ================= */
+    if (record.is_system) {
+      return error(res, "❌ System accounts cannot login", null, 403);
     }
 
-    user.login_attempts = 0;
-    user.locked_until = null;
-    user.last_login_at = new Date();
-    await user.save();
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      return error(res, "❌ Superadmin accounts cannot login directly", null, 403);
+    }
 
+    if (record.locked_until && record.locked_until > new Date()) {
+      return error(res, `❌ Account locked until ${record.locked_until}`, {
+        code: "ACCOUNT_LOCKED",
+        locked_until: record.locked_until,
+      }, 403);
+    }
+
+    /* ================= PASSWORD CHECK ================= */
+    const match = await bcrypt.compare(password, record.password_hash);
+
+    if (!match) {
+      record.login_attempts += 1;
+
+      if (record.login_attempts >= 5) {
+        record.locked_until = new Date(Date.now() + 15 * 60 * 1000);
+
+        await record.save();
+
+        await auditService.logAction({
+          user: record,
+          module_key: "auth",
+          action: "login_failed_locked",
+          entityId: record.id,
+        });
+
+        return error(res, "❌ Account locked for 15 minutes", {
+          code: "ACCOUNT_TEMP_LOCKED",
+        }, 403);
+      }
+
+      await record.save();
+
+      await auditService.logAction({
+        user: record,
+        module_key: "auth",
+        action: "login_failed",
+        entityId: record.id,
+      });
+
+      return error(res, "❌ Invalid credentials", { code: "INVALID_CREDENTIALS" }, 401);
+    }
+
+    /* ================= PASSWORD RESET CHECK ================= */
+    if (record.must_reset_password) {
+      return error(res, "❌ Password reset required", {
+        code: "PASSWORD_RESET_REQUIRED",
+        userId: record.id,
+        email: record.email,
+      }, 403);
+    }
+
+    /* ================= RESET LOGIN STATE ================= */
+    record.login_attempts = 0;
+    record.locked_until = null;
+    record.last_login_at = new Date();
+
+    await record.save();
+
+    /* ================= TOKEN SAFETY ================= */
+    if (!process.env.JWT_SECRET) {
+      return error(res, "❌ JWT secret not configured", null, 500);
+    }
+
+    /* ================= BUILD PAYLOAD ================= */
     const payload = {
-      id: user.id,
-      organization_id: user.organization_id,
-      roles: user.roles.map((r) => ({ id: r.id, name: r.name, requires_facility: r.requires_facility })),
-      facilities: user.facilities.map((f) => ({ id: f.id, name: f.name, org: f.organization_id })),
+      id: record.id,
+      organization_id: record.organization_id,
+      roles: record.roles?.map((r) => ({
+        id: r.id,
+        name: r.name,
+        requires_facility: r.requires_facility,
+      })),
+      facilities: record.facilities?.map((f) => ({
+        id: f.id,
+        name: f.name,
+        org: f.organization_id,
+      })),
     };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-    await auditService.logAction({ user, module: "auth", action: "login_success", entityId: user.id });
+    /* ================= SIGN TOKEN ================= */
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
 
-    return success(res, "✅ Login successful", { token, user: payload });
+    /* ================= AUDIT ================= */
+    await auditService.logAction({
+      user: record,
+      module_key: "auth",
+      action: "login_success",
+      entityId: record.id,
+    });
+
+    /* ================= RESPONSE ================= */
+    return success(res, "✅ Login successful", {
+      token,
+      user: payload,
+    });
+
   } catch (err) {
-    return error(res, "❌ Failed to login", { code: "LOGIN_ERROR", err }, 500);
+    debug.error("login → FAILED", err);
+    return error(res, "❌ Failed to login", { code: "LOGIN_ERROR", err });
   }
 };
 
 /* ============================================================
-   📌 ADMIN UNLOCK USER (manual unlock)
-   ============================================================ */
+   📌 UNLOCK USER — MASTER
+============================================================ */
 export const unlockUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    if (req.user.id === id) return error(res, "❌ Cannot unlock your own account", {}, 403);
-
-    const user = await User.findByPk(id, {
-      include: [{ model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } }],
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "unlock",
+      res,
     });
-    if (!user) return error(res, "❌ User not found", {}, 404);
-    if (user.is_system) return error(res, "❌ Cannot unlock system accounts", {}, 403);
-    if (user.roles?.some(r => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Cannot unlock superadmin accounts", {}, 403);
-    }
+    if (!allowed) return;
 
-    await user.update({ login_attempts: 0, locked_until: null, updated_by_id: req.user?.id || null });
-
-    await auditService.logAction({ user: req.user, module: "user", action: "unlock_account", entityId: user.id });
-
-    return success(res, "✅ User account unlocked", { id: user.id });
-  } catch (err) {
-    return error(res, "❌ Failed to unlock user", err, 500);
-  }
-};
-
-/* ============================================================
-   📌 ADMIN REQUIRE PASSWORD RESET
-   ============================================================ */
-export const requirePasswordReset = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const user = await User.findByPk(id, {
-      include: [{ model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } }],
-    });
-    if (!user) return error(res, "❌ User not found", {}, 404);
-    if (user.is_system) return error(res, "❌ Cannot modify system accounts", {}, 403);
-    if (user.roles?.some(r => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Cannot force password reset on superadmin accounts", {}, 403);
-    }
-
-    await user.update({ must_reset_password: true, updated_by_id: req.user?.id || null });
-
-    await auditService.logAction({ user: req.user, module: "user", action: "require_password_reset", entityId: user.id });
-
-    return success(res, "✅ User must reset password on next login", { id: user.id });
-  } catch (err) {
-    return error(res, "❌ Failed to require password reset", err, 500);
-  }
-};
-
-/* ============================================================
-   📌 ADMIN REVOKE USER SESSIONS (logout all devices)
-   ============================================================ */
-export const revokeUserSessions = async (req, res) => {
-  try {
     const { id } = req.params;
 
     if (req.user.id === id) {
-      return error(res, "❌ Cannot revoke your own sessions here (use logoutAll)", {}, 403);
+      return error(res, "❌ Cannot unlock your own account", null, 403);
     }
 
-    const user = await User.findByPk(id);
-    if (!user) return error(res, "❌ User not found", {}, 404);
-    if (user.is_system) return error(res, "❌ Cannot revoke sessions for system accounts", {}, 403);
+    const record = await User.findByPk(id, {
+      include: USER_INCLUDES,
+    });
 
-    await RefreshToken.destroy({ where: { user_id: id } });
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
+    }
+
+    if (record.is_system) {
+      return error(res, "❌ Cannot unlock system accounts", null, 403);
+    }
+
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      return error(res, "❌ Cannot unlock superadmin accounts", null, 403);
+    }
+
+    await record.update({
+      login_attempts: 0,
+      locked_until: null,
+      updated_by_id: req.user?.id || null,
+    });
 
     await auditService.logAction({
       user: req.user,
-      module: "auth",
-      action: "revoke_sessions",
-      entityId: user.id,
-      details: { revokedBy: req.user.id },
+      module_key: MODULE_KEY,
+      action: "unlock_account",
+      entityId: record.id,
     });
 
-    return success(res, "✅ All sessions revoked for this user", { id });
+    return success(res, "✅ User unlocked", { id: record.id });
   } catch (err) {
-    return error(res, "❌ Failed to revoke user sessions", err, 500);
+    debug.error("unlockUser → FAILED", err);
+    return error(res, "❌ Failed to unlock user", err);
   }
 };
 
+
 /* ============================================================
-   📌 HARD DELETE USER (permanent purge)
-   ============================================================ */
+   📌 REQUIRE PASSWORD RESET — MASTER
+============================================================ */
+export const requirePasswordReset = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "reset-password",
+      res,
+    });
+    if (!allowed) return;
+
+    const { id } = req.params;
+
+    const record = await User.findByPk(id, {
+      include: USER_INCLUDES,
+    });
+
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
+    }
+
+    if (record.is_system) {
+      return error(res, "❌ Cannot modify system accounts", null, 403);
+    }
+
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      return error(res, "❌ Cannot force reset on superadmin", null, 403);
+    }
+
+    await record.update({
+      must_reset_password: true,
+      updated_by_id: req.user?.id || null,
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "require_password_reset",
+      entityId: record.id,
+    });
+
+    return success(res, "✅ Password reset required", { id: record.id });
+  } catch (err) {
+    debug.error("requirePasswordReset → FAILED", err);
+    return error(res, "❌ Failed to require password reset", err);
+  }
+};
+
+
+/* ============================================================
+   📌 REVOKE USER SESSIONS — MASTER
+============================================================ */
+export const revokeUserSessions = async (req, res) => {
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "revoke-sessions",
+      res,
+    });
+    if (!allowed) return;
+
+    const { id } = req.params;
+
+    if (req.user.id === id) {
+      return error(res, "❌ Cannot revoke your own sessions", null, 403);
+    }
+
+    const record = await User.findByPk(id);
+
+    if (!record) {
+      return error(res, "❌ User not found", null, 404);
+    }
+
+    if (record.is_system) {
+      return error(res, "❌ Cannot revoke system sessions", null, 403);
+    }
+
+    await RefreshToken.destroy({
+      where: { user_id: id },
+    });
+
+    await auditService.logAction({
+      user: req.user,
+      module_key: "auth",
+      action: "revoke_sessions",
+      entityId: record.id,
+      details: { revokedBy: req.user.id },
+    });
+
+    return success(res, "✅ Sessions revoked", { id });
+  } catch (err) {
+    debug.error("revokeUserSessions → FAILED", err);
+    return error(res, "❌ Failed to revoke sessions", err);
+  }
+};
+
+
+/* ============================================================
+   📌 PURGE USER — MASTER
+============================================================ */
 export const purgeUser = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module_key: MODULE_KEY,
+      action: "delete",
+      res,
+    });
+    if (!allowed) return;
+
     const { id } = req.params;
 
-    const user = await User.findByPk(id, {
+    const record = await User.findByPk(id, {
       paranoid: false,
-      include: [
-        { model: Role, as: "roles", attributes: ["id", "name"], through: { attributes: [] } },
-      ],
+      include: USER_INCLUDES,
+      transaction: t,
     });
 
-    if (!user) return error(res, "❌ User not found", {}, 404);
-    if (user.is_system) return error(res, "❌ Cannot purge system accounts", {}, 403);
-    if (user.roles?.some(r => r.name.toLowerCase().includes("superadmin"))) {
-      return error(res, "❌ Cannot purge superadmin accounts", {}, 403);
+    if (!record) {
+      await t.rollback();
+      return error(res, "❌ User not found", null, 404);
     }
 
-    await UserFacility.destroy({ where: { user_id: id }, transaction: t });
-    await user.destroy({ force: true, transaction: t }); // 🔥 hard delete
+    if (record.is_system) {
+      await t.rollback();
+      return error(res, "❌ Cannot purge system accounts", null, 403);
+    }
+
+    if (record.roles?.some((r) => r.name.toLowerCase().includes("superadmin"))) {
+      await t.rollback();
+      return error(res, "❌ Cannot purge superadmin accounts", null, 403);
+    }
+
+    await UserFacility.destroy({
+      where: { user_id: id },
+      transaction: t,
+    });
+
+    await record.destroy({
+      force: true,
+      transaction: t,
+    });
+
     await t.commit();
 
     await auditService.logAction({
       user: req.user,
-      module: "user",
+      module_key: MODULE_KEY,
       action: "purge",
-      entityId: user.id,
+      entityId: record.id,
       details: { purgedBy: req.user.id },
     });
 
     return success(res, "✅ User permanently deleted", { id });
   } catch (err) {
     if (!t.finished) await t.rollback();
-    return error(res, "❌ Failed to purge user", err, 500);
+    debug.error("purgeUser → FAILED", err);
+    return error(res, "❌ Failed to purge user", err);
   }
 };

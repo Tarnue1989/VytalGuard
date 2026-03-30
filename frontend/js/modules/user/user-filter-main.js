@@ -1,8 +1,9 @@
-// 📦 user-filter-main.js – Filters + Table/Card (Enterprise-Aligned, No Form)
+// 📦 user-filter-main.js – MASTER (Users | Enterprise Parity)
 // ============================================================================
-// 🧭 Master Pattern: role-filter-main.js
-// 🔹 Permissions, pagination, field selector, exports, toggle sections
-// 🔹 All HTML IDs preserved exactly
+// 🔹 Fully aligned with role-filter-main.js
+// 🔹 Matches CURRENT HTML (IDs preserved)
+// 🔹 Backend-safe filters only
+// 🔹 Auto search + filters + pagination + export + summary
 // ============================================================================
 
 import {
@@ -10,63 +11,75 @@ import {
   showLoading,
   hideLoading,
   initPageGuard,
-  autoPagePermissionKey,
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
+  autoPagePermissionKey
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
-import { fetchGenericList } from "../../utils/data-loaders.js";
+
+import {
+  loadOrganizationsLite,
+  loadFacilitiesLite,
+  setupSelectOptions,
+} from "../../utils/data-loaders.js";
+
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
-import { renderList, renderDynamicTableHead } from "./user-render.js";
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./user-render.js";
+
 import { setupActionHandlers } from "./user-actions.js";
 
 import {
   FIELD_ORDER_USER,
   FIELD_DEFAULTS_USER,
+  FIELD_LABELS_USER,
 } from "./user-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
+import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 Auth Guard
+   🔐 AUTH
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 User Role + Permissions
-============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || [])
+      .map(p => String(p.key || p).toLowerCase());
+  } catch {
+    return [];
+  }
+})();
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🧠 Shared State
+   🧠 STATE
 ============================================================ */
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("userView") || "table";
+let sortBy = "";
+let sortDir = "asc";
+
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility + Selector
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "user",
   userRole,
@@ -74,30 +87,14 @@ let visibleFields = setupVisibleFields({
   allowedFields: FIELD_ORDER_USER,
 });
 
-// ❌ exclude virtual fields from API (?fields=)
-const API_FIELD_WHITELIST = [
-  "id",
-  "username",
-  "email",
-  "first_name",
-  "last_name",
-  "status",
-  "last_login_at",
-  "locked_until",
-  "organization_id",
-  "created_at",
-  "updated_at",
-  "deleted_at",
-  "created_by_id",
-  "updated_by_id",
-  "deleted_by_id",
-];
-
+/* ============================================================
+   🧩 FIELD SELECTOR
+============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -105,100 +102,107 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM (MATCHES YOUR HTML EXACTLY)
 ============================================================ */
-const filterUsername = document.getElementById("filterUsername");
-const filterEmail = document.getElementById("filterEmail");
-const filterStatus = document.getElementById("filterStatus");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
-const filterLockedFrom = document.getElementById("filterLockedFrom");
-const filterLockedTo = document.getElementById("filterLockedTo");
-const filterLastLoginFrom = document.getElementById("filterLastLoginFrom");
-const filterLastLoginTo = document.getElementById("filterLastLoginTo");
-const filterOrg = document.getElementById("filterOrganization");
-const filterFacility = document.getElementById("filterFacility");
-const filterRole = document.getElementById("filterRole");
+const qs = id => document.getElementById(id);
 
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+const globalSearch   = qs("globalSearch");
+const filterOrg      = qs("filterOrganization");
+const filterFacility = qs("filterFacility");
+const filterStatus   = qs("filterStatus");
+const dateRange      = qs("dateRange");
 
 /* ============================================================
-   🌍 View + Paging
+   🔃 SORT BRIDGE
 ============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("userView") || "table";
-
-// org map for render
-window.orgMap = {};
+window.setUserSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+window.loadUserPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   📋 Build Filter Object
+   📄 PAGINATION
+============================================================ */
+const getPagination = initPaginationControl(
+  "user",
+  loadEntries,
+  Number(localStorage.getItem("userPageLimit") || 25)
+);
+
+/* ============================================================
+   🔎 AUTO SEARCH / FILTERS
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [filterOrg, filterFacility, filterStatus],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (BACKEND SAFE)
 ============================================================ */
 function getFilters() {
   return {
-    username: filterUsername?.value || "",
-    email: filterEmail?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
-    locked_from: filterLockedFrom?.value || "",
-    locked_to: filterLockedTo?.value || "",
-    last_login_from: filterLastLoginFrom?.value || "",
-    last_login_to: filterLastLoginTo?.value || "",
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    role_id: filterRole?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   🔁 Pagination Control
-============================================================ */
-const getPagination = initPaginationControl("user", loadEntries, 10);
-
-/* ============================================================
-   📦 Load Users
+   📦 LOAD USERS
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
 
-    const filters = getFilters();
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    if (f.search)          q.set("search", f.search);
+    if (f.dateRange)       q.set("dateRange", f.dateRange);
+    if (f.organization_id) q.set("organization_id", f.organization_id);
+    if (f.facility_id)     q.set("facility_id", f.facility_id);
+    if (f.status)          q.set("status", f.status);
+
+    const res = await authFetch(`/api/users?${q.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
 
-    const safeFields = visibleFields.filter((f) =>
-      API_FIELD_WHITELIST.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    const res = await authFetch(`/api/users?${q.toString()}`);
-    const json = await res.json().catch(() => ({}));
-
-    const payload = json?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
-
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
+    data.summary &&
+      renderModuleSummary(data.summary, "moduleSummary", {
+        moduleLabel: "USERS",
+      });
+
+    syncViewToggleUI({ mode: viewMode });
+
     setupActionHandlers({
       entries,
+      token,
       currentPage,
       loadEntries,
       visibleFields,
@@ -207,15 +211,14 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
 
-    if (!records.length) showToast("ℹ️ No users found for current filters");
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load users");
   } finally {
     hideLoading();
@@ -223,75 +226,55 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("userView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("userView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔍 Filter Actions
+   🔄 RESET FILTERS
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => await loadEntries(1);
-
-document.getElementById("resetFilterBtn").onclick = () => {
-  [
-    filterUsername,
-    filterEmail,
-    filterStatus,
-    filterCreatedFrom,
-    filterCreatedTo,
-    filterLockedFrom,
-    filterLockedTo,
-    filterLastLoginFrom,
-    filterLastLoginTo,
-    filterOrg,
-    filterFacility,
-    filterRole,
-  ].forEach((el) => {
-    if (el) el.value = "";
-  });
+qs("resetFilterBtn").onclick = () => {
+  [globalSearch, filterOrg, filterFacility, filterStatus, dateRange]
+    .forEach(el => el && (el.value = ""));
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `users_${new Date().toISOString().slice(0, 10)}.xlsx`);
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_USER),
+    `users_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target = viewMode === "table" ? ".table-container" : "#userList";
-    exportToPDF("User List", target, "portrait", true);
-  };
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Users List",
+    viewMode === "table" ? ".table-container" : "#userList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init Module
+   🚀 INIT
 ============================================================ */
 export async function initUserModule() {
   renderDynamicTableHead(visibleFields);
-
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-  const filterVisible = localStorage.getItem("userFilterVisible") === "true";
-
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -300,15 +283,33 @@ export async function initUserModule() {
     "userFilterVisible"
   );
 
-  await fetchGenericList("/api/users/lite/all");
+  if (userRole.includes("super") || userRole.includes("admin")) {
+    const orgs = await loadOrganizationsLite();
+    orgs.unshift({ id: "", name: "-- All Organizations --" });
+    setupSelectOptions(filterOrg, orgs, "id", "name");
+
+    const reloadFacilities = async (orgId = null) => {
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    };
+
+    await reloadFacilities();
+    filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
+  } else {
+    filterOrg?.closest(".col-md-3")?.classList.add("hidden");
+    filterFacility?.closest(".col-md-3")?.classList.add("hidden");
+  }
+
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initUserModule().catch((err) => console.error("initUserModule failed:", err));
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initUserModule)
+  : initUserModule();

@@ -1,10 +1,9 @@
-// 📁 user-form.js – Secure & Role-Aware User Form (Enterprise-Aligned)
+// 📁 user-form.js – MASTER (DEPARTMENT STYLE)
 // ============================================================================
-// 🧭 Master Pattern: role-form.js / vital-form.js
-// 🔹 Backend is authority; frontend enforces UX only
-// 🔹 Clean Add/Edit lifecycle with disciplined payload
-// 🔹 Assignment scoping mirrors backend enforcement
-// 🔹 All original HTML IDs preserved exactly
+// 🔹 Rule-driven validation
+// 🔹 Role-aware org/fac handling (like department)
+// 🔹 Flat payload (NO assignments)
+// 🔹 Clean + predictable behavior
 // ============================================================================
 
 import {
@@ -16,6 +15,11 @@ import {
   initLogoutWatcher,
 } from "../../utils/index.js";
 
+import {
+  clearFormErrors,
+  applyServerErrors,
+} from "../../utils/form-ux.js";
+
 import { authFetch } from "../../authSession.js";
 
 import {
@@ -26,97 +30,37 @@ import {
 } from "../../utils/data-loaders.js";
 
 import { resolveUserRole } from "../../utils/roleResolver.js";
+import { USER_FORM_RULES } from "./user.form.rules.js";
 
 /* ============================================================
-   🔧 Helpers
+   HELPERS
 ============================================================ */
-function getQueryParam(key) {
-  return new URLSearchParams(window.location.search).get(key);
-}
+const getQueryParam = (k) =>
+  new URLSearchParams(window.location.search).get(k);
 
-function normalizeMessage(result, fallback) {
-  if (!result) return fallback;
-  const msg = result.message ?? result.error ?? result.msg;
-  if (typeof msg === "string") return msg;
-  if (msg?.detail) return msg.detail;
+const normalizeMessage = (r, fb) =>
+  r?.message || r?.error || r?.msg || fb;
+
+const normalizeUUID = (v) =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
+
+/* ============================================================
+   LOAD ORG / FAC / ROLE (DEPARTMENT STYLE)
+============================================================ */
+async function loadRefs({ preset = null } = {}) {
+  const userRole = resolveUserRole();
+
+  const orgSelect = document.getElementById("organization_id");
+  const facSelect = document.getElementById("facility_id");
+  const roleSelect = document.getElementById("role_id");
+
   try {
-    return JSON.stringify(msg);
-  } catch {
-    return fallback;
-  }
-}
-
-function normalizeUUID(val) {
-  return typeof val === "string" && val.trim() !== "" ? val : null;
-}
-
-/* ============================================================
-   🧹 Reset Form Helper (Add Mode)
-============================================================ */
-function resetForm() {
-  const form = document.getElementById("userForm");
-  if (!form) return;
-
-  form.reset();
-
-  ["username", "email", "first_name", "last_name", "password"].forEach((id) => {
-    document.getElementById(id) && (document.getElementById(id).value = "");
-  });
-
-  document.getElementById("status_active")?.setAttribute("checked", true);
-
-  document.getElementById("organization_id") &&
-    (document.getElementById("organization_id").value = "");
-
-  document.getElementById("facility_id") &&
-    (document.getElementById("facility_id").innerHTML =
-      `<option value="">-- Select Facility --</option>`);
-
-  document.getElementById("role_id") &&
-    (document.getElementById("role_id").innerHTML =
-      `<option value="">-- Select Role --</option>`);
-
-  sessionStorage.removeItem("userEditId");
-  sessionStorage.removeItem("userEditPayload");
-
-  const titleEl = document.querySelector(".card-title");
-  if (titleEl) titleEl.textContent = "Add User";
-
-  const submitBtn = form.querySelector("button[type=submit]");
-  if (submitBtn) {
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add User`;
-  }
-}
-
-/* ============================================================
-   📦 Load Assignment Options (ORG / FAC / ROLE)
-============================================================ */
-async function loadAssignments({ preset = null } = {}) {
-  try {
-    const userRole = resolveUserRole();
-
-    const orgSelect = document.getElementById("organization_id");
-    const facSelect = document.getElementById("facility_id");
-    const roleSelect = document.getElementById("role_id");
-
-    facSelect && (facSelect.innerHTML = `<option value="">-- Select Facility --</option>`);
-    roleSelect && (roleSelect.innerHTML = `<option value="">-- Select Role --</option>`);
-
-    /* ---------------- SUPERADMIN ---------------- */
+    /* ================= SUPERADMIN ================= */
     if (userRole === "superadmin") {
       const orgs = await loadOrganizationsLite();
-      setupSelectOptions(
-        orgSelect,
-        orgs,
-        "id",
-        "name",
-        "-- Select Organization --"
-      );
-      orgSelect.closest(".form-group")?.classList.remove("hidden");
+      setupSelectOptions(orgSelect, orgs, "id", "name", "-- Select Organization --");
 
-      if (preset?.organization_id) {
-        orgSelect.value = preset.organization_id;
-      }
+      orgSelect.closest(".form-group")?.classList.remove("hidden");
 
       orgSelect.onchange = async () => {
         const orgId = orgSelect.value || null;
@@ -125,81 +69,57 @@ async function loadAssignments({ preset = null } = {}) {
           orgId ? { organization_id: orgId } : {},
           true
         );
-        setupSelectOptions(
-          facSelect,
-          facs,
-          "id",
-          "name",
-          "-- Select Facility --"
-        );
+        setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
 
         const roles = await loadRolesLite(
           orgId ? { organization_id: orgId } : {}
         );
-        setupSelectOptions(
-          roleSelect,
-          roles,
-          "id",
-          "name",
-          "-- Select Role --"
-        );
+        setupSelectOptions(roleSelect, roles, "id", "name", "-- Select Role --");
       };
 
       if (preset?.organization_id) {
+        orgSelect.value = preset.organization_id;
         await orgSelect.onchange();
-        preset.facility_id && (facSelect.value = preset.facility_id);
-        preset.role_id && (roleSelect.value = preset.role_id);
       }
     }
 
-    /* ---------------- NON-SUPERADMIN ---------------- */
+    /* ================= NON-SUPERADMIN ================= */
     else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
 
       const facs = await loadFacilitiesLite({}, true);
-      setupSelectOptions(
-        facSelect,
-        facs,
-        "id",
-        "name",
-        "-- Select Facility --"
-      );
+      setupSelectOptions(facSelect, facs, "id", "name", "-- Select Facility --");
 
       const roles = await loadRolesLite();
-      setupSelectOptions(
-        roleSelect,
-        roles,
-        "id",
-        "name",
-        "-- Select Role --"
-      );
-
-      preset?.facility_id && (facSelect.value = preset.facility_id);
-      preset?.role_id && (roleSelect.value = preset.role_id);
+      setupSelectOptions(roleSelect, roles, "id", "name", "-- Select Role --");
     }
+
+    /* ================= APPLY PRESET ================= */
+    if (preset) {
+      preset.facility_id && (facSelect.value = preset.facility_id);
+      preset.role_id && (roleSelect.value = preset.role_id);
+    }
+
   } catch (err) {
-    console.error("❌ Failed to load assignments:", err);
-    showToast("❌ Could not load assignments");
+    console.error("❌ Failed loading refs:", err);
+    showToast("❌ Could not load dropdowns");
   }
 }
 
 /* ============================================================
-   🚀 Setup User Form
+   MAIN SETUP
 ============================================================ */
 export async function setupUserFormSubmission({ form }) {
-  /* ---------------- Auth ---------------- */
-  const token = initPageGuard(autoPagePermissionKey());
+  initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
 
   const userRole = resolveUserRole();
 
-  /* ---------------- Edit Detection ---------------- */
-  const sessionId = sessionStorage.getItem("userEditId");
-  const queryId = getQueryParam("id");
-  const userId = sessionId || queryId;
-  const isEdit = !!userId;
+  const userId =
+    sessionStorage.getItem("userEditId") ||
+    getQueryParam("id");
 
-  isEdit ? null : resetForm();
+  const isEdit = !!userId;
 
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
@@ -209,20 +129,21 @@ export async function setupUserFormSubmission({ form }) {
     ? `<i class="ri-save-3-line me-1"></i> Update User`
     : `<i class="ri-add-line me-1"></i> Add User`;
 
-  await loadAssignments();
+  await loadRefs();
 
-  /* ---------------- PREFILL (EDIT MODE) ---------------- */
+  /* ================= PREFILL ================= */
   if (isEdit) {
     try {
       let entry = null;
+
       const cached = sessionStorage.getItem("userEditPayload");
       if (cached) entry = JSON.parse(cached);
 
       if (!entry) {
         showLoading();
         const res = await authFetch(`/api/users/${userId}`);
-        const result = await res.json();
-        entry = result?.data;
+        const json = await res.json();
+        entry = json?.data;
       }
 
       document.getElementById("username").value = entry.username || "";
@@ -231,28 +152,52 @@ export async function setupUserFormSubmission({ form }) {
       document.getElementById("last_name").value = entry.last_name || "";
 
       entry.status &&
-        document
-          .getElementById(`status_${entry.status.toLowerCase()}`)
-          ?.click();
+        document.getElementById(`status_${entry.status}`)?.click();
 
-      await loadAssignments({
+      await loadRefs({
         preset: {
           organization_id: entry.organization_id,
           facility_id: entry.facilities?.[0]?.id,
           role_id: entry.roles?.[0]?.id,
         },
       });
-    } catch (err) {
-      showToast("❌ Could not load user");
+
+    } catch {
+      showToast("❌ Failed to load user");
     } finally {
       hideLoading();
     }
   }
 
-  /* ---------------- SUBMIT ---------------- */
+  /* ============================================================
+     🚀 SUBMIT (DEPARTMENT STYLE)
+  ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
 
+    clearFormErrors(form);
+
+    const errors = [];
+
+    for (const rule of USER_FORM_RULES) {
+      if (typeof rule.when === "function" && !rule.when()) continue;
+
+      const el =
+        document.getElementById(rule.id) ||
+        form.querySelector(`[name="${rule.id}"]`);
+
+      if (!el || !el.value || el.value.toString().trim() === "") {
+        errors.push({ field: rule.id, message: rule.message });
+      }
+    }
+
+    if (errors.length) {
+      applyServerErrors(form, errors);
+      showToast("❌ Please fix the highlighted fields");
+      return;
+    }
+
+    /* ================= BUILD PAYLOAD ================= */
     const payload = {
       username: document.getElementById("username").value.trim(),
       email: document.getElementById("email").value.trim(),
@@ -261,61 +206,24 @@ export async function setupUserFormSubmission({ form }) {
       status:
         document.querySelector("input[name='status']:checked")?.value ||
         "active",
-      assignments: [],
+
+      role_id: document.getElementById("role_id")?.value,
     };
 
-    /* -------- Password -------- */
-    const password = document.getElementById("password")?.value.trim();
-    if (!isEdit && !password) {
-      return showToast("❌ Password required");
-    }
-    if (password) {
-      payload.password = password;
-    }
+    // ✅ conditional fields ONLY
+    const orgId = normalizeUUID(document.getElementById("organization_id")?.value);
+    const facId = normalizeUUID(document.getElementById("facility_id")?.value);
 
-    /* -------- IDs -------- */
-    const orgEl = document.getElementById("organization_id");
-    const facEl = document.getElementById("facility_id");
-    const roleEl = document.getElementById("role_id");
-
-    const orgId =
-      orgEl && !orgEl.closest(".hidden") && orgEl.value &&
-      orgEl.value !== "null" &&
-      orgEl.value !== "undefined"
-        ? orgEl.value
-        : null;
-
-    const facId =
-      facEl && facEl.value && facEl.value !== "null"
-        ? facEl.value
-        : null;
-
-    const roleId =
-      roleEl && roleEl.value && roleEl.value !== "null"
-        ? roleEl.value
-        : null;
-
-    if (!roleId) {
-      return showToast("❌ Role is required");
-    }
-
-    /* -------- ROOT ORGANIZATION (MANDATORY) -------- */
-    if (userRole === "superadmin") {
-      if (!orgId) {
-        console.error("❌ Missing organization_id on submit");
-        return showToast("❌ Organization is required");
-      }
+    if (userRole === "superadmin" && orgId) {
       payload.organization_id = orgId;
     }
 
-    /* -------- ASSIGNMENTS -------- */
-    payload.assignments.push(
-      facId
-        ? { facility_id: facId, role_id: roleId }
-        : { organization_id: orgId, role_id: roleId }
-    );
+    if (facId) {
+      payload.facility_id = facId;
+    }
+    const password = document.getElementById("password")?.value.trim();
+    if (password) payload.password = password;
 
-    /* -------- SUBMIT -------- */
     try {
       showLoading();
 
@@ -328,21 +236,15 @@ export async function setupUserFormSubmission({ form }) {
         }
       );
 
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(normalizeMessage(result, "❌ Save failed"));
-      }
+      const json = await res.json();
+      if (!res.ok)
+        throw new Error(normalizeMessage(json, "❌ Save failed"));
 
       showToast(isEdit ? "✅ User updated" : "✅ User created");
 
-      sessionStorage.removeItem("userEditId");
-      sessionStorage.removeItem("userEditPayload");
+      sessionStorage.clear();
+      window.location.href = "/users-list.html";
 
-      if (isEdit) {
-        window.location.href = "/users-list.html";
-      } else {
-        resetForm();
-      }
     } catch (err) {
       showToast(err.message || "❌ Submission failed");
     } finally {
@@ -350,15 +252,22 @@ export async function setupUserFormSubmission({ form }) {
     }
   };
 
-  /* ---------------- CANCEL / CLEAR ---------------- */
-  document.getElementById("cancelBtn")?.addEventListener("click", () => {
+const cancelBtn = document.getElementById("cancelBtn");
+
+if (cancelBtn) {
+  cancelBtn.onclick = () => {
     sessionStorage.clear();
     window.location.href = "/users-list.html";
-  });
+  };
+}
 
-  document.getElementById("clearBtn")?.addEventListener("click", (e) => {
+const clearBtn = document.getElementById("clearBtn");
+
+if (clearBtn) {
+  clearBtn.onclick = (e) => {
     e.preventDefault();
     sessionStorage.clear();
-    resetForm();
-  });
+    form.reset();
+  };
+}
 }

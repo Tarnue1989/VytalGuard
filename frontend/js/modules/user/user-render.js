@@ -1,50 +1,147 @@
-// 📁 user-render.js – User Table & Card Renderers (ENTERPRISE MASTER UPGRADED)
+// 📁 user-render.js – ENTERPRISE MASTER FINAL (FULL PARITY – UPGRADED)
 // ============================================================================
-// 🔹 Card upgraded to ENTITY SYSTEM (same as payment / deposit / refund)
-// 🔹 Full audit section (DATE + TIME)
+// 🔹 FULL parity with role-render.js
+// 🔹 Table + Card unified system
+// 🔹 Sorting (backend bridge)
+// 🔹 Column resize + drag reorder
+// 🔹 Full audit section added
+// 🔹 Context section added
 // 🔹 Field-selector safe
-// 🔹 No duplication (org handled once)
-// 🔹 Action matrix preserved
-// 🔹 MASTER parity applied
+// 🔹 Export-safe
+// 🔹 ALL IDs preserved
 // ============================================================================
 
 import { FIELD_LABELS_USER } from "./user-constants.js";
-import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
+
+import {
+  formatDateTime,
+  initTooltips,
+} from "../../utils/ui-utils.js";
+
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 /* ============================================================
-   🎛️ Action Buttons
+   🔃 SORTABLE FIELDS
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "username",
+  "email",
+  "status",
+  "last_login_at",
+  "locked_until",
+  "created_at",
+  "updated_at",
+]);
+
+let sortBy = localStorage.getItem("userSortBy") || "";
+let sortDir = localStorage.getItem("userSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("userSortBy", sortBy);
+  localStorage.setItem("userSortDir", sortDir);
+
+  window.setUserSort?.(sortBy, sortDir);
+  window.loadUserPage?.(1);
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
 ============================================================ */
 function getUserActionButtons(entry, user) {
   return buildActionButtons({
     module: "user",
     status: (entry.status || "").toLowerCase(),
-    entry,
     entryId: entry.id,
+    entry,
     user,
     permissionPrefix: "users",
   });
 }
 
 /* ============================================================
-   🧱 Dynamic Table Head
+   🧱 TABLE HEAD (SORT + RESIZE + DRAG)
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_USER[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+    const label =
+      FIELD_LABELS_USER[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    th.dataset.key = field;
+
+    if (SORTABLE_FIELDS.has(field)) {
+      th.classList.add("sortable");
+
+      let icon = "ri-arrow-up-down-line";
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.innerHTML = `
+        <span>${label}</span>
+        <i class="${icon} sort-icon"></i>
+      `;
+
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  /* ================= Column resize ================= */
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+
+  /* ================= Column drag ================= */
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => {
+      renderDynamicTableHead(visibleFields);
+      window.loadUserPage?.(1);
+    },
+  });
 }
 
 /* ============================================================
@@ -56,53 +153,52 @@ const safe = (v) =>
 function renderUserRef(user) {
   if (!user) return "—";
   const parts = [user.first_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : user.username || user.email || "—";
+  return parts.length
+    ? parts.join(" ")
+    : user.username || user.email || "—";
 }
 
 /* ============================================================
-   🧩 VALUE RENDERER
+   🧩 FIELD VALUE RENDERER
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
-      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-      const colorMap = {
+      const map = {
         active: "bg-success",
         inactive: "bg-warning text-dark",
-        locked: "bg-danger",
-        deleted: "bg-secondary",
+        suspended: "bg-danger",
       };
-
-      return raw
-        ? `<span class="badge ${colorMap[raw] || "bg-secondary"}">${label}</span>`
-        : "—";
+      return `<span class="badge ${map[raw] || "bg-secondary"}">
+        ${raw.toUpperCase()}
+      </span>`;
     }
 
     case "full_name":
       return (
-        [entry.first_name, entry.last_name].filter(Boolean).join(" ") || "—"
+        [entry.first_name, entry.last_name]
+          .filter(Boolean)
+          .join(" ") || "—"
       );
 
     case "organization":
       return entry.organization?.name || "—";
 
     case "facilities":
-      return Array.isArray(entry.facilities) && entry.facilities.length
-        ? entry.facilities.map((f) => f.name || f.code || f.id).join(", ")
+      return Array.isArray(entry.facilities)
+        ? entry.facilities.map((f) => f.name).join(", ")
         : "—";
 
     case "roles":
-      return Array.isArray(entry.roles) && entry.roles.length
-        ? entry.roles.map((r) => r.name || r.id).join(", ")
+      return Array.isArray(entry.roles)
+        ? entry.roles.map((r) => r.name).join(", ")
         : "—";
 
     case "createdByUser":
-      return renderUserRef(entry.createdByUser);
     case "updatedByUser":
-      return renderUserRef(entry.updatedByUser);
     case "deletedByUser":
-      return renderUserRef(entry.deletedByUser);
+      return renderUserRef(entry[field]);
 
     case "created_at":
     case "updated_at":
@@ -117,110 +213,206 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — ENTERPRISE
+   🗂️ CARD RENDERER (FULL MASTER - CLEAN)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
 
-  const row = (label, value) => {
-    if (value === undefined || value === null || value === "") return "";
-    return `
-      <div class="entity-field">
-        <span class="entity-label">${label}</span>
-        <span class="entity-value">${safe(value)}</span>
-      </div>
-    `;
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
+
+  const fieldRow = (label, value) =>
+    value
+      ? `<div class="entity-field">
+           <span class="entity-label">${label}</span>
+           <span class="entity-value">${safe(value)}</span>
+         </div>`
+      : "";
+
+  /* ================= HELPERS ================= */
+
+  const renderRoles = (roles) => {
+    if (!roles) return "—";
+    if (typeof roles === "string") return roles;
+    if (Array.isArray(roles)) {
+      return roles.map((r) => r.name || r).join(", ");
+    }
+    return "—";
   };
 
-  const AUDIT_FIELDS = [
-    "createdByUser","updatedByUser","deletedByUser",
-    "created_at","updated_at","deleted_at","last_login_at","locked_until"
-  ];
+  const renderFacilities = (facs) => {
+    if (!facs) return "—";
+    if (typeof facs === "string") return facs;
+    if (Array.isArray(facs)) {
+      return facs.map((f) => f.name || f).join(", ");
+    }
+    return "—";
+  };
 
-  return `
-    <div class="entity-card user-card">
-
-      <!-- 🔹 HEADER -->
-      <div class="entity-card-header">
-        <div>
-          <div class="entity-primary">${renderValue(entry, "full_name")}</div>
-          <div class="entity-secondary">${safe(entry.email)}</div>
+  /* ================= HEADER ================= */
+  const header = `
+    <div class="entity-card-header">
+      <div>
+        <div class="entity-primary">
+          ${safe(
+            renderValue(entry, "full_name") ||
+            [entry.first_name, entry.last_name].filter(Boolean).join(" ")
+          )}
         </div>
+
+        <!-- ✅ EMAIL (NO UPPERCASE) -->
+        <div class="entity-secondary" style="text-transform:none;">
+          ${safe(entry.email)}
+        </div>
+      </div>
+
+      ${
+        has("status")
+          ? `<span class="entity-status ${status}">
+               ${status.toUpperCase()}
+             </span>`
+          : ""
+      }
+    </div>
+  `;
+
+  /* ================= CONTEXT (ONLY PLACE FOR ORG/FAC/ROLE) ================= */
+  const contextItems = [];
+
+  if (has("organization") && entry.organization?.name) {
+    contextItems.push(`🏥 ${safe(entry.organization.name)}`);
+  }
+
+  if (has("facilities")) {
+    const fac = renderFacilities(entry.facilities);
+    if (fac !== "—") contextItems.push(`📍 ${fac}`);
+  }
+
+  if (has("roles")) {
+    const role = renderRoles(entry.roles);
+    if (role !== "—") contextItems.push(`🔐 ${role}`);
+  }
+
+  const context = contextItems.length
+    ? `<div class="entity-card-context">
+         ${contextItems.map((v) => `<div>${v}</div>`).join("")}
+       </div>`
+    : "";
+
+  /* ================= QUICK BODY ================= */
+  const body = `
+    <div class="entity-card-body">
+      <div>
+        ${has("username") ? fieldRow("Username", entry.username) : ""}
+      </div>
+      <div>
         ${
-          has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+          has("last_login_at")
+            ? fieldRow("Last Login", renderValue(entry, "last_login_at"))
+            : ""
+        }
+        ${
+          has("locked_until")
+            ? fieldRow("Locked Until", renderValue(entry, "locked_until"))
             : ""
         }
       </div>
+    </div>
+  `;
 
-      <!-- 🔹 QUICK CORE -->
+  /* ================= DETAILS (NO ORG/FAC/ROLE DUPLICATION) ================= */
+  const details = `
+    <details class="entity-section">
+      <summary><strong>Details</strong></summary>
       <div class="entity-card-body">
-        ${row("Username", entry.username)}
-        ${row("Roles", renderValue(entry, "roles"))}
-        ${row("Organization", entry.organization?.name)}
-        ${row("Status", status.toUpperCase())}
+
+        ${
+          has("username")
+            ? fieldRow("Username", entry.username)
+            : ""
+        }
+
+        ${
+          has("last_login_at")
+            ? fieldRow("Last Login", renderValue(entry, "last_login_at"))
+            : ""
+        }
+
+        ${
+          has("locked_until")
+            ? fieldRow("Locked Until", renderValue(entry, "locked_until"))
+            : ""
+        }
+
       </div>
+    </details>
+  `;
 
-      <!-- 📄 DETAILS -->
-      <details class="entity-section">
-        <summary><strong>Details</strong></summary>
-        <div class="entity-card-body">
+  /* ================= AUDIT ================= */
+  const audit =
+    has("created_at") || has("updated_at")
+      ? `
+        <details class="entity-section">
+          <summary><strong>Audit</strong></summary>
+          <div class="entity-card-body">
 
-          ${row("Facilities", renderValue(entry, "facilities"))}
+            <div>
+              ${
+                has("createdByUser")
+                  ? fieldRow(
+                      "Created By",
+                      renderUserRef(entry.createdByUser)
+                    )
+                  : ""
+              }
+              ${
+                has("created_at")
+                  ? fieldRow("Created At", renderValue(entry, "created_at"))
+                  : ""
+              }
+            </div>
 
-          ${visibleFields
-            .filter(
-              (f) =>
-                ![
-                  "actions",
-                  "username",
-                  "roles",
-                  "organization",
-                  "status",
-                  "facilities",
-                  ...AUDIT_FIELDS,
-                ].includes(f)
-            )
-            .map((f) =>
-              row(
-                FIELD_LABELS_USER[f] || f,
-                renderValue(entry, f)
-              )
-            )
-            .join("")}
+            <div>
+              ${
+                has("updatedByUser")
+                  ? fieldRow(
+                      "Updated By",
+                      renderUserRef(entry.updatedByUser)
+                    )
+                  : ""
+              }
+              ${
+                has("updated_at")
+                  ? fieldRow("Updated At", renderValue(entry, "updated_at"))
+                  : ""
+              }
+            </div>
 
-        </div>
-      </details>
+          </div>
+        </details>
+      `
+      : "";
 
-      <!-- 🔍 AUDIT -->
-      <details class="entity-section">
-        <summary><strong>Audit</strong></summary>
-        <div class="entity-card-body">
-          ${row("Created By", renderValue(entry, "createdByUser"))}
-          ${row("Created At", formatDateTime(entry.created_at))}
-          ${row("Updated By", renderValue(entry, "updatedByUser"))}
-          ${row("Updated At", formatDateTime(entry.updated_at))}
-          ${row("Deleted By", renderValue(entry, "deletedByUser"))}
-          ${row("Deleted At", formatDateTime(entry.deleted_at))}
-          ${row("Last Login", formatDateTime(entry.last_login_at))}
-          ${row("Locked Until", formatDateTime(entry.locked_until))}
-        </div>
-      </details>
+  /* ================= ACTIONS ================= */
+  const actions = has("actions")
+    ? `<div class="entity-card-footer export-ignore">
+         ${getUserActionButtons(entry, user)}
+       </div>`
+    : "";
 
-      <!-- ⚙️ ACTIONS -->
-      ${
-        has("actions")
-          ? `<div class="entity-card-footer export-ignore">
-               ${getUserActionButtons(entry, user)}
-             </div>`
-          : ""
-      }
-
+  /* ================= FINAL ================= */
+  return `
+    <div class="entity-card user-card">
+      ${header}
+      ${context}
+      ${body}
+      ${details}
+      ${audit}
+      ${actions}
     </div>
   `;
 }
-
 /* ============================================================
    📋 LIST RENDERER
 ============================================================ */
@@ -242,32 +434,25 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     if (!entries.length) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="${visibleFields.length}"
-              class="text-center text-muted py-3">
+          <td colspan="${visibleFields.length}" class="text-muted text-center">
             No users found.
           </td>
         </tr>`;
+      initTooltips(tableBody);
       return;
     }
 
     entries.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = visibleFields
-        .map((f) => {
-          const val =
-            f === "actions"
-              ? `<div class="table-actions export-ignore">
-                   ${getUserActionButtons(entry, user)}
-                 </div>`
-              : renderValue(entry, f);
-
-          const cls =
-            f === "actions" ? ' class="text-center actions-cell"' : "";
-
-          return `<td${cls}>${val}</td>`;
-        })
+        .map((field) =>
+          field === "actions"
+            ? `<td class="actions-cell text-center export-ignore">
+                 ${getUserActionButtons(entry, user)}
+               </td>`
+            : `<td>${renderValue(entry, field)}</td>`
+        )
         .join("");
-
       tableBody.appendChild(tr);
     });
 
@@ -278,7 +463,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     cardContainer.innerHTML = entries.length
       ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center py-3">No users found.</p>`;
+      : `<p class="text-muted text-center">No users found.</p>`;
 
     initTooltips(cardContainer);
   }
@@ -287,7 +472,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT HANDLERS
 ============================================================ */
 let exportHandlersBound = false;
 
@@ -309,42 +494,8 @@ function setupExportHandlers(entries) {
     exportData({
       type: "pdf",
       title,
-      selector: ".table-container",
+      selector: ".table-container.active, #userList.active",
       orientation: "landscape",
     });
   });
-}
-
-/* ============================================================
-   🪟 MODAL
-============================================================ */
-export function showUserModal(title, bodyHtml) {
-  let modalEl = document.getElementById("userActionModal");
-  if (!modalEl) {
-    modalEl = document.createElement("div");
-    modalEl.id = "userActionModal";
-    modalEl.className = "modal fade";
-    modalEl.tabIndex = -1;
-    modalEl.innerHTML = `
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title"></h5>
-            <button type="button" class="btn-close"
-              data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body"></div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary"
-              data-bs-dismiss="modal">Close</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modalEl);
-  }
-
-  modalEl.querySelector(".modal-title").innerHTML = title;
-  modalEl.querySelector(".modal-body").innerHTML = bodyHtml;
-
-  new bootstrap.Modal(modalEl).show();
 }
