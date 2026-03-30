@@ -1,0 +1,105 @@
+
+body.login-bg {
+  background: url('/assets/images/LoginBackgroung.jpg') no-repeat center bottom;
+  background-size: cover;     /* 🔥 ensures full image shows */
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* ================= REMOVE CONTAINER LIMIT ================= */
+.container {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+/* ================= WRAPPER ================= */
+.auth-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* ================= CARD ================= */
+.auth-box {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.12);
+  animation: fadeIn 0.3s ease;
+  position: relative;
+  z-index: 10; /* 🔥 ensures above background */
+}
+
+/* ================= FLOATING INPUT ================= */
+.floating-group {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.floating-group input {
+  width: 100%;
+  padding: 18px 12px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  outline: none;
+  background: #fff;
+  color: #000;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.floating-group input:focus {
+  border-color: #007bff;
+}
+
+/* LABEL */
+.floating-group label {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  color: #777;
+  font-size: 0.9rem;
+  transition: 0.2s;
+  background: #fff;
+  padding: 0 5px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* FLOAT EFFECT */
+.floating-group input:focus + label,
+.floating-group input:not(:placeholder-shown) + label {
+  top: -8px;
+  font-size: 0.75rem;
+  color: #007bff;
+}
+
+/* ================= BUTTON ================= */
+.btn {
+  border-radius: 8px;
+}
+
+/* ================= STRENGTH BAR ================= */
+.strength-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: #eee;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.strength-fill {
+  height: 100%;
+  width: 0%;
+  background: red;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* ================= ANIMATION ================= */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
