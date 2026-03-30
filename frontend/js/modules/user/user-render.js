@@ -304,17 +304,9 @@ export function renderCard(entry, visibleFields, user) {
   const body = `
     <div class="entity-card-body">
       <div>
-        ${has("username") ? fieldRow("Username", entry.username) : ""}
-      </div>
-      <div>
         ${
-          has("last_login_at")
-            ? fieldRow("Last Login", renderValue(entry, "last_login_at"))
-            : ""
-        }
-        ${
-          has("locked_until")
-            ? fieldRow("Locked Until", renderValue(entry, "locked_until"))
+          has("status")
+            ? fieldRow("Status", renderValue(entry, "status"))
             : ""
         }
       </div>

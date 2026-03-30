@@ -66,7 +66,7 @@ export const FIELD_LABELS_ROLE = {
 
 /* -------------------- User -------------------- */
 export const FIELD_LABELS_USER = {
-  id: "ID", username: "Username", email: "Email", password: "Password", organization_id: "Organization",
+  id: "ID", username: "Username", email: "Email", organization_id: "Organization",
   status: `Status (${joinValues(USER_STATUS)})`, last_login_at: "Last Login",
   login_attempts: "Failed Login Attempts", locked_until: "Locked Until", must_reset_password: "Must Reset Password",
   is_system: "System Account", // ✅ NEW

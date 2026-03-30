@@ -22,10 +22,10 @@ export const FIELD_ORDER_ROLE = [
 
 /* -------------------- User -------------------- */
 export const FIELD_ORDER_USER = [
-  "id", "username", "email", "password", 
-  "first_name", "last_name", "full_name",
-  "organization_id", "organization", "status",
-  "last_login_at", "login_attempts", "locked_until", "must_reset_password", 
+  "id", "username", "email",
+  "first_name", "last_name",
+  "organization_id", "status",
+  "last_login_at", "login_attempts", "locked_until", "must_reset_password",
   "is_system", "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
