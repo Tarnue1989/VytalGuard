@@ -1,10 +1,10 @@
-// 📁 user-actions.js – ENTERPRISE MASTER FINAL (CORRECTED + STABLE)
+// 📁 user-actions.js – ENTERPRISE MASTER (FULLY ALIGNED)
 // ============================================================================
-// 🔹 Uses LOCAL HTML modal (#viewModal)
-// 🔹 FULL permission handling
-// 🔹 FULL error handling restored
-// 🔹 TOKEN + PASSWORD modal fixed
-// 🔹 MASTER parity behavior preserved
+// 🔹 Matches order-actions.js structure 1:1
+// 🔹 Class-based dispatch (MASTER)
+// 🔹 Global helpers added
+// 🔹 Lifecycle-style reusable handlers
+// 🔹 All user-specific actions preserved
 // ============================================================================
 
 import {
@@ -18,22 +18,19 @@ import { authFetch } from "../../authSession.js";
 import { renderCard } from "./user-render.js";
 
 /* ============================================================
-   🧠 INTERNAL STATE
+   🧠 STATE
 ============================================================ */
 let handlersBound = false;
 
 /* ============================================================
-   🪟 LOCAL MODAL HELPER
+   🪟 LOCAL MODAL
 ============================================================ */
 function openLocalModal(titleText, htmlContent) {
   const modal = document.getElementById("viewModal");
   const title = document.getElementById("viewModalTitle");
   const body = document.getElementById("viewModalBody");
 
-  if (!modal || !title || !body) {
-    console.error("❌ Modal elements missing");
-    return;
-  }
+  if (!modal || !title || !body) return;
 
   title.textContent = titleText;
   body.innerHTML = htmlContent;
@@ -45,65 +42,42 @@ function openLocalModal(titleText, htmlContent) {
    🪟 MODAL HELPERS
 ============================================================ */
 function showTokenModal(username, token, exp) {
-  if (!token) {
-    showToast("⚠️ No reset token available");
-    return;
-  }
+  if (!token) return showToast("⚠️ No reset token available");
 
   openLocalModal(
     "Password Reset Token",
     `
     <p>Reset token for <strong>${username}</strong>:</p>
-
     <div class="input-group mb-3">
-      <input type="text" class="form-control" value="${token}" readonly>
+      <input class="form-control" value="${token}" readonly>
       <button class="btn btn-outline-secondary"
-        onclick="navigator.clipboard.writeText('${token}')">
-        Copy
-      </button>
+        onclick="navigator.clipboard.writeText('${token}')">Copy</button>
     </div>
-
     <small class="text-muted">
-      Expires at: ${
-        exp
-          ? new Date(exp).toLocaleString("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit"
-            })
-          : "—"
-      }
+      Expires at: ${exp ? new Date(exp).toLocaleString() : "—"}
     </small>
   `
   );
 }
 
-function showPasswordResetModal(username, newPassword) {
-  if (!newPassword) {
-    showToast("⚠️ Password reset failed");
-    return;
-  }
+function showPasswordResetModal(username, pwd) {
+  if (!pwd) return showToast("⚠️ Password reset failed");
 
   openLocalModal(
     "Password Reset",
     `
     <p>Temporary password for <strong>${username}</strong>:</p>
     <div class="input-group mb-3">
-      <input type="text" class="form-control" value="${newPassword}" readonly>
+      <input class="form-control" value="${pwd}" readonly>
       <button class="btn btn-outline-secondary"
-        onclick="navigator.clipboard.writeText('${newPassword}')">
-        Copy
-      </button>
+        onclick="navigator.clipboard.writeText('${pwd}')">Copy</button>
     </div>
-    <small class="text-muted">User should change this password on next login.</small>
   `
   );
 }
 
 /* ============================================================
-   🚀 SETUP
+   🚀 SETUP (MASTER FINAL – FULL)
 ============================================================ */
 export function setupActionHandlers({
   entries,
@@ -124,43 +98,37 @@ export function setupActionHandlers({
   tableBody?.addEventListener("click", handleActions);
   cardContainer?.addEventListener("click", handleActions);
 
-  /* ===================== PERMISSIONS ===================== */
+  /* ================= PERMISSIONS ================= */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
-      try {
-        return JSON.parse(perms);
-      } catch {
-        return perms.split(",").map((p) => p.trim());
-      }
+      try { return JSON.parse(perms); }
+      catch { return perms.split(",").map(p => p.trim()); }
     }
     return Array.isArray(perms) ? perms : [];
   }
 
   const userPerms = new Set(
-    normalizePermissions(user?.permissions || []).map((p) =>
+    normalizePermissions(user?.permissions || []).map(p =>
       String(p).toLowerCase().trim()
     )
   );
 
   const isSuperAdmin =
-    (user?.role &&
-      user.role.toLowerCase().replace(/\s+/g, "") === "superadmin") ||
-    (Array.isArray(user?.roleNames) &&
-      user.roleNames.some(
-        (r) => r.toLowerCase().replace(/\s+/g, "") === "superadmin"
-      ));
+    (user?.role || "").toLowerCase().includes("superadmin") ||
+    (user?.roleNames || []).some(r =>
+      r.toLowerCase().includes("superadmin")
+    );
 
-  const hasPerm = (key) =>
-    isSuperAdmin || userPerms.has(key.toLowerCase().trim());
+  const hasPerm = key =>
+    isSuperAdmin || userPerms.has(key.toLowerCase());
 
-  /* ===================== DISPATCHER ===================== */
+  /* ================= DISPATCH ================= */
   async function handleActions(e) {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
+    const btn = e.target.closest("button");
+    if (!btn || !btn.dataset.id) return;
 
-    const { id, action } = btn.dataset;
-    if (!id || !action) return;
+    const id = btn.dataset.id;
 
     let entry =
       (window.latestUserEntries || []).find(
@@ -171,166 +139,137 @@ export function setupActionHandlers({
       try {
         showLoading();
         const res = await authFetch(`/api/users/${id}`);
-        const json = await res.json().catch(() => ({}));
-        entry = json?.data || null;
-      } catch {
-        showToast("❌ User not found");
-        return;
+        const data = await res.json().catch(() => ({}));
+        entry = data?.data;
       } finally {
         hideLoading();
       }
     }
 
-    if (!entry) return showToast("❌ User data missing");
+    if (!entry) return showToast("❌ User not found");
 
-    /* ===================== ROUTES ===================== */
+    const cls = btn.classList;
 
-    if (action === "view") {
-      if (!hasPerm("users:view"))
-        return showToast("⛔ You don't have permission to view users");
+    /* ================= CORE ================= */
+
+    if (cls.contains("view-btn")) {
+      if (!hasPerm("users:view")) return showToast("⛔ No permission");
       return handleView(entry);
     }
 
-    if (action === "edit") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to edit users");
+    if (cls.contains("edit-btn")) {
+      if (!hasPerm("users:edit")) return showToast("⛔ No permission");
       return handleEdit(entry);
     }
 
-    if (action === "toggle-status") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to toggle users");
-      return await handleToggleStatus(entry);
+    if (cls.contains("delete-btn")) {
+      if (!hasPerm("users:delete")) return showToast("⛔ No permission");
+      return handleDelete(entry);
     }
 
-    if (action === "delete") {
-      if (!hasPerm("users:delete"))
-        return showToast("⛔ You don't have permission to delete users");
-      return await handleDelete(entry);
+    /* ================= STATUS ACTIONS ================= */
+
+    if (cls.contains("toggle-status-btn")) {
+      if (!hasPerm("users:edit")) return showToast("⛔ No permission");
+      return handleToggleStatus(entry);
     }
 
-    if (action === "reset-password") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to reset password");
-      return await handleResetPassword(entry);
+    if (cls.contains("reset-password-btn")) {
+      if (!hasPerm("users:reset_password"))
+        return showToast("⛔ No permission");
+      return handleResetPassword(entry);
     }
 
-    if (action === "generate-token") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to generate token");
-      return await handleGenerateResetToken(entry);
+    if (cls.contains("generate-token-btn")) {
+      if (!hasPerm("users:generate_token"))
+        return showToast("⛔ No permission");
+      return handleGenerateResetToken(entry);
     }
 
-    if (action === "unlock") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to unlock users");
-      return await handleUnlock(entry);
+    if (cls.contains("unlock-btn")) {
+      if (!hasPerm("users:unlock"))
+        return showToast("⛔ No permission");
+      return handleUnlock(entry);
     }
 
-    if (action === "revoke-sessions") {
-      if (!hasPerm("users:edit"))
-        return showToast("⛔ You don't have permission to revoke sessions");
-      return await handleRevokeSessions(entry);
+    if (cls.contains("revoke-sessions-btn")) {
+      if (!hasPerm("users:revoke_sessions"))
+        return showToast("⛔ No permission");
+      return handleRevokeSessions(entry);
+    }
+
+    if (cls.contains("restore-btn")) {
+      if (!hasPerm("users:restore"))
+        return showToast("⛔ No permission");
+      return handleRestore(entry);
     }
   }
 
-  /* ===================== HANDLERS ===================== */
+  /* ================= HANDLERS ================= */
 
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
-    openLocalModal("User Info", html);
+    openLocalModal("User Info", renderCard(entry, visibleFields, user));
   }
 
   function handleEdit(entry) {
-    if (sharedState?.currentEditIdRef)
-      sharedState.currentEditIdRef.value = entry.id;
-
+    sharedState?.currentEditIdRef && (sharedState.currentEditIdRef.value = entry.id);
     sessionStorage.setItem("userEditId", entry.id);
     sessionStorage.setItem("userEditPayload", JSON.stringify(entry));
     window.location.href = "add-user.html";
   }
 
-  async function handleToggleStatus(entry) {
-    const isActive = (entry.status || "").toLowerCase() === "active";
-
-    const confirmed = await showConfirm(
-      isActive
-        ? `Deactivate user "${entry.username}"?`
-        : `Activate user "${entry.username}"?`
-    );
-    if (!confirmed) return;
+  async function handleDelete(entry) {
+    if (!(await showConfirm(`Delete "${entry.username}"?`))) return;
 
     try {
       showLoading();
-      const res = await authFetch(
-        `/api/users/${entry.id}/toggle-status`,
-        { method: "PUT" }
-      );
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok || json?.success === false)
-        throw new Error(json?.message || "❌ Failed to update status");
-
-      showToast(`✅ User "${entry.username}" status updated`);
+      await authFetch(`/api/users/${entry.id}`, { method: "DELETE" });
+      showToast("✅ Deleted");
+      window.latestUserEntries = [];
       await loadEntries(currentPage);
-    } catch (err) {
-      showToast(err.message || "❌ Failed to update status");
     } finally {
       hideLoading();
     }
   }
 
-  async function handleDelete(entry) {
-    const confirmed = await showConfirm(
-      `Delete user "${entry.username}"?`
-    );
-    if (!confirmed) return;
+  async function handleRestore(entry) {
+    if (!(await showConfirm("Restore this user?"))) return;
 
     try {
       showLoading();
-      const res = await authFetch(`/api/users/${entry.id}`, {
-        method: "DELETE",
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok)
-        throw new Error(json?.message || "❌ Failed to delete user");
-
-      showToast(`✅ User "${entry.username}" deleted`);
+      await authFetch(`/api/users/${entry.id}/restore`, { method: "PUT" });
+      showToast("✅ User restored");
+      window.latestUserEntries = [];
       await loadEntries(currentPage);
-    } catch (err) {
-      showToast(err.message || "❌ Failed to delete user");
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function handleToggleStatus(entry) {
+    if (!(await showConfirm("Toggle user status?"))) return;
+
+    try {
+      showLoading();
+      await authFetch(`/api/users/${entry.id}/toggle-status`, { method: "PUT" });
+      showToast("✅ Status updated");
+      window.latestUserEntries = [];
+      await loadEntries(currentPage);
     } finally {
       hideLoading();
     }
   }
 
   async function handleResetPassword(entry) {
-    const confirmed = await showConfirm(
-      "Reset this user's password?"
-    );
-    if (!confirmed) return;
+    if (!(await showConfirm("Reset password?"))) return;
 
-    const res = await authFetch(
-      `/api/users/${entry.id}/reset-password`,
-      { method: "PUT" }
-    );
-
+    const res = await authFetch(`/api/users/${entry.id}/reset-password`, { method: "PUT" });
     const json = await res.json();
-
-    if (!json?.success)
-      return showToast(json?.message || "❌ Reset failed");
-
     showPasswordResetModal(entry.username, json.data?.tempPassword);
   }
 
   async function handleGenerateResetToken(entry) {
-    const confirmed = await showConfirm(
-      "Generate password reset token?"
-    );
-    if (!confirmed) return;
+    if (!(await showConfirm("Generate reset token?"))) return;
 
     const res = await authFetch(`/api/users/generate-reset-token`, {
       method: "POST",
@@ -339,43 +278,61 @@ export function setupActionHandlers({
     });
 
     const json = await res.json();
-
-    if (!json?.success)
-      return showToast(json?.message || "❌ Token generation failed");
-
-    showTokenModal(
-      entry.username,
-      json.data?.token,
-      json.data?.exp
-    );
+    showTokenModal(entry.username, json.data?.token, json.data?.exp);
   }
 
   async function handleUnlock(entry) {
-    const confirmed = await showConfirm("Unlock this account?");
-    if (!confirmed) return;
+    if (!(await showConfirm("Unlock user?"))) return;
 
-    await authFetch(`/api/users/${entry.id}/unlock`, {
-      method: "PUT",
-    });
-
-    showToast(`✅ "${entry.username}" unlocked`);
-    await loadEntries(currentPage);
+    try {
+      showLoading();
+      await authFetch(`/api/users/${entry.id}/unlock`, { method: "PUT" });
+      showToast("✅ Unlocked");
+      window.latestUserEntries = [];
+      await loadEntries(currentPage);
+    } finally {
+      hideLoading();
+    }
   }
 
   async function handleRevokeSessions(entry) {
-    const confirmed = await showConfirm(
-      "Revoke all active sessions?"
-    );
-    if (!confirmed) return;
+    if (!(await showConfirm("Revoke sessions?"))) return;
 
-    await authFetch(`/api/users/${entry.id}/revoke-sessions`, {
-      method: "PUT",
-    });
-
-    showToast(`✅ Sessions revoked for "${entry.username}"`);
+    try {
+      showLoading();
+      await authFetch(`/api/users/${entry.id}/revoke-sessions`, { method: "PUT" });
+      showToast("✅ Sessions revoked");
+      window.latestUserEntries = [];
+      await loadEntries(currentPage);
+    } finally {
+      hideLoading();
+    }
   }
 
-  /* ===================== CLOSE MODAL ===================== */
+  /* ================= GLOBAL HELPERS ================= */
+
+  const findEntry = id =>
+    (window.latestUserEntries || []).find(x => String(x.id) === String(id));
+
+  window.viewUser = id => {
+    if (!hasPerm("users:view")) return showToast("⛔ No permission");
+    const e = findEntry(id);
+    if (e) handleView(e);
+  };
+
+  window.editUser = id => {
+    if (!hasPerm("users:edit")) return showToast("⛔ No permission");
+    const e = findEntry(id);
+    if (e) handleEdit(e);
+  };
+
+  window.deleteUser = id => {
+    if (!hasPerm("users:delete")) return showToast("⛔ No permission");
+    const e = findEntry(id);
+    if (e) handleDelete(e);
+  };
+
+  /* ================= MODAL CLOSE ================= */
   document.getElementById("closeViewModal")?.addEventListener("click", () => {
     document.getElementById("viewModal")?.classList.add("hidden");
   });

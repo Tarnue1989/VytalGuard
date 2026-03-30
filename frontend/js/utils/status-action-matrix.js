@@ -571,12 +571,24 @@ export function buildActionButtons({
   for (const act of allowed) {
     let backend = act;
 
+    if (act === "reset-password") {
+      backend = "reset_password";
+    }
+
+    if (act === "generate-token") {
+      backend = "generate_token";
+    }
+
+    if (act === "revoke-sessions") {
+      backend = "revoke_sessions";
+    }
+
     /* =========================
       NORMALIZE TO DB PERMS
     ========================= */
-  if (act === "toggle-status") {
-    backend = "toggle_status";
-  }
+    if (act === "toggle-status") {
+      backend = "toggle_status";
+    }
     /* =========================
       MODULE-SPECIFIC OVERRIDES
     ========================= */

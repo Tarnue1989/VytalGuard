@@ -944,7 +944,7 @@ export const resetUserPassword = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "reset-password",
+      action: "reset_password",
       res,
     });
     if (!allowed) return;
@@ -1028,7 +1028,7 @@ export const adminGenerateResetToken = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "generate-token",
+      action: "generate_token",
       res,
     });
     if (!allowed) return;
@@ -1561,7 +1561,7 @@ export const requirePasswordReset = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "reset-password",
+      action: "reset_password",
       res,
     });
     if (!allowed) return;
@@ -1612,7 +1612,7 @@ export const revokeUserSessions = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "revoke-sessions",
+      action: "revoke_sessions",
       res,
     });
     if (!allowed) return;
