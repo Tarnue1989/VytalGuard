@@ -111,7 +111,7 @@ function buildDiscountSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   📌 GET ALL DISCOUNTS (MASTER + SUMMARY)
+   📌 GET ALL DISCOUNTS (MASTER + SUMMARY – FIXED TENANT)
 ============================================================ */
 export const getAllDiscounts = async (req, res) => {
   try {
@@ -142,6 +142,8 @@ export const getAllDiscounts = async (req, res) => {
        🧹 STRIP UI-ONLY PARAMS (MASTER)
     ======================================================== */
     const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
     req.query = safeQuery;
 
     const options = buildQueryOptions(
@@ -151,12 +153,10 @@ export const getAllDiscounts = async (req, res) => {
       visibleFields
     );
 
-    options.limit = limit;
-    options.offset = offset;
     options.where = { [Op.and]: [] };
 
     /* ========================================================
-       📅 DATE RANGE (created_at)
+       📅 DATE RANGE
     ======================================================== */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
@@ -168,19 +168,35 @@ export const getAllDiscounts = async (req, res) => {
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
+       🔐 TENANT SCOPE (FIXED – MASTER PARITY)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
+      // ✅ Org always enforced
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgLevelUser(req.user)) {
+      // ✅ FIX: multi-facility support
+      if (
+        Array.isArray(req.user.facility_ids) &&
+        req.user.facility_ids.length > 0
+      ) {
         options.where[Op.and].push({
-          facility_id: req.user.facility_id,
+          [Op.or]: [
+            { facility_id: { [Op.in]: req.user.facility_ids } },
+            { facility_id: null },
+          ],
+        });
+      }
+
+      // ✅ Org-level override (same as Payment)
+      if (isOrgLevelUser(req.user) && req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
         });
       }
     } else {
+      // ✅ Superadmin filters
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -194,7 +210,7 @@ export const getAllDiscounts = async (req, res) => {
     }
 
     /* ========================================================
-       🎯 FILTERS (EXACT MATCH)
+       🎯 FILTERS
     ======================================================== */
     if (req.query.status) {
       options.where[Op.and].push({ status: req.query.status });
@@ -205,7 +221,7 @@ export const getAllDiscounts = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (SAFE)
+       🔍 GLOBAL SEARCH
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
@@ -229,7 +245,7 @@ export const getAllDiscounts = async (req, res) => {
     });
 
     /* ========================================================
-       🔢 SUMMARY (FULL DATASET – PAGINATION SAFE)
+       🔢 SUMMARY
     ======================================================== */
     const summary = { total: count };
 
@@ -247,7 +263,6 @@ export const getAllDiscounts = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
-
     /* ========================================================
        🧾 AUDIT LOG
     ======================================================== */
@@ -263,7 +278,7 @@ export const getAllDiscounts = async (req, res) => {
     });
 
     /* ========================================================
-       ✅ RESPONSE (MASTER CONTRACT)
+       ✅ RESPONSE
     ======================================================== */
     return success(res, "✅ Discounts loaded", {
       records: rows,

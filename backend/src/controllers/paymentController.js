@@ -571,7 +571,7 @@ export const deletePayment = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL PAYMENTS (MASTER-ALIGNED – CONSULTATION PARITY)
+   📌 GET ALL PAYMENTS (MASTER-ALIGNED – FIXED TENANT)
 ============================================================ */
 export const getAllPayments = async (req, res) => {
   try {
@@ -603,8 +603,10 @@ export const getAllPayments = async (req, res) => {
       "DESC",
       visibleFields
     );
+
     options.where = { [Op.and]: [] };
 
+    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -614,21 +616,31 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
+    /* ================= TENANT FIX ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgLevelUser(req.user)) {
+      // ✅ FIXED: multi-facility support
+      if (
+        Array.isArray(req.user.facility_ids) &&
+        req.user.facility_ids.length > 0
+      ) {
         options.where[Op.and].push({
-          facility_id: req.user.facility_id,
+          [Op.or]: [
+            { facility_id: { [Op.in]: req.user.facility_ids } },
+            { facility_id: null },
+          ],
         });
-      } else if (req.query.facility_id) {
+      }
+
+      // ✅ org-level override
+      if (isOrgLevelUser(req.user) && req.query.facility_id) {
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
-
     } else {
       if (req.query.organization_id) {
         options.where[Op.and].push({
@@ -642,6 +654,7 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
+    /* ================= FILTERS ================= */
     if (req.query.invoice_id) {
       options.where[Op.and].push({ invoice_id: req.query.invoice_id });
     }
@@ -655,11 +668,11 @@ export const getAllPayments = async (req, res) => {
       options.where[Op.and].push({ status: req.query.status });
     }
 
-    /* ================= GLOBAL SEARCH (FIXED) ================= */
+    /* ================= SEARCH ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
-          { payment_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
+          { payment_number: { [Op.iLike]: `%${options.search}%` } },
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
@@ -715,7 +728,6 @@ export const getAllPayments = async (req, res) => {
     return error(res, "❌ Failed to load payments", err);
   }
 };
-
 
 /* ============================================================
    📌 GET ALL PAYMENTS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)

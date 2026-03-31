@@ -122,12 +122,12 @@ function buildWaiverSchema(mode = "create") {
 }
 
 /* ============================================================
-   📌 GET ALL WAIVERS (MASTER + SUMMARY — FULL DISCOUNT PARITY)
+   📌 GET ALL WAIVERS (MASTER + SUMMARY — FIXED TENANT)
 ============================================================ */
 export const getAllWaivers = async (req, res) => {
   try {
     /* ========================================================
-       🔐 AUTHORIZATION (MASTER)
+       🔐 AUTHORIZATION
     ======================================================== */
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -138,7 +138,7 @@ export const getAllWaivers = async (req, res) => {
     if (!allowed) return;
 
     /* ========================================================
-       🔎 STRICT PAGINATION (MASTER)
+       🔎 PAGINATION
     ======================================================== */
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
@@ -151,9 +151,11 @@ export const getAllWaivers = async (req, res) => {
       FIELD_VISIBILITY_DISCOUNT_WAIVER.staff;
 
     /* ========================================================
-       🧹 STRIP UI-ONLY PARAMS (MASTER)
+       🧹 CLEAN QUERY
     ======================================================== */
     const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
     req.query = safeQuery;
 
     const options = buildQueryOptions(
@@ -163,12 +165,10 @@ export const getAllWaivers = async (req, res) => {
       visibleFields
     );
 
-    options.limit = limit;
-    options.offset = offset;
     options.where = { [Op.and]: [] };
 
     /* ========================================================
-       📅 DATE RANGE (created_at)
+       📅 DATE RANGE
     ======================================================== */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
@@ -180,16 +180,30 @@ export const getAllWaivers = async (req, res) => {
     }
 
     /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
+       🔐 TENANT (FIXED)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgLevelUser(req.user)) {
+      // ✅ FIX: multi-facility support
+      if (
+        Array.isArray(req.user.facility_ids) &&
+        req.user.facility_ids.length > 0
+      ) {
         options.where[Op.and].push({
-          facility_id: req.user.facility_id,
+          [Op.or]: [
+            { facility_id: { [Op.in]: req.user.facility_ids } },
+            { facility_id: null },
+          ],
+        });
+      }
+
+      // ✅ org-level override
+      if (isOrgLevelUser(req.user) && req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
         });
       }
     } else {
@@ -206,7 +220,7 @@ export const getAllWaivers = async (req, res) => {
     }
 
     /* ========================================================
-       🎯 FILTERS (EXACT MATCH)
+       🎯 FILTERS
     ======================================================== */
     if (req.query.status) {
       options.where[Op.and].push({ status: req.query.status });
@@ -217,7 +231,7 @@ export const getAllWaivers = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (MASTER SAFE)
+       🔍 SEARCH
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
@@ -228,7 +242,7 @@ export const getAllWaivers = async (req, res) => {
     }
 
     /* ========================================================
-       🗂️ MAIN QUERY
+       🗂️ QUERY
     ======================================================== */
     const { count, rows } = await DiscountWaiver.findAndCountAll({
       where: options.where,
@@ -240,7 +254,7 @@ export const getAllWaivers = async (req, res) => {
     });
 
     /* ========================================================
-       🔢 SUMMARY (INLINE — MASTER PARITY)
+       📊 SUMMARY
     ======================================================== */
     const summary = { total: count };
 
@@ -259,7 +273,7 @@ export const getAllWaivers = async (req, res) => {
     });
 
     /* ========================================================
-       🧾 AUDIT LOG (MASTER)
+       🧾 AUDIT
     ======================================================== */
     await auditService.logAction({
       user: req.user,
@@ -272,9 +286,6 @@ export const getAllWaivers = async (req, res) => {
       },
     });
 
-    /* ========================================================
-       ✅ RESPONSE (MASTER CONTRACT)
-    ======================================================== */
     return success(res, "✅ Waivers loaded", {
       records: rows,
       summary,
@@ -293,7 +304,6 @@ export const getAllWaivers = async (req, res) => {
     return error(res, "❌ Failed to load waivers", err);
   }
 };
-
 /* ============================================================
    📌 GET BY ID
 ============================================================ */

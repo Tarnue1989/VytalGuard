@@ -157,6 +157,23 @@ export default (sequelize) => {
       },
     }
   );
+  /* ============================================================
+    🔁 APPLY DISCOUNT (FINAL – TRIGGER ONLY)
+  ============================================================ */
+  Discount.afterUpdate(async (discount, options) => {
+    try {
+      if (discount.status !== "finalized") return;
 
+      const { financialService } = await import("../services/financialService.js");
+
+      await financialService.recalcInvoice(
+        discount.invoice_id,
+        options?.transaction
+      );
+
+    } catch (err) {
+      console.error("❌ Discount recalc failed:", err.message);
+    }
+  });
   return Discount;
 };

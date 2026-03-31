@@ -292,6 +292,9 @@ export const updateDeposit = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
+   ✅ FIXED: facility_ids handling
+   ✅ FIXED: org/fac query override parity
+   ✅ SAFE: no override conflicts
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
@@ -326,6 +329,9 @@ export const getAllDeposits = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
+    /* ========================================================
+       📅 DATE RANGE (UI ONLY)
+    ======================================================== */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -335,17 +341,36 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       🔐 TENANT SCOPE (FIXED + MASTER PARITY)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
+      // ✅ Always filter by org
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgLevelUser(req.user)) {
+      // ✅ Facility handling (FIXED HERE)
+      if (
+        Array.isArray(req.user.facility_ids) &&
+        req.user.facility_ids.length > 0
+      ) {
         options.where[Op.and].push({
-          facility_id: req.user.facility_id,
+          [Op.or]: [
+            { facility_id: { [Op.in]: req.user.facility_ids } },
+            { facility_id: null },
+          ],
+        });
+      }
+
+      // ✅ Org-level override (like Payment)
+      if (isOrgLevelUser(req.user) && req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
         });
       }
     } else {
+      // ✅ Superadmin filters
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -358,6 +383,9 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       🔎 FILTERS
+    ======================================================== */
     if (req.query.patient_id) {
       options.where[Op.and].push({
         patient_id: req.query.patient_id,
@@ -383,18 +411,21 @@ export const getAllDeposits = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (FIXED)
+       🔍 GLOBAL SEARCH (MASTER)
     ======================================================== */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
-          { deposit_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
+          { deposit_number: { [Op.iLike]: `%${options.search}%` } },
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
           { notes: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
+    /* ========================================================
+       📦 FETCH
+    ======================================================== */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -404,6 +435,9 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
+    /* ========================================================
+       📊 SUMMARY
+    ======================================================== */
     const summary = { total: count };
 
     const statusCounts = await Deposit.findAll({
@@ -420,6 +454,9 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
