@@ -292,6 +292,7 @@ export const updateDeposit = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
+   ✅ FIXED → FACILITY ACCESS MATCHES REGISTRATION LOG
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
@@ -326,6 +327,7 @@ export const getAllDeposits = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
+    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -335,17 +337,27 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
+    /* ================= TENANT SCOPE (FIXED) ================= */
     if (!isSuperAdmin(req.user)) {
+      // 🔒 ALWAYS restrict by org
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgLevelUser(req.user)) {
+      // ✅ MATCH REGISTRATION LOG
+      if (isFacilityHead(req.user)) {
+        // facility head → ONLY their facility
         options.where[Op.and].push({
           facility_id: req.user.facility_id,
         });
+      } else if (req.query.facility_id) {
+        // others → can filter facility
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     } else {
+      // superadmin → full control
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -358,6 +370,7 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
+    /* ================= FILTERS ================= */
     if (req.query.patient_id) {
       options.where[Op.and].push({
         patient_id: req.query.patient_id,
@@ -382,19 +395,18 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
-    /* ========================================================
-       🔍 GLOBAL SEARCH (FIXED)
-    ======================================================== */
+    /* ================= GLOBAL SEARCH ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
-          { deposit_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
+          { deposit_number: { [Op.iLike]: `%${options.search}%` } },
           { transaction_ref: { [Op.iLike]: `%${options.search}%` } },
           { notes: { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -404,6 +416,7 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
+    /* ================= SUMMARY ================= */
     const summary = { total: count };
 
     const statusCounts = await Deposit.findAll({
@@ -420,6 +433,7 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -431,6 +445,7 @@ export const getAllDeposits = async (req, res) => {
       },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Deposits loaded", {
       records: rows,
       summary,
