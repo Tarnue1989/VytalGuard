@@ -12,7 +12,7 @@
 
 import { FIELD_LABELS_DEPOSIT } from "./deposit-constants.js";
 
-import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
