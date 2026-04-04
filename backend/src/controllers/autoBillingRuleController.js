@@ -67,7 +67,7 @@ function buildAutoBillingRuleSchema(user, mode = "create") {
     auto_generate: Joi.boolean().default(true),
 
     charge_mode: Joi.string()
-      .valid(...AUTO_BILLING_CHARGE_MODE)
+      .valid(...Object.values(AUTO_BILLING_CHARGE_MODE))
       .required(),
 
     default_price: Joi.number().precision(2).allow(null),
@@ -221,7 +221,7 @@ export const createAutoBillingRule = async (req, res) => {
           default_price: value.default_price,
           organization_id: orgId,
           facility_id: facilityId,
-          status: AUTO_BILLING_RULE_STATUS[0],
+          status: AUTO_BILLING_RULE_STATUS.ACTIVE,
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
@@ -612,7 +612,7 @@ export const getAllAutoBillingRules = async (req, res) => {
       raw: true,
     });
 
-    AUTO_BILLING_RULE_STATUS.forEach((s) => {
+    Object.values(AUTO_BILLING_RULE_STATUS).forEach((s) => {
       const found = statusCounts.find((r) => r.status === s);
       summary[s] = found ? Number(found.count) : 0;
     });
@@ -730,7 +730,7 @@ export const toggleAutoBillingRuleStatus = async (req, res) => {
       return error(res, "❌ Auto Billing Rule not found", null, 404);
     }
 
-    const [ACTIVE, INACTIVE] = AUTO_BILLING_RULE_STATUS;
+    const { ACTIVE, INACTIVE } = AUTO_BILLING_RULE_STATUS;
     const newStatus = rule.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await rule.update({
@@ -778,7 +778,7 @@ export const getAllAutoBillingRulesLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      status: AUTO_BILLING_RULE_STATUS[0], // active
+      status: AUTO_BILLING_RULE_STATUS.ACTIVE, // active
     };
 
     /* 🔒 Tenant scope */

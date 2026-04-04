@@ -90,15 +90,15 @@ const MODULE_KEY = "orders";
    🔖 STATUS MAP (ENUM-DRIVEN, MASTER)
 ============================================================ */
 const OS = {
-  DRAFT: ORDER_STATUS[0],
-  PENDING: ORDER_STATUS[1],
-  APPROVED: ORDER_STATUS[2],
-  IN_PROGRESS: ORDER_STATUS[3],
-  COMPLETED: ORDER_STATUS[4],
-  VERIFIED: ORDER_STATUS[5],
-  FINALIZED: ORDER_STATUS[6],
-  CANCELLED: ORDER_STATUS[7],
-  VOIDED: ORDER_STATUS[8],
+  DRAFT: ORDER_STATUS.DRAFT,
+  PENDING: ORDER_STATUS.PENDING,
+  APPROVED: ORDER_STATUS.APPROVED,
+  IN_PROGRESS: ORDER_STATUS.IN_PROGRESS,
+  COMPLETED: ORDER_STATUS.COMPLETED,
+  VERIFIED: ORDER_STATUS.VERIFIED,
+  FINALIZED: ORDER_STATUS.FINALIZED,
+  CANCELLED: ORDER_STATUS.CANCELLED,
+  VOIDED: ORDER_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -159,8 +159,8 @@ function buildOrderSchema(mode = "create") {
     consultation_id: Joi.string().uuid().allow(null, ""),
     registration_log_id: Joi.string().uuid().allow(null, ""),
 
-    type: Joi.string().valid(...ORDER_TYPE).allow(null, ""),
-    priority: Joi.string().valid(...ORDER_PRIORITY).default("routine"),
+    type: Joi.string().valid(...Object.values(ORDER_TYPE)).allow(null, ""),
+    priority: Joi.string().valid(...Object.values(ORDER_PRIORITY)).default("routine"),
 
     order_date: Joi.date().default(() => new Date()),
     notes: Joi.string().allow("", null),

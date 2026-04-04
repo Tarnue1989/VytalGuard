@@ -62,14 +62,14 @@ export default (sequelize) => {
       type: {
         type: DataTypes.ENUM(...Object.values(PHARMACY_TRANSACTION_TYPE)),
         allowNull: false,
-        defaultValue: PHARMACY_TRANSACTION_TYPE.DISPENSE, // ✅ safer default
+        defaultValue: PHARMACY_TRANSACTION_TYPE.DISPENSE,
       },
 
       // Lifecycle
       status: {
         type: DataTypes.ENUM(...Object.values(PHARMACY_TRANSACTION_STATUS)),
         allowNull: false,
-        defaultValue: PHARMACY_TRANSACTION_STATUS.PENDING, // ✅ safer default
+        defaultValue: PHARMACY_TRANSACTION_STATUS.PENDING,
       },
 
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },

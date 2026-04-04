@@ -51,23 +51,15 @@ const debug = makeModuleLogger("paymentController", DEBUG_OVERRIDE);
 /* ============================================================
    🔖 STATUS MAPS (ENUM-SAFE, MASTER STYLE)
 ============================================================ */
-const PS = {
-  PENDING: PAYMENT_STATUS[0],
-  COMPLETED: PAYMENT_STATUS[1],
-  FAILED: PAYMENT_STATUS[2],
-  CANCELLED: PAYMENT_STATUS[3],
-  REVERSED: PAYMENT_STATUS[4],
-  VOIDED: PAYMENT_STATUS[5],
-  VERIFIED: PAYMENT_STATUS[6],
-};
+const PS = PAYMENT_STATUS;
 
 const RS = {
-  PENDING: REFUND_STATUS[0],
-  APPROVED: REFUND_STATUS[1],
-  REJECTED: REFUND_STATUS[2],
-  PROCESSED: REFUND_STATUS[3],
-  CANCELLED: REFUND_STATUS[4],
-  REVERSED: REFUND_STATUS[5],
+  PENDING: REFUND_STATUS.PENDING,
+  APPROVED: REFUND_STATUS.APPROVED,
+  REJECTED: REFUND_STATUS.REJECTED,
+  PROCESSED: REFUND_STATUS.PROCESSED,
+  CANCELLED: REFUND_STATUS.CANCELLED,
+  REVERSED: REFUND_STATUS.REVERSED,
 };
 
 /* ============================================================
@@ -138,12 +130,15 @@ function buildPaymentSchema(userRole, mode = "create") {
     invoice_id: Joi.string().uuid().required(),
     patient_id: Joi.forbidden(), // ✅ FIX
     amount: Joi.number().positive().required(),
-    method: Joi.string().valid(...PAYMENT_METHODS).required(),
+
+    // 🔥 ONLY ADD THIS (MISSING)
+    currency: Joi.string().valid("USD", "LRD").required(),
+
+    method: Joi.string().valid(...Object.values(PAYMENT_METHODS)).required(),
     transaction_ref: Joi.string().allow(null, ""),
     is_deposit: Joi.boolean().forbidden(),
     status: Joi.forbidden(),
   };
-
 
   if (mode === "update") {
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
@@ -155,13 +150,14 @@ function buildPaymentSchema(userRole, mode = "create") {
     base.organization_id = Joi.string().uuid().optional();
     base.facility_id = Joi.string().uuid().allow(null).optional();
   } else {
-    // 🔒 everyone else forbidden
     base.organization_id = Joi.forbidden();
     base.facility_id = Joi.forbidden();
   }
 
   return Joi.object(base);
 }
+
+
 /* ============================================================
    📌 CREATE PAYMENT (MASTER PARITY – TENANT RESOLVED)
 ============================================================ */
@@ -188,24 +184,17 @@ export const createPayment = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ========================================================
-       🧭 TENANT RESOLUTION (MASTER)
-    ======================================================== */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
       body: req.body,
     });
 
-
     if (!orgId) {
       await t.rollback();
       return error(res, "Missing organization assignment", null, 400);
     }
 
-    /* ========================================================
-       🔒 INVOICE BALANCE GUARD (LOCKED)
-    ======================================================== */
     const invoiceRecord = await Invoice.findByPk(value.invoice_id, {
       attributes: [
         "id",
@@ -240,9 +229,6 @@ export const createPayment = async (req, res) => {
       );
     }
 
-    /* ========================================================
-       💰 APPLY PAYMENT (SERVICE)
-    ======================================================== */
     const { payment, invoice } = await financialService.applyPayment({
       ...value,
       organization_id: orgId,
@@ -272,6 +258,8 @@ export const createPayment = async (req, res) => {
     return error(res, "❌ Failed to create payment", err);
   }
 };
+
+
 /* ============================================================
    📌 UPDATE PAYMENT (MASTER PARITY – TENANT SAFE)
 ============================================================ */
@@ -298,14 +286,11 @@ export const updatePayment = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ========================================================
-       🔒 LOCK ONLY PAYMENT TABLE (CRITICAL FIX)
-    ======================================================== */
     const record = await Payment.findByPk(req.params.id, {
       transaction: t,
       lock: {
         level: t.LOCK.UPDATE,
-        of: Payment, // ✅ THIS FIXES THE ERROR
+        of: Payment,
       },
     });
 
@@ -314,7 +299,6 @@ export const updatePayment = async (req, res) => {
       return error(res, "❌ Payment not found", null, 404);
     }
 
-    // 🔒 Deposits are not editable here
     if (record.is_deposit) {
       await t.rollback();
       return error(
@@ -325,7 +309,6 @@ export const updatePayment = async (req, res) => {
       );
     }
 
-    // 🔒 Only pending payments are editable
     if (record.status !== PS.PENDING) {
       await t.rollback();
       return error(
@@ -336,18 +319,12 @@ export const updatePayment = async (req, res) => {
       );
     }
 
-    /* ========================================================
-       🔎 LOAD REFUNDS (NO LOCK, NO JOIN)
-    ======================================================== */
     const refunds = await Refund.findAll({
       where: { payment_id: record.id },
       attributes: ["id", "amount", "status"],
       transaction: t,
     });
 
-    /* ========================================================
-       🛑 AMOUNT CHANGE GUARDS
-    ======================================================== */
     if (
       value.amount &&
       Number(value.amount) !== Number(record.amount)
@@ -376,9 +353,6 @@ export const updatePayment = async (req, res) => {
         );
       }
 
-      /* ====================================================
-         🔒 LOCK INVOICE (SCOPED)
-      ==================================================== */
       const invoiceRecord = await Invoice.findByPk(record.invoice_id, {
         attributes: [
           "id",
@@ -420,9 +394,6 @@ export const updatePayment = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       💾 APPLY UPDATE
-    ======================================================== */
     await record.update(
       { ...value, updated_by_id: req.user?.id || null },
       { transaction: t }
@@ -606,7 +577,6 @@ export const getAllPayments = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
-    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -616,13 +586,11 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
-    /* ================= TENANT FIX ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      // ✅ FIXED: multi-facility support
       if (
         Array.isArray(req.user.facility_ids) &&
         req.user.facility_ids.length > 0
@@ -635,7 +603,6 @@ export const getAllPayments = async (req, res) => {
         });
       }
 
-      // ✅ org-level override
       if (isOrgLevelUser(req.user) && req.query.facility_id) {
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
@@ -654,7 +621,6 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
-    /* ================= FILTERS ================= */
     if (req.query.invoice_id) {
       options.where[Op.and].push({ invoice_id: req.query.invoice_id });
     }
@@ -668,7 +634,11 @@ export const getAllPayments = async (req, res) => {
       options.where[Op.and].push({ status: req.query.status });
     }
 
-    /* ================= SEARCH ================= */
+    // 🔥 ONLY ADD THIS (currency filter)
+    if (req.query.currency) {
+      options.where[Op.and].push({ currency: req.query.currency });
+    }
+
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -729,6 +699,7 @@ export const getAllPayments = async (req, res) => {
   }
 };
 
+
 /* ============================================================
    📌 GET ALL PAYMENTS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
 ============================================================ */
@@ -745,9 +716,6 @@ export const getAllPaymentsLite = async (req, res) => {
     const { q, patient_id } = req.query;
     const where = { [Op.and]: [] };
 
-    /* ========================================================
-       🔐 TENANT SCOPE (MASTER)
-    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -771,16 +739,10 @@ export const getAllPaymentsLite = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       👤 FILTERS
-    ======================================================== */
     if (patient_id) {
       where[Op.and].push({ patient_id });
     }
 
-    /* ========================================================
-       🔍 SEARCH (MASTER)
-    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -790,9 +752,6 @@ export const getAllPaymentsLite = async (req, res) => {
       });
     }
 
-    /* ========================================================
-       💰 FETCH PAYMENTS + REFUNDS
-    ======================================================== */
     const payments = await Payment.findAll({
       where,
       attributes: [
@@ -801,6 +760,7 @@ export const getAllPaymentsLite = async (req, res) => {
         "invoice_id",
         "patient_id",
         "amount",
+        "currency", // 🔥 ONLY ADD THIS
         "method",
         "transaction_ref",
         "status",
@@ -827,9 +787,6 @@ export const getAllPaymentsLite = async (req, res) => {
       limit: 20,
     });
 
-    /* ========================================================
-       🔁 MAP + FILTER (REFUND-SAFE)
-    ======================================================== */
     const records = payments
       .map((p) => {
         const refunded = (p.refunds || [])
@@ -848,6 +805,7 @@ export const getAllPaymentsLite = async (req, res) => {
           label: `${p.payment_number || p.transaction_ref || p.id} - ${p.amount}`,
 
           amount: p.amount,
+          currency: p.currency, // 🔥 ONLY ADD THIS
           refunded_amount: refunded,
           remaining_balance: remaining,
 
@@ -863,12 +821,8 @@ export const getAllPaymentsLite = async (req, res) => {
           created_at: p.created_at,
         };
       })
-      // ✅ ONLY SHOW PAYMENTS THAT CAN STILL BE REFUNDED
       .filter((r) => r.remaining_balance > 0);
 
-    /* ========================================================
-       📊 AUDIT
-    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,

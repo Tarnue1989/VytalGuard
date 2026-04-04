@@ -55,13 +55,13 @@ const debug = makeModuleLogger("depositController", DEBUG_OVERRIDE);
    🔖 STATUS MAP (ENUM-SAFE, MASTER STYLE)
 ============================================================ */
 const DS = {
-  PENDING: DEPOSIT_STATUS[0],
-  CLEARED: DEPOSIT_STATUS[1],
-  APPLIED: DEPOSIT_STATUS[2],
-  CANCELLED: DEPOSIT_STATUS[3],
-  REVERSED: DEPOSIT_STATUS[4],
-  VOIDED: DEPOSIT_STATUS[5],
-  VERIFIED: DEPOSIT_STATUS[6],
+  PENDING: DEPOSIT_STATUS.PENDING,
+  CLEARED: DEPOSIT_STATUS.CLEARED,
+  APPLIED: DEPOSIT_STATUS.APPLIED,
+  CANCELLED: DEPOSIT_STATUS.CANCELLED,
+  REVERSED: DEPOSIT_STATUS.REVERSED,
+  VOIDED: DEPOSIT_STATUS.VOIDED,
+  VERIFIED: DEPOSIT_STATUS.VERIFIED,
 };
 
 /* ============================================================
@@ -83,9 +83,16 @@ const DEPOSIT_INCLUDES = [
 function buildDepositSchema(userRole, mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
+
+    // 🔥 FIX: REQUIRED FOR DB
+    currency: Joi.string().valid("USD", "LRD").required(),
+
     applied_invoice_id: Joi.string().uuid().allow(null, ""),
+
     amount: Joi.number().positive().required(),
-    method: Joi.string().valid(...PAYMENT_METHODS).required(),
+
+    method: Joi.string().valid(...Object.values(PAYMENT_METHODS)).required(),
+
     transaction_ref: Joi.string().allow(null, ""),
     notes: Joi.string().allow(null, ""),
     reason: Joi.string().allow(null, ""),
@@ -104,7 +111,6 @@ function buildDepositSchema(userRole, mode = "create") {
     base.organization_id = Joi.string().uuid().optional();
     base.facility_id = Joi.string().uuid().allow(null).optional();
   } else {
-    // 🔒 everyone else forbidden
     base.organization_id = Joi.forbidden();
     base.facility_id = Joi.forbidden();
   }
@@ -157,8 +163,13 @@ export const createDeposit = async (req, res) => {
     /* ========================================================
        💰 LEDGER-FIRST APPLY
     ======================================================== */
+
+    // 🔥 FIX: map applied_invoice_id → invoice_id
+    const { applied_invoice_id, ...rest } = value;
+
     const { deposit, invoice } = await financialService.applyDeposit({
-      ...value,
+      ...rest,
+      invoice_id: applied_invoice_id || null, // ✅ CRITICAL FIX
       organization_id: orgId,
       facility_id: facilityId,
       user: req.user,
@@ -190,6 +201,7 @@ export const createDeposit = async (req, res) => {
     return error(res, "❌ Failed to create deposit", err);
   }
 };
+
 
 /* ============================================================
    📌 UPDATE DEPOSIT (LEDGER-SAFE – MASTER PARITY)
@@ -227,13 +239,11 @@ export const updateDeposit = async (req, res) => {
       return error(res, "❌ Deposit not found", null, 404);
     }
 
-    // 🔒 Only pending deposits are editable
     if (record.status !== DS.PENDING) {
       await t.rollback();
       return error(res, "❌ Only pending deposits can be updated", null, 400);
     }
 
-    // 🔒 Reason required if amount changes
     if (
       value.amount &&
       parseFloat(value.amount) !== parseFloat(record.amount) &&
@@ -248,14 +258,12 @@ export const updateDeposit = async (req, res) => {
       );
     }
 
-    /* ========================================================
-       🧭 TENANT RESOLUTION (MASTER)
-    ======================================================== */
-  const { orgId, facilityId } = await resolveOrgFacility({
-    user: req.user,
-    value,
-    body: req.body,
-  });
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
+
     await record.update(
       {
         ...value,
@@ -288,7 +296,6 @@ export const updateDeposit = async (req, res) => {
     return error(res, "❌ Failed to update deposit", err);
   }
 };
-
 
 /* ============================================================
    📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
@@ -345,12 +352,10 @@ export const getAllDeposits = async (req, res) => {
        🔐 TENANT SCOPE (FIXED + MASTER PARITY)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      // ✅ Always filter by org
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      // ✅ Facility handling (FIXED HERE)
       if (
         Array.isArray(req.user.facility_ids) &&
         req.user.facility_ids.length > 0
@@ -363,14 +368,12 @@ export const getAllDeposits = async (req, res) => {
         });
       }
 
-      // ✅ Org-level override (like Payment)
       if (isOrgLevelUser(req.user) && req.query.facility_id) {
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
     } else {
-      // ✅ Superadmin filters
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -410,6 +413,13 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
+    // 🔥 SAFE ADD: currency filter (non-breaking)
+    if (req.query.currency) {
+      options.where[Op.and].push({
+        currency: req.query.currency,
+      });
+    }
+
     /* ========================================================
        🔍 GLOBAL SEARCH (MASTER)
     ======================================================== */
@@ -423,9 +433,6 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
-    /* ========================================================
-       📦 FETCH
-    ======================================================== */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -435,9 +442,6 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
-    /* ========================================================
-       📊 SUMMARY
-    ======================================================== */
     const summary = { total: count };
 
     const statusCounts = await Deposit.findAll({
@@ -454,9 +458,6 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
-    /* ========================================================
-       🧾 AUDIT
-    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -486,6 +487,7 @@ export const getAllDeposits = async (req, res) => {
     return error(res, "❌ Failed to load deposits", err);
   }
 };
+
 /* ============================================================
    📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
 ============================================================ */
@@ -545,9 +547,9 @@ export const getAllDepositsLite = async (req, res) => {
     where[Op.and].push({
       status: {
         [Op.in]: [
-          DEPOSIT_STATUS[1],
-          DEPOSIT_STATUS[2],
-          DEPOSIT_STATUS[6],
+          DEPOSIT_STATUS.CLEARED,
+          DEPOSIT_STATUS.APPLIED,
+          DEPOSIT_STATUS.VERIFIED,
         ],
       },
     });
@@ -572,11 +574,12 @@ export const getAllDepositsLite = async (req, res) => {
       attributes: [
         "id",
         "deposit_number",
-        "applied_invoice_id", // ✅ FIXED
+        "applied_invoice_id",
         "patient_id",
         "amount",
         "applied_amount",
         "remaining_balance",
+        "currency", // 🔥 SAFE ADD
         "method",
         "transaction_ref",
         "status",
@@ -590,7 +593,7 @@ export const getAllDepositsLite = async (req, res) => {
         },
         {
           model: Invoice,
-          as: "appliedInvoice", // ✅ correct alias
+          as: "appliedInvoice",
           attributes: ["id", "invoice_number"],
         },
       ],
@@ -605,8 +608,8 @@ export const getAllDepositsLite = async (req, res) => {
       return {
         id: d.id,
 
-        // ✅ PARITY OUTPUT (mapped correctly)
-        invoice_id: d.applied_invoice_id, // 🔥 KEY FIX
+        // ✅ PARITY OUTPUT
+        invoice_id: d.applied_invoice_id,
         patient_id: d.patient_id,
         deposit_number: d.deposit_number,
 
@@ -615,6 +618,8 @@ export const getAllDepositsLite = async (req, res) => {
         amount: d.amount,
         applied_amount: d.applied_amount,
         remaining_balance: d.remaining_balance,
+
+        currency: d.currency, // 🔥 SAFE ADD
 
         method: d.method,
         status: d.status,
@@ -652,6 +657,7 @@ export const getAllDepositsLite = async (req, res) => {
     return error(res, "❌ Failed to load deposits (lite)", err);
   }
 };
+
 /* ============================================================
    📌 GET DEPOSIT BY ID (MASTER PARITY)
 ============================================================ */
@@ -757,6 +763,7 @@ export const toggleDepositStatus = async (req, res) => {
    📌 APPLY DEPOSIT TO INVOICE (LEDGER FIRST – PARITY)
 ============================================================ */
 export const applyDepositToInvoice = async (req, res) => {
+  const t = await sequelize.transaction(); // 🔥 ADD TRANSACTION
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -764,24 +771,32 @@ export const applyDepositToInvoice = async (req, res) => {
       action: "update",
       res,
     });
-    if (!allowed) return;
+    if (!allowed) {
+      await t.rollback();
+      return;
+    }
 
     const { id } = req.params;
     const { invoice_id, amount } = req.body;
 
     if (!invoice_id) {
+      await t.rollback();
       return error(res, "❌ invoice_id is required", null, 400);
     }
+
     if (!amount || parseFloat(amount) <= 0) {
+      await t.rollback();
       return error(res, "❌ Valid amount is required", null, 400);
     }
 
-    const deposit = await Deposit.findByPk(id);
+    const deposit = await Deposit.findByPk(id, { transaction: t });
     if (!deposit) {
+      await t.rollback();
       return error(res, "❌ Deposit not found", null, 404);
     }
 
     if (![DS.CLEARED, DS.APPLIED].includes(deposit.status)) {
+      await t.rollback();
       return error(
         res,
         "❌ Only cleared or applied deposits can be used",
@@ -790,13 +805,19 @@ export const applyDepositToInvoice = async (req, res) => {
       );
     }
 
+    /* ========================================================
+       💰 APPLY VIA SERVICE (TRANSACTION SAFE)
+    ======================================================== */
     const { application, invoice } =
       await financialService.applyDepositToInvoice({
         deposit_id: id,
         invoice_id,
         amount,
         user: req.user,
+        t, // 🔥 PASS TRANSACTION
       });
+
+    await t.commit(); // ✅ COMMIT
 
     const full = await Deposit.findOne({
       where: { id },
@@ -822,6 +843,7 @@ export const applyDepositToInvoice = async (req, res) => {
       }
     );
   } catch (err) {
+    if (t && !t.finished) await t.rollback(); // 🔥 SAFE ROLLBACK
     return error(res, "❌ Failed to apply deposit to invoice", err);
   }
 };

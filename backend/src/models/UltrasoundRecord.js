@@ -133,7 +133,7 @@ export default (sequelize) => {
       position: DataTypes.STRING,
       amniotic_volume: DataTypes.DECIMAL(5, 2),
       fetal_heart_rate: DataTypes.INTEGER,
-      gender: DataTypes.ENUM(...GENDER_TYPES),
+      gender: DataTypes.ENUM(...Object.values(GENDER_TYPES)),
 
       /* ================= OBSTETRIC EXTENSIONS ================= */
       previous_cesarean: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -146,11 +146,11 @@ export default (sequelize) => {
       /* ================= FLAGS ================= */
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
 
-      /* ================= LIFECYCLE ================= */
+        /* ================= LIFECYCLE ================= */
       status: {
-        type: DataTypes.ENUM(...ULTRASOUND_STATUS),
+        type: DataTypes.ENUM(...Object.values(ULTRASOUND_STATUS)),
         allowNull: false,
-        defaultValue: ULTRASOUND_STATUS[0], // pending
+        defaultValue: ULTRASOUND_STATUS.PENDING,
       },
 
       /* ================= WORKFLOW TIMESTAMPS ================= */

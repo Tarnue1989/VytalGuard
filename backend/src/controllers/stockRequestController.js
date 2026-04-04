@@ -472,7 +472,7 @@ export const getAllRequests = async (req, res) => {
               ],
             },
           ],
-          status: "active",
+          status: CENTRAL_STOCK_STATUS.ACTIVE,
           is_locked: false,
           quantity: { [Op.gt]: 0 },
         },
@@ -536,7 +536,7 @@ export const getRequestById = async (req, res) => {
         where: {
           facility_id: found.facility_id,
           master_item_id: { [Op.in]: found.items.map(i => i.master_item_id) },
-          status: "active",
+          status: CENTRAL_STOCK_STATUS.ACTIVE,
           is_locked: false,
           quantity: { [Op.gt]: 0 },
           [Op.or]: [
@@ -665,7 +665,7 @@ export const getItemAvailability = async (req, res) => {
       where: {
         master_item_id,
         facility_id,
-        status: "active",
+        status: CENTRAL_STOCK_STATUS.ACTIVE,
         is_locked: false,
         quantity: { [Op.gt]: 0 },
         [Op.or]: [
@@ -707,7 +707,7 @@ export const getItemAvailabilityLite = async (req, res) => {
       where: {
         master_item_id,
         facility_id,
-        status: "active",
+        status: CENTRAL_STOCK_STATUS.ACTIVE,
         is_locked: false,
         quantity: { [Op.gt]: 0 },
       },

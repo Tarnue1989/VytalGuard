@@ -15,6 +15,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER)
@@ -157,7 +158,8 @@ function renderDeposit(entry) {
   const amt = Number(d.amount || 0).toFixed(2);
   const bal = Number(d.remaining_balance ?? d.balance ?? 0).toFixed(2);
 
-  return `${ref} | $${amt} | Bal: $${bal}`;
+  const symbol = getCurrencySymbol(entry.currency);
+  return `${ref} | ${symbol}${amt} | Bal: ${symbol}${bal}`;
 }
 
 /* ============================================================
@@ -201,7 +203,7 @@ function renderValue(entry, field) {
       return renderDeposit(entry);
 
     case "refund_amount":
-      return `$${Number(entry.refund_amount || 0).toFixed(2)}`;
+      return `${getCurrencySymbol(entry.currency)} ${Number(entry.refund_amount || 0).toFixed(2)}`;
 
     case "method":
     case "reason":
@@ -277,7 +279,7 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">$${amount}</div>
+          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${amount}</div>
         </div>
         ${
           has("status")
@@ -291,7 +293,7 @@ export function renderCard(entry, visibleFields, user) {
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Refund #", entry.refund_deposit_number)}
-        ${row("Amount", `$${amount}`)}
+        ${row("Amount", `${getCurrencySymbol(entry.currency)} ${amount}`)}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>

@@ -27,15 +27,15 @@ export default (sequelize) => {
         comment: "Facility scope for this cache entry",
       },
 
-      /* ============================================================
-         📦 Cache Lifecycle
-      ============================================================ */
-      status: {
-        type: DataTypes.ENUM(...PATIENT_CHART_CACHE_STATUS),
-        allowNull: false,
-        defaultValue: "active",
-        comment: "Cache lifecycle state (active, stale, invalid)",
-      },
+    /* ============================================================
+      📦 Cache Lifecycle
+    ============================================================ */
+    status: {
+      type: DataTypes.ENUM(...Object.values(PATIENT_CHART_CACHE_STATUS)),
+      allowNull: false,
+      defaultValue: PATIENT_CHART_CACHE_STATUS.ACTIVE,
+      comment: "Cache lifecycle state (active, stale, invalid)",
+    },
       chart_snapshot: {
         type: DataTypes.JSONB,
         allowNull: false,

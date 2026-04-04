@@ -63,11 +63,10 @@ export default (sequelize) => {
         allowNull: false,
         defaultValue: false,
       },
-
       is_active: {
-        type: DataTypes.ENUM(...USER_FACILITY_STATUS),
+        type: DataTypes.ENUM(...Object.values(USER_FACILITY_STATUS)),
         allowNull: false,
-        defaultValue: "active",
+        defaultValue: USER_FACILITY_STATUS.ACTIVE,
       },
 
       created_by_id: { type: DataTypes.UUID, allowNull: true },

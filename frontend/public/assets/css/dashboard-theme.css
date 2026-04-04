@@ -392,11 +392,29 @@ html,body,.page-wrapper,.main-container,.app-container{
 
 /* Active tab */
 .dashboard-tab.active {
-  background: #6366f1;
-  color: #fff;
-  border-color: #6366f1;
-}
+  background: #4f46e5 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
 
+  box-shadow: 0 4px 10px rgba(79,70,229,0.25);
+}
+.dashboard-tab {
+  background: #f1f5f9 !important;   /* 🔥 softer */
+  color: #64748b !important;
+
+  border: 1px solid #e5e7eb;
+  box-shadow: none !important;
+}
+.dashboard-tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 10%;
+  width: 80%;
+  height: 3px;
+  background: #4f46e5;
+  border-radius: 2px;
+}
 
 /* DESKTOP */
 .modules-grid{
@@ -785,3 +803,252 @@ Purpose:
   grid-template-columns: repeat(7, 1fr) !important;
   width: 100% !important;
 }
+
+
+
+
+
+/*NEW 4/1/2026
+
+/* =========================================================
+🚀 ENTERPRISE UI FINAL POLISH (SAFE ADDITION)
+========================================================= */
+
+/* 🧱 GLOBAL CARD UPGRADE (non-breaking override) */
+.card {
+  border-radius: 14px !important;
+  border: none !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.08);
+}
+
+/* 📊 KPI VALUE EMPHASIS */
+.kpi-value {
+  letter-spacing: 0.3px;
+}
+
+/* 🎯 KPI TITLE CLEAN LOOK */
+.kpi-title {
+  color: #6b7280 !important;
+  font-weight: 600;
+}
+
+/* 🔽 SMOOTHER KPI EXPANSION */
+.kpi-details {
+  transition: all 0.25s ease;
+}
+
+/* 📦 MODULE TILE DEPTH BOOST */
+.module-tile {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+}
+
+.module-tile:hover {
+  box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+}
+
+/* 🎨 HEADER PREMIUM FEEL */
+.app-header {
+  background: linear-gradient(90deg, #4f46e5, #6366f1);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+/* 📏 CLEAN SPACING BETWEEN SECTIONS */
+.dashboard-section {
+  margin-bottom: 14px;
+}
+
+/* ✨ SUBTLE FADE FOR CONTENT */
+.dashboard-section,
+.side-card {
+  animation: fadeIn 0.25s ease;
+}
+
+
+/* =========================================================
+🚀 STEP 2 — KPI CARD MODERN STRUCTURE
+========================================================= */
+
+/* 🔷 KPI CARD LAYOUT */
+.kpi-card .card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 📊 LEFT SIDE (TEXT BLOCK) */
+.kpi-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* 🎯 KPI ICON BOX (MODERN STYLE) */
+.kpi-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 🎨 SOFT COLOR BACKGROUNDS */
+.kpi-card .kpi-icon {
+  background: rgba(99,102,241,0.12);
+}
+
+/* 🔥 ICON ENHANCEMENT */
+.kpi-icon i {
+  font-size: 1.4rem;
+}
+
+/* 📈 BETTER BADGE SPACING */
+.kpi-badges {
+  margin-top: 6px;
+}
+
+/* 🔗 CLEAN LINK */
+.kpi-link {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.kpi-link:hover {
+  text-decoration: underline;
+}
+
+
+/* =========================================================
+🚀 STEP 3 — KPI GRID + CARD SHAPE FIX
+========================================================= */
+
+/* 🔥 FORCE KPI INTO REAL CARDS (not pills) */
+.kpi-card {
+  border-radius: 16px !important;
+  padding: 0 !important;
+}
+
+/* 📦 FIX CARD BODY LAYOUT */
+.kpi-card .card-body {
+  padding: 14px 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 🧱 FIX GRID SPACING */
+.dashboard-kpi-grid {
+  gap: 1rem !important;
+}
+
+/* 🎯 EACH KPI ITEM HEIGHT */
+.kpi-accordion-item {
+  height: 100%;
+}
+
+/* 📏 IMPROVE ROW SEPARATION */
+.dashboard-section {
+  padding: 1.25rem !important;
+}
+
+/* 🧠 MAKE KPI ROWS BREATHE */
+.kpi-card {
+  min-height: 90px;
+}
+
+/* 🔽 CLEAN CHEVRON */
+.kpi-chevron {
+  opacity: 0.6;
+}
+
+/* 📊 BETTER BADGE FLOW */
+.kpi-badges {
+  margin-top: 4px;
+  gap: 4px;
+}
+
+/* 🔗 LINK SPACING */
+.kpi-link {
+  margin-top: 6px;
+  display: inline-block;
+}
+
+
+/* =========================================================
+🚀 STEP 4 — FINAL ENTERPRISE POLISH
+========================================================= */
+
+/* 🎯 STRONGER CARD CONTRAST */
+.card,
+.dashboard-section,
+.side-card {
+  background: #ffffff !important;
+  border: 1px solid #eef2f7 !important;
+}
+
+/* ✨ CLEAN SECTION SEPARATION */
+.dashboard-section {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.04);
+}
+
+/* 🔥 KPI CARD DEPTH BOOST */
+.kpi-card {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.05);
+}
+
+.kpi-card:hover {
+  box-shadow: 0 16px 34px rgba(0,0,0,0.1);
+}
+
+/* 🎯 ICON COLOR BACKGROUND (MATCH KPI COLOR) */
+.kpi-card .kpi-icon {
+  background: rgba(99,102,241,0.15);
+}
+
+/* 📊 VALUE EMPHASIS */
+.kpi-value {
+  font-size: 24px !important;
+}
+
+/* 📱 MOBILE — TIGHTEN UI */
+@media (max-width: 768px) {
+
+  .kpi-card .card-body {
+    padding: 10px 12px !important;
+  }
+
+  .kpi-card {
+    min-height: 70px !important;
+  }
+
+  .kpi-value {
+    font-size: 18px !important;
+  }
+
+  .dashboard-section {
+    padding: 0.9rem !important;
+  }
+
+  .dashboard-kpi-grid {
+    gap: 0.6rem !important;
+  }
+}
+
+/* ✨ SMOOTH GLOBAL TRANSITIONS */
+* {
+  transition: all 0.15s ease;
+}
+
+

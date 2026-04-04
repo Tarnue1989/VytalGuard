@@ -36,11 +36,10 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...ROOM_STATUS),
+        type: DataTypes.ENUM(...Object.values(ROOM_STATUS)),
         allowNull: false,
-        defaultValue: ROOM_STATUS[0], // "active"
+        defaultValue: ROOM_STATUS.ACTIVE,
       },
-
       // Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

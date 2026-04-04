@@ -121,6 +121,7 @@ const filterPatientHidden      = qs("filterPatientId");
 const filterPatientSuggestions = qs("filterPatientSuggestions");
 
 const filterMethod        = qs("filterMethodSelect");
+const filterCurrency      = qs("filterCurrency"); // ✅ ADD
 const filterTransactionRef = qs("filterTransactionRef");
 const filterInvoiceId     = qs("filterInvoiceId");
 
@@ -154,6 +155,7 @@ setupAutoFilters({
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -169,6 +171,7 @@ function getFilters() {
     facility_id: filterFacility?.value,
     status: filterStatus?.value,
     method: filterMethod?.value,
+    currency: qs("filterCurrency")?.value, // ✅ ADD
     transaction_ref: filterTransactionRef?.value,
     patient_id: filterPatientHidden?.value,
     invoice_id: filterInvoiceId?.value,
@@ -201,6 +204,7 @@ async function loadEntries(page = 1) {
     if (f.facility_id)     q.set("facility_id", f.facility_id);
     if (f.status)          q.set("status", f.status);
     if (f.method)          q.set("method", f.method);
+    if (f.currency)        q.set("currency", f.currency); 
     if (f.transaction_ref) q.set("transaction_ref", f.transaction_ref);
     if (f.patient_id)      q.set("patient_id", f.patient_id);
     if (f.invoice_id)      q.set("invoice_id", f.invoice_id);

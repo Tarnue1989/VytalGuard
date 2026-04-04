@@ -48,11 +48,11 @@ const debug = makeModuleLogger("labResultController", DEBUG_OVERRIDE);
    🔐 ENUM MAPS (ORDER SAFE)
 ============================================================ */
 const LRSR = Object.fromEntries(
-  LAB_RESULT_STATUS.map((v) => [v.toLowerCase(), v])
+  Object.values(LAB_RESULT_STATUS).map((v) => [v.toLowerCase(), v])
 );
 
 const LRI = Object.fromEntries(
-  LAB_REQUEST_ITEM_STATUS.map((v) => [v.toLowerCase(), v])
+  Object.values(LAB_REQUEST_ITEM_STATUS).map((v) => [v.toLowerCase(), v])
 );
 
 /* ============================================================
@@ -123,7 +123,7 @@ function buildLabResultSchema(user, mode = "create") {
     ),
 
     /* ================= STATUS ================= */
-    status: Joi.string().valid(...LAB_RESULT_STATUS),
+    status: Joi.string().valid(...Object.values(LAB_RESULT_STATUS)),
 
     /* ================= TENANT (DEFAULT LOCKED) ================= */
     organization_id: Joi.forbidden(),

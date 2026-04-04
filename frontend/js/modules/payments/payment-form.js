@@ -110,6 +110,7 @@ export async function setupPaymentFormSubmission({ form }) {
   const invoiceSelect = document.getElementById("invoiceSelect");
 
   const amountInput = document.getElementById("amount");
+  const currencySelect = document.getElementById("currencySelect"); 
   const methodSelect = document.getElementById("methodSelect");
   const transactionRefInput = document.getElementById("transactionRef");
   const reasonInput = document.getElementById("reason");
@@ -123,7 +124,7 @@ export async function setupPaymentFormSubmission({ form }) {
   const isSuper = userRole === "superadmin";
 
   /* ============================================================
-     🌐 Dropdowns & Suggestions
+    🌐 Dropdowns & Suggestions
   ============================================================ */
   try {
     if (isSuper) {
@@ -166,11 +167,16 @@ export async function setupPaymentFormSubmission({ form }) {
         patientHidden.value = selected?.id || "";
         patientInput.value = selected?.label || "";
 
-        // 🧼 Reset invoice state
+        // 🧼 Reset invoice + currency state
         invoiceSelect.innerHTML = "";
         invoiceSelect.disabled = false;
         selectedInvoiceBalance = null;
         amountInput.removeAttribute("max");
+
+        if (currencySelect) {
+          currencySelect.value = "";
+          currencySelect.disabled = false;
+        }
 
         if (!selected?.id) return;
 
@@ -204,10 +210,10 @@ export async function setupPaymentFormSubmission({ form }) {
           return;
         }
 
-        // ✅ PAYABLE INVOICES
+        // ✅ PAYABLE INVOICES (USE BACKEND LABEL)
         const opts = invoices.map((inv) => ({
           id: inv.id,
-          label: `${inv.invoice_number} (Bal: ${inv.balance})`,
+          label: inv.label, // ✅ backend formatted (includes currency)
           balance: inv.balance,
         }));
 
@@ -218,17 +224,37 @@ export async function setupPaymentFormSubmission({ form }) {
           "label",
           "-- Select Invoice --"
         );
+
+        // 🔥 ATTACH CURRENCY TO EACH OPTION (CORRECT SCOPE)
+        Array.from(invoiceSelect.options).forEach((opt) => {
+          const inv = invoices.find((i) => i.id === opt.value);
+          if (inv) {
+            opt.dataset.currency = inv.currency;
+          }
+        });
       },
       "label"
     );
   } catch {
     showToast("❌ Failed to load reference data");
   }
-
   invoiceSelect?.addEventListener("change", async () => {
     selectedInvoiceBalance = null;
+
+    const selectedOption =
+      invoiceSelect.options[invoiceSelect.selectedIndex];
+
     const invoiceId = invoiceSelect.value;
     if (!invoiceId) return;
+
+    // ✅ AUTO SET CURRENCY
+    const selectedCurrency = selectedOption?.dataset?.currency;
+    if (selectedCurrency && currencySelect) {
+      currencySelect.value = selectedCurrency;
+
+      // 🔒 lock currency to invoice
+      currencySelect.disabled = true;
+    }
 
     try {
       const res = await authFetch(`/api/invoices/${invoiceId}`);
@@ -280,6 +306,7 @@ export async function setupPaymentFormSubmission({ form }) {
 
       amountInput.value = entry.amount ?? "";
       methodSelect.value = entry.method || "";
+      currencySelect.value = entry.currency || "";
       transactionRefInput.value = entry.transaction_ref || "";
       reasonInput.value = entry.reason || "";
 
@@ -326,6 +353,7 @@ export async function setupPaymentFormSubmission({ form }) {
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
       invoice_id: normalizeUUID(invoiceSelect.value),
+      currency: currencySelect.value || null,
       amount: normalizeNumber(amountInput.value),
       method: methodSelect.value || null,
       transaction_ref: transactionRefInput.value || null,

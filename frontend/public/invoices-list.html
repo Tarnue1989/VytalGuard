@@ -92,7 +92,7 @@
 
                   <div id="filterCollapse" class="card-body filter-body hidden">
                     <div class="section-label mb-2"><strong>Filter Invoices</strong></div>
-                    <div class="row g-3 filter-grid compact">
+                    <div class="row g-3 filter-grid compact align-items-end">
 
                       <!-- Patient (suggestion input filter) -->
                       <div class="col-md-3">
@@ -103,7 +103,15 @@
                           <div id="filterPatientSuggestions" class="suggestions"></div>
                         </div>
                       </div>
-
+                      <!-- Currency -->
+                      <div class="col-md-3">
+                        <label for="filterCurrency" class="form-label">Currency</label>
+                        <select id="filterCurrency" class="form-select">
+                          <option value="">All</option>
+                          <option value="USD">USD</option>
+                          <option value="LRD">LRD</option>
+                        </select>
+                      </div>
                       <!-- Status -->
                       <div class="col-md-3">
                         <label for="filterStatus" class="form-label">Status</label>
@@ -435,5 +443,11 @@
   <script type="module" src="/js/modules/financial/invoices/invoice-main.js"></script>
 
 <script type="module" src="/js/utils/navigation.js"></script>
+ 
+  
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

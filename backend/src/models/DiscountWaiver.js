@@ -1,16 +1,20 @@
 // 📁 backend/src/models/DiscountWaiver.js
 import { DataTypes, Model } from "sequelize";
-import { DISCOUNT_WAIVER_STATUS, DISCOUNT_TYPE } from "../constants/enums.js";
+import {
+  DISCOUNT_WAIVER_STATUS,
+  DISCOUNT_TYPE,
+  CURRENCY,
+} from "../constants/enums.js";
 
 /* ============================================================
-   🔖 Local enum map
+   🔖 Local enum map (OBJECT SAFE)
 ============================================================ */
 const WS = {
-  PENDING: DISCOUNT_WAIVER_STATUS[0],
-  APPROVED: DISCOUNT_WAIVER_STATUS[1],
-  APPLIED: DISCOUNT_WAIVER_STATUS[2],
-  REJECTED: DISCOUNT_WAIVER_STATUS[3],
-  VOIDED: DISCOUNT_WAIVER_STATUS[4],
+  PENDING: DISCOUNT_WAIVER_STATUS.PENDING,
+  APPROVED: DISCOUNT_WAIVER_STATUS.APPROVED,
+  APPLIED: DISCOUNT_WAIVER_STATUS.APPLIED,
+  REJECTED: DISCOUNT_WAIVER_STATUS.REJECTED,
+  VOIDED: DISCOUNT_WAIVER_STATUS.VOIDED,
 };
 
 export default (sequelize) => {
@@ -18,6 +22,7 @@ export default (sequelize) => {
     static associate(models) {
       DiscountWaiver.belongsTo(models.Invoice, { as: "invoice", foreignKey: "invoice_id" });
       DiscountWaiver.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
+
       DiscountWaiver.belongsTo(models.Employee, {
         as: "approvedByEmployee",
         foreignKey: "approved_by_employee_id",
@@ -27,11 +32,13 @@ export default (sequelize) => {
         as: "organization",
         foreignKey: "organization_id",
       });
+
       DiscountWaiver.belongsTo(models.Facility, {
         as: "facility",
         foreignKey: "facility_id",
       });
 
+      // 🔹 Audit
       DiscountWaiver.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       DiscountWaiver.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       DiscountWaiver.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -57,20 +64,42 @@ export default (sequelize) => {
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
-      type: { type: DataTypes.ENUM(...DISCOUNT_TYPE), allowNull: false },
-      reason: { type: DataTypes.TEXT, allowNull: false },
-      percentage: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
-      amount: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-
-      applied_total: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
-      remaining_balance: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
-
-      status: {
-        type: DataTypes.ENUM(...DISCOUNT_WAIVER_STATUS),
+      // 💱 🔥 REQUIRED (MATCH INVOICE)
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
-        defaultValue: WS.PENDING,
       },
 
+      status: {
+        type: DataTypes.ENUM(...Object.values(DISCOUNT_WAIVER_STATUS)),
+        allowNull: false,
+        defaultValue: DISCOUNT_WAIVER_STATUS.PENDING,
+      },
+
+      type: {
+        type: DataTypes.ENUM(...Object.values(DISCOUNT_TYPE)),
+        allowNull: false,
+      },
+
+      reason: { type: DataTypes.TEXT, allowNull: false },
+
+      percentage: { type: DataTypes.DECIMAL(5, 2) },
+      amount: { type: DataTypes.DECIMAL(12, 2) },
+
+      // 💰 Computed
+      applied_total: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+
+      remaining_balance: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+
+      // 🔹 Approval
       approved_by_employee_id: { type: DataTypes.UUID },
       approved_by_id: { type: DataTypes.UUID },
       approved_at: { type: DataTypes.DATE },
@@ -80,10 +109,10 @@ export default (sequelize) => {
 
       voided_by_id: { type: DataTypes.UUID },
       voided_at: { type: DataTypes.DATE },
-      void_reason: { type: DataTypes.STRING(255), allowNull: true },
+      void_reason: { type: DataTypes.STRING(255) },
 
-      finalized_by_id: { type: DataTypes.UUID, allowNull: true },
-      finalized_at: { type: DataTypes.DATE, allowNull: true },
+      finalized_by_id: { type: DataTypes.UUID },
+      finalized_at: { type: DataTypes.DATE },
 
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },
@@ -99,6 +128,7 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by_id"] },
       },
@@ -112,7 +142,10 @@ export default (sequelize) => {
     const { Invoice } = await import("../models/index.js");
 
     const invoice = await Invoice.findByPk(waiver.invoice_id);
-    if (!invoice) throw new Error("Invalid invoice_id for Discount Waiver");
+    if (!invoice) throw new Error("Invalid invoice_id");
+
+    // 🔥 enforce currency
+    waiver.currency = invoice.currency;
 
     const total = parseFloat(invoice.total || 0);
 
@@ -125,19 +158,20 @@ export default (sequelize) => {
     }
 
     if (intendedAmount > total) {
-      throw new Error("Discount amount cannot exceed invoice total");
+      throw new Error("Discount cannot exceed invoice total");
     }
 
     waiver.applied_total = intendedAmount;
-    waiver.remaining_balance = 0;
+    waiver.remaining_balance = total - intendedAmount;
   });
 
   /* ============================================================
-    🔁 APPLY WAIVER (FINAL – TRIGGER ONLY)
+     🔁 APPLY WAIVER
   ============================================================ */
   DiscountWaiver.afterUpdate(async (waiver, options) => {
     try {
-      if (!["applied", "finalized"].includes(waiver.status)) return;
+      // 🔥 ONLY APPLY FINANCIAL IMPACT WHEN ACTUALLY APPLIED
+      if (waiver.status !== WS.APPLIED) return;
 
       const { financialService } = await import("../services/financialService.js");
 
@@ -145,10 +179,10 @@ export default (sequelize) => {
         waiver.invoice_id,
         options?.transaction
       );
-
     } catch (err) {
       console.error("❌ Waiver recalc failed:", err.message);
     }
   });
+
   return DiscountWaiver;
 };

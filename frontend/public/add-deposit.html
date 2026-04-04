@@ -80,7 +80,23 @@
                           <div id="patientSuggestions" class="suggestions"></div>
                         </div>
                       </div>
-
+                      <!-- Currency -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12">
+                        <div class="mb-3">
+                          <label class="form-label" for="currencySelect">
+                            Currency <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="currencySelect"
+                            name="currency"
+                          >
+                            <option value="">— Select Currency —</option>
+                            <option value="USD">USD</option>
+                            <option value="LRD">LRD</option>
+                          </select>
+                        </div>
+                      </div>
                       <!-- Applied Invoice (hidden) -->
                       <input
                         type="hidden"
@@ -285,5 +301,11 @@
     type="module"
     src="js/modules/deposits/add-deposit.js"
   ></script>
+ 
+  
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

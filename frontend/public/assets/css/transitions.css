@@ -4,10 +4,20 @@
    Includes fade-ins, scale transforms, and icon spins
 ============================================================= */
 
-/* Fade-in animation for modals and confirmations */
+/* ================= ANIMATIONS ================= */
+
+/* Fade-in (used for overlays/backgrounds) */
 @keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.9); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Modal pop-in (used for session modal box) */
+@keyframes popIn {
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 
 /* FontAwesome spinner override */
@@ -19,6 +29,8 @@
   100% { transform: rotate(360deg); }
 }
 
+/* ================= HOVER EFFECTS ================= */
+
 /* Button hover transitions */
 .actions-table button:hover,
 .card-actions button:hover {
@@ -26,6 +38,8 @@
   box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.1);
   transition: all 0.2s ease;
 }
+
+/* ================= FORM TRANSITIONS ================= */
 
 /* Floating label transition on TomSelect */
 .field-wrapper .ts-control:focus + .input-label,

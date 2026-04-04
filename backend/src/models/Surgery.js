@@ -58,9 +58,9 @@ export default (sequelize) => {
       // Lifecycle
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       status: {
-        type: DataTypes.ENUM(...SURGERY_STATUS),
+        type: DataTypes.ENUM(...Object.values(SURGERY_STATUS)),
         allowNull: false,
-        defaultValue: SURGERY_STATUS[0], // "scheduled"
+        defaultValue: SURGERY_STATUS.SCHEDULED,
       },
 
       // Workflow tracking

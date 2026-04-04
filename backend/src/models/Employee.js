@@ -76,7 +76,14 @@ export default (sequelize) => {
       first_name: { type: DataTypes.STRING(80), allowNull: false },
       middle_name: { type: DataTypes.STRING(80), allowNull: true },
       last_name: { type: DataTypes.STRING(80), allowNull: false },
-      gender: { type: DataTypes.ENUM(...GENDER_TYPES), allowNull: false },
+      gender: {
+        type: DataTypes.ENUM(...Object.values(GENDER_TYPES)),
+        allowNull: false,
+      },
+      status: {
+        type: DataTypes.ENUM(...Object.values(EMPLOYEE_STATUS)),
+        defaultValue: EMPLOYEE_STATUS.ACTIVE,
+      },
       dob: { type: DataTypes.DATEONLY, allowNull: true },
 
       // Contact
@@ -90,7 +97,6 @@ export default (sequelize) => {
       facility_id: { type: DataTypes.UUID, allowNull: true },
       department_id: { type: DataTypes.UUID, allowNull: true },
       position: { type: DataTypes.STRING(120), allowNull: true },
-      status: { type: DataTypes.ENUM(...EMPLOYEE_STATUS), defaultValue: EMPLOYEE_STATUS[0] },
 
       // Professional
       license_no: { type: DataTypes.STRING(120), allowNull: true },

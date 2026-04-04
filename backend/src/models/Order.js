@@ -118,24 +118,38 @@ export default (sequelize) => {
       registration_log_id: { type: DataTypes.UUID },
 
       type: {
-        type: DataTypes.ENUM(...ORDER_TYPE),
+        type: DataTypes.ENUM(...Object.values(ORDER_TYPE)),
         allowNull: false,
-        defaultValue: ORDER_TYPE[0],
+        defaultValue: ORDER_TYPE.MEDICATION,
       },
 
       priority: {
-        type: DataTypes.ENUM(...ORDER_PRIORITY),
+        type: DataTypes.ENUM(...Object.values(ORDER_PRIORITY)),
         allowNull: false,
-        defaultValue: "routine",
+        defaultValue: ORDER_PRIORITY.ROUTINE,
+      },
+
+      // 📦 Fulfillment
+      fulfillment_status: {
+        type: DataTypes.ENUM(...Object.values(ORDER_FULFILLMENT_STATUS)),
+        allowNull: false,
+        defaultValue: ORDER_FULFILLMENT_STATUS.PENDING,
+      },
+
+      // 🔄 Lifecycle
+      status: {
+        type: DataTypes.ENUM(...Object.values(ORDER_STATUS)),
+        allowNull: false,
+        defaultValue: ORDER_STATUS.DRAFT,
       },
 
       // 💰 Billing
       invoice_id: { type: DataTypes.UUID },
 
       billing_status: {
-        type: DataTypes.ENUM(...ORDER_BILLING_STATUS),
+        type: DataTypes.ENUM(...Object.values(ORDER_BILLING_STATUS)),
         allowNull: false,
-        defaultValue: "not_billed",
+        defaultValue: ORDER_BILLING_STATUS.NOT_BILLED,
       },
 
       billed: {
@@ -153,12 +167,6 @@ export default (sequelize) => {
         defaultValue: 0,
       },
 
-      // 📦 Fulfillment
-      fulfillment_status: {
-        type: DataTypes.ENUM(...ORDER_FULFILLMENT_STATUS),
-        allowNull: false,
-        defaultValue: "pending",
-      },
 
       // 📅 Date
       order_date: {
@@ -167,12 +175,6 @@ export default (sequelize) => {
         defaultValue: DataTypes.NOW,
       },
 
-      // 🔄 Lifecycle
-      status: {
-        type: DataTypes.ENUM(...ORDER_STATUS),
-        allowNull: false,
-        defaultValue: ORDER_STATUS[0],
-      },
 
       status_changed_at: { type: DataTypes.DATE },
       status_changed_by_id: { type: DataTypes.UUID },

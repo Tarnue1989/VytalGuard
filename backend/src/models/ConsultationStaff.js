@@ -63,10 +63,9 @@ export default (sequelize) => {
 
       // 🏷️ Staff role
       role: {
-        type: DataTypes.ENUM(...CONSULTATION_STAFF_ROLES),
+        type: DataTypes.ENUM(...Object.values(CONSULTATION_STAFF_ROLES)),
         allowNull: false,
       },
-
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID, allowNull: true },
       updated_by_id: { type: DataTypes.UUID, allowNull: true },

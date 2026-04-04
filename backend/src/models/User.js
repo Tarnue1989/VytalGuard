@@ -120,9 +120,9 @@ export default (sequelize) => {
 
       // 🔹 Status
       status: {
-        type: DataTypes.ENUM(...USER_STATUS),
+        type: DataTypes.ENUM(...Object.values(USER_STATUS)),
         allowNull: false,
-        defaultValue: USER_STATUS[0],
+        defaultValue: USER_STATUS.ACTIVE,
       },
       last_login_at: { type: DataTypes.DATE, allowNull: true },
 

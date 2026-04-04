@@ -43,15 +43,14 @@ const MODULE_KEY = "ekg_records";
    🔖 STATUS MAP (ENUM-DRIVEN)
 ============================================================ */
 const EKS = {
-  PENDING: EKG_STATUS[0],
-  IN_PROGRESS: EKG_STATUS[1],
-  COMPLETED: EKG_STATUS[2],
-  VERIFIED: EKG_STATUS[3],
-  FINALIZED: EKG_STATUS[4],
-  CANCELLED: EKG_STATUS[5],
-  VOIDED: EKG_STATUS[6],
+  PENDING: EKG_STATUS.PENDING,
+  IN_PROGRESS: EKG_STATUS.IN_PROGRESS,
+  COMPLETED: EKG_STATUS.COMPLETED,
+  VERIFIED: EKG_STATUS.VERIFIED,
+  FINALIZED: EKG_STATUS.FINALIZED,
+  CANCELLED: EKG_STATUS.CANCELLED,
+  VOIDED: EKG_STATUS.VOIDED,
 };
-
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
@@ -940,9 +939,10 @@ export const getAllEKGRecords = async (req, res) => {
     }
 
     if (req.query.status) {
-      const statuses = Array.isArray(req.query.status)
+      const statuses = (Array.isArray(req.query.status)
         ? req.query.status
-        : [req.query.status];
+        : [req.query.status]
+      ).map((s) => EKG_STATUS[s.toUpperCase()] || s);
 
       options.where.status = { [Op.in]: statuses };
     }
@@ -973,7 +973,7 @@ export const getAllEKGRecords = async (req, res) => {
       group: ["status"],
     });
 
-    EKG_STATUS.forEach((s) => {
+    Object.values(EKG_STATUS).forEach((s) => {
       const found = statusCounts.find((r) => r.status === s);
       summary[s] = found ? Number(found.get("count")) : 0;
     });

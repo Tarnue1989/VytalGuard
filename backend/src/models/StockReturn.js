@@ -44,7 +44,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(STOCK_RETURN_STATUS)),
         allowNull: false,
-        defaultValue: Object.values(STOCK_RETURN_STATUS)[0],
+        defaultValue: STOCK_RETURN_STATUS.PENDING,
       },
 
       // 🔹 Lifecycle

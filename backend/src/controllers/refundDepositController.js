@@ -34,7 +34,7 @@ import { auditService } from "../services/auditService.js";
 import { refundDepositService } from "../services/refundDepositService.js";
 
 import { FIELD_VISIBILITY_REFUND_DEPOSIT } from "../constants/fieldVisibility.js";
-import { DEPOSIT_REFUND_STATUS } from "../constants/enums.js";
+import { DEPOSIT_REFUND_STATUS, CURRENCY } from "../constants/enums.js";
 
 /* ============================================================
    🔐 MODULE
@@ -111,6 +111,9 @@ function buildRefundDepositSchema(userRole, mode = "create") {
   const base = {
     deposit_id: Joi.string().uuid().required(),
     refund_amount: Joi.number().positive().required(),
+
+    // 🔥 ONLY ADD THIS
+    currency: Joi.forbidden(),
     method: Joi.string()
       .valid("cash", "card", "bank_transfer", "mobile_money", "cheque")
       .required(),
@@ -135,6 +138,7 @@ function buildRefundDepositSchema(userRole, mode = "create") {
 
   return Joi.object(base);
 }
+
 
 /* ============================================================
    📌 CREATE Deposit Refund (status → PENDING) — DEBUG SAFE
@@ -178,15 +182,9 @@ export const createRefundDeposit = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ========================================================
-       🔍 DEBUG: CHECK DEPOSIT (NO TX)
-    ======================================================== */
     const depositNoTx = await Deposit.findByPk(value.deposit_id);
     debug.error("🔎 DEPOSIT (NO TX):", depositNoTx ? depositNoTx.toJSON() : null);
 
-    /* ========================================================
-       🔍 DEBUG: CHECK DEPOSIT (WITH TX — NO LOCK)
-    ======================================================== */
     const deposit = await Deposit.findByPk(value.deposit_id, {
       transaction: t,
     });
@@ -211,9 +209,6 @@ export const createRefundDeposit = async (req, res) => {
       return error(res, "❌ Deposit has no organization", null, 400);
     }
 
-    /* ========================================================
-       💰 CREATE REFUND (LEDGER FIRST)
-    ======================================================== */
     debug.error("💰 CREATING REFUND...", {
       deposit_id: value.deposit_id,
       amount: value.refund_amount,
@@ -257,6 +252,8 @@ export const createRefundDeposit = async (req, res) => {
     return error(res, "❌ Failed to create deposit refund", err);
   }
 };
+
+
 /* ============================================================
    📌 UPDATE Deposit Refund (PENDING only) — MASTER PARITY
 ============================================================ */
@@ -276,9 +273,6 @@ export const updateRefundDeposit = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ========================================================
-       🔒 LOCK REFUND
-    ======================================================== */
     const record = await RefundDeposit.findByPk(req.params.id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -487,7 +481,7 @@ export const restoreRefundDeposit = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL Deposit Refunds (MASTER PARITY)
+   📌 GET ALL Deposit Refunds (MASTER PARITY — FINAL FIXED)
 ============================================================ */
 export const getAllRefundDeposits = async (req, res) => {
   try {
@@ -521,8 +515,15 @@ export const getAllRefundDeposits = async (req, res) => {
       visibleFields
     );
 
-    options.where = { [Op.and]: [] };
+    /* ========================================================
+       🔥 CRITICAL FIX — DO NOT OVERWRITE WHERE
+    ======================================================== */
+    options.where = options.where || {};
+    options.where[Op.and] = options.where[Op.and] || [];
 
+    /* ========================================================
+       📅 DATE RANGE (UI ONLY)
+    ======================================================== */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -532,6 +533,9 @@ export const getAllRefundDeposits = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       🏢 TENANCY / RBAC
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -555,6 +559,9 @@ export const getAllRefundDeposits = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       🔎 DIRECT FILTERS
+    ======================================================== */
     if (req.query.deposit_id)
       options.where[Op.and].push({ deposit_id: req.query.deposit_id });
 
@@ -567,20 +574,27 @@ export const getAllRefundDeposits = async (req, res) => {
     if (req.query.method)
       options.where[Op.and].push({ method: req.query.method });
 
-    /* ================= GLOBAL SEARCH (FIXED) ================= */
+    if (req.query.currency)
+      options.where[Op.and].push({ currency: req.query.currency });
+
+    /* ========================================================
+       🔍 GLOBAL SEARCH (MASTER SAFE — NO JOIN BREAK)
+    ======================================================== */
     if (options.search) {
+      const term = `%${options.search}%`;
+
       options.where[Op.and].push({
         [Op.or]: [
-          { refund_deposit_number: { [Op.iLike]: `%${options.search}%` } }, // ✅ FIX
-          { reason: { [Op.iLike]: `%${options.search}%` } },
-          { method: { [Op.iLike]: `%${options.search}%` } },
-          { "$patient.first_name$": { [Op.iLike]: `%${options.search}%` } },
-          { "$patient.last_name$": { [Op.iLike]: `%${options.search}%` } },
-          { "$patient.pat_no$": { [Op.iLike]: `%${options.search}%` } },
+          { refund_deposit_number: { [Op.iLike]: term } },
+          { reason: { [Op.iLike]: term } },
+          { method: { [Op.iLike]: term } },
         ],
       });
     }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const { count, rows } = await RefundDeposit.findAndCountAll({
       where: options.where,
       include: REFUND_DEPOSIT_INCLUDES,
@@ -590,6 +604,9 @@ export const getAllRefundDeposits = async (req, res) => {
       distinct: true,
     });
 
+    /* ========================================================
+       📊 SUMMARY
+    ======================================================== */
     const summary = await buildDynamicSummary({
       model: RefundDeposit,
       options,
@@ -598,6 +615,9 @@ export const getAllRefundDeposits = async (req, res) => {
       genderJoin: { model: Patient, as: "patient" },
     });
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -609,6 +629,9 @@ export const getAllRefundDeposits = async (req, res) => {
       },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Deposit refunds loaded", {
       records: rows,
       summary,
@@ -626,7 +649,6 @@ export const getAllRefundDeposits = async (req, res) => {
     return error(res, "❌ Failed to load deposit refunds", err);
   }
 };
-
 
 /* ============================================================
    📌 GET Deposit Refunds (LITE – MASTER AUTOCOMPLETE)
@@ -670,7 +692,7 @@ export const getAllRefundDepositsLite = async (req, res) => {
       const term = `%${req.query.q}%`;
       where[Op.and].push({
         [Op.or]: [
-          { refund_deposit_number: { [Op.iLike]: term } }, // ✅ FIX
+          { refund_deposit_number: { [Op.iLike]: term } },
           { reason: { [Op.iLike]: term } },
           { status: { [Op.iLike]: term } },
         ],
@@ -681,8 +703,9 @@ export const getAllRefundDepositsLite = async (req, res) => {
       where,
       attributes: [
         "id",
-        "refund_deposit_number", // ✅ ADD
+        "refund_deposit_number",
         "refund_amount",
+        "currency", // 🔥 ADD
         "method",
         "status",
         "created_at",
@@ -706,9 +729,10 @@ export const getAllRefundDepositsLite = async (req, res) => {
     const records = rows.map((r) => ({
       id: r.id,
       refund_amount: r.refund_amount,
+      currency: r.currency, // 🔥 ADD
       method: r.method,
       status: r.status,
-      label: r.refund_deposit_number || r.id, // ✅ FIX
+      label: r.refund_deposit_number || r.id,
       patient: r.patient
         ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
         : "",

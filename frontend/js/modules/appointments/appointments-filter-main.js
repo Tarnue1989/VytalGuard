@@ -57,7 +57,7 @@ import { renderModuleSummary } from "../../utils/render-module-summary.js";
    🔐 AUTH + USER
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
-initLogoutWatcher();
+
 
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
 const permissions = (() => {
@@ -79,6 +79,7 @@ let currentPage = 1;
 let viewMode = localStorage.getItem("appointmentView") || "table";
 let sortBy = "";
 let sortDir = "asc";
+let isLoading = false;
 
 const sharedState = { currentEditIdRef: { value: null } };
 
@@ -181,6 +182,9 @@ function getFilters() {
    📦 LOAD APPOINTMENTS (MASTER SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
+  if (isLoading) return; // 🚫 prevent overlapping calls
+  isLoading = true;
+
   try {
     showLoading();
 
@@ -245,6 +249,7 @@ async function loadEntries(page = 1) {
     console.error(err);
     showToast("❌ Failed to load appointments");
   } finally {
+    isLoading = false; // ✅ release lock
     hideLoading();
   }
 }

@@ -52,9 +52,9 @@ export default (sequelize) => {
 
       // 📌 Lifecycle
       status: {
-        type: DataTypes.ENUM(...INSURANCE_CLAIM_STATUS),
+        type: DataTypes.ENUM(...Object.values(INSURANCE_CLAIM_STATUS)),
         allowNull: false,
-        defaultValue: INSURANCE_CLAIM_STATUS[0], // e.g. "submitted"
+        defaultValue: INSURANCE_CLAIM_STATUS.SUBMITTED,
       },
 
       // 🔹 Audit
@@ -77,11 +77,11 @@ export default (sequelize) => {
       },
       scopes: {
         withDeleted: { paranoid: false },
-        submitted: { where: { status: "submitted" } },
-        approved: { where: { status: "approved" } },
-        rejected: { where: { status: "rejected" } },
+        submitted: { where: { status: INSURANCE_CLAIM_STATUS.SUBMITTED } },
+        approved: { where: { status: INSURANCE_CLAIM_STATUS.APPROVED } },
+        rejected: { where: { status: INSURANCE_CLAIM_STATUS.REJECTED } },
         tenant(facilityId) {
-          if (!facilityId) return {}; // safeguard for superadmin
+          if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
         },
       },

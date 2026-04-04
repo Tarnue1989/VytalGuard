@@ -1,4 +1,4 @@
-// 📁 invoice-receipt.js – FINAL (A4 + ORG-SAFE + NO GLOBAL OVERRIDE)
+// 📁 invoice-receipt.js – FINAL (A4 + ORG-SAFE + CURRENCY-SAFE)
 
 /* ============================================================
    📅 Date Formatter
@@ -41,10 +41,12 @@ export function buildInvoiceReceiptHTML(invoice) {
   const printedBy = getPrintedBy(invoice);
   const printedAt = new Date().toLocaleString();
 
+  const currency = invoice?.currency || "USD";
+
   const paidToDateValue = Number(invoice.total_paid ?? 0);
   const paidToDateHTML =
     paidToDateValue > 0
-      ? `<div><span>Paid:</span><span>$${paidToDateValue.toFixed(2)}</span></div>`
+      ? `<div><span>Paid:</span><span>${currency} ${paidToDateValue.toFixed(2)}</span></div>`
       : "";
 
   /* ================= ITEMS ================= */
@@ -55,10 +57,10 @@ export function buildInvoiceReceiptHTML(invoice) {
         <tr>
           <td>${i.description || "—"}</td>
           <td>${i.quantity ?? "—"}</td>
-          <td>$${Number(i.unit_price || 0).toFixed(2)}</td>
-          <td>$${Number(i.discount_amount || 0).toFixed(2)}</td>
-          <td>$${Number(i.tax_amount || 0).toFixed(2)}</td>
-          <td>$${Number(i.total_price || 0).toFixed(2)}</td>
+          <td>${currency} ${Number(i.unit_price || 0).toFixed(2)}</td>
+          <td>${currency} ${Number(i.discount_amount || 0).toFixed(2)}</td>
+          <td>${currency} ${Number(i.tax_amount || 0).toFixed(2)}</td>
+          <td>${currency} ${Number(i.total_price || 0).toFixed(2)}</td>
         </tr>`
       )
       .join("") || `<tr><td colspan="6">No items</td></tr>`;
@@ -116,31 +118,31 @@ export function buildInvoiceReceiptHTML(invoice) {
     <!-- 💵 TOTALS -->
     <div class="totals">
 
-      <div><span>Subtotal:</span><span>$${Number(
+      <div><span>Subtotal:</span><span>${currency} ${Number(
         invoice.subtotal || 0
       ).toFixed(2)}</span></div>
 
-      <div><span>Discount:</span><span>$${Number(
+      <div><span>Discount:</span><span>${currency} ${Number(
         invoice.total_discount || 0
       ).toFixed(2)}</span></div>
 
-      <div><span>Tax:</span><span>$${Number(
+      <div><span>Tax:</span><span>${currency} ${Number(
         invoice.total_tax || 0
       ).toFixed(2)}</span></div>
 
       ${paidToDateHTML}
 
-      <div><span>Deposits:</span><span>$${Number(
+      <div><span>Deposits:</span><span>${currency} ${Number(
         invoice.applied_deposits || 0
       ).toFixed(2)}</span></div>
 
-      <div><span>Refunded:</span><span>$${Number(
+      <div><span>Refunded:</span><span>${currency} ${Number(
         invoice.refunded_amount || 0
       ).toFixed(2)}</span></div>
 
       <div class="final">
         <span>Balance:</span>
-        <span>$${Number(invoice.balance || 0).toFixed(2)}</span>
+        <span>${currency} ${Number(invoice.balance || 0).toFixed(2)}</span>
       </div>
 
     </div>

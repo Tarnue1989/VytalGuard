@@ -417,11 +417,45 @@ export async function setupOrderFormSubmission({
         }
       );
 
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
 
-      if (!res.ok) throw new Error(result.message);
+      if (!res.ok) {
+        throw new Error(result?.message || "❌ Server error");
+      }
 
+      /* ============================================================
+        🚨 HANDLE SKIPPED RECORDS (FIX)
+      ============================================================ */
+
+      // ❌ NOTHING CREATED
+      if (
+        !isEdit &&
+        result?.data?.records?.length === 0 &&
+        result?.data?.skipped?.length
+      ) {
+        const reasons = result.data.skipped
+          .map((s) => `Row ${s.index + 1}: ${s.reason}`)
+          .join("\n");
+
+        showToast(`❌ No orders created:\n${reasons}`, "error");
+        return;
+      }
+
+      // ⚠️ PARTIAL SUCCESS
+      if (!isEdit && result?.data?.skipped?.length) {
+        const reasons = result.data.skipped
+          .map((s) => `Row ${s.index + 1}: ${s.reason}`)
+          .join("\n");
+
+        showToast(`⚠️ Some records skipped:\n${reasons}`, "warning");
+      }
+
+      // ✅ SUCCESS MESSAGE
       showToast(isEdit ? "✅ Updated" : "✅ Created");
+
+      /* ============================================================
+        🔄 CONTINUE NORMAL FLOW
+      ============================================================ */
 
       if (isEdit) {
         window.location.href = "/orders-list.html";
@@ -448,6 +482,7 @@ export async function setupOrderFormSubmission({
 
         dateInput.value = new Date().toISOString().split("T")[0];
       }
+
     } catch (err) {
       showToast(err.message || "❌ Error");
     } finally {

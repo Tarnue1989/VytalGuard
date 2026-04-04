@@ -43,10 +43,10 @@ const debug = makeModuleLogger("featureController", DEBUG_OVERRIDE);
    🔐 ENUM MAPS (ORDER-SAFE)
 ============================================================ */
 const MODULE_STATUS = Object.fromEntries(
-  FEATURE_MODULE_STATUS.map(v => [v.toUpperCase(), v])
+  Object.values(FEATURE_MODULE_STATUS).map(v => [v.toUpperCase(), v])
 );
 const ACCESS_STATUS = Object.fromEntries(
-  FEATURE_ACCESS_STATUS.map(v => [v.toUpperCase(), v])
+  Object.values(FEATURE_ACCESS_STATUS).map(v => [v.toUpperCase(), v])
 );
 /* ============================================================
    🔐 ENUM ALIASES (SAFE, EXPLICIT)
@@ -123,7 +123,7 @@ function buildFeatureSchema(mode = "create") {
     enabled: Joi.boolean().default(true),
 
     status: Joi.string()
-      .valid(...FEATURE_MODULE_STATUS)
+      .valid(...Object.values(FEATURE_MODULE_STATUS))
       .default(ACTIVE),
 
     order_index: Joi.number().integer().min(0).default(0),
@@ -1259,7 +1259,7 @@ function buildFeatureAccessSchema(mode = "create") {
     module_id: Joi.string().uuid().required().label("Module"),
     facility_id: Joi.string().uuid().allow(null).label("Facility"),
     status: Joi.string()
-      .valid(...FEATURE_ACCESS_STATUS)
+      .valid(...Object.values(FEATURE_ACCESS_STATUS))
       .default(ACCESS_ACTIVE),
 
     // ❌ NEVER required from UI
@@ -1585,7 +1585,7 @@ export const replaceFeatureAccessByRole = async (req, res) => {
       organization_id: Joi.string().uuid().optional(),
       facility_id: Joi.string().uuid().allow(null),
       status: Joi.string()
-        .valid(...FEATURE_ACCESS_STATUS)
+        .valid(...Object.values(FEATURE_ACCESS_STATUS))
         .default(ACCESS_ACTIVE),
     });
 

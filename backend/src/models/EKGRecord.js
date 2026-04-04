@@ -63,9 +63,9 @@ export default (sequelize) => {
       // 🚨 Lifecycle & Flags
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       status: {
-        type: DataTypes.ENUM(...EKG_STATUS),
+        type: DataTypes.ENUM(...Object.values(EKG_STATUS)),
         allowNull: false,
-        defaultValue: EKG_STATUS[0], // ✅ "pending"
+        defaultValue: EKG_STATUS.PENDING,
       },
 
       // Workflow timestamps

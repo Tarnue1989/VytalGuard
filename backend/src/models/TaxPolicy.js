@@ -34,11 +34,17 @@ export default (sequelize) => {
 
       // 📌 Linked tax
       tax_id: { type: DataTypes.UUID, allowNull: false },
+      // 📌 Status
+      status: {
+        type: DataTypes.ENUM(...Object.values(POLICY_STATUS)),
+        allowNull: false,
+        defaultValue: POLICY_STATUS.ACTIVE,
+      },
 
       // 📌 Applicability
       applies_to: {
-        type: DataTypes.ENUM(...POLICY_APPLIES_TO), // all, billable_item, category, department, patient_class
-        defaultValue: "all",
+        type: DataTypes.ENUM(...Object.values(POLICY_APPLIES_TO)),
+        defaultValue: POLICY_APPLIES_TO.ALL,
       },
       condition_json: {
         type: DataTypes.JSONB,
@@ -50,12 +56,7 @@ export default (sequelize) => {
       effective_from: { type: DataTypes.DATE },
       effective_to: { type: DataTypes.DATE },
 
-      // 📌 Status
-      status: {
-        type: DataTypes.ENUM(...POLICY_STATUS), // active, inactive, expired
-        allowNull: false,
-        defaultValue: "active",
-      },
+
 
       // 🔹 Tenant Scope
       organization_id: { type: DataTypes.UUID, allowNull: true },

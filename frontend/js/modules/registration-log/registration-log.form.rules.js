@@ -1,6 +1,8 @@
 // =============================================
-// Registration Log Form Rules (Enterprise Master Pattern)
-// Controller-aligned • Role-aware • Rule-driven
+// Registration Log Form Rules (Enterprise MASTER – FINAL SAFE)
+// ✔ Payer type restricted
+// ✔ Insurance enforced correctly
+// ✔ Controller-aligned (no mismatch)
 // =============================================
 
 export const REGISTRATION_LOG_FORM_RULES = [
@@ -9,7 +11,7 @@ export const REGISTRATION_LOG_FORM_RULES = [
   ============================================================ */
   { id: "patientInput", message: "Patient is required" },
 
-  // Optional for now (future-ready)
+  // Optional (auto-linked from user)
   { id: "registrarInput", message: "Registrar is required", when: () => false },
 
   /* ============================================================
@@ -18,7 +20,7 @@ export const REGISTRATION_LOG_FORM_RULES = [
   {
     id: "registrationTypeSelect",
     message: "Registration type is required",
-    when: () => true,
+    when: () => true, // 🔥 REQUIRED (billing depends on it)
   },
 
   {
@@ -33,18 +35,39 @@ export const REGISTRATION_LOG_FORM_RULES = [
     when: () => true,
   },
 
-  // Optional / conditional business fields
+  // Optional business fields
   { id: "visitReason", message: "Visit reason is required", when: () => false },
-  {
-    id: "registrationSource",
-    message: "Registration source is required",
-    when: () => false,
-  },
+  { id: "registrationSource", message: "Registration source is required", when: () => false },
   { id: "isEmergency", message: "Emergency status is required", when: () => false },
   { id: "notes", message: "Notes are required", when: () => false },
 
   /* ============================================================
-     🏢 Organization (Superadmin-only)
+     💳 PAYER TYPE (STRICT CONTROL)
+     ✔ Dropdown only (no typing)
+     ✔ Required to prevent mistakes
+  ============================================================ */
+  {
+    id: "payerType",
+    message: "Payer type is required",
+    when: () => true,
+  },
+
+  /* ============================================================
+     🛡️ INSURANCE (CONDITIONAL – STRICT)
+     ✔ Required ONLY when payer = insurance
+     ✔ Prevents backend validation failure
+  ============================================================ */
+  {
+    id: "patientInsuranceSelect",
+    message: "Insurance is required when payer type is Insurance",
+    when: () => {
+      const payer = document.getElementById("payerType")?.value;
+      return payer === "insurance";
+    },
+  },
+
+  /* ============================================================
+     🏢 Organization (Superadmin only)
   ============================================================ */
   {
     id: "organizationSelect",
@@ -57,9 +80,6 @@ export const REGISTRATION_LOG_FORM_RULES = [
 
   /* ============================================================
      🏥 Facility (Facility-scoped users only)
-     – Superadmin ❌
-     – Org-level ❌
-     – Facility-scoped ✅
   ============================================================ */
   {
     id: "facilitySelect",

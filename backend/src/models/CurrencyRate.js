@@ -35,9 +35,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...CURRENCY_RATE_STATUS),
+        type: DataTypes.ENUM(...Object.values(CURRENCY_RATE_STATUS)),
         allowNull: false,
-        defaultValue: CURRENCY_RATE_STATUS[0], // "active"
+        defaultValue: CURRENCY_RATE_STATUS.ACTIVE,
       },
 
       // Audit

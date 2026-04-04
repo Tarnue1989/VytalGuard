@@ -116,19 +116,24 @@ function renderModuleSummary(summary = {}) {
     const isCount = countFields.some((k) => lower.includes(k));
     const isMoney =
       !isCount && /amount|balance|sum|value|total|paid|subtotal/.test(lower);
+      if (isMoney && !isNaN(val)) {
+        const num = parseFloat(val);
 
-    if (isMoney && !isNaN(val)) {
-      const num = parseFloat(val);
-      return `$${num.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
+        const currency =
+          summary.currency ||
+          window.entries?.[0]?.currency ||
+          "USD";
+
+        return `${currency} ${num.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+      }
     if (!isNaN(val)) return parseFloat(val).toLocaleString();
     return val;
   };
 
-  const keys = Object.keys(summary);
+  const keys = Object.keys(summary).filter(k => k !== "currency");
   if (!keys.length) {
     container.innerHTML = `<div class="text-muted small">No summary data</div>`;
     return;
@@ -157,6 +162,7 @@ const filterPatient = document.getElementById("filterPatient");
 const filterPatientHidden = document.getElementById("filterPatientId");
 const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
 const filterStatus = document.getElementById("filterStatus");
+const filterCurrency = document.getElementById("filterCurrency");
 const filterCreatedFrom = document.getElementById("filterCreatedFrom");
 const filterCreatedTo = document.getElementById("filterCreatedTo");
 
@@ -194,6 +200,7 @@ function getFilters() {
     organization_id: filterOrg?.value || "",
     facility_id: filterFacility?.value || "",
     patient_id: filterPatientHidden?.value || "",
+    currency: filterCurrency?.value || "",
     status: filterStatus?.value || "",
     created_from: filterCreatedFrom?.value || "",
     created_to: filterCreatedTo?.value || "",
@@ -234,6 +241,12 @@ async function loadEntries(page = 1) {
     const payload = result?.data || {};
     const records = Array.isArray(payload.records) ? payload.records : [];
 
+    const currency = records[0]?.currency || "USD";
+
+    payload.summary = {
+      ...(payload.summary || {}),
+      currency,
+    };
     window.entries = records;
     currentPage = Number(payload.pagination?.page) || safePage;
     totalPages = Number(payload.pagination?.pageCount) || 1;
@@ -275,6 +288,7 @@ if (resetFilterBtn)
       filterOrg,
       filterFacility,
       filterPatient,
+      filterCurrency,
       filterPatientHidden,
       filterStatus,
       filterCreatedFrom,
@@ -303,40 +317,66 @@ tableViewBtn?.addEventListener("click", () => {
 });
 
 /* ============================================================
-   ⬇️ Export Tools (with Summary)
+   ⬇️ Export Tools (CURRENCY-SAFE — MASTER FIXED)
 ============================================================ */
 if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(entries, `invoices_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  exportCSVBtn.onclick = () => {
+    const currency = entries?.[0]?.currency || "USD";
+
+    exportToExcel(
+      entries.map((e) => ({
+        ...e,
+        subtotal: e.subtotal != null ? `${currency} ${e.subtotal}` : "",
+        total: e.total != null ? `${currency} ${e.total}` : "",
+        total_paid: e.total_paid != null ? `${currency} ${e.total_paid}` : "",
+        refunded_amount: e.refunded_amount != null ? `${currency} ${e.refunded_amount}` : "",
+        balance: e.balance != null ? `${currency} ${e.balance}` : "",
+      })),
+      `invoices_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+  };
 
 if (exportPDFBtn)
   exportPDFBtn.onclick = () => {
     try {
-      const targetSelector = viewMode === "table" ? ".table-container" : "#invoiceList";
+      const targetSelector =
+        viewMode === "table" ? ".table-container" : "#invoiceList";
       const target = document.querySelector(targetSelector);
       if (!target) return showToast("⚠️ Nothing to export");
 
+      const currency = entries?.[0]?.currency || "USD";
+
       const summaryEl = document.getElementById("moduleSummary");
-      const summaryHTML = summaryEl
-        ? `<div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
+
+      // 🔧 Inject currency into summary display (safe replace)
+      let summaryHTML = "";
+      if (summaryEl) {
+        const raw = summaryEl.innerHTML || "";
+
+        const currencySafe = raw.replace(/(\d[\d,]*\.\d{2})/g, `${currency} $1`);
+
+        summaryHTML = `
+          <div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
             <h5 class="fw-bold mb-2">Invoice Summary</h5>
-            ${summaryEl.innerHTML}
-          </div>`
-        : "";
+            ${currencySafe}
+          </div>
+        `;
+      }
 
       const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
+
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = combinedHTML;
       document.body.appendChild(tempDiv);
 
       exportToPDF("Invoices_Report", "#exportWrapper", "portrait", true);
+
       setTimeout(() => tempDiv.remove(), 1000);
     } catch (err) {
       console.error("❌ exportPDF failed:", err);
       showToast("❌ Failed to export PDF");
     }
   };
-
 /* ============================================================
    🚀 Init Invoice Module (FULL – FIXED)
 ============================================================ */

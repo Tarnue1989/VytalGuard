@@ -65,12 +65,12 @@ const debug = makeModuleLogger("consultationController", DEBUG_OVERRIDE);
    🔖 STATUS MAP (ENUM-DRIVEN, DELIVERY PARITY)
 ============================================================ */
 const CS = {
-  OPEN: CONSULTATION_STATUS[0],
-  IN_PROGRESS: CONSULTATION_STATUS[1],
-  COMPLETED: CONSULTATION_STATUS[2],
-  VERIFIED: CONSULTATION_STATUS[3],
-  CANCELLED: CONSULTATION_STATUS[4],
-  VOIDED: CONSULTATION_STATUS[5],
+  OPEN: CONSULTATION_STATUS.OPEN,
+  IN_PROGRESS: CONSULTATION_STATUS.IN_PROGRESS,
+  COMPLETED: CONSULTATION_STATUS.COMPLETED,
+  VERIFIED: CONSULTATION_STATUS.VERIFIED,
+  CANCELLED: CONSULTATION_STATUS.CANCELLED,
+  VOIDED: CONSULTATION_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -175,7 +175,7 @@ export const createConsultation = async (req, res) => {
     /* ================= REGISTRATION LOG AUTO-LINK ================= */
     const whereLog = {
       patient_id: value.patient_id,
-      log_status: REGISTRATION_LOG_STATUS[2],
+      log_status: REGISTRATION_LOG_STATUS.ACTIVE,
       organization_id: orgId,
       facility_id: facilityId,
     };

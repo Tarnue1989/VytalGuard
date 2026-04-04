@@ -49,9 +49,9 @@ export default (sequelize) => {
 
       // 🔹 Lifecycle
       status: {
-        type: DataTypes.ENUM(...Object.values(MASTER_ITEM_CATEGORY_STATUS)), // ✅ fixed
+        type: DataTypes.ENUM(...Object.values(MASTER_ITEM_CATEGORY_STATUS)),
         allowNull: false,
-        defaultValue: MASTER_ITEM_CATEGORY_STATUS.ACTIVE, // ✅ use key not array index
+        defaultValue: MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
       },
 
       // 🔹 Audit

@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
   <link rel="stylesheet" href="assets/css/main.min.css">
   <link rel="stylesheet" href="/assets/css/dashboard-theme.css" />
+  <link rel="stylesheet" href="/assets/css/buttons.css">
 
 
   <!-- ************* Vendor CSS Files ************* -->
@@ -245,7 +246,23 @@
 
   </div>
   <!-- Page wrapper ends -->
-
+   
+  <!-- SESSION MODAL -->
+  <div class="modal fade" id="sessionTimeoutModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content text-center p-4">
+        <h5 class="modal-title mb-2">⚠️ Session Expiring</h5>
+        <p>
+          You will be logged out in 
+          <strong id="sessionCountdown">60</strong> seconds.
+        </p>
+        <button id="stayLoggedInBtn" class="btn btn-primary">
+          Stay Logged In
+        </button>
+      </div>
+    </div>
+  </div>
+  
   <!-- ************* JavaScript Files ************* -->
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/bootstrap.bundle.min.js"></script>
@@ -270,6 +287,10 @@
 
 <script type="module" src="js/dashboard/index.js"></script>
 <script type="module" src="js/dashboard/dashboard-tabs.js"></script>
+
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
 
 </body>
 

@@ -108,28 +108,28 @@ export function setupActionHandlers({
     const cls = btn.classList;
 
     if (cls.contains("view-btn")) {
-      if (!hasPerm("discount-waivers:view"))
+      if (!hasPerm("discount_waivers:view"))
         return showToast("⛔ No permission to view waivers");
       return handleView(entry);
     }
 
     if (cls.contains("edit-btn")) {
       if (
-        !hasPerm("discount-waivers:edit") &&
-        !hasPerm("discount-waivers:create")
+        !hasPerm("discount_waivers:edit") &&
+        !hasPerm("discount_waivers:create")
       )
         return showToast("⛔ No permission to edit waivers");
       return handleEdit(entry);
     }
 
     if (cls.contains("delete-btn")) {
-      if (!hasPerm("discount-waivers:delete"))
+      if (!hasPerm("discount_waivers:delete"))
         return showToast("⛔ No permission to delete waivers");
       return handleDelete(id);
     }
 
     if (cls.contains("reject-btn")) {
-      if (!hasPerm("discount-waivers:reject"))
+      if (!hasPerm("discount_waivers:reject"))
         return showToast("⛔ No permission to reject waivers");
       return handleReject(entry);
     }
@@ -143,7 +143,7 @@ export function setupActionHandlers({
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
-        if (!hasPerm(`discount-waivers:${action}`))
+        if (!hasPerm(`discount_waivers:${action}`))
           return showToast(`⛔ No permission to ${action} waivers`);
         if (action === "void") return handleVoid(entry);
         return handleLifecycle(id, action);
@@ -151,7 +151,7 @@ export function setupActionHandlers({
     }
 
     if (cls.contains("print-btn")) {
-      if (!hasPerm("discount-waivers:view"))
+      if (!hasPerm("discount_waivers:print")) 
         return showToast("⛔ No permission to print waivers");
       return handlePrint(entry);
     }
@@ -324,7 +324,7 @@ export function setupActionHandlers({
   }
 
   /* ============================================================
-     🌍 Global helpers
+    🌍 Global helpers
   ============================================================ */
   const findEntry = (id) =>
     (window.latestDiscountWaiverEntries || entries || []).find(
@@ -332,14 +332,40 @@ export function setupActionHandlers({
     );
 
   window.rejectDiscountWaiver = async (id) => {
-    if (!hasPerm("discount-waivers:reject"))
+    if (!hasPerm("discount_waivers:reject"))
       return showToast("⛔ No permission to reject waivers");
     const entry = findEntry(id);
     if (entry) await handleReject(entry);
   };
 
+  window.viewDiscountWaiver = (id) => {
+    if (!hasPerm("discount_waivers:view")) 
+      return showToast("⛔ No permission to view waivers");
+    const entry = findEntry(id);
+    if (entry) handleView(entry);
+  };
+
+  window.editDiscountWaiver = (id) => {
+    if (!hasPerm("discount_waivers:edit"))
+      return showToast("⛔ No permission to edit waivers");
+    const entry = findEntry(id);
+    if (entry) handleEdit(entry);
+  };
+
+  window.deleteDiscountWaiver = async (id) => {
+    if (!hasPerm("discount_waivers:delete"))
+      return showToast("⛔ No permission to delete waivers");
+    await handleDelete(id);
+  };
+  window.printDiscountWaiver = (id) => {
+    if (!hasPerm("discount_waivers:print"))
+      return showToast("⛔ No permission to print discount waivers");
+
+    const entry = findEntry(id);
+    if (entry) handlePrint(entry);
+  };
   /* ============================================================
-     ❌ MASTER MODAL CLOSE SUPPORT (FIX)
+    ❌ MASTER MODAL CLOSE SUPPORT (FIX)
   ============================================================ */
   document.querySelectorAll("[data-close]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -349,3 +375,4 @@ export function setupActionHandlers({
     });
   });
 }
+

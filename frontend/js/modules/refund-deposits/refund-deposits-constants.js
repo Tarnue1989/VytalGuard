@@ -1,8 +1,9 @@
-// 📦 refund-deposits-constants.js – Enterprise MASTER–ALIGNED
+// 📦 refund-deposits-constants.js – Enterprise MASTER–ALIGNED (FINAL)
 // ============================================================================
 // 🔹 Parity Source: deposit-constants.js + refund-constants.js
 // 🔹 Supports dynamic tables, cards, field selector, exports, summaries
 // 🔹 RBAC-safe, lifecycle-aware, enterprise ordering guaranteed
+// 🔹 CURRENCY-SAFE + FULL LIFECYCLE + MASTER UI PARITY
 // ============================================================================
 
 /* ============================================================
@@ -18,6 +19,7 @@ export const FIELD_LABELS_REFUND_DEPOSIT = {
   deposit: "Deposit",
 
   // Financial
+  currency: "Currency", // 🔥 ADDED (CRITICAL)
   refund_amount: "Refund Amount",
   method: "Method",
   reason: "Reason",
@@ -34,6 +36,12 @@ export const FIELD_LABELS_REFUND_DEPOSIT = {
   reversed_at: "Reversed At",
   voidedBy: "Voided By",
   voided_at: "Voided At",
+  rejectedBy: "Rejected By", // 🔥 ADDED
+  rejected_at: "Rejected At", // 🔥 ADDED
+  cancelledBy: "Cancelled By", // 🔥 ADDED
+  cancelled_at: "Cancelled At", // 🔥 ADDED
+  restoredBy: "Restored By", // 🔥 ADDED
+  restored_at: "Restored At", // 🔥 ADDED
 
   // Meta audit
   createdBy: "Created By",
@@ -57,6 +65,8 @@ export const FIELD_ORDER_REFUND_DEPOSIT = [
   "patient",
   "deposit",
 
+  // Financial (currency FIRST like Payment/Deposit)
+  "currency", // 🔥 ADDED
   "method",
   "refund_amount",
   "reason",
@@ -72,6 +82,12 @@ export const FIELD_ORDER_REFUND_DEPOSIT = [
   "reversed_at",
   "voidedBy",
   "voided_at",
+  "rejectedBy",
+  "rejected_at",
+  "cancelledBy",
+  "cancelled_at",
+  "restoredBy",
+  "restored_at",
 
   // ---- Meta ----
   "createdBy",
@@ -98,6 +114,8 @@ export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
     "facility",
     "patient",
     "deposit",
+
+    "currency", // 🔥 ADDED
     "method",
     "refund_amount",
     "reason",
@@ -122,10 +140,13 @@ export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
     "facility",
     "patient",
     "deposit",
+
+    "currency", // 🔥 ADDED
     "method",
     "refund_amount",
     "reason",
     "status",
+
     "actions",
   ],
 };
@@ -135,9 +156,17 @@ export const FIELD_DEFAULTS_REFUND_DEPOSIT = {
 ============================================================ */
 export const FIELD_GROUPS_REFUND_DEPOSIT = {
   org_scope: ["organization", "facility"],
+
   patient_info: ["patient", "deposit"],
-  financials: ["refund_amount", "method"],
+
+  financials: [
+    "currency", // 🔥 ADDED
+    "refund_amount",
+    "method",
+  ],
+
   notes: ["reason"],
+
   lifecycle: [
     "approvedBy",
     "approved_at",
@@ -147,8 +176,16 @@ export const FIELD_GROUPS_REFUND_DEPOSIT = {
     "reversed_at",
     "voidedBy",
     "voided_at",
+    "rejectedBy",
+    "rejected_at",
+    "cancelledBy",
+    "cancelled_at",
+    "restoredBy",
+    "restored_at",
   ],
+
   meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
+
   system: ["deletedBy", "deleted_at", "actions"],
 };
 

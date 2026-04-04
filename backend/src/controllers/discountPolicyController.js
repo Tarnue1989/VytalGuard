@@ -57,11 +57,10 @@ const debug = makeModuleLogger("discountPolicyController", DEBUG_OVERRIDE);
    🔖 STATUS MAP (ENUM SAFE)
 ============================================================ */
 const PS = {
-  ACTIVE: POLICY_STATUS[0],
-  INACTIVE: POLICY_STATUS[1],
-  EXPIRED: POLICY_STATUS[2],
+  ACTIVE: POLICY_STATUS.ACTIVE,
+  INACTIVE: POLICY_STATUS.INACTIVE,
+  EXPIRED: POLICY_STATUS.EXPIRED,
 };
-
 /* ============================================================
    🔗 SHARED INCLUDES
 ============================================================ */
@@ -84,9 +83,9 @@ function buildPolicySchema(mode = "create") {
     code: Joi.string().max(50).required(),
     name: Joi.string().max(150).required(),
     description: Joi.string().allow(null, ""),
-    discount_type: Joi.string().valid(...DISCOUNT_TYPE).required(),
+    discount_type: Joi.string().valid(...Object.values(DISCOUNT_TYPE)).required(),
     discount_value: Joi.number().min(0).required(),
-    applies_to: Joi.string().valid(...POLICY_APPLIES_TO).default("all"),
+    applies_to: Joi.string().valid(...Object.values(POLICY_APPLIES_TO)).default(POLICY_APPLIES_TO.ALL),
     condition_json: Joi.object().unknown(true).allow(null),
     effective_from: Joi.date().allow(null),
     effective_to: Joi.date().allow(null),

@@ -92,9 +92,9 @@ export default (sequelize) => {
         },
       },
       status: {
-        type: DataTypes.ENUM(...FACILITY_STATUS),
+        type: DataTypes.ENUM(...Object.values(FACILITY_STATUS)),
         allowNull: false,
-        defaultValue: FACILITY_STATUS[0], // usually "active"
+        defaultValue: FACILITY_STATUS.ACTIVE,
       },
       created_by_id: { type: DataTypes.UUID, allowNull: true },
       updated_by_id: { type: DataTypes.UUID, allowNull: true },

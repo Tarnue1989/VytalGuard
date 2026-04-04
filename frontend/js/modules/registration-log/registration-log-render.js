@@ -14,7 +14,7 @@
 import { FIELD_LABELS_REGISTRATION_LOG } from "./registration-log-constants.js";
 
 import {
-  formatDateTime, // ⏱️ ALL registration log dates are DATE + TIME
+  formatDateTime,
   initTooltips,
 } from "../../utils/ui-utils.js";
 
@@ -23,9 +23,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
-/* ============================================================
-   🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
-============================================================ */
+/* ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "registration_time",
   "log_status",
@@ -33,9 +31,6 @@ const SORTABLE_FIELDS = new Set([
   "updated_at",
 ]);
 
-/* ============================================================
-   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
-============================================================ */
 let sortBy = localStorage.getItem("registrationLogSortBy") || "";
 let sortDir = localStorage.getItem("registrationLogSortDir") || "asc";
 
@@ -54,9 +49,7 @@ function toggleSort(field) {
   window.loadRegistrationLogPage?.(1);
 }
 
-/* ============================================================
-   🎛️ ACTION BUTTONS (PERMISSION-DRIVEN)
-============================================================ */
+/* ============================================================ */
 function getRegistrationLogActionButtons(entry, user) {
   return buildActionButtons({
     module: "registration_log",
@@ -67,9 +60,7 @@ function getRegistrationLogActionButtons(entry, user) {
   });
 }
 
-/* ============================================================
-   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
-============================================================ */
+/* ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
   const table = thead?.closest("table");
@@ -116,7 +107,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   thead.appendChild(tr);
 
-  /* ================= Column resize ================= */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
@@ -130,7 +120,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   enableColumnResize(table);
 
-  /* ================= Column drag ================= */
   enableColumnDrag({
     table,
     visibleFields,
@@ -141,18 +130,14 @@ export function renderDynamicTableHead(visibleFields) {
   });
 }
 
-/* ============================================================
-   🔠 HELPERS
-============================================================ */
+/* ============================================================ */
 function renderUserName(user) {
   if (!user) return "—";
   const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
   return parts.length ? parts.join(" ") : user.full_name || "—";
 }
 
-/* ============================================================
-   🧩 FIELD VALUE RENDERER
-============================================================ */
+/* ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "log_status": {
@@ -175,11 +160,8 @@ function renderValue(entry, field) {
     case "facility":
       return entry.facility?.name || "—";
 
-    case "patient":
-      return entry.patient
-        ? `${entry.patient.pat_no || ""} ${entry.patient.first_name || ""} ${entry.patient.last_name || ""}`.trim() || "—"
-        : "—";
-
+    case "patientInsurance":
+      return entry.patientInsurance?.provider?.name || "—";
     case "registrar":
       return renderUserName(entry.registrar);
 
@@ -190,6 +172,10 @@ function renderValue(entry, field) {
       return entry.invoice
         ? `${entry.invoice.invoice_number} (${entry.invoice.status})`
         : "—";
+
+    // ✅ FIX ADDED
+    case "payer_type":
+      return entry.payer_type === "insurance" ? "Insurance" : "Cash";
 
     case "createdBy":
     case "updatedBy":
@@ -212,9 +198,7 @@ function renderValue(entry, field) {
   }
 }
 
-/* ============================================================
-   🗂️ CARD RENDERER — REGISTRATION LOG (FULL)
-============================================================ */
+/* ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const safe = (v) =>
@@ -287,9 +271,24 @@ export function renderCard(entry, visibleFields, user) {
         ${has("registration_type")
           ? fieldRow("Registration Type", entry.registrationType?.name)
           : ""}
+
+        ${has("payer_type")
+          ? fieldRow("Payer Type", entry.payer_type === "insurance" ? "Insurance" : "Cash")
+          : ""}
+
+        ${has("patientInsurance")
+          ? fieldRow(
+              "Insurance",
+              entry.patientInsurance
+                ? entry.patientInsurance?.provider?.name || "—"
+                : "—"
+            )
+          : ""}
+
         ${has("is_emergency")
           ? fieldRow("Emergency", entry.is_emergency ? "Yes" : "No")
           : ""}
+
         ${has("invoice")
           ? fieldRow(
               "Invoice",
@@ -350,9 +349,7 @@ export function renderCard(entry, visibleFields, user) {
   `;
 }
 
-/* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
-============================================================ */
+/* ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("registrationLogTableBody");
   const cardContainer = document.getElementById("registrationLogList");
@@ -408,9 +405,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   setupExportHandlers(entries);
 }
 
-/* ============================================================
-   📤 EXPORT HANDLERS
-============================================================ */
+/* ============================================================ */
 let exportHandlersBound = false;
 
 function setupExportHandlers(entries) {

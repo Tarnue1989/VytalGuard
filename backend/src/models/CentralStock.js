@@ -50,9 +50,9 @@ export default (sequelize) => {
 
       // 🔹 Lifecycle
       status: {
-        type: DataTypes.ENUM(...Object.values(CENTRAL_STOCK_STATUS)), // ✅ FIX
+        type: DataTypes.ENUM(...Object.values(CENTRAL_STOCK_STATUS)),
         allowNull: false,
-        defaultValue: CENTRAL_STOCK_STATUS.ACTIVE, // ✅ FIX
+        defaultValue: CENTRAL_STOCK_STATUS.ACTIVE,
       },
 
       // 🔹 Audit

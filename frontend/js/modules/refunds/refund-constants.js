@@ -1,9 +1,7 @@
-// 📦 refund-constants.js – Enterprise MASTER–ALIGNED (Refund ↔ Refund Deposit Parity)
+// 📦 refund-constants.js – Enterprise MASTER–ALIGNED (UPDATED)
 // ============================================================================
-// 🔹 Parity Source: refund-deposits-constants.js (MASTER)
-// 🔹 Preserves ALL existing field IDs for HTML + JS compatibility
-// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
-// 🔹 RBAC-safe, lifecycle-aware, enterprise ordering guaranteed
+// 🔹 Added: currency + reversed lifecycle fields
+// 🔹 No refactor, no renaming, no structural changes
 // ============================================================================
 
 /* ============================================================
@@ -21,6 +19,7 @@ export const FIELD_LABELS_REFUND = {
 
   // Financial
   method: "Method",
+  currency: "Currency", // ✅ ADDED
   amount: "Amount",
   reason: "Reason",
 
@@ -36,6 +35,8 @@ export const FIELD_LABELS_REFUND = {
   processed_at: "Processed At",
   cancelledBy: "Cancelled By",
   cancelled_at: "Cancelled At",
+  reversedBy: "Reversed By",     // ✅ ADDED
+  reversed_at: "Reversed At",    // ✅ ADDED
 
   // ---- Meta audit ----
   createdBy: "Created By",
@@ -61,6 +62,7 @@ export const FIELD_ORDER_REFUND = [
   "payment",
 
   "method",
+  "currency", // ✅ ADDED
   "amount",
   "reason",
 
@@ -75,6 +77,8 @@ export const FIELD_ORDER_REFUND = [
   "processed_at",
   "cancelledBy",
   "cancelled_at",
+  "reversedBy",   // ✅ ADDED
+  "reversed_at",  // ✅ ADDED
 
   // ---- Meta ----
   "createdBy",
@@ -91,11 +95,9 @@ export const FIELD_ORDER_REFUND = [
    👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
 ============================================================ */
 export const FIELD_DEFAULTS_REFUND = {
-  // 🧑‍💼 Full visibility
   superadmin: [...FIELD_ORDER_REFUND],
   admin: [...FIELD_ORDER_REFUND],
 
-  // 👔 Manager (scoped lifecycle)
   manager: [
     "refund_number",
     "facility",
@@ -103,6 +105,7 @@ export const FIELD_DEFAULTS_REFUND = {
     "invoice",
     "payment",
     "method",
+    "currency", // ✅ ADDED
     "amount",
     "reason",
     "status",
@@ -120,7 +123,6 @@ export const FIELD_DEFAULTS_REFUND = {
     "actions",
   ],
 
-  // 👷 Staff (essential only)
   staff: [
     "refund_number",
     "facility",
@@ -128,6 +130,7 @@ export const FIELD_DEFAULTS_REFUND = {
     "invoice",
     "payment",
     "method",
+    "currency", // ✅ ADDED
     "amount",
     "reason",
     "status",
@@ -141,7 +144,7 @@ export const FIELD_DEFAULTS_REFUND = {
 export const FIELD_GROUPS_REFUND = {
   org_scope: ["organization", "facility"],
   patient_info: ["patient", "invoice", "payment"],
-  financials: ["method", "amount"],
+  financials: ["method", "currency", "amount"], // ✅ UPDATED
   notes: ["reason"],
   lifecycle: [
     "approvedBy",
@@ -152,6 +155,8 @@ export const FIELD_GROUPS_REFUND = {
     "processed_at",
     "cancelledBy",
     "cancelled_at",
+    "reversedBy",   // ✅ ADDED
+    "reversed_at",  // ✅ ADDED
   ],
   meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
   system: ["deletedBy", "deleted_at", "actions"],

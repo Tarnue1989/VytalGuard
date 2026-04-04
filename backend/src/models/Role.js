@@ -79,6 +79,11 @@ export default (sequelize) => {
         defaultValue: "custom",
       },
 
+      status: {
+        type: DataTypes.ENUM(...Object.values(ROLE_STATUS)),
+        allowNull: false,
+        defaultValue: ROLE_STATUS.ACTIVE,
+      },
       is_system: {
         type: DataTypes.VIRTUAL,
         get() {
@@ -93,11 +98,7 @@ export default (sequelize) => {
         defaultValue: false,
       },
 
-      status: {
-        type: DataTypes.ENUM(...ROLE_STATUS),
-        allowNull: false,
-        defaultValue: ROLE_STATUS[0], // usually "active"
-      },
+
 
       created_by_id: { type: DataTypes.UUID, allowNull: true },
       updated_by_id: { type: DataTypes.UUID, allowNull: true },

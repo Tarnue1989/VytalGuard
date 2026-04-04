@@ -1,22 +1,33 @@
 // 📁 backend/src/models/RefundDepositTransaction.js
 import { DataTypes, Model } from "sequelize";
+import {
+  REFUND_DEPOSIT_TRANSACTION_STATUS,
+  CURRENCY,
+} from "../constants/enums.js";
+
+/* ============================================================
+   🔖 Enum map (OBJECT SAFE)
+============================================================ */
+const RTS = {
+  CREATED:  REFUND_DEPOSIT_TRANSACTION_STATUS.CREATED,
+  PROCESSED: REFUND_DEPOSIT_TRANSACTION_STATUS.PROCESSED,
+  FAILED:   REFUND_DEPOSIT_TRANSACTION_STATUS.FAILED,
+  REVERSED: REFUND_DEPOSIT_TRANSACTION_STATUS.REVERSED,
+};
 
 export default (sequelize) => {
   class RefundDepositTransaction extends Model {
     static associate(models) {
-      // 🔗 Parent RefundDeposit
       RefundDepositTransaction.belongsTo(models.RefundDeposit, {
         as: "refundDeposit",
         foreignKey: "refund_deposit_id",
       });
 
-      // 🔗 Parent Deposit
       RefundDepositTransaction.belongsTo(models.Deposit, {
         as: "deposit",
         foreignKey: "deposit_id",
       });
 
-      // 🔗 Scope
       RefundDepositTransaction.belongsTo(models.Organization, {
         as: "organization",
         foreignKey: "organization_id",
@@ -32,7 +43,6 @@ export default (sequelize) => {
         foreignKey: "patient_id",
       });
 
-      // 🔹 Audit (users)
       RefundDepositTransaction.belongsTo(models.User, {
         as: "createdBy",
         foreignKey: "created_by_id",
@@ -60,25 +70,27 @@ export default (sequelize) => {
       facility_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
-      // 💵 Details
+      // 💱 🔥 REQUIRED (MATCH DEPOSIT)
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: false,
+      },
+
+      // 💵 Amount
       amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
         validate: { min: 0.01 },
       },
 
-      method: { type: DataTypes.STRING, allowNull: true },
+      method: { type: DataTypes.STRING },
       note: { type: DataTypes.TEXT },
 
-      // 🔄 Lifecycle status (deposit refund transaction)
+      // 🔄 Lifecycle
       status: {
-        type: DataTypes.ENUM(
-          "created",
-          "processed",
-          "reversed"
-        ),
+        type: DataTypes.ENUM(...Object.values(REFUND_DEPOSIT_TRANSACTION_STATUS)),
         allowNull: false,
-        defaultValue: "created",
+        defaultValue: REFUND_DEPOSIT_TRANSACTION_STATUS.CREATED,
       },
 
       // 🔹 Audit
@@ -112,6 +124,20 @@ export default (sequelize) => {
       ],
     }
   );
+
+  /* ============================================================
+     🔁 Hooks
+  ============================================================ */
+
+  // 🔥 Enforce currency from deposit
+  RefundDepositTransaction.beforeValidate(async (tx) => {
+    const { Deposit } = await import("../models/index.js");
+
+    const deposit = await Deposit.findByPk(tx.deposit_id);
+    if (!deposit) throw new Error("Invalid deposit_id");
+
+    tx.currency = deposit.currency;
+  });
 
   return RefundDepositTransaction;
 };

@@ -94,8 +94,12 @@ function renderValue(entry, field) {
     case "total_paid":
     case "refunded_amount":
     case "balance":
-    case "applied_deposits":
-      return entry[field] != null ? `$${Number(entry[field]).toFixed(2)}` : "—";
+    case "applied_deposits": {
+      const currency = entry.currency || "USD";
+      return entry[field] != null
+        ? `${currency} ${Number(entry[field]).toFixed(2)}`
+        : "—";
+    }
 
     case "createdBy":
     case "updatedBy":
@@ -157,17 +161,21 @@ export function renderInvoiceDetail(entry, user) {
       </thead>
       <tbody>
         ${(entry.items || [])
-          .map(
-            (i) => `
-              <tr>
-                <td>${i.description || "—"}</td>
-                <td>${i.quantity}</td>
-                <td>$${Number(i.unit_price || 0).toFixed(2)}</td>
-                <td>$${Number(i.discount_amount || 0).toFixed(2)}</td>
-                <td>$${Number(i.tax_amount || 0).toFixed(2)}</td>
-                <td>$${Number(i.total_price || 0).toFixed(2)}</td>
-              </tr>`
-          )
+              .map(
+                (i) => {
+                  const currency = entry.currency || "USD";
+                  return `
+                    <tr>
+                      <td>${i.description || "—"}</td>
+                      <td>${i.quantity}</td>
+                      <td>${currency} ${Number(i.unit_price || 0).toFixed(2)}</td>
+                      <td>${currency} ${Number(i.discount_amount || 0).toFixed(2)}</td>
+                      <td>${currency} ${Number(i.tax_amount || 0).toFixed(2)}</td>
+                      <td>${currency} ${Number(i.total_price || 0).toFixed(2)}</td>
+                    </tr>
+                  `;
+                }
+              )
           .join("") || `<tr><td colspan="6">No items</td></tr>`}
       </tbody>
     </table>`;
@@ -177,7 +185,7 @@ export function renderInvoiceDetail(entry, user) {
       .map(
         (p) =>
           `<p>
-            <strong>${p.method}</strong> - $${Number(p.amount).toFixed(2)} (${p.status})
+            <strong>${p.method}</strong> - ${entry.currency || "USD"} ${Number(p.amount).toFixed(2)} (${p.status})
           </p>`
       )
       .join("") || `<p class="text-muted">No payments</p>`;
@@ -188,9 +196,9 @@ export function renderInvoiceDetail(entry, user) {
       .map(
         (d) => `
           <p>
-            <strong>Amount:</strong> $${Number(d.amount).toFixed(2)}<br>
-            <strong>Applied:</strong> $${Number(d.applied_amount).toFixed(2)}<br>
-            <strong>Remaining:</strong> $${Number(d.remaining_balance).toFixed(2)}<br>
+            <strong>Amount:</strong> ${entry.currency || "USD"} ${Number(d.amount).toFixed(2)}<br>
+            <strong>Applied:</strong> ${entry.currency || "USD"} ${Number(d.applied_amount).toFixed(2)}<br>
+            <strong>Remaining:</strong> ${entry.currency || "USD"} ${Number(d.remaining_balance).toFixed(2)}<br>
             <strong>Method:</strong> ${d.method || "—"}<br>
             <strong>Status:</strong> ${d.status || "—"}<br>
             <strong>Ref:</strong> ${d.transaction_ref || "—"}
@@ -202,14 +210,14 @@ export function renderInvoiceDetail(entry, user) {
   const refundsHTML =
     (entry.refunds || []).map(
       (r) =>
-        `<p>$${Number(r.amount).toFixed(2)} - ${r.reason || "—"}</p>`
+        `<p>${entry.currency || "USD"} ${Number(r.amount).toFixed(2)} - ${r.reason || "—"}</p>`
     ).join("") || `<p class="text-muted">No refunds</p>`;
 
   const waiversHTML =
     (entry.waivers || [])
       .map(
         (w) =>
-          `<p>$${Number(w.amount).toFixed(2)} (${w.type}) - ${w.reason || "—"}</p>`
+          `<p>${entry.currency || "USD"} ${Number(w.amount).toFixed(2)} (${w.type}) - ${w.reason || "—"}</p>`
       )
       .join("") || `<p class="text-muted">No waivers</p>`;
 
@@ -269,6 +277,8 @@ export function renderCard(entry, visibleFields, user) {
     const LIMIT = 3;
 
     const formatItem = (i) => {
+      const currency = entry.currency || "USD";
+
       const name = i.description || i.name || "Item";
       const qty = Number(i.quantity || 1);
       const unit = Number(i.unit_price || i.price || 0);
@@ -278,7 +288,7 @@ export function renderCard(entry, visibleFields, user) {
         <li>
           <div><strong>${name}</strong></div>
           <div class="text-muted small">
-            Qty: ${qty} | Unit: $${unit.toFixed(2)} | Total: $${total.toFixed(2)}
+            Qty: ${qty} | Unit: ${currency} ${unit.toFixed(2)} | Total: ${currency} ${total.toFixed(2)}
           </div>
         </li>
       `;
@@ -297,7 +307,7 @@ export function renderCard(entry, visibleFields, user) {
         </ul>
 
         <div class="entity-summary text-end mt-2">
-          <strong>Subtotal: $${subtotal.toFixed(2)}</strong>
+          <strong>Subtotal: ${(entry.currency || "USD")} ${subtotal.toFixed(2)}</strong>
         </div>
       `;
     }
@@ -320,7 +330,7 @@ export function renderCard(entry, visibleFields, user) {
       </details>
 
       <div class="entity-summary text-end mt-2">
-        <strong>Subtotal: $${subtotal.toFixed(2)}</strong>
+        <strong>Subtotal: ${(entry.currency || "USD")} ${subtotal.toFixed(2)}</strong>
       </div>
     `;
   };
@@ -349,8 +359,8 @@ export function renderCard(entry, visibleFields, user) {
       <!-- ================= QUICK CORE ================= -->
       <div class="entity-card-body">
         ${row("Date", formatDate(entry.created_at))}
-        ${row("Total", entry.total ? `$${Number(entry.total).toFixed(2)}` : "—")}
-        ${row("Balance", entry.balance ? `$${Number(entry.balance).toFixed(2)}` : "—")}
+        ${row("Total", entry.total ? `${entry.currency || "USD"} ${Number(entry.total).toFixed(2)}` : "—")}
+        ${row("Balance", entry.balance ? `${entry.currency || "USD"} ${Number(entry.balance).toFixed(2)}` : "—")}
         ${row("Status", status.toUpperCase())}
       </div>
 
@@ -372,7 +382,7 @@ export function renderCard(entry, visibleFields, user) {
                   .map((p) =>
                     row(
                       p.method,
-                      `$${Number(p.amount).toFixed(2)} (${p.status})`
+                      `${entry.currency || "USD"} ${Number(p.amount).toFixed(2)} (${p.status})`
                     )
                   )
                   .join("")}
@@ -391,7 +401,7 @@ export function renderCard(entry, visibleFields, user) {
                   .map((d) =>
                     row(
                       "Deposit",
-                      `$${Number(d.applied_amount).toFixed(2)} (Remaining: $${Number(
+                      `${entry.currency || "USD"} ${Number(d.applied_amount).toFixed(2)} (Remaining: ${entry.currency || "USD"} ${Number(
                         d.remaining_balance
                       ).toFixed(2)})`
                     )
@@ -401,7 +411,6 @@ export function renderCard(entry, visibleFields, user) {
             </details>`
           : ""
       }
-
       <!-- ================= AUDIT ================= -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>

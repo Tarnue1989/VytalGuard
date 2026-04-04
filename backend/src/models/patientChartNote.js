@@ -40,20 +40,19 @@ export default (sequelize) => {
         allowNull: false,
         comment: "User who authored this note",
       },
-
       /* ============================================================
-         🩺 Note Classification & Lifecycle
+        🩺 Note Classification & Lifecycle
       ============================================================ */
       note_type: {
-        type: DataTypes.ENUM(...PATIENT_CHART_NOTE_TYPE),
+        type: DataTypes.ENUM(...Object.values(PATIENT_CHART_NOTE_TYPE)),
         allowNull: false,
-        defaultValue: "doctor",
+        defaultValue: PATIENT_CHART_NOTE_TYPE.DOCTOR,
         comment: "Type of note (doctor, nurse, admin, system)",
       },
       status: {
-        type: DataTypes.ENUM(...MEDICAL_RECORD_STATUS),
+        type: DataTypes.ENUM(...Object.values(MEDICAL_RECORD_STATUS)),
         allowNull: false,
-        defaultValue: "draft",
+        defaultValue: MEDICAL_RECORD_STATUS.DRAFT,
         comment: "Current lifecycle status of this chart note",
       },
       content: {

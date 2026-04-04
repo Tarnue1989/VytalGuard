@@ -1,44 +1,18 @@
 // 📁 frontend/js/modules/discounts/discount-summary.js
 // ============================================================================
-// 🧾 Discount Summary Slip – ENTERPRISE PREMIUM (MASTER PARITY++)
-// ----------------------------------------------------------------------------
-// 🔹 FULL parity with deposit-receipt.js
-// 🔹 XSS-safe rendering (enterprise security)
-// 🔹 Global money formatter (consistent financial output)
-// 🔹 Audit logging (enterprise traceability)
-// 🔹 Silent + print-safe
-// 🔹 Footer + branding handled ONLY by receipt-utils
-// 🔹 ALL existing imports + API calls PRESERVED
+// 🧾 Discount Receipt (INVOICE-STYLE PARITY — FINAL)
+// 🔹 Payment-aligned currency handling (NO $ HARDCODE)
+// 🔹 Multi-currency safe (USD / LRD / etc.)
+// 🔹 SAME structure as Deposit / Payment
+// 🔹 Enterprise safe
 // ============================================================================
 
-import { printReceipt } from "../../utils/receipt-utils.js";
-import { getOrgInfo } from "../shared/org-config.js";
+import { printDocument } from "../../templates/printTemplate.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
-/* --------------------------------------------------
-   🔒 Enterprise Helpers (INLINE SAFE)
--------------------------------------------------- */
-function safeText(value) {
-  if (value === null || value === undefined) return "—";
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function formatMoney(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
-}
-
-function logAction(action, payload = {}) {
-  console.debug(`[discount-summary] ${action}`, payload);
-}
-
-/* --------------------------------------------------
-   Utilities (MASTER PARITY)
--------------------------------------------------- */
+/* ============================================================
+   📅 Date Formatter
+============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -50,128 +24,160 @@ function formatDate(dateStr) {
   });
 }
 
-/**
- * Resolve Printed By (Audit-first → Auth-user → System)
- */
-function resolvePrintedBy(discount) {
-  if (
-    discount?.createdBy?.first_name ||
-    discount?.createdBy?.last_name
-  ) {
-    return [
-      discount.createdBy.first_name,
-      discount.createdBy.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ");
+/* ============================================================
+   👤 Resolve Current User
+============================================================ */
+function getPrintedBy(discount) {
+  try {
+    const authSession = JSON.parse(localStorage.getItem("authSession") || "{}");
+
+    return (
+      authSession?.name ||
+      (discount?.createdBy
+        ? `${discount.createdBy.first_name} ${discount.createdBy.last_name}`
+        : null) ||
+      localStorage.getItem("userName") ||
+      "Unknown User"
+    );
+  } catch {
+    return "Unknown User";
   }
-
-  const authUser =
-    JSON.parse(localStorage.getItem("auth_user") || "null") ||
-    JSON.parse(localStorage.getItem("currentUser") || "null");
-
-  if (!authUser) return "System";
-
-  if (authUser.first_name || authUser.last_name) {
-    return [authUser.first_name, authUser.last_name]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return authUser.name || "System";
 }
 
-/* --------------------------------------------------
-   Receipt Printer (PREMIUM)
--------------------------------------------------- */
-export function printDiscountSummary(discount) {
-  const orgInfo = getOrgInfo(); // ✅ preserved
-  const printedBy = resolvePrintedBy(discount);
+/* ============================================================
+   👤 Resolve Patient (MASTER SAFE)
+============================================================ */
+function resolvePatient(discount) {
+  const p = discount.patient || discount.invoice?.patient;
+  if (!p) return "—";
+
+  const name = [p.first_name, p.middle_name, p.last_name]
+    .filter(Boolean)
+    .join(" ");
+
+  return `${p.pat_no || "—"} - ${name || "—"}`;
+}
+
+/* ============================================================
+   🧾 BUILD RECEIPT HTML
+============================================================ */
+function buildDiscountReceiptHTML(discount) {
+  const printedBy = getPrintedBy(discount);
   const printedAt = new Date().toLocaleString();
 
-  // 🔥 Audit log (enterprise traceability)
-  logAction("PRINT", {
-    id: discount.id,
-    invoice_id: discount.invoice_id,
-    value: discount.value,
-  });
+  const money = (v) =>
+    `${getCurrencySymbol(discount.currency)} ${Number(v || 0).toFixed(2)}`;
 
-  const invoiceLabel = discount.invoice
-    ? `${safeText(discount.invoice.invoice_number || "Invoice")}`
-    : discount.invoice_id
-    ? `Invoice ID: ${safeText(discount.invoice_id)}`
-    : "—";
-
-  const itemLabel = discount.invoiceItem
-    ? `${safeText(discount.invoiceItem.description || "Item")} · Qty ${
-        discount.invoiceItem.quantity || 1
-      }`
-    : "—";
+  const invoiceNumber = discount.invoice
+    ? discount.invoice.invoice_number
+    : discount.invoice_id || "—";
 
   const valueDisplay =
     discount.type === "percentage"
-      ? `${Number(discount.value || 0).toFixed(2)}%`
-      : formatMoney(discount.value);
+      ? `${Number(discount.value || 0)}%`
+      : money(discount.value);
 
-  const bodyHTML = `
-    <div class="facility-info">
-      <p><strong>Facility:</strong> ${safeText(
-        discount.facility?.name
-      )}</p>
+  const appliedDisplay =
+    discount.applied_amount != null
+      ? money(discount.applied_amount)
+      : "—";
+
+  return `
+    <!-- 🏢 Facility -->
+    <div style="margin-bottom:12px; font-size:13px;">
+      <strong>Facility:</strong> ${discount.facility?.name || "—"}
     </div>
 
-    <div class="invoice-meta">
-      <div><strong>Discount ID:</strong> ${safeText(discount.id)}</div>
-      <div><strong>Invoice:</strong> ${invoiceLabel}</div>
-      <div><strong>Invoice Item:</strong> ${itemLabel}</div>
-      <div><strong>Type:</strong> ${safeText(discount.type)}</div>
-      <div><strong>Value:</strong> ${valueDisplay}</div>
-      <div><strong>Reason:</strong> ${safeText(discount.reason)}</div>
-      <div><strong>Status:</strong> ${safeText(discount.status)}</div>
-      <div><strong>Created At:</strong> ${formatDate(
-        discount.created_at
-      )}</div>
-      <div><strong>Created By:</strong> ${safeText(printedBy)}</div>
+    <!-- 🔥 GRID HEADER -->
+    <div class="grid-2">
+
+      <div>
+        <div><strong>Invoice:</strong> ${invoiceNumber}</div>
+
+        <div><strong>Patient:</strong> ${resolvePatient(discount)}</div>
+
+        <div><strong>Item:</strong> ${
+          discount.invoiceItem?.description || "—"
+        }</div>
+      </div>
+
+      <div>
+        <div><strong>Discount #:</strong> ${
+          discount.discount_number || "—"
+        }</div>
+
+        <div><strong>Date:</strong> ${formatDate(discount.created_at)}</div>
+
+        <div><strong>Status:</strong> ${discount.status || ""}</div>
+      </div>
+
     </div>
 
-    <h5>Audit Trail</h5>
-    <div class="invoice-meta">
-      ${
-        discount.finalizedBy
-          ? `
-            <div><strong>Finalized By:</strong> ${safeText(
-              discount.finalizedBy.first_name
-            )} ${safeText(discount.finalizedBy.last_name)}</div>
-            <div><strong>Finalized At:</strong> ${formatDate(
-              discount.finalized_at
-            )}</div>
-          `
-          : ""
-      }
+    <!-- 📦 DETAILS -->
+    <h4 style="margin-top:18px;">Discount Details</h4>
 
-      ${
-        discount.voidedBy
-          ? `
-            <div><strong>Voided By:</strong> ${safeText(
-              discount.voidedBy.first_name
-            )} ${safeText(discount.voidedBy.last_name)}</div>
-            <div><strong>Voided At:</strong> ${formatDate(
-              discount.voided_at
-            )}</div>
-            <div><strong>Void Reason:</strong> ${safeText(
-              discount.void_reason
-            )}</div>
-          `
-          : ""
-      }
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Type</td>
+          <td>${discount.type || "—"}</td>
+        </tr>
+        <tr>
+          <td>Discount Value</td>
+          <td>${valueDisplay}</td>
+        </tr>
+        <tr>
+          <td>Applied Amount</td>
+          <td>${appliedDisplay}</td>
+        </tr>
+        <tr>
+          <td>Reason</td>
+          <td>${discount.reason || "—"}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 💵 TOTAL -->
+    <div class="totals">
+      <div><span>Discount Value:</span><span>${valueDisplay}</span></div>
+
+      <div class="final">
+        <span>Applied Discount:</span>
+        <span>${appliedDisplay}</span>
+      </div>
     </div>
 
-    <div class="print-meta">
-      Printed by: <strong>${safeText(printedBy)}</strong><br/>
+    <!-- 🕓 AUDIT -->
+    <div style="margin-top:20px; font-size:11px;">
+      Printed by: <strong>${printedBy}</strong><br/>
       Printed at: ${printedAt}
     </div>
-  `;
 
-  // ✅ MASTER: branding handled ONLY by receipt-utils
-  printReceipt("Discount Summary Slip", bodyHTML, discount.organization_id);
+    <!-- 🧾 FOOTER -->
+    <div style="margin-top:15px; font-size:12px;">
+      Discount processed successfully.
+    </div>
+  `;
+}
+
+/* ============================================================
+   🖨️ PRINT
+============================================================ */
+export function printDiscountSummary(discount) {
+  const html = buildDiscountReceiptHTML(discount);
+
+  printDocument(html, {
+    title: "Discount Receipt",
+    invoice: {
+      organization: discount.organization,
+      status: discount.status,
+    },
+    branding: JSON.parse(localStorage.getItem("branding") || "{}"),
+  });
 }

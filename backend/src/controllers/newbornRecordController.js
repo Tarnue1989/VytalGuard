@@ -37,10 +37,10 @@ const MODULE_KEY = "newbornRecord";
    🔖 STATUS MAP (ENUM-DRIVEN)
 ============================================================ */
 const NBS = {
-  ALIVE: NEWBORN_STATUS[0],
-  DECEASED: NEWBORN_STATUS[1],
-  TRANSFERRED: NEWBORN_STATUS[2],
-  VOIDED: NEWBORN_STATUS[3],
+  ALIVE: NEWBORN_STATUS.ALIVE,
+  DECEASED: NEWBORN_STATUS.DECEASED,
+  TRANSFERRED: NEWBORN_STATUS.TRANSFERRED,
+  VOIDED: NEWBORN_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -65,7 +65,7 @@ function buildNewbornSchema(user, mode = "create") {
   const base = {
     mother_id: Joi.string().uuid().required(),
     delivery_record_id: Joi.string().uuid().required(),
-    gender: Joi.string().valid(...GENDER_TYPES).required(),
+    gender: Joi.string().valid(...Object.values(GENDER_TYPES)).required(),
 
     birth_weight: Joi.number().precision(2).allow(null),
     birth_length: Joi.number().precision(2).allow(null),

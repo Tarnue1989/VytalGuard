@@ -23,7 +23,11 @@ export default (sequelize) => {
       facility_id: { type: DataTypes.UUID, allowNull: true },
       role_id: { type: DataTypes.UUID, allowNull: false },
       module_id: { type: DataTypes.UUID, allowNull: false },
-      status: { type: DataTypes.ENUM(...FEATURE_ACCESS_STATUS), allowNull: false, defaultValue: FEATURE_ACCESS_STATUS[0] },
+      status: {
+        type: DataTypes.ENUM(...Object.values(FEATURE_ACCESS_STATUS)),
+        allowNull: false,
+        defaultValue: FEATURE_ACCESS_STATUS.ACTIVE,
+      },
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },
       deleted_by_id: { type: DataTypes.UUID },

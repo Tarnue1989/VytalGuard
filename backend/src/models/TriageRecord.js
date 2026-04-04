@@ -50,9 +50,9 @@ export default (sequelize) => {
 
       // 📝 Clinical Info
       triage_status: {
-        type: DataTypes.ENUM(...TRIAGE_STATUS),
+        type: DataTypes.ENUM(...Object.values(TRIAGE_STATUS)),
         allowNull: false,
-        defaultValue: TRIAGE_STATUS[0],
+        defaultValue: TRIAGE_STATUS.OPEN,
       },
       symptoms: { type: DataTypes.TEXT, allowNull: true },
       triage_notes: { type: DataTypes.TEXT, allowNull: true },

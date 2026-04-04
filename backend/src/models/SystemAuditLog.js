@@ -36,11 +36,10 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...SYSTEM_AUDIT_STATUS),
+        type: DataTypes.ENUM(...Object.values(SYSTEM_AUDIT_STATUS)),
         allowNull: false,
-        defaultValue: SYSTEM_AUDIT_STATUS[0], // "logged"
+        defaultValue: SYSTEM_AUDIT_STATUS.LOGGED,
       },
-
       // Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

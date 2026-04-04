@@ -103,6 +103,8 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   const registrarInput = document.getElementById("registrarInput");
   const registrarHidden = document.getElementById("registrarId");
   const registrarSuggestions = document.getElementById("registrarSuggestions");
+  const payerTypeSelect = document.getElementById("payerType");
+  const insuranceSelect = document.getElementById("patientInsuranceSelect");
 
   /* ================= Role ================= */
   const userRole = resolveUserRole();
@@ -162,6 +164,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       (selected) => {
         patientHidden.value = selected?.id || "";
         patientInput.value = selected?.label || "";
+        loadPatientInsurance(selected?.id);
       },
       "label"
     );
@@ -181,6 +184,62 @@ export async function setupRegistrationLogFormSubmission({ form }) {
     console.error(err);
     showToast("❌ Failed to load reference data");
   }
+  // ================= INSURANCE LOADER =================
+  async function loadPatientInsurance(patientId) {
+    if (!insuranceSelect) return;
+
+    if (!patientId) {
+      insuranceSelect.innerHTML = `<option value="">-- Select Insurance --</option>`;
+      return;
+    }
+
+    try {
+      const res = await authFetch(
+        `/api/lite/patient-insurances?patient_id=${patientId}`
+      );
+      const json = await res.json();
+
+      const list = json?.data?.records || [];
+
+      setupSelectOptions(
+        insuranceSelect,
+        [{ id: "", name: "-- Select Insurance --" }, ...list],
+        "id",
+        "label"
+      );
+    } catch {
+      showToast("❌ Failed to load insurance");
+    }
+  }
+
+  // ================= PAYER LOGIC (FINAL ENTERPRISE SAFE) =================
+  function syncPayerUI() {
+    if (!payerTypeSelect || !insuranceSelect) return;
+
+    const isInsurance = payerTypeSelect.value === "insurance";
+
+    const insuranceWrapper = document.getElementById("insuranceWrapper");
+
+    if (insuranceWrapper) {
+      insuranceWrapper.classList.toggle("hidden", !isInsurance);
+    }
+
+    insuranceSelect.disabled = !isInsurance;
+    insuranceSelect.required = isInsurance;
+
+    if (!isInsurance) {
+      insuranceSelect.value = ""; // 🔥 clear when switching to cash
+    }
+  }
+  payerTypeSelect?.addEventListener("change", syncPayerUI);
+  syncPayerUI();
+
+  insuranceSelect?.addEventListener("change", () => {
+    if (insuranceSelect.value) {
+      payerTypeSelect.value = "insurance";
+      syncPayerUI();
+    }
+  });
 
   /* ============================================================
      ✏️ PREFILL (EDIT MODE)
@@ -246,6 +305,23 @@ export async function setupRegistrationLogFormSubmission({ form }) {
 
       if (entry.registration_type_id)
         typeSelect.value = entry.registration_type_id;
+        // ✅ SET PAYER TYPE
+        if (payerTypeSelect && entry.payer_type) {
+          payerTypeSelect.value = entry.payer_type;
+        }
+
+        // ✅ LOAD INSURANCE FOR PATIENT
+        if (entry.patient_id) {
+          await loadPatientInsurance(entry.patient_id);
+        }
+
+        // ✅ SET INSURANCE VALUE
+        if (insuranceSelect && entry.patient_insurance_id) {
+          insuranceSelect.value = entry.patient_insurance_id;
+        }
+
+        // ✅ SYNC UI STATE
+        syncPayerUI();
 
       setUI("edit");
     } catch (err) {
@@ -268,9 +344,6 @@ export async function setupRegistrationLogFormSubmission({ form }) {
     // Skip if condition not met
     if (typeof rule.when === "function" && !rule.when()) continue;
 
-    // Skip if not required
-    if (!rule.required) continue;
-
     const el =
       document.getElementById(rule.id) ||
       form.querySelector(`[name="${rule.id}"]`);
@@ -291,10 +364,16 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       return;
     }
 
+    if (!payerTypeSelect?.value) {
+      showToast("Payer type is required", "error");
+      return;
+    }
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
       registrar_id: normalizeUUID(registrarHidden.value),
       registration_type_id: normalizeUUID(typeSelect?.value),
+      payer_type: payerTypeSelect?.value,
+      patient_insurance_id: normalizeUUID(insuranceSelect?.value),
       registration_method:
         document.getElementById("registrationMethod").value,
       patient_category:
@@ -307,7 +386,9 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       is_emergency:
         document.getElementById("isEmergency").checked,
     };
-
+    if (payload.payer_type === "cash") {
+      payload.patient_insurance_id = null;
+    }
     // 🔒 SUPERADMIN ONLY
     if (isSuper) {
       payload.organization_id = normalizeUUID(orgSelect?.value);
@@ -358,6 +439,7 @@ export async function setupRegistrationLogFormSubmission({ form }) {
   clearBtn?.addEventListener("click", () => {
     clearFormErrors(form);
     form.reset();
+    syncPayerUI(); // 🔥 IMPORTANT
     setUI("add");
   });
 }

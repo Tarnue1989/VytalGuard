@@ -99,8 +99,6 @@ export default (sequelize) => {
         },
       },
 
-      date_of_birth_precision: { type: DataTypes.ENUM(...DOB_PRECISION), allowNull: true },
-      gender: { type: DataTypes.ENUM(...GENDER_TYPES), allowNull: true },
 
       // 📞 Contact info
       phone_number: {
@@ -116,10 +114,34 @@ export default (sequelize) => {
       home_address: { type: DataTypes.STRING(255), allowNull: true },
 
       // 👤 Social
-      marital_status: { type: DataTypes.ENUM(...MARITAL_STATUS), allowNull: true },
-      religion: { type: DataTypes.ENUM(...RELIGIONS), allowNull: true },
+      marital_status: {
+        type: DataTypes.ENUM(...Object.values(MARITAL_STATUS)),
+        allowNull: true,
+      },
+      religion: {
+        type: DataTypes.ENUM(...Object.values(RELIGIONS)),
+        allowNull: true,
+      },
       profession: { type: DataTypes.STRING(120), allowNull: true },
+      gender: {
+        type: DataTypes.ENUM(...Object.values(GENDER_TYPES)),
+        allowNull: true,
+      },
+      date_of_birth_precision: {
+        type: DataTypes.ENUM(...Object.values(DOB_PRECISION)),
+        allowNull: true,
+      },
+      source_of_registration: {
+        type: DataTypes.ENUM(...Object.values(REGISTRATION_METHODS)),
+        allowNull: true,
+      },
 
+      // 📝 Registration
+      registration_status: {
+        type: DataTypes.ENUM(...Object.values(REGISTRATION_LOG_STATUS)),
+        allowNull: false,
+        defaultValue: REGISTRATION_LOG_STATUS.ACTIVE,
+      },
       // 🆔 Secondary identifiers
       national_id: { type: DataTypes.STRING(50), allowNull: true },
       insurance_number: { type: DataTypes.STRING(50), allowNull: true },
@@ -128,14 +150,7 @@ export default (sequelize) => {
       // 🚨 Emergency contacts
       emergency_contacts: { type: DataTypes.JSONB, allowNull: true },
 
-      // 📝 Registration
-      registration_status: {
-        type: DataTypes.ENUM(...REGISTRATION_LOG_STATUS),
-        allowNull: false,
-        defaultValue: "active",
-      },
 
-      source_of_registration: { type: DataTypes.ENUM(...REGISTRATION_METHODS), allowNull: true },
       notes: { type: DataTypes.TEXT, allowNull: true },
 
       // 📷 Media

@@ -299,27 +299,37 @@
     </div>
   </div>
 
-  <!-- JS -->
-  <script src="assets/js/jquery.min.js"></script>
-  <script src="assets/js/bootstrap.bundle.min.js"></script>
-  <script src="assets/js/moment.min.js"></script>
-  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
-  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
-  <script src="assets/vendor/daterange/daterange.js"></script>
-  <script src="assets/vendor/daterange/custom-daterange.js"></script>
-  <script src="assets/vendor/datatables/dataTables.min.js"></script>
-  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
-  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
-  <script src="assets/js/custom.js"></script>
+<!-- ================= CORE LIBRARIES (ORDER MATTERS) ================= -->
+<script src="assets/js/jquery.min.js"></script>
+<script src="assets/js/bootstrap.bundle.min.js"></script>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<!-- ================= CORE UTILITIES ================= -->
+<script src="assets/js/moment.min.js"></script>
 
-  <script type="module" src="/js/logout.js"></script>
-  <script type="module" src="/js/authSession.js"></script>
+<!-- ================= UI / PLUGINS ================= -->
+<script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+<script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
 
-  <!-- Appointment modules -->
-  <script type="module" src="/js/modules/appointments/appointments-filter-main.js"></script>
+<script src="assets/vendor/daterange/daterange.js"></script>
+<script src="assets/vendor/daterange/custom-daterange.js"></script>
 
+<script src="assets/vendor/datatables/dataTables.min.js"></script>
+<script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+<script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+
+<!-- ================= APP BASE ================= -->
+<script src="assets/js/custom.js"></script>
+
+<!-- ================= EXTERNAL LIB ================= -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+
+
+<!-- ================= AUTH / SESSION (ALWAYS LAST) ================= -->
+<script type="module" src="/js/logout.js"></script>
+<script type="module" src="/js/authSession.js"></script>
+<!-- ================= YOUR MODULE (LOAD FIRST AMONG MODULES) ================= -->
+<script type="module" src="/js/modules/appointments/appointments-filter-main.js"></script>
 <script type="module" src="/js/utils/navigation.js"></script>
 </body>
 </html>

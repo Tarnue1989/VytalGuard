@@ -19,6 +19,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    🔃 SORTABLE (MASTER)
@@ -70,11 +71,14 @@ function renderPatient(entry) {
     .join(" ")}`;
 }
 
-/* ✅ FIXED ITEMS (qty + price + total) */
+/* ✅ FIXED ITEMS (qty + price + total + currency SAFE) */
 function renderItems(entry) {
   if (!Array.isArray(entry.items) || !entry.items.length) return "—";
 
   const count = entry.items.length;
+
+  // ✅ GET CURRENCY SYMBOL ONCE
+  const symbol = getCurrencySymbol(entry.currency);
 
   return `
     <div class="order-items-wrapper">
@@ -89,16 +93,24 @@ function renderItems(entry) {
         ${entry.items
           .map((i) => {
             const name = i.billableItem?.name || "—";
-            const qty = i.quantity || 0;
+            const qty = Number(i.quantity || 0);
+
             const price =
-              i.unit_price || i.billableItem?.price || 0;
-            const total = i.total_price || qty * price;
+              Number(i.unit_price) ||
+              Number(i.billableItem?.price) ||
+              0;
+
+            const total =
+              Number(i.total_price) ||
+              qty * price;
 
             return `
               <li>
                 <strong>${name}</strong>
                 <div class="text-muted small">
-                  Qty: ${qty} | Unit: ${price} | Total: ${total}
+                  Qty: ${qty} |
+                  Unit: ${symbol}${price.toFixed(2)} |
+                  Total: ${symbol}${total.toFixed(2)}
                 </div>
               </li>
             `;
@@ -175,9 +187,10 @@ function renderValue(entry, field) {
     case "updated_at":
       return entry[field] ? formatDateTime(entry[field]) : "—";
 
-    case "total_amount":
-      return entry.total_amount || "0.00";
-
+    case "total_amount": {
+      const symbol = getCurrencySymbol(entry.currency);
+      return `${symbol}${Number(entry.total_amount || 0).toFixed(2)}`;
+    }
     case "billing_status":
       return entry.billing_status || "—";
 
@@ -232,12 +245,13 @@ export function renderCard(entry, visibleFields, user) {
     v !== null && v !== undefined && v !== "" ? v : "—";
 
   /* ===================== 💰 MONEY FORMAT ===================== */
-  const money = (v) =>
-    `LR$ ${Number(v || 0).toLocaleString(undefined, {
+  const money = (v) => {
+    const symbol = getCurrencySymbol(entry.currency);
+    return `${symbol}${Number(v || 0).toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
-
+  };
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
     return `

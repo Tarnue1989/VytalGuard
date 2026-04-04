@@ -49,9 +49,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...NURSING_NOTE_STATUS),
+        type: DataTypes.ENUM(...Object.values(NURSING_NOTE_STATUS)),
         allowNull: false,
-        defaultValue: NURSING_NOTE_STATUS[0], // "draft"
+        defaultValue: NURSING_NOTE_STATUS.DRAFT,
       },
 
       // Audit

@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { FIELD_LABELS_PAYMENT } from "./payment-constants.js";
-
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
@@ -189,15 +189,17 @@ function renderValue(entry, field) {
     case "invoice":
     case "invoice_id":
       return entry.invoice
-        ? `${entry.invoice.invoice_number} (Bal: $${Number(
+        ? `${entry.invoice.invoice_number} (Bal: ${getCurrencySymbol(entry.currency)} ${Number(
             entry.invoice.balance ?? 0
           ).toFixed(2)})`
         : "—";
-
     case "amount":
       return entry.amount != null
-        ? `$${Number(entry.amount).toFixed(2)}`
+        ? `${getCurrencySymbol(entry.currency)} ${Number(entry.amount).toFixed(2)}`
         : "—";
+
+    case "currency": // ✅ ADD
+      return entry.currency || "—";
 
     case "method":
     case "transaction_ref":
@@ -251,7 +253,7 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">$${Number(entry.amount || 0).toFixed(2)}</div>
+          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}</div>
         </div>
         ${
           has("status")
@@ -265,7 +267,7 @@ export function renderCard(entry, visibleFields, user) {
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Payment #", entry.payment_number)}
-        ${row("Amount", `$${Number(entry.amount || 0).toFixed(2)}`)}
+        ${row("Amount", `${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}`)}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>
@@ -428,13 +430,13 @@ export function renderPaymentDetail(entry, user) {
 
     <div class="row g-3">
       <div class="col-12"><h6 class="text-primary">Financial Summary</h6></div>
-      <div class="col-md-4"><strong>Payment Amount:</strong> $${Number(entry.amount || 0).toFixed(2)}</div>
+      <div class="col-md-4"><strong>Payment Amount:</strong> ${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}</div>
       ${
         entry.invoice
           ? `
-            <div class="col-md-4"><strong>Invoice Total:</strong> $${Number(entry.invoice.total || 0).toFixed(2)}</div>
-            <div class="col-md-4"><strong>Invoice Paid:</strong> $${Number(entry.invoice.total_paid || 0).toFixed(2)}</div>
-            <div class="col-md-4"><strong>Invoice Balance:</strong> $${Number(entry.invoice.balance || 0).toFixed(2)}</div>
+            <div class="col-md-4"><strong>Invoice Total:</strong> ${getCurrencySymbol(entry.currency)} ${Number(entry.invoice.total || 0).toFixed(2)}</div>
+            <div class="col-md-4"><strong>Invoice Paid:</strong> ${getCurrencySymbol(entry.currency)} ${Number(entry.invoice.total_paid || 0).toFixed(2)}</div>
+            <div class="col-md-4"><strong>Invoice Balance:</strong> ${getCurrencySymbol(entry.currency)} ${Number(entry.invoice.balance || 0).toFixed(2)}</div>
           `
           : ""
       }

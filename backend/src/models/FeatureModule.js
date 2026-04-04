@@ -1,7 +1,6 @@
 // 📁 backend/src/models/FeatureModule.js
 import { DataTypes, Model } from "sequelize";
-import { FEATURE_MODULE_STATUS } from "../constants/enums.js";
-
+import { FEATURE_MODULE_STATUS, FEATURE_MODULE_VISIBILITY } from "../constants/enums.js";
 export default (sequelize) => {
   class FeatureModule extends Model {
     static associate(models) {
@@ -57,16 +56,29 @@ export default (sequelize) => {
 
       tags: { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
 
-      visibility: {
-        type: DataTypes.ENUM("public", "private", "hidden"),
-        defaultValue: "public",
-      },
+  
 
       enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
       order_index: { type: DataTypes.INTEGER, defaultValue: 0 },
 
       /* ================= DB-DRIVEN DASHBOARD ================= */
       show_on_dashboard: { type: DataTypes.BOOLEAN, defaultValue: false },
+
+
+      dashboard_order: { type: DataTypes.INTEGER, defaultValue: 0 },
+
+      /* ================= TENANT SCOPE (CRITICAL) ================= */
+      tenant_scope: {
+        type: DataTypes.ENUM("global", "org", "facility"),
+        allowNull: false,
+        defaultValue: "org",
+      },
+
+      status: {
+        type: DataTypes.ENUM(...Object.values(FEATURE_MODULE_STATUS)),
+        allowNull: false,
+        defaultValue: FEATURE_MODULE_STATUS.ACTIVE,
+      },
 
       dashboard_type: {
         type: DataTypes.ENUM(
@@ -80,21 +92,11 @@ export default (sequelize) => {
         defaultValue: "none",
       },
 
-      dashboard_order: { type: DataTypes.INTEGER, defaultValue: 0 },
-
-      /* ================= TENANT SCOPE (CRITICAL) ================= */
-      tenant_scope: {
-        type: DataTypes.ENUM("global", "org", "facility"),
-        allowNull: false,
-        defaultValue: "org",
+      visibility: {
+        type: DataTypes.ENUM(...Object.values(FEATURE_MODULE_VISIBILITY)),
+        defaultValue: FEATURE_MODULE_VISIBILITY.PUBLIC,
       },
-
-      status: {
-        type: DataTypes.ENUM(...FEATURE_MODULE_STATUS),
-        allowNull: false,
-        defaultValue: FEATURE_MODULE_STATUS[0],
-      },
-
+            
       route: {
         type: DataTypes.STRING,
         validate: { is: /^[a-zA-Z0-9_\-/\.]*$/ },

@@ -65,17 +65,17 @@ export default (sequelize) => {
       admit_date: { type: DataTypes.DATEONLY, allowNull: false },
       discharge_date: { type: DataTypes.DATEONLY, allowNull: true },
 
-      // 🏷️ Lifecycle
-      status: {
-        type: DataTypes.ENUM(...ADMISSION_STATUS),
-        allowNull: false,
-        defaultValue: ADMISSION_STATUS[0],
-      },
-      admission_type: {
-        type: DataTypes.ENUM(...ADMISSION_TYPE),
-        allowNull: false,
-        defaultValue: ADMISSION_TYPE[1],
-      },
+// 🏷️ Lifecycle
+status: {
+  type: DataTypes.ENUM(...Object.values(ADMISSION_STATUS)),
+  allowNull: false,
+  defaultValue: ADMISSION_STATUS.ADMITTED,
+},
+admission_type: {
+  type: DataTypes.ENUM(...Object.values(ADMISSION_TYPE)),
+  allowNull: false,
+  defaultValue: ADMISSION_TYPE.ROUTINE,
+},
 
       // 🧾 Details
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },

@@ -59,7 +59,7 @@ function buildDepartmentStockSchema(userRole, mode = "create") {
     quantity: Joi.number().integer().min(0).default(0),
     min_threshold: Joi.number().integer().min(0).allow(null),
     max_threshold: Joi.number().integer().min(0).allow(null),
-    status: Joi.string().valid(...DEPARTMENT_STOCK_STATUS).default("active"),
+    status: Joi.string().valid(...Object.values(DEPARTMENT_STOCK_STATUS)).default(DEPARTMENT_STOCK_STATUS.ACTIVE),
   };
 
   if (mode === "update") {
@@ -269,7 +269,7 @@ export const getAllDepartmentStocksLite = async (req, res) => {
 
     const { q } = req.query;
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
-    const where = { status: "active" };
+    const where = { status: DEPARTMENT_STOCK_STATUS.ACTIVE };
 
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;

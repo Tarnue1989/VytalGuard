@@ -46,9 +46,9 @@ export default (sequelize) => {
         unique: true,
       },
       status: {
-        type: DataTypes.ENUM(...ORG_STATUS),
+        type: DataTypes.ENUM(...Object.values(ORG_STATUS)),
         allowNull: false,
-        defaultValue: ORG_STATUS[0], // usually 'active'
+        defaultValue: ORG_STATUS.ACTIVE,
       },
       created_by_id: { type: DataTypes.UUID, allowNull: true },
       updated_by_id: { type: DataTypes.UUID, allowNull: true },

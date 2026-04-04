@@ -93,7 +93,16 @@
                   </div>
 
                   <div class="row gx-3 gy-2 filter-grid compact">
-
+                    <!-- 🔍 GLOBAL SEARCH -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <label class="form-label">Search</label>
+                      <input
+                        type="text"
+                        id="globalSearch"
+                        class="form-control"
+                        placeholder="Search refunds..."
+                      >
+                    </div>
                     <!-- Patient -->
                     <div class="col-xxl-3 col-lg-4 col-sm-6">
                       <div class="field-wrapper">
@@ -134,7 +143,17 @@
                         <option value="cheque">Cheque</option>
                       </select>
                     </div>
-
+                    <!-- Currency -->
+                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Currency</label>
+                        <select id="filterCurrency" class="form-control">
+                          <option value="">-- All Currency --</option>
+                          <option value="USD">USD</option>
+                          <option value="LRD">LRD</option>
+                        </select>
+                      </div>
+                    </div>
                     <!-- Status -->
                     <div class="col-xxl-3 col-lg-4 col-sm-6">
                       <label class="form-label" for="filterStatus">Status</label>
@@ -309,5 +328,11 @@
 <script type="module" src="/js/modules/shared/list-export.js"></script>
 
 <script type="module" src="/js/utils/navigation.js"></script>
+ 
+  
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

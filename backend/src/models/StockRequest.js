@@ -55,7 +55,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(STOCK_REQUEST_STATUS)),
         allowNull: false,
-        defaultValue: Object.values(STOCK_REQUEST_STATUS)[0], // draft
+        defaultValue: STOCK_REQUEST_STATUS.DRAFT, // ✅ correct
       },
       notes: { type: DataTypes.TEXT },
 

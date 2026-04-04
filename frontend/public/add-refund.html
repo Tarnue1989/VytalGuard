@@ -104,13 +104,16 @@
                           <label class="form-label" for="amount">
                             Refund Amount <span class="text-danger">*</span>
                           </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            class="form-control"
-                            id="amount"
-                            name="amount"
-                          />
+                          <div class="input-group">
+                            <span class="input-group-text" id="currencySymbol">—</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              class="form-control"
+                              id="amount"
+                              name="amount"
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -257,5 +260,11 @@
     type="module"
     src="js/modules/refunds/add-refund.js"
   ></script>
+ 
+  
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

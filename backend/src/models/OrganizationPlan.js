@@ -27,9 +27,9 @@ export default (sequelize) => {
       end_date: { type: DataTypes.DATE, allowNull: true },
 
       status: {
-        type: DataTypes.ENUM(...ORG_PLAN_STATUS),
+        type: DataTypes.ENUM(...Object.values(ORG_PLAN_STATUS)),
         allowNull: false,
-        defaultValue: ORG_PLAN_STATUS[0], // "active"
+        defaultValue: ORG_PLAN_STATUS.ACTIVE,
       },
 
       created_by_id: { type: DataTypes.UUID, allowNull: true },

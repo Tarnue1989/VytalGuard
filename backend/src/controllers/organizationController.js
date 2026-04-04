@@ -55,7 +55,7 @@ function buildOrganizationSchema(userRole, mode = "create") {
   const base = {
     name: Joi.string().max(255).required(),
     code: Joi.string().max(50).required(),
-    status: Joi.string().valid(...ORG_STATUS).default(ORG_STATUS[0]),
+    status: Joi.string().valid(...Object.values(ORG_STATUS)).default(Object.values(ORG_STATUS)[0]),
   };
 
   if (mode === "update") {
@@ -134,7 +134,7 @@ export const getAllOrganizations = async (req, res) => {
     /* ========================================================
        📌 STATUS FILTER (MASTER – SAME AS ROLE)
     ======================================================== */
-    if (req.query.status && ORG_STATUS.includes(req.query.status)) {
+    if (req.query.status && Object.values(ORG_STATUS).includes(req.query.status)) {
       options.where[Op.and].push({
         status: req.query.status,
       });
@@ -244,7 +244,7 @@ export const getAllOrganizationsLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      status: ORG_STATUS[0],
+      status: Object.values(ORG_STATUS)[0],
       [Op.and]: [],
     };
 
@@ -513,7 +513,7 @@ export const toggleOrganizationStatus = async (req, res) => {
       return error(res, "❌ Organization not found", null, 404);
     }
 
-    const [ACTIVE, INACTIVE] = ORG_STATUS;
+    const { ACTIVE, INACTIVE } = ORG_STATUS;
     const newStatus = org.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await org.update({

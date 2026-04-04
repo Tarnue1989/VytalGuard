@@ -42,18 +42,18 @@ const MODULE_KEY = "vitals";
    🔖 STATUS MAP (ENUM-DRIVEN)
 ============================================================ */
 const VS = {
-  OPEN: VITAL_STATUS[0],
-  IN_PROGRESS: VITAL_STATUS[1],
-  COMPLETED: VITAL_STATUS[2],
-  VERIFIED: VITAL_STATUS[3],
-  CANCELLED: VITAL_STATUS[4],
-  VOIDED: VITAL_STATUS[5],
+  OPEN: VITAL_STATUS.OPEN,
+  IN_PROGRESS: VITAL_STATUS.IN_PROGRESS,
+  COMPLETED: VITAL_STATUS.COMPLETED,
+  VERIFIED: VITAL_STATUS.VERIFIED,
+  CANCELLED: VITAL_STATUS.CANCELLED,
+  VOIDED: VITAL_STATUS.VOIDED,
 };
 
 const AS = {
-  ADMITTED: ADMISSION_STATUS[0],
-  IN_PROGRESS: ADMISSION_STATUS[1],
-  DISCHARGED: ADMISSION_STATUS[2] ?? "discharged",
+  ADMITTED: ADMISSION_STATUS.ADMITTED,
+  IN_PROGRESS: ADMISSION_STATUS.IN_PROGRESS,
+  DISCHARGED: ADMISSION_STATUS.DISCHARGED,
 };
 
 /* ============================================================
@@ -1012,7 +1012,7 @@ export const getAllVitals = async (req, res) => {
        📊 SUMMARY (STATUS-BASED, PAGE-AWARE)
     ======================================================== */
     const summary = { total: count };
-    VITAL_STATUS.forEach((status) => {
+    Object.values(VITAL_STATUS).forEach((status) => {
       summary[status] = rows.filter((r) => r.status === status).length;
     });
 

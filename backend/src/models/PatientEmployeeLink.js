@@ -48,16 +48,16 @@ export default (sequelize) => {
 
       // 📌 Relationship
       relation_type: {
-        type: DataTypes.ENUM(...RELATION_TYPE), // self | spouse | child | dependent | other
+        type: DataTypes.ENUM(...Object.values(RELATION_TYPE)), // self | spouse | child | dependent | other
         allowNull: false,
-        defaultValue: "self",
+        defaultValue: RELATION_TYPE.SELF,
       },
 
       // 📌 Status
       status: {
-        type: DataTypes.ENUM(...LINK_STATUS), // active | inactive
+        type: DataTypes.ENUM(...Object.values(LINK_STATUS)), // active | inactive
         allowNull: false,
-        defaultValue: "active",
+        defaultValue: LINK_STATUS.ACTIVE,
       },
 
       // 🔹 Tenant scope

@@ -1,89 +1,187 @@
 // ============================================================
 // 🔹 User & Roles
 // ============================================================
-export const USER_STATUS = ['active', 'inactive', 'suspended'];
-export const ROLE_TYPE = ['system', 'custom'];
-export const ROLE_STATUS = ['active', 'inactive'];
+export const USER_STATUS = { ACTIVE:'active', INACTIVE:'inactive', SUSPENDED:'suspended' };
+export const ROLE_TYPE = { SYSTEM:'system', CUSTOM:'custom' };
+export const ROLE_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
 // 🔹 Facility & Organization
 // ============================================================
-export const FACILITY_STATUS = ['active', 'inactive'];
-export const ORG_STATUS = ['active', 'inactive'];
+export const FACILITY_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const ORG_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
 // 🔹 Employee & Departments
 // ============================================================
-export const EMPLOYEE_STATUS = ['active', 'inactive', 'on_leave', 'terminated'];
-export const DEPARTMENT_STATUS = ['active', 'inactive'];
-export const GENDER_TYPES = ['male', 'female'];
+export const EMPLOYEE_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  ON_LEAVE:'on_leave',
+  TERMINATED:'terminated'
+};
+
+export const DEPARTMENT_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const GENDER_TYPES = { MALE:'male', FEMALE:'female' };
 
 // ============================================================
 // 🔹 Patient Demographics
 // ============================================================
-export const MARITAL_STATUS = ['single', 'married', 'divorced', 'widowed', 'other'];
+export const MARITAL_STATUS = {
+  SINGLE:'single',
+  MARRIED:'married',
+  DIVORCED:'divorced',
+  WIDOWED:'widowed',
+  OTHER:'other'
+};
 
-export const RELIGIONS = [
-  'christianity',
-  'islam',
-  'hinduism',
-  'buddhism',
-  'traditional',
-  'none',
-  'other',
-];
+export const RELIGIONS = {
+  CHRISTIANITY:'christianity',
+  ISLAM:'islam',
+  HINDUISM:'hinduism',
+  BUDDHISM:'buddhism',
+  TRADITIONAL:'traditional',
+  NONE:'none',
+  OTHER:'other'
+};
 
-export const DOB_PRECISION = ['exact', 'approximate', 'year_only'];
-
+export const DOB_PRECISION = {
+  EXACT:'exact',
+  APPROXIMATE:'approximate',
+  YEAR_ONLY:'year_only'
+};
 
 // ============================================================
 // 🔹 Feature Modules & Access
 // ============================================================
-export const FEATURE_MODULE_STATUS = ['active', 'inactive'];
-export const FEATURE_ACCESS_STATUS = ['active', 'inactive'];
-export const USER_FACILITY_STATUS = ['active', 'inactive'];
+export const FEATURE_MODULE_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const FEATURE_ACCESS_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const USER_FACILITY_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
 // 🔹 Administrative Lifecycles
 // ============================================================
-export const REGISTRATION_LOG_STATUS = ['draft', 'pending', 'active', 'completed', 'cancelled', 'voided'];
-export const REGISTRATION_METHODS = ['walk_in', 'appointment', 'referral', 'transfer'];
-export const REGISTRATION_CATEGORIES = ['general', 'insured', 'vip', 'staff', 'charity'];
-// 🔹 Patient Lifecycle (USED BY Patient MODEL)
-export const PATIENT_STATUS = ['active', 'cancelled'];
+export const REGISTRATION_LOG_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  ACTIVE:'active',
+  COMPLETED:'completed',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const REGISTRATION_METHODS = {
+  WALK_IN:'walk_in',
+  APPOINTMENT:'appointment',
+  REFERRAL:'referral',
+  TRANSFER:'transfer'
+};
+
+export const REGISTRATION_CATEGORIES = {
+  GENERAL:'general',
+  INSURED:'insured',
+  VIP:'vip',
+  STAFF:'staff',
+  CHARITY:'charity'
+};
+
+export const PATIENT_STATUS = {
+  ACTIVE:'active',
+  CANCELLED:'cancelled'
+};
 
 // ============================================================
 // 🔹 Encounter Lifecycles
 // ============================================================
-export const CONSULTATION_STATUS = ['open', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
-export const TRIAGE_STATUS = ['open', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
-export const VITAL_STATUS = ['open', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
-export const RECOMMENDATION_STATUS = ['pending', 'confirmed', 'declined',"voided",];
+export const CONSULTATION_STATUS = {
+  OPEN:'open',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const TRIAGE_STATUS = {
+  OPEN:'open',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const VITAL_STATUS = {
+  OPEN:'open',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const RECOMMENDATION_STATUS = {
+  PENDING:'pending',
+  CONFIRMED:'confirmed',
+  DECLINED:'declined',
+  VOIDED:'voided'
+};
 
 // ============================================================
 // 🔹 Document Lifecycles
 // ============================================================
-export const MEDICAL_RECORD_STATUS = ['draft', 'reviewed', 'finalized', 'verified', 'voided'];
+export const MEDICAL_RECORD_STATUS = {
+  DRAFT:'draft',
+  REVIEWED:'reviewed',
+  FINALIZED:'finalized',
+  VERIFIED:'verified',
+  VOIDED:'voided'
+};
 
 // ============================================================
 // 🔹 Staff Roles
 // ============================================================
-export const CONSULTATION_STAFF_ROLES = ['nurse', 'midwife', 'assistant', 'pharmacist', 'labtech', 'panelist'];
+export const CONSULTATION_STAFF_ROLES = {
+  NURSE:'nurse',
+  MIDWIFE:'midwife',
+  ASSISTANT:'assistant',
+  PHARMACIST:'pharmacist',
+  LABTECH:'labtech',
+  PANELIST:'panelist'
+};
 
 // ============================================================
 // 🔹 Plans & Subscriptions
 // ============================================================
-export const PLAN_STATUS = ['active', 'inactive'];
-export const ORG_PLAN_STATUS = ['active', 'inactive', 'expired', 'cancelled'];
-export const PLAN_MODULE_STATUS = ['active', 'inactive'];
+export const PLAN_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
-// ============================================================
-// 🔹 Billing & Finance
-// ============================================================
-export const INVOICE_STATUS = ['draft', 'issued', 'unpaid', 'partial', 'paid', 'cancelled', 'voided'];
-export const PAYMENT_STATUS = ['pending', 'completed', 'failed', 'cancelled', 'reversed', 'voided', 'verified'];
-export const REFUND_STATUS = ['pending', 'approved', 'rejected', 
-  'processed', 'cancelled', "reversed", 'voided',];
+export const ORG_PLAN_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  EXPIRED:'expired',
+  CANCELLED:'cancelled'
+};
+
+export const PLAN_MODULE_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+
+export const PAYMENT_STATUS = {
+  PENDING: 'pending',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  REVERSED: 'reversed',
+  VOIDED: 'voided',
+  VERIFIED: 'verified',
+};
+export const REFUND_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  PROCESSED: 'processed',
+  CANCELLED: 'cancelled',
+  REVERSED: 'reversed',
+  VOIDED: 'voided',
+};
 // ============================================================
 // 🔹 Deposit Refund Lifecycle (Enterprise-Grade)
 // ============================================================
@@ -92,365 +190,764 @@ export const DEPOSIT_REFUND_STATUS = {
   REVIEW: "review",
   APPROVED: "approved",
   PROCESSED: "processed",
-
-  // ❗ Reason-required lifecycle branches
   REJECTED: "rejected",
   CANCELLED: "cancelled",
-
-  // ❗ Full lifecycle support
   VOIDED: "voided",
   REVERSED: "reversed",
   RESTORED: "restored",
 };
 
 /* -------------------- Refund Transaction Status -------------------- */
-export const REFUND_TRANSACTION_STATUS = [
-  "pending",  "approved",  "processed",  "rejected",  "cancelled", 
-  "reversed"  
-];
+export const REFUND_TRANSACTION_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  PROCESSED: 'processed',
+  REJECTED: 'rejected',
+  CANCELLED: 'cancelled',
+  REVERSED: 'reversed',
+};
 
-export const DEPOSIT_STATUS = ['pending', 'cleared', 'applied', 'cancelled', "reversed", 'voided', 'verified'];
+export const DEPOSIT_STATUS = {
+  PENDING: 'pending',
+  CLEARED: 'cleared',
+  APPLIED: 'applied',
+  CANCELLED: 'cancelled',
+  REVERSED: 'reversed',
+  VOIDED: 'voided',
+  VERIFIED: 'verified',
+};
 
-export const AUTO_BILLING_RULE_STATUS = ['active', 'inactive'];
-export const BILLABLE_ITEM_STATUS = ['active', 'inactive'];
-
-// 🔹 Waivers (separate model with workflow)
-export const DISCOUNT_WAIVER_STATUS = ['pending', 'approved', 'applied', 'rejected', 'voided', 'finalized',];
-
-// 🔹 Direct discounts (math only)
-export const DISCOUNT_TYPE = ['percentage', 'fixed'];
-// Discount lifecycle
-export const DISCOUNT_STATUS = [ 'draft',  'active', 'inactive', 'finalized', 'voided' ];
-export const POLICY_APPLIES_TO = ['all', 'billable_item', 'category', 'department', 'patient_class'];
-export const POLICY_STATUS = ['active', 'inactive', 'expired'];
-
-export const INVOICE_LINE_EXTENSION_STATUS = ['applied', 'voided'];
-export const INSURANCE_CLAIM_STATUS = ['submitted', 'in_review', 'approved', 'rejected', 'paid'];
-export const INSURANCE_PREAUTH_STATUS = ['pending', 'approved', 'rejected', 'expired'];
-
-export const PAYER_TYPES = ['cash', 'insurance', 'corporate', 'government', 'charity', 'other'];
-export const AUTO_BILLING_CHARGE_MODE = ['fixed', 'percentage', 'per_unit', 'tiered'];
-export const PAYMENT_METHODS = ['cash', 'card', 'mobile_money', 'bank_transfer', 'cheque', 'insurance', 'other'];
-
-export const TAX_TYPE = ['percentage', 'fixed'];
-export const TAX_STATUS = ['active', 'inactive'];
-
-// Ledger
-export const LEDGER_TRANSACTION_TYPE = ['credit', 'debit'];
-export const LEDGER_STATUS = ['pending', 'completed', 'voided', 'failed', 'reversed'];
-
-
+// 🔹 Billing & Finance
 // ============================================================
-// 🔹 Stock & Pharmacy (Compact Object Enums)
-// ============================================================
-export const CENTRAL_STOCK_STATUS = { ACTIVE: "active", INACTIVE: "inactive", EXPIRED: "expired", QUARANTINED: "quarantined" };
-export const STOCK_ADJUSTMENT_STATUS = { DRAFT: "draft", PENDING: "pending", APPROVED: "approved", REJECTED: "rejected" };
-export const MASTER_ITEM_STATUS = { ACTIVE: "active", INACTIVE: "inactive" };
-export const MASTER_ITEM_TYPES = { DRUG: "drug", CONSUMABLE: "consumable", EQUIPMENT: "equipment", SERVICE: "service", PROCEDURE: "procedure", PACKAGE: "package" };
-export const MASTER_ITEM_CATEGORY_STATUS = { ACTIVE: "active", INACTIVE: "inactive" };
-export const PHARMACY_TRANSACTION_STATUS = { PENDING: "pending", DISPENSED: "dispensed", PARTIALLY_DISPENSED: "partially_dispensed", RETURNED: "returned", CANCELLED: "cancelled", VOIDED: "voided", VERIFIED: "verified" };
-export const SUPPLIER_STATUS = { ACTIVE: "active", INACTIVE: "inactive" };
-export const PHARMACY_TRANSACTION_TYPE = { DISPENSE: "dispense", RETURN: "return", ADJUSTMENT: "adjustment" };
+export const AUTO_BILLING_RULE_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const BILLABLE_ITEM_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
+export const DISCOUNT_WAIVER_STATUS = {
+  PENDING:'pending',
+  APPROVED:'approved',
+  APPLIED:'applied',
+  REJECTED:'rejected',
+  VOIDED:'voided',
+  FINALIZED:'finalized'
+};
+
+
+export const POLICY_APPLIES_TO = {
+  ALL:'all',
+  BILLABLE_ITEM:'billable_item',
+  CATEGORY:'category',
+  DEPARTMENT:'department',
+  PATIENT_CLASS:'patient_class'
+};
+
+export const POLICY_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  EXPIRED:'expired'
+};
+
+export const INVOICE_LINE_EXTENSION_STATUS = {
+  APPLIED:'applied',
+  VOIDED:'voided'
+};
+
+export const INSURANCE_CLAIM_STATUS = {
+  SUBMITTED: 'submitted',
+  IN_REVIEW: 'in_review',
+
+  APPROVED: 'approved',
+  PARTIALLY_APPROVED: 'partially_approved',
+
+  REJECTED: 'rejected',
+
+  PROCESSING_PAYMENT: 'processing_payment',
+  PAID: 'paid',
+
+  CANCELLED: 'cancelled',
+  VOIDED: 'voided',
+  REVERSED: 'reversed',
+};
+export const CLAIM_ACTIONS = {
+  SUBMITTED: 'submitted',
+  REVIEWED: 'reviewed',
+  APPROVED: 'approved',
+  PARTIAL_APPROVED: 'partial_approved',
+  REJECTED: 'rejected',
+  PAID: 'paid',
+  REVERSED: 'reversed'
+};
+export const INSURANCE_PREAUTH_STATUS = {
+  PENDING:'pending',
+  APPROVED:'approved',
+  REJECTED:'rejected',
+  EXPIRED:'expired',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const PAYER_TYPES = {
+  CASH:'cash',
+  INSURANCE:'insurance',
+  CORPORATE:'corporate',
+  GOVERNMENT:'government',
+  CHARITY:'charity',
+  OTHER:'other'
+};
+
+export const AUTO_BILLING_CHARGE_MODE = {
+  FIXED:'fixed',
+  PERCENTAGE:'percentage',
+  PER_UNIT:'per_unit',
+  TIERED:'tiered'
+};
+
+export const PAYMENT_METHODS = {
+  CASH:'cash',
+  CARD:'card',
+  MOBILE_MONEY:'mobile_money',
+  BANK_TRANSFER:'bank_transfer',
+  CHEQUE:'cheque',
+  INSURANCE:'insurance',
+  OTHER:'other'
+};
+
+export const TAX_TYPE = { PERCENTAGE:'percentage', FIXED:'fixed' };
+export const TAX_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+
+export const LEDGER_TRANSACTION_TYPE = { CREDIT:'credit', DEBIT:'debit' };
+
+export const LEDGER_STATUS = {
+  PENDING:'pending',
+  COMPLETED:'completed',
+  VOIDED:'voided',
+  FAILED:'failed',
+  REVERSED:'reversed'
+};
 
 // ============================================================
 // 🔹 Clinical Extensions
 // ============================================================
-export const NEWBORN_STATUS = ['alive', 'deceased', 'transferred', 'voided'];
-export const PROCEDURE_STATUS = ['scheduled', 'in_progress', 'completed', 'cancelled', 'voided'];
-export const RADIOLOGY_STATUS = ['pending', 'in_progress', 'completed', 'verified', 'cancelled'];
-export const MATERNITY_VISIT_STATUS = ['scheduled', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
-export const SURGERY_STATUS = ['scheduled', 'in_progress', 'completed', 'verified', 'finalized','cancelled', 'voided'];
-export const DELIVERY_STATUS = {
-  SCHEDULED: 'scheduled',
-  IN_PROGRESS: 'in_progress',
-  COMPLETED: 'completed',
-  VERIFIED: 'verified',
-  CANCELLED: 'cancelled',
-  VOIDED: 'voided',
+export const NEWBORN_STATUS = {
+  ALIVE:'alive',
+  DECEASED:'deceased',
+  TRANSFERRED:'transferred',
+  VOIDED:'voided'
 };
-export const NURSING_NOTE_STATUS = ['draft', 'finalized', 'voided'];
+
+export const PROCEDURE_STATUS = {
+  SCHEDULED:'scheduled',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const RADIOLOGY_STATUS = {
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled'
+};
+
+export const MATERNITY_VISIT_STATUS = {
+  SCHEDULED:'scheduled',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const SURGERY_STATUS = {
+  SCHEDULED:'scheduled',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  FINALIZED:'finalized',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const DELIVERY_STATUS = {
+  SCHEDULED:'scheduled',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const NURSING_NOTE_STATUS = {
+  DRAFT:'draft',
+  FINALIZED:'finalized',
+  VOIDED:'voided'
+};
 
 // ============================================================
-// 🔹 Bed / Ward Hierarchy
+// 🔹 Bed / Ward
 // ============================================================
-export const BED_STATUS = ['available', 'occupied', 'reserved', 'maintenance'];
-export const WARD_STATUS = ['active', 'inactive'];
-export const ROOM_STATUS = ['active', 'inactive'];
+export const BED_STATUS = {
+  AVAILABLE:'available',
+  OCCUPIED:'occupied',
+  RESERVED:'reserved',
+  MAINTENANCE:'maintenance'
+};
+
+export const WARD_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+export const ROOM_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
-// 🔹 Security & Audit
+// 🔹 Security
 // ============================================================
-export const PASSWORD_HISTORY_STATUS = ['active', 'archived'];
-export const ACCESS_VIOLATION_STATUS = ['logged', 'investigating', 'resolved', 'dismissed'];
-export const SYSTEM_AUDIT_STATUS = ['logged', 'reviewed', 'archived'];
-export const LOGIN_AUDIT_STATUS = ['success', 'failure', 'timeout'];
+export const PASSWORD_HISTORY_STATUS = { ACTIVE:'active', ARCHIVED:'archived' };
 
+export const ACCESS_VIOLATION_STATUS = {
+  LOGGED:'logged',
+  INVESTIGATING:'investigating',
+  RESOLVED:'resolved',
+  DISMISSED:'dismissed'
+};
+
+export const SYSTEM_AUDIT_STATUS = {
+  LOGGED:'logged',
+  REVIEWED:'reviewed',
+  ARCHIVED:'archived'
+};
+
+export const LOGIN_AUDIT_STATUS = {
+  SUCCESS:'success',
+  FAILURE:'failure',
+  TIMEOUT:'timeout'
+};
+
+export const CURRENCY = {
+  USD: "USD",
+  LRD: "LRD",
+};
 // ============================================================
 // 🔹 Insurance
 // ============================================================
-export const INSURANCE_PROVIDER_STATUS = ['active', 'inactive'];
+export const INSURANCE_PROVIDER_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
 // 🔹 Appointments
 // ============================================================
-export const APPOINTMENT_STATUS = ['scheduled', 'in_progress', 'completed', "verified",'cancelled', 'no_show', 'voided'];
+export const APPOINTMENT_STATUS = {
+  SCHEDULED:'scheduled',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  NO_SHOW:'no_show',
+  VOIDED:'voided'
+};
 
 // ============================================================
 // 🔹 Admissions
 // ============================================================
-export const ADMISSION_STATUS = ['admitted', 'in_progress', 'discharged', 'transferred', 'cancelled', 'voided'];
-export const ADMISSION_TYPE = ['emergency', 'routine', 'maternity', 'surgery', 'other'];
+export const ADMISSION_STATUS = {
+  ADMITTED:'admitted',
+  IN_PROGRESS:'in_progress',
+  DISCHARGED:'discharged',
+  TRANSFERRED:'transferred',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const ADMISSION_TYPE = {
+  EMERGENCY:'emergency',
+  ROUTINE:'routine',
+  MATERNITY:'maternity',
+  SURGERY:'surgery',
+  OTHER:'other'
+};
 
 // ============================================================
-// 🔹 Currency Rates
+// 🔹 Currency
 // ============================================================
-export const CURRENCY_RATE_STATUS = ['active', 'inactive', 'expired'];
+export const CURRENCY_RATE_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  EXPIRED:'expired'
+};
 
 // ============================================================
 // 🔹 Lab
 // ============================================================
-export const LAB_REQUEST_STATUS = ['draft', 'pending', 'in_progress', 'completed', 'verified', 'cancelled', 'voided'];
-export const LAB_RESULT_STATUS = ['draft', 'pending', 'in_progress',  'completed', 'reviewed', 'verified', 'cancelled', 'voided'];
-export const LAB_SUPPLY_STATUS = ['active', 'inactive', 'out_of_stock'];
-export const LAB_REQUEST_ITEM_STATUS = [ 'draft', 'pending', 'in_progress', 'completed', 'verified',  'cancelled',  'voided'];
+export const LAB_REQUEST_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const LAB_RESULT_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  REVIEWED:'reviewed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
+
+export const LAB_SUPPLY_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  OUT_OF_STOCK:'out_of_stock'
+};
+
+export const LAB_REQUEST_ITEM_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
 // ============================================================
 // 🔹 Prescriptions
 // ============================================================
+export const PRESCRIPTION_STATUS = {
+  DRAFT:'draft',
+  ISSUED:'issued',
+  DISPENSED:'dispensed',
+  COMPLETED:'completed',
+  CANCELLED:'cancelled',
+  VOIDED:'voided',
+  VERIFIED:'verified'
+};
 
-// Parent lifecycle (aligned with lab + billing pattern)
-export const PRESCRIPTION_STATUS = [
-  'draft',        // 0
-  'issued',       // 1
-  'dispensed',    // 2
-  'completed',    // 3
-  'cancelled',    // 4
-  'voided',       // 5
-  'verified'      // 6 ✅ must be last
-];
-
-// Child item lifecycle
-export const PRESCRIPTION_ITEM_STATUS = [
-  'draft',
-  'issued',
-  'dispensed',
-  'partially_dispensed',
-  'cancelled',
-  'voided'
-];
+export const PRESCRIPTION_ITEM_STATUS = {
+  DRAFT:'draft',
+  ISSUED:'issued',
+  DISPENSED:'dispensed',
+  PARTIALLY_DISPENSED:'partially_dispensed',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
 // ============================================================
 // 🔹 Employee Shifts
 // ============================================================
-export const EMPLOYEE_SHIFT_STATUS = ['active', 'inactive', 'cancelled'];
+export const EMPLOYEE_SHIFT_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  CANCELLED:'cancelled'
+};
 
 // ============================================================
 // 🔹 Ultrasound
 // ============================================================
-// ============================================================
-// 🔹 Ultrasound
-// ============================================================
-export const ULTRASOUND_STATUS = [
-  'pending',       // created but not yet started
-  'in_progress',   // scan ongoing
-  'completed',     // scan finished
-  'verified',      // reviewed/approved
-  'finalized',     // ✅ locked, billing/audit complete
-  'cancelled',     // stopped mid-process
-  'voided'         // invalidated after saving
-];
-
-// ============================================================
-// 🔹 Letterhead Templates
-// ============================================================
-export const LETTERHEAD_STATUS = ['active', 'inactive'];
-export const LETTERHEAD_TEMPLATE_STATUS = ['active', 'inactive', 'archived'];
-
-// ============================================================
-// 🔹 Branding (Org / Facility)
-// ============================================================
-export const THEME_STATUS = ['active', 'inactive', 'archived'];
-
-// ============================================================
-// 🔹 Home Content
-// ============================================================
-export const HOME_CONTENT_STATUS = ['active', 'inactive'];
-
-// ============================================================
-// 🔹 Announcements
-// ============================================================
-export const ANNOUNCEMENT_STATUS = ['draft', 'published', 'archived'];
-
-// ============================================================
-// 🔹 Videos
-// ============================================================
-export const VIDEO_STATUS = ['active', 'inactive'];
-
-// ============================================================
-// 🔹 Stock Lifecycle Enums (Ultra Compact)
-// ============================================================
-
-export const DEPARTMENT_STOCK_STATUS = { ACTIVE: "active", INACTIVE: "inactive" };
-
-export const STOCK_RETURN_STATUS = { PENDING: "pending", APPROVED: "approved", REJECTED: "rejected" };
-
-export const STOCK_LEDGER_TYPE = {
-  PURCHASE: "purchase", ISSUE_OUT: "issue_out", ISSUE_IN: "issue_in",
-  RETURN_OUT: "return_out", RETURN_IN: "return_in",
-  ADJUSTMENT: "adjustment", CONSUMPTION: "consumption",
-  DISPOSED: "disposed", WRITE_OFF: "write_off",
-  STATUS_CHANGE: "status_change", RESTORE: "restore",
-  LOCK: "lock", UNLOCK: "unlock",
-  VOID_ISSUE: "void_issue"
+export const ULTRASOUND_STATUS = {
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  FINALIZED:'finalized',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
 };
 
-export const STOCK_REQUEST_STATUS = {
-  DRAFT: "draft", PENDING: "pending", APPROVED: "approved",
-  REJECTED: "rejected", ISSUED: "issued",
-  FULFILLED: "fulfilled", CANCELLED: "cancelled"
+// ============================================================
+// 🔹 Templates / Branding
+// ============================================================
+export const LETTERHEAD_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+
+export const LETTERHEAD_TEMPLATE_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  ARCHIVED:'archived'
 };
 
-export const STOCK_REQUEST_ITEM_STATUS = {
-  PENDING: "pending", ISSUED: "issued", APPROVED: "approved",
-  REJECTED: "rejected", FULFILLED: "fulfilled",
-  PARTIALLY_FULFILLED: "partially_fulfilled",
-  CANCELLED: "cancelled", VOIDED: "voided"
+export const THEME_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive',
+  ARCHIVED:'archived'
 };
 
-export const ADJUSTMENT_TYPES = {
-  INCREASE: "increase", DECREASE: "decrease",
-  TRANSFER: "transfer", RETURN: "return"
+export const HOME_CONTENT_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
+
+export const ANNOUNCEMENT_STATUS = {
+  DRAFT:'draft',
+  PUBLISHED:'published',
+  ARCHIVED:'archived'
 };
 
+export const VIDEO_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
 
 // ============================================================
 // 🔹 Patient–Employee Eligibility
 // ============================================================
-export const RELATION_TYPE = ['self', 'spouse', 'child', 'dependent', 'other'];
-export const LINK_STATUS = ['active', 'inactive'];
+export const RELATION_TYPE = {
+  SELF:'self',
+  SPOUSE:'spouse',
+  CHILD:'child',
+  DEPENDENT:'dependent',
+  OTHER:'other'
+};
 
-export const EMPLOYEE_POSITIONS = [
-  "Doctor",
-  "Nurse",
-  "Midwife",
-  "Pharmacist",
-  "Lab Technician",
-  "Radiologist",
-  "Therapist",
-  "Clerk",
-  "Assistant",
-  "Physician Assistant", 
-];
+export const LINK_STATUS = {
+  ACTIVE:'active',
+  INACTIVE:'inactive'
+};
+
+export const EMPLOYEE_POSITIONS = {
+  DOCTOR:'Doctor',
+  NURSE:'Nurse',
+  MIDWIFE:'Midwife',
+  PHARMACIST:'Pharmacist',
+  LAB_TECHNICIAN:'Lab Technician',
+  RADIOLOGIST:'Radiologist',
+  THERAPIST:'Therapist',
+  CLERK:'Clerk',
+  ASSISTANT:'Assistant',
+  PHYSICIAN_ASSISTANT:'Physician Assistant'
+};
+
 // ============================================================
 // 🔹 EKG
 // ============================================================
-export const EKG_STATUS = [
-  'pending',      // order placed, not yet started
-  'in_progress',  // technician is recording
-  'completed',    // recording finished
-  'verified',     // reviewed/approved by physician
-  'finalized',    // locked, no further edits
-  'cancelled',    // cancelled before completion
-  'voided',       // invalidated after saving
-];
-
+export const EKG_STATUS = {
+  PENDING:'pending',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  FINALIZED:'finalized',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
 
 /* ============================================================
-🔹 Orders (General Billing Engine – MASTER ALIGNED)
+🔹 Orders (MASTER)
 ============================================================ */
 
-/* -------------------- Order Header Lifecycle -------------------- */
-export const ORDER_STATUS = [
-'draft',        // 0 → created, editable
-'pending',      // 1 → awaiting action/approval
-'approved',     // 2 → approved for execution
-'in_progress',  // 3 → being processed (dispense/service)
-'completed',    // 4 → execution finished
-'verified',     // 5 → checked/validated by authority
-'finalized',    // 6 → 🔒 locked (billing + audit complete)
-'cancelled',    // 7 → intentionally stopped
-'voided'        // 8 → invalid/rolled back record
-];
+// -------------------- Order Header --------------------
+export const ORDER_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  APPROVED:'approved',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  FINALIZED:'finalized',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
-/* -------------------- Order Item Lifecycle -------------------- */
-export const ORDER_ITEM_STATUS = [
-'draft',        // created but not confirmed
-'pending',      // awaiting processing
-'approved',     // approved for execution
-'in_progress',  // being executed
-'completed',    // done
-'verified',     // checked
-'cancelled',    // cancelled before completion
-'voided'        // invalidated
-];
+// -------------------- Order Item --------------------
+export const ORDER_ITEM_STATUS = {
+  DRAFT:'draft',
+  PENDING:'pending',
+  APPROVED:'approved',
+  IN_PROGRESS:'in_progress',
+  COMPLETED:'completed',
+  VERIFIED:'verified',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
-/* -------------------- Order Type (Classification) -------------------- */
-export const ORDER_TYPE = [
-'medication',   // pharmacy items
-'service',      // consultation, nursing, procedures
-'lab',          // optional linkage to lab system
-'procedure',    // surgeries, imaging, etc.
-'admission',    // ward/bed related charges
-'package',      // bundled services
-'mixed'         // multiple types in one order
-];
+// -------------------- Order Type --------------------
+export const ORDER_TYPE = {
+  MEDICATION:'medication',
+  SERVICE:'service',
+  LAB:'lab',
+  PROCEDURE:'procedure',
+  ADMISSION:'admission',
+  PACKAGE:'package',
+  MIXED:'mixed'
+};
 
-/* -------------------- Order Priority -------------------- */
-export const ORDER_PRIORITY = [
-'routine',
-'urgent',
-'stat'          // immediate/emergency
-];
+// -------------------- Order Priority --------------------
+export const ORDER_PRIORITY = {
+  ROUTINE:'routine',
+  URGENT:'urgent',
+  STAT:'stat'
+};
 
-/* -------------------- Fulfillment Mode -------------------- */
-export const ORDER_FULFILLMENT_STATUS = [
-'pending',
-'partially_fulfilled',
-'fulfilled',
-'cancelled',
-'voided'
-];
+// -------------------- Fulfillment --------------------
+export const ORDER_FULFILLMENT_STATUS = {
+  PENDING:'pending',
+  PARTIALLY_FULFILLED:'partially_fulfilled',
+  FULFILLED:'fulfilled',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
-/* -------------------- Billing Link Status -------------------- */
-export const ORDER_BILLING_STATUS = [
-'not_billed',   // no invoice yet
-'billed',       // invoice created
-'partially_paid',
-'paid',
-'cancelled',
-'voided'
-];
+// -------------------- Billing Status --------------------
+export const ORDER_BILLING_STATUS = {
+  NOT_BILLED:'not_billed',
+  BILLED:'billed',
+  PARTIALLY_PAID:'partially_paid',
+  PAID:'paid',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
-/* -------------------- Prescription-specific (optional reuse) -------------------- */
-export const ORDER_MEDICATION_STATUS = [
-'prescribed',
-'dispensed',
-'partially_dispensed',
-'completed',
-'cancelled',
-'voided'
-];
+// -------------------- Medication Status --------------------
+export const ORDER_MEDICATION_STATUS = {
+  PRESCRIBED:'prescribed',
+  DISPENSED:'dispensed',
+  PARTIALLY_DISPENSED:'partially_dispensed',
+  COMPLETED:'completed',
+  CANCELLED:'cancelled',
+  VOIDED:'voided'
+};
 
-/* -------------------- Audit Extensions (Optional but Recommended) -------------------- */
-export const ORDER_AUDIT_ACTIONS = [
-'created',
-'updated',
-'approved',
-'processed',
-'verified',
-'finalized',
-'cancelled',
-'voided',
-'reversed',
-'restored'
-];
+// -------------------- Audit --------------------
+export const ORDER_AUDIT_ACTIONS = {
+  CREATED:'created',
+  UPDATED:'updated',
+  APPROVED:'approved',
+  PROCESSED:'processed',
+  VERIFIED:'verified',
+  FINALIZED:'finalized',
+  CANCELLED:'cancelled',
+  VOIDED:'voided',
+  REVERSED:'reversed',
+  RESTORED:'restored'
+};
 
-// 📘 patientChartEnums.js – Enumerations for patient chart subsystem
+// ============================================================
+// 🔹 Patient Chart
+// ============================================================
+export const PATIENT_CHART_NOTE_TYPE = {
+  DOCTOR:'doctor',
+  NURSE:'nurse',
+  ADMIN:'admin',
+  SYSTEM:'system'
+};
 
-export const PATIENT_CHART_NOTE_TYPE = ["doctor", "nurse", "admin", "system"];
+export const PATIENT_CHART_VIEW_ACTION = {
+  VIEW:'view',
+  EXPORT:'export',
+  PRINT:'print'
+};
 
-export const PATIENT_CHART_VIEW_ACTION = ["view", "export", "print"];
+export const PATIENT_CHART_CACHE_STATUS = {
+  ACTIVE:'active',
+  STALE:'stale',
+  INVALID:'invalid'
+};
+// 🔥 ADD THIS (MISSING IN YOUR CURRENT ENUM FILE)
+export const MASTER_ITEM_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+};
+export const MASTER_ITEM_TYPES = {
+  SERVICE: "service",
+  CONSUMABLE: "consumable",
+  DRUG: "drug",
+  PROCEDURE: "procedure",
+  EQUIPMENT: "equipment",
+  PACKAGE: "package",
+};
+export const MASTER_ITEM_CATEGORY_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+};
 
-export const PATIENT_CHART_CACHE_STATUS = ['active', 'stale', 'invalid'];
+export const DISCOUNT_TYPE = {
+  PERCENTAGE: "percentage",
+  FIXED: "fixed",
+  WAIVER: "waiver",
+};
+
+export const DISCOUNT_STATUS = {
+  DRAFT: "draft",
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  FINALIZED: "finalized",
+  VOIDED: "voided",
+};
+
+export const INVOICE_STATUS = {
+  DRAFT: "draft",
+  ISSUED: "issued",
+  UNPAID: "unpaid",
+  PARTIAL: "partial",
+  PAID: "paid",
+  CANCELLED: "cancelled",
+  VOIDED: "voided",
+};
+export const CENTRAL_STOCK_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  EXPIRED: "expired",
+  QUARANTINED: "quarantined",
+};
+export const DEPARTMENT_STOCK_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  ARCHIVED: "archived",
+};
+export const STOCK_REQUEST_STATUS = {
+  DRAFT: "draft",
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  ISSUED: "issued",
+  PARTIALLY_FULFILLED: "partially_fulfilled",
+  FULFILLED: "fulfilled",
+  CANCELLED: "cancelled",
+};
+
+export const STOCK_REQUEST_ITEM_STATUS = {
+  PENDING: "pending",
+  ISSUED: "issued",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  FULFILLED: "fulfilled",
+  PARTIALLY_FULFILLED: "partially_fulfilled",
+  CANCELLED: "cancelled",
+  VOIDED: "voided",
+};
+export const SUPPLIER_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+};
+export const STOCK_LEDGER_TYPE = {
+  PURCHASE: "purchase",
+  ISSUE_OUT: "issue_out",
+  ISSUE_IN: "issue_in",
+  RETURN_OUT: "return_out",
+  RETURN_IN: "return_in",
+  ADJUSTMENT: "adjustment",
+  CONSUMPTION: "consumption",
+  DISPOSED: "disposed",
+  STATUS_CHANGE: "status_change",
+  RESTORE: "restore",
+  WRITE_OFF: "write_off",
+  LOCK: "lock",
+  UNLOCK: "unlock",
+};
+// ============================================================
+// 🔹 Feature Module Visibility (NOT IN CURRENT FILE)
+// ============================================================
+export const FEATURE_MODULE_VISIBILITY = {
+  PUBLIC: 'public',
+  PRIVATE: 'private',
+  HIDDEN: 'hidden',
+};
+
+// ============================================================
+// 🔹 Financial Ledger Method (NOT IN CURRENT FILE)
+// ============================================================
+export const LEDGER_METHOD = {
+  CASH: 'cash',
+  CARD: 'card',
+  MOBILE_MONEY: 'mobile_money',
+  BANK_TRANSFER: 'bank_transfer',
+  CHEQUE: 'cheque',
+  INSURANCE: 'insurance',
+  OTHER: 'other',
+};
+
+// ============================================================
+// 🔹 Messaging (NOT IN CURRENT FILE)
+// ============================================================
+export const MESSAGE_TYPE = {
+  TEXT: 'text',
+  IMAGE: 'image',
+  FILE: 'file',
+};
+
+export const MESSAGE_ROLE = {
+  PATIENT: 'patient',
+  EMPLOYEE: 'employee',
+};
+
+// ============================================================
+// 🔹 Conversations (NOT IN CURRENT FILE)
+// ============================================================
+export const CONVERSATION_TYPE = {
+  INTERNAL: 'internal',
+  HELPDESK: 'helpdesk',
+  CLINICAL: 'clinical',
+};
+
+// ============================================================
+// 🔹 Notifications (NOT IN CURRENT FILE)
+// ============================================================
+export const NOTIFICATION_STATUS = {
+  READ: 'read',
+  UNREAD: 'unread',
+};
+
+// ============================================================
+// 🔹 Refund Deposit Transaction (NOT IN CURRENT FILE)
+// ============================================================
+export const REFUND_DEPOSIT_TRANSACTION_STATUS = {
+  CREATED: 'created',
+  PROCESSED: 'processed',
+  REVERSED: 'reversed',
+};
+
+// ============================================================
+// 🔹 Subscription (NOT IN CURRENT FILE)
+// ============================================================
+export const SUBSCRIPTION_STATUS = {
+  ACTIVE: 'active',
+  TRIALING: 'trialing',
+  PAST_DUE: 'past_due',
+  CANCELED: 'canceled',
+};
+
+export const SUBSCRIPTION_INVOICE_STATUS = {
+  PAID: 'paid',
+  UNPAID: 'unpaid',
+  PAST_DUE: 'past_due',
+};
+
+// ============================================================
+// 🔹 Stock Adjustment (MISSING → CAUSING CRASH)
+// ============================================================
+export const STOCK_ADJUSTMENT_STATUS = {
+  DRAFT: "draft",
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+};
+
+export const ADJUSTMENT_TYPES = {
+  INCREASE: "increase",
+  DECREASE: "decrease",
+  TRANSFER: "transfer",
+  RETURN: "return",
+};
+// ============================================================
+// 🔹 Stock Return (MISSING → CAUSING CRASH)
+// ============================================================
+export const STOCK_RETURN_STATUS = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+};
+// ============================================================
+// 🔹 Pharmacy Transaction Status (MISSING → CAUSING CRASH)
+// ============================================================
+export const PHARMACY_TRANSACTION_STATUS = {
+  PENDING: "pending",
+  VERIFIED: "verified",
+  VOIDED: "voided",
+  CANCELLED: "cancelled",
+  PARTIALLY_DISPENSED: "partially_dispensed",
+  RETURNED: "returned",
+  DISPENSED: "dispensed",
+};
+// ============================================================
+// 🔹 Pharmacy Transaction Type (MISSING → CAUSING CRASH)
+// ============================================================
+export const PHARMACY_TRANSACTION_TYPE = {
+  DISPENSE: "dispense",
+  RETURN: "return",
+  ADJUSTMENT: "adjustment",
+};

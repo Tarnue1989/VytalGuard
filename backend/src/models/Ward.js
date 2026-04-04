@@ -36,9 +36,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...WARD_STATUS),
+        type: DataTypes.ENUM(...Object.values(WARD_STATUS)),
         allowNull: false,
-        defaultValue: WARD_STATUS[0], // "active"
+        defaultValue: WARD_STATUS.ACTIVE,
       },
 
       // Audit

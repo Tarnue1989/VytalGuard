@@ -119,6 +119,7 @@ const filterFacility = qs("filterFacilitySelect");
 const filterStatus   = qs("filterStatus");
 const filterMethod   = qs("filterMethodSelect");
 const dateRange      = qs("dateRange");
+const filterCurrency = qs("filterCurrencySelect"); // ✅ ADD
 
 const filterPatient            = qs("filterPatient");
 const filterPatientHidden      = qs("filterPatientId");
@@ -158,6 +159,7 @@ setupAutoFilters({
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -176,6 +178,7 @@ function getFilters() {
     patient_id: filterPatientHidden?.value,
     payment_id: filterPaymentHidden?.value,
     dateRange: dateRange?.value,
+    currency: filterCurrency?.value, 
   };
 }
 
@@ -206,6 +209,7 @@ async function loadEntries(page = 1) {
     if (f.method)          q.set("method", f.method);
     if (f.patient_id)      q.set("patient_id", f.patient_id);
     if (f.payment_id)      q.set("payment_id", f.payment_id);
+    if (f.currency)        q.set("currency", f.currency);
 
     const res = await authFetch(`/api/refunds?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -299,6 +303,7 @@ qs("resetFilterBtn")?.addEventListener("click", () => {
     filterPatient,
     filterPayment,
     dateRange,
+    filterCurrency,
   ].forEach((el) => el && (el.value = ""));
 
   filterPatientHidden.value = "";

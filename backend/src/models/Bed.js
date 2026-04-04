@@ -30,14 +30,13 @@ export default (sequelize) => {
       room_number: { type: DataTypes.STRING, allowNull: true },
       bed_number: { type: DataTypes.STRING, allowNull: true },
       department_id: { type: DataTypes.UUID, allowNull: true },
-
+      
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...BED_STATUS),
+        type: DataTypes.ENUM(...Object.values(BED_STATUS)),
         allowNull: false,
-        defaultValue: BED_STATUS[0], // "available"
+        defaultValue: BED_STATUS.AVAILABLE,
       },
-
       // Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

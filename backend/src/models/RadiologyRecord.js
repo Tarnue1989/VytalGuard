@@ -53,11 +53,10 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...RADIOLOGY_STATUS),
+        type: DataTypes.ENUM(...Object.values(RADIOLOGY_STATUS)),
         allowNull: false,
-        defaultValue: RADIOLOGY_STATUS[0], // "pending"
+        defaultValue: RADIOLOGY_STATUS.PENDING,
       },
-
       verified_at: { type: DataTypes.DATE },
 
       // Audit

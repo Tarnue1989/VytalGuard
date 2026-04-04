@@ -51,7 +51,7 @@ function buildDepositReceiptHTML(deposit) {
   const printedBy = getPrintedBy(deposit);
   const printedAt = new Date().toLocaleString();
 
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+  const money = (v) => `${deposit.currency || "$"}${Number(v || 0).toFixed(2)}`;
 
   const appliedInvoice = deposit.appliedInvoice
     ? `${deposit.appliedInvoice.invoice_number}`
@@ -86,6 +86,10 @@ function buildDepositReceiptHTML(deposit) {
         )}</div>
 
         <div><strong>Status:</strong> ${deposit.status || ""}</div>
+
+        <div><strong>Currency:</strong> ${
+          deposit.currency || "—"
+        }</div>
       </div>
 
     </div>

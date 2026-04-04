@@ -18,7 +18,7 @@ import {
 } from "../constants/enums.js";
 
 /* ============================================================
-   🔗 Universal Auto-Link Helper — ENTERPRISE MASTER
+   🔗 Universal Auto-Link Helper — ENTERPRISE MASTER (FIXED)
 ============================================================ */
 export async function resolveClinicalLinks({
   value,
@@ -49,8 +49,8 @@ export async function resolveClinicalLinks({
         facility_id: facilityId,
         status: {
           [Op.in]: [
-            CONSULTATION_STATUS[0], // open
-            CONSULTATION_STATUS[1], // in_progress
+            CONSULTATION_STATUS.OPEN,
+            CONSULTATION_STATUS.IN_PROGRESS,
           ],
         },
       },
@@ -60,6 +60,7 @@ export async function resolveClinicalLinks({
 
     if (consult) {
       resolved.consultation_id = consult.id;
+
       if ("doctor_id" in resolved && !resolved.doctor_id) {
         resolved.doctor_id = consult.doctor_id;
       }
@@ -75,8 +76,8 @@ export async function resolveClinicalLinks({
         facility_id: facilityId,
         log_status: {
           [Op.in]: [
-            REGISTRATION_LOG_STATUS[1], // pending
-            REGISTRATION_LOG_STATUS[2], // active
+            REGISTRATION_LOG_STATUS.PENDING,
+            REGISTRATION_LOG_STATUS.ACTIVE,
           ],
         },
       },
@@ -84,7 +85,9 @@ export async function resolveClinicalLinks({
       transaction,
     });
 
-    if (reg) resolved.registration_log_id = reg.id;
+    if (reg) {
+      resolved.registration_log_id = reg.id;
+    }
   }
 
   /* ================= 💳 Invoice ================= */
@@ -96,9 +99,9 @@ export async function resolveClinicalLinks({
         facility_id: facilityId,
         status: {
           [Op.in]: [
-            INVOICE_STATUS[1],
-            INVOICE_STATUS[2],
-            INVOICE_STATUS[3],
+            INVOICE_STATUS.ISSUED,
+            INVOICE_STATUS.UNPAID,
+            INVOICE_STATUS.PARTIAL,
           ],
         },
       },
@@ -106,7 +109,9 @@ export async function resolveClinicalLinks({
       transaction,
     });
 
-    if (invoice) resolved.invoice_id = invoice.id;
+    if (invoice) {
+      resolved.invoice_id = invoice.id;
+    }
   }
 
   /* ================= 🏥 Admission ================= */
@@ -118,8 +123,8 @@ export async function resolveClinicalLinks({
         facility_id: facilityId,
         status: {
           [Op.in]: [
-            ADMISSION_STATUS[0],
-            ADMISSION_STATUS[1],
+            ADMISSION_STATUS.ADMITTED,
+            ADMISSION_STATUS.IN_PROGRESS,
           ],
         },
       },
@@ -127,7 +132,9 @@ export async function resolveClinicalLinks({
       transaction,
     });
 
-    if (admission) resolved.admission_id = admission.id;
+    if (admission) {
+      resolved.admission_id = admission.id;
+    }
   }
 
   /* ================= 🩸 Triage ================= */
@@ -139,8 +146,8 @@ export async function resolveClinicalLinks({
         facility_id: facilityId,
         triage_status: {
           [Op.in]: [
-            TRIAGE_STATUS[0],
-            TRIAGE_STATUS[1],
+            TRIAGE_STATUS.OPEN,
+            TRIAGE_STATUS.IN_PROGRESS,
           ],
         },
       },
@@ -148,7 +155,9 @@ export async function resolveClinicalLinks({
       transaction,
     });
 
-    if (triage) resolved.triage_record_id = triage.id;
+    if (triage) {
+      resolved.triage_record_id = triage.id;
+    }
   }
 
   return resolved;

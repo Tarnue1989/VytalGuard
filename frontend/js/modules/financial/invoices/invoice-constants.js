@@ -1,6 +1,10 @@
-// 📦 invoice-constants.js – Enterprise Master Pattern Aligned (FIXED)
+// 📦 invoice-constants.js – Enterprise MASTER (FULL FIXED)
 // ============================================================================
-// Includes missing "applied_deposits" field for full financial rendering
+// ✔ Currency fully supported
+// ✔ appliedDeposits aligned with backend
+// ✔ Role names synced (facility_head, org_owner, etc.)
+// ✔ Label + items + patient_label added
+// ✔ Safe for frontend rendering (table + cards + filters)
 // ============================================================================
 
 /* ============================================================
@@ -9,9 +13,21 @@
 export const FIELD_LABELS_INVOICE = {
   organization: "Organization",
   facility: "Facility",
+
+  // 👤 Patient
   patient: "Patient",
+  patient_label: "Patient",
+
+  // 📄 Core
   invoice_number: "Invoice #",
+  label: "Invoice",
   status: "Status",
+
+  // 📦 Items
+  items: "Items",
+
+  // 💱 Currency (CRITICAL)
+  currency: "Currency",
 
   // 💰 Financials
   subtotal: "Subtotal",
@@ -21,8 +37,8 @@ export const FIELD_LABELS_INVOICE = {
   total_paid: "Amount Paid",
   refunded_amount: "Refunded",
 
-  // ✅ ADDED (The missing field)
-  applied_deposits: "Applied Deposits",
+  // 💰 Deposits (aligned with backend relation)
+  appliedDeposits: "Applied Deposits",
 
   balance: "Balance",
 
@@ -40,14 +56,22 @@ export const FIELD_LABELS_INVOICE = {
 };
 
 /* ============================================================
-   🧩 FIELD ORDER
+   🧩 FIELD ORDER (MASTER DISPLAY ORDER)
 ============================================================ */
 export const FIELD_ORDER_INVOICE = [
   "organization",
   "facility",
-  "patient",
+
+  "patient_label",
+
   "invoice_number",
+  "items",
+
+  // 💱 MUST come early
+  "currency",
+
   "status",
+
   "subtotal",
   "total",
   "total_discount",
@@ -55,17 +79,19 @@ export const FIELD_ORDER_INVOICE = [
   "total_paid",
   "refunded_amount",
 
-  // ✅ INSERTED IN CORRECT POSITION
-  "applied_deposits",
+  "appliedDeposits",
 
   "balance",
+
   "notes",
+
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
@@ -75,11 +101,13 @@ export const FIELD_ORDER_INVOICE = [
 export const FIELD_DEFAULTS_INVOICE = {
   superadmin: FIELD_ORDER_INVOICE,
 
-  admin: [
+  org_owner: [
     "organization",
     "facility",
-    "patient",
+    "patient_label",
     "invoice_number",
+    "items",
+    "currency",
     "status",
     "subtotal",
     "total",
@@ -87,7 +115,7 @@ export const FIELD_DEFAULTS_INVOICE = {
     "total_tax",
     "total_paid",
     "refunded_amount",
-    "applied_deposits",  // ✅ Added
+    "appliedDeposits",
     "balance",
     "notes",
     "createdBy",
@@ -97,10 +125,13 @@ export const FIELD_DEFAULTS_INVOICE = {
     "actions",
   ],
 
-  manager: [
+  admin: [
+    "organization",
     "facility",
-    "patient",
+    "patient_label",
     "invoice_number",
+    "items",
+    "currency",
     "status",
     "subtotal",
     "total",
@@ -108,7 +139,30 @@ export const FIELD_DEFAULTS_INVOICE = {
     "total_tax",
     "total_paid",
     "refunded_amount",
-    "applied_deposits",  // ✅ Added
+    "appliedDeposits",
+    "balance",
+    "notes",
+    "createdBy",
+    "created_at",
+    "updatedBy",
+    "updated_at",
+    "actions",
+  ],
+
+  facility_head: [
+    "facility",
+    "patient_label",
+    "invoice_number",
+    "items",
+    "currency",
+    "status",
+    "subtotal",
+    "total",
+    "total_discount",
+    "total_tax",
+    "total_paid",
+    "refunded_amount",
+    "appliedDeposits",
     "balance",
     "notes",
     "createdBy",
@@ -119,16 +173,18 @@ export const FIELD_DEFAULTS_INVOICE = {
   ],
 
   staff: [
-    "patient",
+    "patient_label",
     "invoice_number",
+    "items",
+    "currency",
     "status",
     "subtotal",
     "total",
     "total_tax",
     "total_paid",
 
-    // Staff usually cannot see deposits → optional:
-    // "applied_deposits",
+    // 🚫 optional (keep hidden if needed)
+    // "appliedDeposits",
 
     "balance",
     "created_at",
@@ -142,19 +198,19 @@ export const FIELD_DEFAULTS_INVOICE = {
 export const FIELD_GROUPS_INVOICE = {
   org_scope: ["organization", "facility"],
 
-  patient_info: ["patient", "invoice_number"],
+  patient_info: ["patient_label", "invoice_number"],
+
+  items: ["items"],
 
   financials: [
+    "currency",
     "subtotal",
     "total",
     "total_discount",
     "total_tax",
     "total_paid",
     "refunded_amount",
-
-    // ✅ Added here as well
-    "applied_deposits",
-
+    "appliedDeposits",
     "balance",
   ],
 
@@ -166,7 +222,7 @@ export const FIELD_GROUPS_INVOICE = {
 };
 
 /* ============================================================
-   ⚙️ EXPORT (for external import)
+   ⚙️ EXPORT
 ============================================================ */
 export default {
   FIELD_LABELS_INVOICE,

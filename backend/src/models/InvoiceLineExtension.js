@@ -50,8 +50,15 @@ export default (sequelize) => {
 
       // 🔹 Discount info (for audit only)
       discount_type: {
-        type: DataTypes.ENUM(...DISCOUNT_TYPE),
+        type: DataTypes.ENUM(...Object.values(DISCOUNT_TYPE)),
         allowNull: true,
+      },
+
+      // 🔹 Status
+      status: {
+        type: DataTypes.ENUM(...Object.values(INVOICE_LINE_EXTENSION_STATUS)),
+        allowNull: false,
+        defaultValue: INVOICE_LINE_EXTENSION_STATUS.APPLIED,
       },
       discount_value: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
       discount_amount: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
@@ -60,13 +67,7 @@ export default (sequelize) => {
       tax_rate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
       tax_amount: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
 
-      // 🔹 Status
-      status: {
-        type: DataTypes.ENUM(...INVOICE_LINE_EXTENSION_STATUS),
-        allowNull: false,
-        defaultValue: "applied",
-      },
-
+ 
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

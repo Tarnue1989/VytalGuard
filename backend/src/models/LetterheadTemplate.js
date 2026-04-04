@@ -31,9 +31,9 @@ export default (sequelize) => {
       // 🏷️ Details
       name: { type: DataTypes.STRING(150), allowNull: false },
       status: {
-        type: DataTypes.ENUM(...LETTERHEAD_STATUS),
+        type: DataTypes.ENUM(...Object.values(LETTERHEAD_STATUS)),
         allowNull: false,
-        defaultValue: LETTERHEAD_STATUS[0],
+        defaultValue: LETTERHEAD_STATUS.ACTIVE,
       },
       header_html: { type: DataTypes.TEXT, allowNull: false },
       footer_html: { type: DataTypes.TEXT },
