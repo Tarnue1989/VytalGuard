@@ -187,15 +187,11 @@ async function loadEntries(page = 1) {
       q.set("sort_order", sortDir);
     }
 
-    if (f.search)          q.set("search", f.search);
-    if (f.dateRange)       q.set("dateRange", f.dateRange);
-    if (f.organization_id) q.set("organization_id", f.organization_id);
-    if (f.facility_id)     q.set("facility_id", f.facility_id);
-    if (f.status)          q.set("status", f.status);
-    if (f.method)          q.set("method", f.method);
-    if (f.transaction_ref) q.set("transaction_ref", f.transaction_ref);
-    if (f.patient_id)      q.set("patient_id", f.patient_id);
-    if (f.currency)        q.set("currency", f.currency);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v && String(v).trim() !== "" && v !== "null") {
+        q.set(k, v);
+      }
+    });
 
     const res = await authFetch(`/api/deposits?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
