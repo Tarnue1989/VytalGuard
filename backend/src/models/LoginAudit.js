@@ -39,9 +39,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...LOGIN_AUDIT_STATUS),
+        type: DataTypes.ENUM(...Object.values(LOGIN_AUDIT_STATUS)),
         allowNull: false,
-        defaultValue: LOGIN_AUDIT_STATUS[0], // "success"
+        defaultValue: LOGIN_AUDIT_STATUS.SUCCESS,
       },
 
       // Audit

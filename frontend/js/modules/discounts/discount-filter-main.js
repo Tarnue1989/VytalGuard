@@ -121,6 +121,7 @@ const filterInvoiceSuggestions = qs("filterInvoiceSuggestions");
 
 const filterType   = qs("filterTypeSelect");
 const filterReason = qs("filterReason");
+const filterCurrency = qs("filterCurrency"); 
 
 /* ============================================================
    🔃 SORT BRIDGE (MASTER)
@@ -152,6 +153,7 @@ setupAutoFilters({
     filterFacility,
     filterStatus,
     filterType,
+    filterCurrency, 
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -170,6 +172,7 @@ function getFilters() {
     reason: filterReason?.value,
     invoice_id: filterInvoiceHidden?.value,
     dateRange: dateRange?.value,
+    currency: filterCurrency?.value,
   };
 }
 
@@ -200,6 +203,7 @@ async function loadEntries(page = 1) {
     if (f.type)            q.set("type", f.type);
     if (f.reason)          q.set("reason", f.reason);
     if (f.invoice_id)      q.set("invoice_id", f.invoice_id);
+    if (f.currency) q.set("currency", f.currency);
 
     const res = await authFetch(`/api/discounts?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -214,10 +218,14 @@ async function loadEntries(page = 1) {
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    data.summary &&
-      renderModuleSummary(data.summary, "moduleSummary", {
-        moduleLabel: "DISCOUNTS",
-      });
+    data.summary?.discount_summary &&
+      renderModuleSummary(
+        data.summary.discount_summary,
+        "moduleSummary",
+        {
+          moduleLabel: "DISCOUNTS",
+        }
+      );
 
     syncViewToggleUI({ mode: viewMode });
 
@@ -276,7 +284,7 @@ qs("resetFilterBtn").onclick = () => {
     filterInvoice,
     dateRange,
   ].forEach((el) => el && (el.value = ""));
-  filterInvoiceHidden.value = "";
+  if (filterInvoiceHidden) filterInvoiceHidden.value = "";
   loadEntries(1);
 };
 

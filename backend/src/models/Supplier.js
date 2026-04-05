@@ -53,9 +53,9 @@ export default (sequelize) => {
 
       // 📌 Status
       status: {
-        type: DataTypes.ENUM(...Object.values(SUPPLIER_STATUS)), // ✅ FIX
+        type: DataTypes.ENUM(...Object.values(SUPPLIER_STATUS)),
         allowNull: false,
-        defaultValue: SUPPLIER_STATUS.ACTIVE, // ✅ FIX
+        defaultValue: SUPPLIER_STATUS.ACTIVE,
       },
 
       notes: { type: DataTypes.TEXT },

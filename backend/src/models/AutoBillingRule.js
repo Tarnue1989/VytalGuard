@@ -76,11 +76,19 @@ export default (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
+      /* ============================================================
+        🩺 Lifecycle
+      ============================================================ */
+      status: {
+        type: DataTypes.ENUM(...Object.values(AUTO_BILLING_RULE_STATUS)),
+        allowNull: false,
+        defaultValue: AUTO_BILLING_RULE_STATUS.ACTIVE,
+      },
 
       charge_mode: {
-        type: DataTypes.ENUM(...AUTO_BILLING_CHARGE_MODE),
+        type: DataTypes.ENUM(...Object.values(AUTO_BILLING_CHARGE_MODE)),
         allowNull: false,
-        defaultValue: AUTO_BILLING_CHARGE_MODE[0],
+        defaultValue: AUTO_BILLING_CHARGE_MODE.FIXED,
       },
 
       default_price: {
@@ -89,14 +97,7 @@ export default (sequelize) => {
         validate: { min: 0 },
       },
 
-      /* ============================================================
-         🩺 Lifecycle
-      ============================================================ */
-      status: {
-        type: DataTypes.ENUM(...AUTO_BILLING_RULE_STATUS),
-        allowNull: false,
-        defaultValue: AUTO_BILLING_RULE_STATUS[0],
-      },
+
 
       /* ============================================================
          🧾 Audit Trail

@@ -38,9 +38,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...ACCESS_VIOLATION_STATUS),
+        type: DataTypes.ENUM(...Object.values(ACCESS_VIOLATION_STATUS)),
         allowNull: false,
-        defaultValue: ACCESS_VIOLATION_STATUS[0], // "logged"
+        defaultValue: ACCESS_VIOLATION_STATUS.LOGGED,
       },
 
       // Audit (who recorded the log)

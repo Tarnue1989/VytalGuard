@@ -93,7 +93,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(STOCK_REQUEST_ITEM_STATUS)),
         allowNull: false,
-        defaultValue: Object.values(STOCK_REQUEST_ITEM_STATUS)[0], // pending
+        defaultValue: STOCK_REQUEST_ITEM_STATUS.PENDING,
       },
       remarks: { type: DataTypes.TEXT },
 

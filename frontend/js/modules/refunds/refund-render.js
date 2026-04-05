@@ -18,6 +18,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -155,7 +156,7 @@ function renderInvoice(entry) {
   const i = entry.invoice;
   if (!i) return "—";
   if (typeof i === "string") return i;
-  return `${i.invoice_number || "—"} | Bal: $${Number(i.balance ?? 0).toFixed(2)}`;
+  return `${i.invoice_number || "—"} | Bal: ${getCurrencySymbol(entry.currency)} ${Number(i.balance ?? 0).toFixed(2)}`;
 }
 
 function renderPayment(entry) {
@@ -210,7 +211,7 @@ function renderValue(entry, field) {
       return safe(entry.method || entry.payment?.method);
 
     case "amount":
-      return `$${Number(entry.amount || 0).toFixed(2)}`;
+      return `${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}`;
 
     case "reason":
       return safe(entry.reason);
@@ -296,7 +297,7 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">$${amount}</div>
+          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${amount}</div>
         </div>
         ${
           has("status")
@@ -312,7 +313,7 @@ export function renderCard(entry, visibleFields, user) {
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Refund #", entry.refund_number)}
-        ${row("Amount", `$${amount}`)}
+        ${row("Amount", `${getCurrencySymbol(entry.currency)} ${amount}`)}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>

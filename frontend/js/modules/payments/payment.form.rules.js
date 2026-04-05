@@ -2,6 +2,7 @@
    Payment Form Rules (MASTER PARITY)
    Aligned with Payment Controller + UI
    Pattern: Deposit / Refund / EKG
+   🔹 FIXED: currency required (matches backend)
 ============================================= */
 
 export const PAYMENT_FORM_RULES = [
@@ -17,6 +18,10 @@ export const PAYMENT_FORM_RULES = [
   {
     id: "amount",
     message: "Amount is required",
+  },
+  {
+    id: "currencySelect", // ✅ ADDED
+    message: "Currency is required",
   },
   {
     id: "methodSelect",

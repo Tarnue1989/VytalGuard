@@ -16,6 +16,11 @@ export const DEPOSIT_FORM_RULES = [
   },
 
   {
+    id: "currencySelect",
+    message: "Currency is required",
+  },
+
+  {
     id: "methodSelect",
     message: "Payment method is required",
   },

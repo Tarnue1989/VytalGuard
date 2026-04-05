@@ -1,11 +1,3 @@
-// 📁 registrationLog-constants.js – Enterprise-Aligned Master Pattern
-// ============================================================================
-// 🔹 Pattern Source: department-constants.js (Enterprise Master)
-// 🔹 Structural Consistency: Field labels, order, role-based visibility
-// 🔹 100% ID retention (safe for linked HTML + JS modules)
-// 🔹 Includes standardized metadata + hierarchical visibility map
-// ============================================================================
-
 /* ============================================================
    🏷️ Field Labels
 ============================================================ */
@@ -18,6 +10,11 @@ export const FIELD_LABELS_REGISTRATION_LOG = {
   registration_method: "Registration Method",
   registration_source: "Source",
   patient_category: "Category",
+
+  // ✅ ADDED
+  payer_type: "Payer Type",
+  patientInsurance: "Insurance",
+
   visit_reason: "Visit Reason",
   is_emergency: "Emergency",
   registration_time: "Registration Time",
@@ -33,6 +30,7 @@ export const FIELD_LABELS_REGISTRATION_LOG = {
   actions: "Actions",
 };
 
+
 /* ============================================================
    📋 Field Order (Enterprise-Consistent)
 ============================================================ */
@@ -45,6 +43,11 @@ export const FIELD_ORDER_REGISTRATION_LOG = [
   "registration_method",
   "registration_source",
   "patient_category",
+
+  // ✅ ADDED
+  "payer_type",
+  "patientInsurance",
+
   "visit_reason",
   "is_emergency",
   "registration_time",
@@ -60,13 +63,10 @@ export const FIELD_ORDER_REGISTRATION_LOG = [
   "actions",
 ];
 
+
 /* ============================================================
    👥 Role-Based Field Visibility Defaults (Enterprise-Aligned)
 ============================================================ */
-// 🧩 Superadmin / Org Owner: Full visibility including audit + delete metadata
-// 🧩 Admin / Manager: Operational + lifecycle visibility
-// 🧩 Facility Head: Scoped operational visibility
-// 🧩 Staff: Essential operational fields only
 export const FIELD_DEFAULTS_REGISTRATION_LOG = {
   superadmin: [
     "organization",
@@ -77,6 +77,11 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_method",
     "registration_source",
     "patient_category",
+
+    // ✅ ADDED
+    "payer_type",
+    "patientInsurance",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -101,6 +106,11 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_method",
     "registration_source",
     "patient_category",
+
+    // ✅ ADDED
+    "payer_type",
+    "patientInsurance",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -125,6 +135,11 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_method",
     "registration_source",
     "patient_category",
+
+    // ✅ ADDED
+    "payer_type",
+    "patientInsurance",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -145,6 +160,11 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_type",
     "registration_method",
     "patient_category",
+
+    // ✅ ADDED
+    "payer_type",
+    "patientInsurance",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -164,6 +184,11 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_method",
     "registration_source",
     "patient_category",
+
+    // ✅ ADDED
+    "payer_type",
+    "patientInsurance",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -183,6 +208,10 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "registration_type",
     "registration_method",
     "patient_category",
+
+    // ✅ ADDED (optional but recommended)
+    "payer_type",
+
     "visit_reason",
     "is_emergency",
     "registration_time",
@@ -190,9 +219,3 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
     "actions",
   ],
 };
-
-/* ============================================================
-   ⚙️ Module Metadata (For dynamic routing / UI context)
-============================================================ */
-export const MODULE_KEY_REGISTRATION_LOG = "registration_log";
-export const MODULE_LABEL_REGISTRATION_LOG = "Registration Log";

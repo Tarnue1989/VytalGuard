@@ -13,75 +13,74 @@ import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
 
 /* ============================================================
-   🔖 Local enum maps
+   🔖 Local enum maps (FIXED — OBJECT ENUM SAFE)
 ============================================================ */
+
 const PS = {
-  PENDING: PAYMENT_STATUS[0],     // "pending"
-  COMPLETED: PAYMENT_STATUS[1],   // "completed"
-  FAILED: PAYMENT_STATUS[2],      // "failed"
-  CANCELLED: PAYMENT_STATUS[3],   // "cancelled"
-  REVERSED: PAYMENT_STATUS[4],    // "reversed"
-  VOIDED: PAYMENT_STATUS[5],      // "voided"
-  VERIFIED: PAYMENT_STATUS[6],    // "verified"
-};
-const RS = {
-  PENDING: REFUND_STATUS[0],
-  APPROVED: REFUND_STATUS[1],
-  REJECTED: REFUND_STATUS[2],
-  PROCESSED: REFUND_STATUS[3],
-  CANCELLED: REFUND_STATUS[4],
-  REVERSED: REFUND_STATUS[5],
-  VOIDED: REFUND_STATUS[6], 
+  PENDING: PAYMENT_STATUS.PENDING,
+  COMPLETED: PAYMENT_STATUS.COMPLETED,
+  FAILED: PAYMENT_STATUS.FAILED,
+  CANCELLED: PAYMENT_STATUS.CANCELLED,
+  REVERSED: PAYMENT_STATUS.REVERSED,
+  VOIDED: PAYMENT_STATUS.VOIDED,
+  VERIFIED: PAYMENT_STATUS.VERIFIED,
 };
 
+const RS = {
+  PENDING: REFUND_STATUS.PENDING,
+  APPROVED: REFUND_STATUS.APPROVED,
+  REJECTED: REFUND_STATUS.REJECTED,
+  PROCESSED: REFUND_STATUS.PROCESSED,
+  CANCELLED: REFUND_STATUS.CANCELLED,
+  REVERSED: REFUND_STATUS.REVERSED,
+  VOIDED: REFUND_STATUS.VOIDED,
+};
 
 const RTS = {
-  PENDING: REFUND_STATUS[0],    // "pending"
-  APPROVED: REFUND_STATUS[1],   // "approved"
-  REJECTED: REFUND_STATUS[2],   // "rejected"
-  PROCESSED: REFUND_STATUS[3],  // "processed"
-  CANCELLED: REFUND_STATUS[4],  // "cancelled"
-  REVERSED: REFUND_STATUS[5],   // "reversed"
+  PENDING: REFUND_STATUS.PENDING,
+  APPROVED: REFUND_STATUS.APPROVED,
+  REJECTED: REFUND_STATUS.REJECTED,
+  PROCESSED: REFUND_STATUS.PROCESSED,
+  CANCELLED: REFUND_STATUS.CANCELLED,
+  REVERSED: REFUND_STATUS.REVERSED,
 };
 
 // 💰 Deposit lifecycle map (enterprise-aligned)
 const DS = {
-  PENDING: DEPOSIT_STATUS[0],     // new deposit
-  CLEARED: DEPOSIT_STATUS[1],     // verified funds received
-  APPLIED: DEPOSIT_STATUS[2],     // applied to invoice
-  CANCELLED: DEPOSIT_STATUS[3],   // user cancelled before use
-  REVERSED: DEPOSIT_STATUS[4],    // reversed from invoice
-  VOIDED: DEPOSIT_STATUS[5] || "voided",     // 🆕 admin invalidation
-  VERIFIED: DEPOSIT_STATUS[6] || "verified", // 🆕 audited/locked
+  PENDING: DEPOSIT_STATUS.PENDING,
+  CLEARED: DEPOSIT_STATUS.CLEARED,
+  APPLIED: DEPOSIT_STATUS.APPLIED,
+  CANCELLED: DEPOSIT_STATUS.CANCELLED,
+  REVERSED: DEPOSIT_STATUS.REVERSED,
+  VOIDED: DEPOSIT_STATUS.VOIDED,
+  VERIFIED: DEPOSIT_STATUS.VERIFIED,
 };
-
-
 
 const WS = {
-  PENDING:   DISCOUNT_WAIVER_STATUS[0],
-  APPROVED:  DISCOUNT_WAIVER_STATUS[1],
-  APPLIED:   DISCOUNT_WAIVER_STATUS[2],
-  REJECTED:  DISCOUNT_WAIVER_STATUS[3],
-  VOIDED:    DISCOUNT_WAIVER_STATUS[4],
-  FINALIZED: DISCOUNT_WAIVER_STATUS[5],
+  PENDING: DISCOUNT_WAIVER_STATUS.PENDING,
+  APPROVED: DISCOUNT_WAIVER_STATUS.APPROVED,
+  APPLIED: DISCOUNT_WAIVER_STATUS.APPLIED,
+  REJECTED: DISCOUNT_WAIVER_STATUS.REJECTED,
+  VOIDED: DISCOUNT_WAIVER_STATUS.VOIDED,
+  FINALIZED: DISCOUNT_WAIVER_STATUS.FINALIZED,
 };
-
 
 const IS = {
-  DRAFT: INVOICE_STATUS[0],
-  ISSUED: INVOICE_STATUS[1],
-  UNPAID: INVOICE_STATUS[2],
-  PARTIAL: INVOICE_STATUS[3],
-  PAID: INVOICE_STATUS[4],
-  CANCELLED: INVOICE_STATUS[5],
-  VOIDED: INVOICE_STATUS[6],
+  DRAFT: INVOICE_STATUS.DRAFT,
+  ISSUED: INVOICE_STATUS.ISSUED,
+  UNPAID: INVOICE_STATUS.UNPAID,
+  PARTIAL: INVOICE_STATUS.PARTIAL,
+  PAID: INVOICE_STATUS.PAID,
+  CANCELLED: INVOICE_STATUS.CANCELLED,
+  VOIDED: INVOICE_STATUS.VOIDED,
 };
+
 const DSC = {
-  DRAFT: DISCOUNT_STATUS[0],
-  ACTIVE: DISCOUNT_STATUS[1],
-  INACTIVE: DISCOUNT_STATUS[2],
-  FINALIZED: DISCOUNT_STATUS[3],
-  VOIDED: DISCOUNT_STATUS[4],
+  DRAFT: DISCOUNT_STATUS.DRAFT,
+  ACTIVE: DISCOUNT_STATUS.ACTIVE,
+  INACTIVE: DISCOUNT_STATUS.INACTIVE,
+  FINALIZED: DISCOUNT_STATUS.FINALIZED,
+  VOIDED: DISCOUNT_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -107,7 +106,7 @@ async function logLedger({
     invoice_id: invoice_id || null,
     amount,
     method: method || null,
-    status: LEDGER_STATUS[0], // pending
+    status: LEDGER_STATUS.PENDING, // pending
     note,
     created_by_id: user?.id,
   };
@@ -229,20 +228,25 @@ async applyPayment({
   /* ============================
      💳 CREATE PAYMENT
   ============================ */
-  const payment = await db.Payment.create(
-    {
-      invoice_id,
-      organization_id: organization_id ?? invoice.organization_id,
-      facility_id: facility_id ?? invoice.facility_id,
-      patient_id: invoice.patient_id,
-      amount,
-      method,
-      transaction_ref,
-      status: PS.PENDING,
-      created_by_id: user?.id,
-    },
-    { transaction: t, user }
-  );
+    const payment = await db.Payment.create(
+      {
+        invoice_id,
+        organization_id: organization_id ?? invoice.organization_id,
+        facility_id: facility_id ?? invoice.facility_id,
+        patient_id: invoice.patient_id,
+
+        // 🔥 FIX — ALWAYS DERIVE FROM INVOICE
+        currency: invoice.currency,
+
+        amount,
+        method,
+        transaction_ref,
+
+        status: PS.COMPLETED,
+        created_by_id: user?.id,
+      },
+      { transaction: t, user }
+    );
 
   console.log("💳 [applyPayment] Payment created:", {
     payment_id: payment.id,
@@ -312,18 +316,48 @@ async applyPayment({
   },
 
     /* ----------------- Refunds ----------------- */
+
     async applyRefund({ payment_id, amount, reason, user, t }) {
       if (!t) throw new Error("❌ Transaction (t) is required for applyRefund");
 
-      const payment = await db.Payment.findByPk(payment_id, { transaction: t });
+      /* ================= 🔒 LOCK PAYMENT ================= */
+      const payment = await db.Payment.findByPk(payment_id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
       if (!payment) throw new Error("❌ Payment not found");
 
-      if (parseFloat(amount) <= 0)
+      if (parseFloat(amount) <= 0) {
         throw new Error("❌ Refund amount must be greater than 0");
+      }
 
-      if (parseFloat(amount) > parseFloat(payment.amount))
-        throw new Error("❌ Refund amount cannot exceed original payment");
+      /* ================= 🔒 LOCK EXISTING REFUNDS ================= */
+      const existingRefunds = await db.Refund.findAll({
+        where: {
+          payment_id,
+          status: RS.PROCESSED,
+        },
+        attributes: ["amount"],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
 
+      const alreadyRefunded = existingRefunds.reduce(
+        (sum, r) => sum + Number(r.amount || 0),
+        0
+      );
+
+      const remaining =
+        Number(payment.amount || 0) - alreadyRefunded;
+
+      if (Number(amount) > remaining) {
+        throw new Error(
+          `❌ Refund exceeds remaining refundable balance (${remaining})`
+        );
+      }
+
+      /* ================= CREATE REFUND ================= */
       const refund = await db.Refund.create(
         {
           payment_id,
@@ -331,6 +365,7 @@ async applyPayment({
           organization_id: payment.organization_id,
           facility_id: payment.facility_id,
           patient_id: payment.patient_id,
+          currency: payment.currency,
           amount,
           reason,
           method: payment.method,
@@ -340,6 +375,7 @@ async applyPayment({
         { transaction: t, user }
       );
 
+      /* ================= CREATE TRANSACTION ================= */
       await db.RefundTransaction.create(
         {
           refund_id: refund.id,
@@ -360,15 +396,21 @@ async applyPayment({
 
     async approveRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
-        const refund = await db.Refund.findByPk(refund_id, { transaction: t });
+        /* ================= 🔒 LOCK REFUND ================= */
+        const refund = await db.Refund.findByPk(refund_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!refund) throw new Error("❌ Refund not found");
 
+        /* ================= STATUS GUARD ================= */
         if (refund.status !== RS.PENDING) {
           throw new Error(
             `❌ Only pending refunds can be approved (current: ${refund.status})`
           );
         }
 
+        /* ================= 🔄 LIFECYCLE ================= */
         await applyLifecycleTransition({
           entity: refund,
           action: "approved",
@@ -377,6 +419,19 @@ async applyPayment({
           t,
         });
 
+        await logLedger({
+          type: "refund",
+          entity: refund,
+          organization_id: refund.organization_id,
+          facility_id: refund.facility_id,
+          patient_id: refund.patient_id,
+          invoice_id: refund.invoice_id,
+          amount: refund.amount,
+          note: `Refund approved`,
+          user,
+          t,
+        });
+        /* ================= 🧾 TRANSACTION LOG ================= */
         await db.RefundTransaction.create(
           {
             refund_id: refund.id,
@@ -392,13 +447,20 @@ async applyPayment({
           { transaction: t, user }
         );
 
-        return { refund };
+        /* ================= 🔄 INVOICE RECALC (CRITICAL FIX) ================= */
+        const invoice = await recalcInvoice(refund.invoice_id, t);
+
+        /* ================= RETURN ================= */
+        return { refund, invoice };
       });
     },
 
     async rejectRefund(refund_id, reason, user) {
       return await sequelize.transaction(async (t) => {
-        const refund = await db.Refund.findByPk(refund_id, { transaction: t });
+        const refund = await db.Refund.findByPk(refund_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!refund) throw new Error("❌ Refund not found");
 
         if (refund.status !== RS.PENDING) {
@@ -440,7 +502,10 @@ async applyPayment({
 
     async processRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
-        const refund = await db.Refund.findByPk(refund_id, { transaction: t });
+        const refund = await db.Refund.findByPk(refund_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!refund) throw new Error("❌ Refund not found");
 
         if (refund.status !== RS.APPROVED) {
@@ -490,7 +555,10 @@ async applyPayment({
 
     async cancelRefund(refund_id, reason, user) {
       return await sequelize.transaction(async (t) => {
-        const refund = await db.Refund.findByPk(refund_id, { transaction: t });
+        const refund = await db.Refund.findByPk(refund_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!refund) throw new Error("❌ Refund not found");
 
         if (![RS.PENDING, RS.APPROVED].includes(refund.status)) {
@@ -528,11 +596,11 @@ async applyPayment({
         return { refund };
       });
     },
-
     async reverseRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
         const refund = await db.Refund.findByPk(refund_id, {
           transaction: t,
+          lock: t.LOCK.UPDATE, // 🔥 LOCK ADDED
           paranoid: false,
         });
         if (!refund) throw new Error("❌ Refund not found");
@@ -587,13 +655,19 @@ async applyPayment({
 
     async voidRefund(refund_id, reason, user) {
       return await sequelize.transaction(async (t) => {
-        const refund = await db.Refund.findByPk(refund_id, { transaction: t });
+        /* ================= 🔒 LOCK REFUND ================= */
+        const refund = await db.Refund.findByPk(refund_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!refund) throw new Error("❌ Refund not found");
 
+        /* ================= STATUS GUARD ================= */
         if ([RS.PROCESSED, RS.REVERSED].includes(refund.status)) {
           throw new Error("❌ Processed or reversed refunds cannot be voided");
         }
 
+        /* ================= 🔄 LIFECYCLE ================= */
         await applyLifecycleTransition({
           entity: refund,
           action: "voided",
@@ -603,6 +677,23 @@ async applyPayment({
           t,
         });
 
+        /* ================= 🧾 TRANSACTION LOG (ADDED FIX) ================= */
+        await db.RefundTransaction.create(
+          {
+            refund_id: refund.id,
+            organization_id: refund.organization_id,
+            facility_id: refund.facility_id,
+            patient_id: refund.patient_id,
+            invoice_id: refund.invoice_id,
+            amount: refund.amount,
+            status: RTS.VOIDED,
+            voided_by_id: user?.id,
+            voided_at: new Date(),
+          },
+          { transaction: t, user }
+        );
+
+        /* ================= 📒 LEDGER REVERSAL ================= */
         await logLedger({
           type: "reversal",
           entity: refund,
@@ -616,29 +707,35 @@ async applyPayment({
           t,
         });
 
+        /* ================= 🔄 RECALC INVOICE ================= */
         const invoice = await recalcInvoice(refund.invoice_id, t);
+
         return { refund, invoice };
       });
     },
-
     async restoreRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
+        /* ================= 🔒 LOCK (PARANOID SAFE) ================= */
         const refund = await db.Refund.findOne({
           where: { id: refund_id },
-          paranoid: false,
           transaction: t,
+          lock: t.LOCK.UPDATE,
+          paranoid: false,
         });
         if (!refund) throw new Error("❌ Refund not found");
 
+        /* ================= ♻️ RESTORE SOFT DELETE ================= */
         if (refund.deleted_at) {
           await refund.restore({ transaction: t });
         }
 
+        /* ================= DETERMINE NEXT STATUS ================= */
         const nextStatus =
           [RS.VOIDED, RS.REVERSED].includes(refund.status)
             ? RS.PENDING
             : refund.status;
 
+        /* ================= 🔄 LIFECYCLE ================= */
         await applyLifecycleTransition({
           entity: refund,
           action: "restored",
@@ -647,10 +744,27 @@ async applyPayment({
           t,
         });
 
-        return { refund };
+        /* ================= 🧾 TRANSACTION LOG (ADDED FIX) ================= */
+        await db.RefundTransaction.create(
+          {
+            refund_id: refund.id,
+            organization_id: refund.organization_id,
+            facility_id: refund.facility_id,
+            patient_id: refund.patient_id,
+            invoice_id: refund.invoice_id,
+            amount: refund.amount,
+            status: RTS.PENDING,
+            created_by_id: user?.id,
+          },
+          { transaction: t, user }
+        );
+
+        /* ================= 🔄 RECALC (IMPORTANT) ================= */
+        const invoice = await recalcInvoice(refund.invoice_id, t);
+
+        return { refund, invoice };
       });
     },
-
 
     /* ----------------- Deposits ----------------- */
     async applyDeposit({
@@ -663,6 +777,7 @@ async applyPayment({
       notes,
       reason,
       invoice_id,
+      currency, // 🔥 ADDED (allow standalone deposits)
       user,
       t,
     }) {
@@ -673,13 +788,32 @@ async applyPayment({
       let appliedAmt = 0;
       let remaining = parseFloat(amount) || 0;
 
+      // 🔥 LOAD INVOICE (OPTIONAL — MASTER SAFE)
+      let invoice = null;
+
       if (invoice_id) {
-        const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
+        invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
         if (!invoice) throw new Error("❌ Invoice not found");
 
         const invoiceBalance = parseFloat(invoice.balance) || 0;
         appliedAmt = Math.min(invoiceBalance, remaining);
         remaining -= appliedAmt;
+      }
+
+      /* ============================================================
+        🔥 RESOLVE CURRENCY (FIXED — SUPPORT BOTH CASES)
+      ============================================================ */
+      let resolvedCurrency;
+
+      if (invoice?.currency) {
+        // ✅ Case 1: Deposit tied to invoice
+        resolvedCurrency = invoice.currency;
+      } else {
+        // ✅ Case 2: Standalone deposit
+        if (!currency) {
+          throw new Error("❌ Currency is required when no invoice is provided");
+        }
+        resolvedCurrency = currency;
       }
 
       const deposit = await db.Deposit.create(
@@ -688,18 +822,24 @@ async applyPayment({
           organization_id,
           facility_id,
           applied_invoice_id: invoice_id || null,
+
+          currency: resolvedCurrency, // ✅ ALWAYS SET
+
           amount,
           method,
           transaction_ref,
           notes,
           reason,
+
           status: invoice_id
             ? remaining <= 0
               ? DS.APPLIED
               : DS.CLEARED
             : DS.PENDING,
+
           applied_amount: appliedAmt.toFixed(2),
           remaining_balance: remaining.toFixed(2),
+
           created_by_id: user?.id,
         },
         { transaction: t, user }
@@ -728,7 +868,6 @@ async applyPayment({
 
       return { deposit, invoice: updatedInvoice };
     },
-
     /* ----------------- Finalize Deposit ----------------- */
     async finalizeDeposit({ deposit_id, invoice_id = null, user, t }) {
       const useTx = t || await sequelize.transaction();
@@ -1257,39 +1396,73 @@ async applyPayment({
     /* ----------------- reverseTransaction (waiver only) ----------------- */
     async reverseTransaction({ type, id, user, reason = null }) {
       return await sequelize.transaction(async (t) => {
-        if (type !== "waiver") {
-          throw new Error("❌ Unsupported reversal type");
+
+        /* =========================
+          🔁 WAIVER REVERSAL
+        ========================= */
+        if (type === "waiver") {
+          const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
+          if (!waiver) throw new Error("❌ Waiver not found");
+
+          const amount = Math.abs(parseFloat(waiver.applied_total) || 0);
+
+          await waiver.update(
+            {
+              status: WS.VOIDED,
+              applied_total: 0,
+              updated_by_id: user?.id,
+            },
+            { transaction: t, user }
+          );
+
+          await logLedger({
+            type: "reversal",
+            entity: waiver,
+            organization_id: waiver.organization_id,
+            facility_id: waiver.facility_id,
+            patient_id: waiver.patient_id,
+            invoice_id: waiver.invoice_id,
+            amount,
+            note: `Reversal of waiver${reason ? ` · ${reason}` : ""}`,
+            user,
+            t,
+          });
+
+          await recalcInvoice(waiver.invoice_id, t);
+          return { success: true };
         }
 
-        const waiver = await db.DiscountWaiver.findByPk(id, { transaction: t });
-        if (!waiver) throw new Error("❌ Waiver not found");
+        /* =========================
+          🔁 DEPOSIT REVERSAL (FIX)
+        ========================= */
+        if (type === "deposit") {
+          const deposit = await db.Deposit.findByPk(id, { transaction: t });
+          if (!deposit) throw new Error("❌ Deposit not found");
 
-        const amount = Math.abs(parseFloat(waiver.applied_total) || 0);
+          await logLedger({
+            type: "reversal",
+            entity: deposit,
+            organization_id: deposit.organization_id,
+            facility_id: deposit.facility_id,
+            patient_id: deposit.patient_id,
+            invoice_id: deposit.applied_invoice_id,
+            amount: -Math.abs(deposit.amount),
+            note: `Deposit reversal${reason ? ` · ${reason}` : ""}`,
+            user,
+            t,
+          });
+            await applyLifecycleTransition({
+              entity: deposit,
+              action: "reversed",
+              nextStatus: DS.REVERSED,
+              user,
+              t,
+            });
 
-        await waiver.update(
-          {
-            status: WS.VOIDED,
-            applied_total: 0,
-            updated_by_id: user?.id,
-          },
-          { transaction: t, user }
-        );
+          return { success: true };
+        }
 
-        await logLedger({
-          type: "reversal",
-          entity: waiver,
-          organization_id: waiver.organization_id,
-          facility_id: waiver.facility_id,
-          patient_id: waiver.patient_id,
-          invoice_id: waiver.invoice_id,
-          amount,
-          note: `Reversal of waiver${reason ? ` · ${reason}` : ""}`,
-          user,
-          t,
-        });
-
-        await recalcInvoice(waiver.invoice_id, t);
-        return { success: true };
+        throw new Error("❌ Unsupported reversal type");
       });
     },
 

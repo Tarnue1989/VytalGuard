@@ -16,7 +16,7 @@ import {
   autoPagePermissionKey,
   initLogoutWatcher,
 } from "../../utils/index.js";
-
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 import {
   enableLiveValidation,
   clearFormErrors,
@@ -171,7 +171,7 @@ export async function setupDiscountFormSubmission({ form }) {
             filtered.forEach((item) => {
               item.displayLabel = `${item.description || "Item"} · Qty ${
                 item.quantity || 1
-              } · $${item.net_amount || item.total_price || 0}`;
+              } · ${getCurrencySymbol(record.currency)} ${item.net_amount || item.total_price || 0}`;
             });
             setupSelectOptions(
               invoiceItemSelect,

@@ -60,7 +60,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(PRESCRIPTION_STATUS)),
         allowNull: false,
-        defaultValue: PRESCRIPTION_STATUS.DRAFT, // ✅ safer than using array[0]
+        defaultValue: PRESCRIPTION_STATUS.DRAFT,
       },
 
       // Lifecycle timestamps

@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import {
   sequelize,
   BillableItem,
+  BillableItemPrice,
   BillableItemPriceHistory,
   User,
   Facility,
@@ -99,7 +100,7 @@ function buildBillableItemSchema(user, mode = "create") {
 
 
 /* ============================================================
-   📌 CREATE BILLABLE ITEM(S) (FINAL — FIXED + SAFE)
+   📌 CREATE BILLABLE ITEM(S) (FINAL — WITH PRICING FIX)
 ============================================================ */
 export const createBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -199,13 +200,30 @@ export const createBillableItems = async (req, res) => {
           ...value,
           organization_id: orgId,
           facility_id: facilityId,
-          status: BILLABLE_ITEM_STATUS[0],
+          status: BILLABLE_ITEM_STATUS.ACTIVE,
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
       );
 
       created.push(item);
+
+      /* ============================================================
+         🔥 PRICE TABLE (CRITICAL — THIS FIXES BILLING)
+      ============================================================ */
+      await BillableItemPrice.create(
+        {
+          organization_id: orgId,
+          facility_id: facilityId,
+          billable_item_id: item.id,
+          payer_type: "cash",
+          currency: item.currency,
+          price: item.price,
+          is_default: true,
+          created_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
 
       /* ================= PRICE HISTORY ================= */
       await BillableItemPriceHistory.create(
@@ -222,8 +240,6 @@ export const createBillableItems = async (req, res) => {
         },
         { transaction: t }
       );
-
-      // ❌ REMOVED AutoBillingRule (handled by model hook)
     }
 
     await t.commit();
@@ -263,6 +279,9 @@ export const createBillableItems = async (req, res) => {
    - Transaction atomic
    - 🔒 DB-SAFE org/fac preservation
 ============================================================ */
+/* ============================================================
+   ✏️ UPDATE BILLABLE ITEM (FINAL — WITH PRICE SYNC)
+============================================================ */
 export const updateBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -276,7 +295,7 @@ export const updateBillableItem = async (req, res) => {
 
     const { id } = req.params;
 
-    /* ================= DEBUG: INCOMING ================= */
+    /* ================= DEBUG ================= */
     debug.log("update → incoming body", req.body);
 
     /* ================= VALIDATION ================= */
@@ -293,7 +312,7 @@ export const updateBillableItem = async (req, res) => {
 
     debug.log("update → validated value", value);
 
-    /* ================= LOAD RECORD ================= */
+    /* ================= LOAD ================= */
     const where = { id };
 
     if (!isSuperAdmin(req.user)) {
@@ -304,6 +323,7 @@ export const updateBillableItem = async (req, res) => {
     }
 
     const item = await BillableItem.findOne({ where, transaction: t });
+
     if (!item) {
       await t.rollback();
       return error(res, "❌ Billable Item not found", null, 404);
@@ -311,15 +331,11 @@ export const updateBillableItem = async (req, res) => {
 
     debug.log("update → before", item.toJSON());
 
-    /* ================= SNAPSHOT (PRICE HISTORY) ================= */
+    /* ================= SNAPSHOT ================= */
     const oldPrice = item.price;
     const oldCurrency = item.currency;
 
-    /* ============================================================
-       🔒 ORG / FACILITY (DB IS SOURCE OF TRUTH)
-       - NEVER overwrite with null
-       - Update ≠ Create
-    ============================================================ */
+    /* ================= RESOLVE TENANT ================= */
     const resolvedOrgId =
       value.organization_id ?? item.organization_id;
 
@@ -336,12 +352,7 @@ export const updateBillableItem = async (req, res) => {
       );
     }
 
-    debug.log("update → resolved scope", {
-      organization_id: resolvedOrgId,
-      facility_id: resolvedFacilityId,
-    });
-
-    /* ================= UPDATE ================= */
+    /* ================= UPDATE ITEM ================= */
     await item.update(
       {
         ...value,
@@ -352,7 +363,32 @@ export const updateBillableItem = async (req, res) => {
       { transaction: t }
     );
 
-    /* ================= PRICE HISTORY (ONLY IF CHANGED) ================= */
+    /* ============================================================
+       🔥 PRICE TABLE SYNC (CRITICAL FIX)
+    ============================================================ */
+    if (
+      value.price !== undefined &&
+      (value.price !== oldPrice || value.currency !== oldCurrency)
+    ) {
+      await BillableItemPrice.update(
+        {
+          price: item.price,
+          currency: item.currency,
+          updated_by_id: req.user?.id || null,
+        },
+        {
+          where: {
+            billable_item_id: item.id,
+            payer_type: "cash",
+            organization_id: resolvedOrgId,
+            facility_id: resolvedFacilityId,
+          },
+          transaction: t,
+        }
+      );
+    }
+
+    /* ================= PRICE HISTORY ================= */
     if (
       value.price !== undefined &&
       (value.price !== oldPrice || value.currency !== oldCurrency)
@@ -377,7 +413,7 @@ export const updateBillableItem = async (req, res) => {
 
     await t.commit();
 
-    /* ================= RELOAD FULL ================= */
+    /* ================= RELOAD ================= */
     const full = await BillableItem.findOne({
       where: { id },
       include: BILLABLE_ITEM_INCLUDES,
@@ -392,13 +428,13 @@ export const updateBillableItem = async (req, res) => {
     });
 
     return success(res, "✅ Billable Item updated", full);
+
   } catch (err) {
     await t.rollback();
     debug.error("update → FAILED", err);
     return error(res, "❌ Failed to update billable item", err);
   }
 };
-
 
 /* ============================================================
    📌 GET ALL BILLABLE ITEMS (MASTER PARITY + GLOBAL SUMMARY)
@@ -466,7 +502,7 @@ export const getAllBillableItems = async (req, res) => {
     /* ---------------- STATUS FILTER ---------------- */
     if (
       req.query.status &&
-      BILLABLE_ITEM_STATUS.includes(req.query.status)
+      Object.values(BILLABLE_ITEM_STATUS).includes(req.query.status)
     ) {
       baseWhere[Op.and].push({
         status: req.query.status,
@@ -575,7 +611,7 @@ export const getAllBillableItems = async (req, res) => {
     ======================================================== */
     const summary = { total: count };
 
-    BILLABLE_ITEM_STATUS.forEach((s) => {
+    Object.values(BILLABLE_ITEM_STATUS).forEach((s) => {
       const row = statusCountsRaw.find((r) => r.status === s);
       summary[s] = row ? Number(row.count) : 0;
     });
@@ -733,7 +769,7 @@ export const getAllBillableItemsLite = async (req, res) => {
        🧱 BASE WHERE
     ============================================================ */
     const where = {
-      status: BILLABLE_ITEM_STATUS[0], // ACTIVE ONLY
+      status: BILLABLE_ITEM_STATUS.ACTIVE, // ACTIVE ONLY
       [Op.and]: [],
     };
 
@@ -1041,7 +1077,7 @@ export const toggleBillableItemStatus = async (req, res) => {
     }
 
     /* ================= STATUS TOGGLE ================= */
-    const [ACTIVE, INACTIVE] = BILLABLE_ITEM_STATUS;
+    const { ACTIVE, INACTIVE } = BILLABLE_ITEM_STATUS;
 
     const previousStatus = item.status;
     const newStatus =

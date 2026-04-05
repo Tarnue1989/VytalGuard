@@ -40,9 +40,8 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(DEPARTMENT_STOCK_STATUS)),
         allowNull: false,
-        defaultValue: Object.values(DEPARTMENT_STOCK_STATUS)[0], // active
+        defaultValue: DEPARTMENT_STOCK_STATUS.ACTIVE,
       },
-
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

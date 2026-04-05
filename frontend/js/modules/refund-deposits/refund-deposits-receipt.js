@@ -1,14 +1,15 @@
 // 📁 frontend/js/modules/refundDeposits/refundDeposit-receipt.js
 // ============================================================================
-// 🧾 Deposit Refund Receipt (ENTERPRISE MASTER PARITY — FINAL CLEAN)
-// 🔹 Matches deposit + invoice EXACTLY
-// 🔹 Audit-first printedBy (NO redundancy)
-// 🔹 No legacy fallbacks
+// 🧾 Deposit Refund Receipt (ENTERPRISE MASTER PARITY — FINAL FIXED)
+// 🔹 FULL parity with refund-receipt.js + payment-receipt.js
+// 🔹 Currency-safe (NO HARDCODED $)
+// 🔹 Audit-first printedBy
 // 🔹 Clean + deterministic output
 // 🔹 ADDED refund_deposit_number (NO UUID)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    📅 Date Formatter (MASTER)
@@ -49,29 +50,28 @@ function getPrintedBy(refund) {
 }
 
 /* ============================================================
-   🧾 BUILD RECEIPT HTML (MASTER CLEAN)
+   🧾 BUILD RECEIPT HTML (CURRENCY SAFE)
 ============================================================ */
 function buildRefundDepositReceiptHTML(refund) {
   const printedBy = getPrintedBy(refund);
   const printedAt = new Date().toLocaleString();
 
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+  const money = (v) =>
+    `${getCurrencySymbol(refund.currency)} ${Number(v || 0).toFixed(2)}`;
 
-  // ✅ ONLY use refund_deposit_number (NO UUID fallback)
   const refundRef = refund.refund_deposit_number || "—";
 
   const depositRef =
     refund.deposit?.transaction_ref ||
     refund.deposit?.deposit_ref ||
-    refund.deposit_id ||
     "—";
 
   const openingBalance = Number(refund.deposit?.balance_before ?? 0);
   const refundAmount = Number(refund.refund_amount ?? 0);
   const closingBalance = Number(
     refund.deposit?.balance_after ??
-    refund.deposit?.remaining_balance ??
-    0
+      refund.deposit?.remaining_balance ??
+      0
   );
 
   return `

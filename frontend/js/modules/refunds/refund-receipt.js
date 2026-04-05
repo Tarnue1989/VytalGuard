@@ -1,7 +1,8 @@
 // 📁 frontend/js/modules/refunds/refund-receipt.js
 // ============================================================================
 // 🧾 Refund Receipt (INVOICE-STYLE PARITY — FINAL)
-// 🔹 SAME pattern as deposit-receipt.js (printDocument)
+// 🔹 SAME pattern as payment-receipt.js
+// 🔹 Uses getCurrencySymbol (NO HARDCODED $)
 // 🔹 SAME printedBy logic
 // 🔹 Multi-tenant safe
 // 🔹 Clean enterprise output
@@ -9,6 +10,7 @@
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js"; // ✅ ADDED
 
 /* ============================================================
    📅 Date Formatter
@@ -51,9 +53,10 @@ function buildRefundReceiptHTML(refund) {
   const printedBy = getPrintedBy(refund);
   const printedAt = new Date().toLocaleString();
 
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+  // ✅ MATCH PAYMENT MASTER
+  const money = (v) =>
+    `${getCurrencySymbol(refund.currency)} ${Number(v || 0).toFixed(2)}`;
 
-  // ✅ ONLY use refund_number (NO UUID fallback)
   const refundRef = refund.refund_number || "—";
 
   const linkedInvoice =
@@ -147,7 +150,7 @@ function buildRefundReceiptHTML(refund) {
 }
 
 /* ============================================================
-   🖨️ PRINT (MATCHES DEPOSIT EXACTLY)
+   🖨️ PRINT
 ============================================================ */
 export function printRefundReceipt(refund) {
   const html = buildRefundReceiptHTML(refund);

@@ -28,12 +28,11 @@ export default (sequelize) => {
       unit: { type: DataTypes.STRING },
       quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
       reorder_level: { type: DataTypes.INTEGER, defaultValue: 0 },
-
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...LAB_SUPPLY_STATUS),
+        type: DataTypes.ENUM(...Object.values(LAB_SUPPLY_STATUS)),
         allowNull: false,
-        defaultValue: LAB_SUPPLY_STATUS[0], // "active"
+        defaultValue: LAB_SUPPLY_STATUS.ACTIVE,
       },
 
       // Audit

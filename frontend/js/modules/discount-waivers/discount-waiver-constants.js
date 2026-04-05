@@ -1,9 +1,10 @@
-// 📦 discount-waiver-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity)
+// 📦 discount-waiver-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity FINAL)
 // ============================================================================
-// 🔹 Pattern Source: deposit-constants.js / discount-constants.js
-// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
-// 🔹 100% ID retention (safe for existing HTML + JS modules)
-// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
+// 🔹 Fully aligned with DiscountWaiver model + controller
+// 🔹 Currency included (multi-currency safe)
+// 🔹 applied_total matches backend
+// 🔹 Clean RBAC + UI-safe fields
+// 🔹 100% Enterprise + MASTER parity
 // ============================================================================
 
 /* ============================================================
@@ -14,6 +15,7 @@ export const FIELD_LABELS_DISCOUNT_WAIVER = {
   facility: "Facility",
 
   invoice: "Invoice",
+  currency: "Currency",
   patient: "Patient",
 
   type: "Waiver Type",
@@ -48,7 +50,9 @@ export const FIELD_LABELS_DISCOUNT_WAIVER = {
 export const FIELD_ORDER_DISCOUNT_WAIVER = [
   "organization",
   "facility",
+
   "invoice",
+  "currency",
   "patient",
 
   "type",
@@ -56,6 +60,7 @@ export const FIELD_ORDER_DISCOUNT_WAIVER = [
   "percentage",
   "amount",
   "applied_total",
+
   "status",
 
   "approvedBy",
@@ -82,83 +87,105 @@ export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
   superadmin: [
     "organization",
     "facility",
+
     "invoice",
+    "currency",
     "patient",
+
     "type",
     "reason",
     "percentage",
     "amount",
     "applied_total",
+
     "status",
+
     "approvedBy",
     "approved_at",
     "rejectedBy",
     "rejected_at",
     "voidedBy",
     "voided_at",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "actions",
   ],
 
   admin: [
     "organization",
     "facility",
+
     "invoice",
+    "currency",
     "patient",
+
     "type",
     "reason",
     "percentage",
     "amount",
     "applied_total",
+
     "status",
+
     "approvedBy",
     "approved_at",
     "rejectedBy",
     "rejected_at",
     "voidedBy",
     "voided_at",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "actions",
   ],
 
   manager: [
     "facility",
+
     "invoice",
+    "currency",
     "patient",
+
     "type",
     "reason",
     "percentage",
     "amount",
     "applied_total",
+
     "status",
+
     "approvedBy",
     "approved_at",
     "rejectedBy",
     "rejected_at",
     "voidedBy",
     "voided_at",
+
     "actions",
   ],
 
   staff: [
     "invoice",
     "patient",
+
     "type",
-    "reason",
     "percentage",
     "amount",
     "applied_total",
+
     "status",
+
     "actions",
   ],
 };
@@ -168,9 +195,12 @@ export const FIELD_DEFAULTS_DISCOUNT_WAIVER = {
 ============================================================ */
 export const FIELD_GROUPS_DISCOUNT_WAIVER = {
   org_scope: ["organization", "facility"],
+
   waiver_info: [
     "invoice",
+    "currency",
     "patient",
+
     "type",
     "reason",
     "percentage",
@@ -178,6 +208,7 @@ export const FIELD_GROUPS_DISCOUNT_WAIVER = {
     "applied_total",
     "status",
   ],
+
   approval_flow: [
     "approvedBy",
     "approved_at",
@@ -186,6 +217,7 @@ export const FIELD_GROUPS_DISCOUNT_WAIVER = {
     "voidedBy",
     "voided_at",
   ],
+
   audit_trail: [
     "createdBy",
     "created_at",
@@ -194,6 +226,7 @@ export const FIELD_GROUPS_DISCOUNT_WAIVER = {
     "deletedBy",
     "deleted_at",
   ],
+
   system: ["actions"],
 };
 

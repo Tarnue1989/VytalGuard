@@ -41,22 +41,13 @@ const MODULE_KEY = "appointments";
 /* ============================================================
    🔖 STATUS MAP (MASTER / DELIVERY PARITY)
 ============================================================ */
-const AS = {
-  SCHEDULED: APPOINTMENT_STATUS[0],
-  IN_PROGRESS: APPOINTMENT_STATUS[1],
-  COMPLETED: APPOINTMENT_STATUS[2],
-  VERIFIED: APPOINTMENT_STATUS[3],
-  CANCELLED: APPOINTMENT_STATUS[4],
-  NO_SHOW: APPOINTMENT_STATUS[5],
-  VOIDED: APPOINTMENT_STATUS[6],
-};
+const AS = APPOINTMENT_STATUS;
 
 const BLOCKING_CONSULTATION_STATUSES = [
-  CONSULTATION_STATUS[1], // in_progress
-  CONSULTATION_STATUS[2], // completed
-  CONSULTATION_STATUS[3], // verified
+  CONSULTATION_STATUS.IN_PROGRESS,
+  CONSULTATION_STATUS.COMPLETED,
+  CONSULTATION_STATUS.VERIFIED,
 ];
-
 /* ============================================================
    🆔 APPOINTMENT CODE GENERATOR
 ============================================================ */
@@ -360,7 +351,7 @@ export const completeAppointment = async (req, res) => {
       transaction: t,
     });
 
-    if (!cons || cons.status !== CONSULTATION_STATUS[2]) {
+    if (!cons || cons.status !== CONSULTATION_STATUS.COMPLETED) {
       await t.rollback();
       return error(
         res,

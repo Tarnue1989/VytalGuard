@@ -43,6 +43,7 @@ import DepositApplicationModel from "./DepositApplication.js";
 import RefundTransactionModel from "./RefundTransaction.js";
 import RefundDepositTransactionModel from "./RefundDepositTransaction.js";   // ✅ NEW
 import RefundDepositModel from "./RefundDeposit.js";
+import BillableItemPriceModel from "./BillableItemPrice.js";
 
 // 📦 Orders (NEW)
 import OrderModel from "./Order.js";
@@ -93,6 +94,7 @@ import SurgeryModel from "./Surgery.js";
 import PatientChartNoteModel from "./patientChartNote.js";
 import PatientChartViewLogModel from "./patientChartViewLog.js";
 import PatientChartCacheModel from "./patientChartCache.js";
+import PatientInsuranceModel from "./PatientInsurance.js";
 
 // 📦 Bed / Ward / Room
 import BedModel from "./Bed.js";
@@ -138,6 +140,7 @@ const models = {
   Deposit: DepositModel(sequelize),
   DepositApplication: DepositApplicationModel(sequelize), 
   BillableItem: BillableItemModel(sequelize),
+  BillableItemPrice: BillableItemPriceModel(sequelize),
   BillableItemPriceHistory: BillableItemPriceHistoryModel(sequelize),
   AutoBillingRule: AutoBillingRuleModel(sequelize),
   BillingTrigger: BillingTriggerModel(sequelize),
@@ -154,6 +157,8 @@ const models = {
   RefundTransaction: RefundTransactionModel(sequelize),
   RefundDeposit: RefundDepositModel(sequelize),
   RefundDepositTransaction: RefundDepositTransactionModel(sequelize),
+  PatientInsurance: PatientInsuranceModel(sequelize),
+
   // 🔹 Orders (NEW)
   Order: OrderModel(sequelize),
   OrderItem: OrderItemModel(sequelize),
@@ -231,7 +236,7 @@ export const {
   BillableItem, BillableItemPriceHistory, AutoBillingRule, BillingTrigger, Discount,
   DiscountWaiver, DiscountPolicy, Tax, TaxPolicy, CurrencyRate,
   InsuranceProvider, InsuranceClaim, InsurancePreAuthorization,
-  FinancialLedger,
+  FinancialLedger, BillableItemPrice,
   Order,
   OrderItem,
   // Inventory
@@ -245,7 +250,7 @@ export const {
   UltrasoundRecord, DeliveryRecord, MaternityVisit, NewbornRecord,
   Message, MessageAttachment, Recommendation, Prescription,
   PrescriptionItem, PharmacyTransaction, PatientEmployeeLink,
-  LabRequest, LabResult, LabRequestItem, EKGRecord, Surgery,
+  LabRequest, LabResult, LabRequestItem, EKGRecord, Surgery, PatientInsurance,
 
   // Patient Chart
   PatientChartNote, PatientChartViewLog, PatientChartCache,

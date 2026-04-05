@@ -48,9 +48,9 @@ export default (sequelize) => {
 
       // 🏷️ Clinical Status
       status: {
-        type: DataTypes.ENUM(...MEDICAL_RECORD_STATUS),
+        type: DataTypes.ENUM(...Object.values(MEDICAL_RECORD_STATUS)),
         allowNull: false,
-        defaultValue: MEDICAL_RECORD_STATUS[0], // "draft"
+        defaultValue: MEDICAL_RECORD_STATUS.DRAFT,
       },
       is_emergency: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 

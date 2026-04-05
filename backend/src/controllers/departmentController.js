@@ -85,7 +85,7 @@ function buildDepartmentSchema(userRole, mode = "create") {
   };
 
   if (mode === "update") {
-    base.status = Joi.string().valid(...DEPARTMENT_STATUS).optional();
+    base.status = Joi.string().valid(...Object.values(DEPARTMENT_STATUS)).optional();
     Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
   }
 
@@ -208,7 +208,7 @@ export const createDepartment = async (req, res) => {
         ...value,
         organization_id: orgId,
         facility_id: facilityId,
-        status: value.status || DEPARTMENT_STATUS[0],
+        status: value.status || DEPARTMENT_STATUS.ACTIVE,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -396,7 +396,7 @@ export const toggleDepartmentStatus = async (req, res) => {
     const department = await Department.findOne({ where });
     if (!department) return error(res, "❌ Department not found", null, 404);
 
-    const [ACTIVE, INACTIVE] = DEPARTMENT_STATUS;
+    const { ACTIVE, INACTIVE } = DEPARTMENT_STATUS;
     const newStatus = department.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await department.update({
@@ -440,7 +440,7 @@ export const getAllDepartmentsLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      status: DEPARTMENT_STATUS[0],
+      status: DEPARTMENT_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
@@ -731,7 +731,7 @@ export const getAllDepartments = async (req, res) => {
     ======================================================== */
     if (
       req.query.status &&
-      DEPARTMENT_STATUS.includes(req.query.status)
+      Object.values(DEPARTMENT_STATUS).includes(req.query.status)
     ) {
       options.where[Op.and].push({
         status: req.query.status,
@@ -754,7 +754,7 @@ export const getAllDepartments = async (req, res) => {
     ======================================================== */
     const summary = { total: count };
 
-    DEPARTMENT_STATUS.forEach((status) => {
+    Object.values(DEPARTMENT_STATUS).forEach((status) => {
       summary[status] = rows.filter((r) => r.status === status).length;
     });
 

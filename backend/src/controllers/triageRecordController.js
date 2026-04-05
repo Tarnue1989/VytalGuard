@@ -47,12 +47,12 @@ const MODULE_KEY = "triage_record";
    🔖 STATUS MAP (ENUM-DRIVEN)
 ============================================================ */
 const TS = {
-  OPEN: TRIAGE_STATUS[0],
-  IN_PROGRESS: TRIAGE_STATUS[1],
-  COMPLETED: TRIAGE_STATUS[2],
-  VERIFIED: TRIAGE_STATUS[3],
-  CANCELLED: TRIAGE_STATUS[4],
-  VOIDED: TRIAGE_STATUS[5],
+  OPEN: TRIAGE_STATUS.OPEN,
+  IN_PROGRESS: TRIAGE_STATUS.IN_PROGRESS,
+  COMPLETED: TRIAGE_STATUS.COMPLETED,
+  VERIFIED: TRIAGE_STATUS.VERIFIED,
+  CANCELLED: TRIAGE_STATUS.CANCELLED,
+  VOIDED: TRIAGE_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -171,7 +171,7 @@ export const createTriageRecord = async (req, res) => {
           patient_id: value.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          log_status: { [Op.in]: [REGISTRATION_LOG_STATUS[1], REGISTRATION_LOG_STATUS[2]] },
+          log_status: { [Op.in]: [REGISTRATION_LOG_STATUS.PENDING, REGISTRATION_LOG_STATUS.ACTIVE] },
         },
         order: [["created_at", "DESC"]],
         transaction: t,
@@ -266,7 +266,7 @@ export const updateTriageRecord = async (req, res) => {
           patient_id: value.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          log_status: { [Op.in]: [REGISTRATION_LOG_STATUS[1], REGISTRATION_LOG_STATUS[2]] },
+          log_status: { [Op.in]: [REGISTRATION_LOG_STATUS.PENDING, REGISTRATION_LOG_STATUS.ACTIVE] },
         },
         order: [["created_at", "DESC"]],
         transaction: t,
@@ -929,7 +929,7 @@ export const getAllTriageRecords = async (req, res) => {
        📊 SUMMARY (STATUS-BASED, PAGE-AWARE)
     ======================================================== */
     const summary = { total: count };
-    TRIAGE_STATUS.forEach((status) => {
+    Object.values(TRIAGE_STATUS).forEach((status) => {
       summary[status] = rows.filter(
         (r) => r.triage_status === status
       ).length;

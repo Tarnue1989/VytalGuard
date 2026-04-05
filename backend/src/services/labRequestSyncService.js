@@ -3,14 +3,17 @@ import { LabRequest, LabRequestItem, LabResult, User } from "../models/index.js"
 import { LAB_REQUEST_STATUS } from "../constants/enums.js";
 import { auditService } from "./auditService.js";
 
+/* ============================================================
+   🔖 ENUM MAP (OBJECT-SAFE — FIXED)
+============================================================ */
 const LRS = {
-  DRAFT: LAB_REQUEST_STATUS[0],
-  PENDING: LAB_REQUEST_STATUS[1],
-  IN_PROGRESS: LAB_REQUEST_STATUS[2],
-  COMPLETED: LAB_REQUEST_STATUS[3],
-  VERIFIED: LAB_REQUEST_STATUS[4],
-  CANCELLED: LAB_REQUEST_STATUS[5],
-  VOIDED: LAB_REQUEST_STATUS[6],
+  DRAFT: LAB_REQUEST_STATUS.DRAFT,
+  PENDING: LAB_REQUEST_STATUS.PENDING,
+  IN_PROGRESS: LAB_REQUEST_STATUS.IN_PROGRESS,
+  COMPLETED: LAB_REQUEST_STATUS.COMPLETED,
+  VERIFIED: LAB_REQUEST_STATUS.VERIFIED,
+  CANCELLED: LAB_REQUEST_STATUS.CANCELLED,
+  VOIDED: LAB_REQUEST_STATUS.VOIDED,
 };
 
 /**
@@ -36,42 +39,45 @@ export async function syncLabRequestStatus(labRequestId, transaction, user = nul
 
     if (!item.labResults?.length) {
       // No results yet → item is pending
-      item.status = "pending";
+      item.status = LRS.PENDING;
       allVerified = false;
       allCompleted = false;
       anyPending = true;
     } else {
-      const statuses = item.labResults.map(r => r.status);
+      const statuses = item.labResults.map((r) => r.status);
 
-      if (statuses.includes("verified")) {
-        item.status = "verified";
+      if (statuses.includes(LAB_REQUEST_STATUS.VERIFIED) || statuses.includes("verified")) {
+        item.status = LRS.VERIFIED;
       } else if (statuses.includes("reviewed")) {
         // 👈 treat reviewed like completed
-        item.status = "completed";
+        item.status = LRS.COMPLETED;
         allVerified = false;
-      } else if (statuses.includes("completed")) {
-        item.status = "completed";
+      } else if (statuses.includes(LAB_REQUEST_STATUS.COMPLETED) || statuses.includes("completed")) {
+        item.status = LRS.COMPLETED;
         allVerified = false;
       } else if (
+        statuses.includes(LAB_REQUEST_STATUS.IN_PROGRESS) ||
         statuses.includes("in_progress") ||
+        statuses.includes(LAB_REQUEST_STATUS.DRAFT) ||
         statuses.includes("draft") ||
+        statuses.includes(LAB_REQUEST_STATUS.PENDING) ||
         statuses.includes("pending")
       ) {
         // ✅ Treat draft/pending results as "in_progress"
-        item.status = "in_progress";
+        item.status = LRS.IN_PROGRESS;
         allVerified = false;
         allCompleted = false;
         anyInProgress = true;
-      } else if (statuses.includes("cancelled")) {
-        item.status = "cancelled";
+      } else if (statuses.includes(LAB_REQUEST_STATUS.CANCELLED) || statuses.includes("cancelled")) {
+        item.status = LRS.CANCELLED;
         allVerified = false;
         allCompleted = false;
-      } else if (statuses.includes("voided")) {
-        item.status = "voided";
+      } else if (statuses.includes(LAB_REQUEST_STATUS.VOIDED) || statuses.includes("voided")) {
+        item.status = LRS.VOIDED;
         allVerified = false;
         allCompleted = false;
       } else {
-        item.status = "pending"; // fallback
+        item.status = LRS.PENDING; // fallback
         allVerified = false;
         allCompleted = false;
         anyPending = true;
@@ -92,10 +98,10 @@ export async function syncLabRequestStatus(labRequestId, transaction, user = nul
     await item.save({ transaction });
 
     // Update parent tracking flags
-    if (!["cancelled", "voided"].includes(item.status)) {
+    if (![LRS.CANCELLED, LRS.VOIDED].includes(item.status)) {
       allCancelledOrVoided = false;
     }
-    if (item.status !== "completed" && item.status !== "verified") {
+    if (item.status !== LRS.COMPLETED && item.status !== LRS.VERIFIED) {
       allCompleted = false;
     }
   }

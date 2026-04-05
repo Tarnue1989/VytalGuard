@@ -150,7 +150,17 @@
                         </select>
                       </div>
                     </div>
-
+                    <!-- PAYER TYPE -->
+                    <div class="col-md-2">
+                      <div class="field-wrapper">
+                        <label for="filterPayerType" class="form-label">Payer</label>
+                        <select id="filterPayerType" class="form-select">
+                          <option value="">All</option>
+                          <option value="cash">Cash</option>
+                          <option value="insurance">Insurance</option>
+                        </select>
+                      </div>
+                    </div>
                     <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
                     <div class="col-md-3">
                       <div class="field-wrapper">
@@ -291,5 +301,9 @@
 <script type="module" src="/js/modules/registration-log/registration-log-filter-main.js"></script>
 
 <script type="module" src="/js/utils/navigation.js"></script>
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

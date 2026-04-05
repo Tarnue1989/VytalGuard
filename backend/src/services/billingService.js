@@ -5,25 +5,43 @@ import {
   AutoBillingRule,
   BillableItem,
   BillableItemPriceHistory,
+  InsuranceProvider,
+  InsuranceClaim,
   Invoice,
   InvoiceItem,
   LabRequestItem,
 } from "../models/index.js";
-
+import { INVOICE_STATUS } from "../constants/enums.js";
 import { logger } from "../utils/logger.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { getTaxRate } from "../constants/tax.js";
 import { shouldTriggerBillingDB } from "./billingTriggerService.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 import { resolveFeatureModuleId } from "../utils/resolveFeatureModule.js";
-
+import { getBillableItemPrice } from "../utils/getBillableItemPrice.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
+import { insuranceService } from "./insuranceService.js";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
 const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("billingService", DEBUG_OVERRIDE);
+
+async function updateInvoiceStatus(invoiceId, transaction) {
+  const invoice = await Invoice.findByPk(invoiceId, { transaction });
+  if (!invoice) return;
+
+  if (Number(invoice.balance) === 0) {
+    invoice.status = INVOICE_STATUS.PAID;
+  } else if (Number(invoice.total_paid) > 0) {
+    invoice.status = INVOICE_STATUS.PARTIAL;
+  } else {
+    invoice.status = INVOICE_STATUS.UNPAID;
+  }
+
+  await invoice.save({ transaction });
+}
 
 /**
  * billingService – Enterprise-grade auto billing engine
@@ -55,7 +73,6 @@ export const billingService = {
       module_key,
     });
 
-    /* ================= PATIENT CHECK ================= */
     if (!entity?.patient_id) {
       debug.warn("triggerAutoBilling → NO PATIENT_ID", entity);
       return null;
@@ -66,7 +83,6 @@ export const billingService = {
       body: entity,
     });
 
-    /* ================= TRIGGER CHECK ================= */
     debug.log("triggerAutoBilling → CHECK TRIGGER", {
       feature_module_id,
       status: entity.log_status || entity.status,
@@ -93,10 +109,8 @@ export const billingService = {
 
     debug.log("triggerAutoBilling → TRIGGER PASSED");
 
-    /* ================= BILLABLE ITEM ================= */
     let explicitBillableItemId = entity?.billable_item_id || null;
 
-    /* ================= DUPLICATE CHECK ================= */
     const existing = await InvoiceItem.findOne({
       where: {
         feature_module_id,
@@ -113,14 +127,6 @@ export const billingService = {
       return null;
     }
 
-    /* ================= RULE LOOKUP ================= */
-    debug.log("triggerAutoBilling → LOOKING FOR RULE", {
-      feature_module_id,
-      orgId,
-      facilityId,
-      billable_item_id: explicitBillableItemId,
-    });
-
     const rule = await AutoBillingRule.findOne({
       where: {
         trigger_feature_module_id: feature_module_id,
@@ -136,65 +142,18 @@ export const billingService = {
     });
 
     if (!rule || !rule.billableItem) {
-      debug.error("triggerAutoBilling → NO RULE FOUND", {
-        feature_module_id,
-        orgId,
-        facilityId,
-        billable_item_id: explicitBillableItemId,
-      });
+      debug.error("triggerAutoBilling → NO RULE FOUND");
       return null;
     }
 
-    debug.log("triggerAutoBilling → RULE FOUND", {
-      rule_id: rule.id,
-      billable_item_id: rule.billable_item_id,
+    const { price } = await getBillableItemPrice({
+      billable_item_id: rule.billableItem.id,
+      payer_type: entity.payer_type || "cash",
+      currency: entity.currency || "LRD",
+      organization_id: orgId,
+      facility_id: facilityId,
+      transaction,
     });
-
-    /* ================= AMBIGUITY CHECK ================= */
-    if (!explicitBillableItemId) {
-      const count = await AutoBillingRule.count({
-        where: {
-          trigger_feature_module_id: feature_module_id,
-          organization_id: orgId,
-          facility_id: facilityId,
-          status: "active",
-        },
-        transaction,
-      });
-
-      if (count > 1) {
-        debug.error("triggerAutoBilling → AMBIGUOUS RULES", {
-          count,
-          feature_module_id,
-          orgId,
-          facilityId,
-        });
-        return null;
-      }
-    }
-
-    /* ================= PRICE ================= */
-    let price = rule.default_price ?? rule.billableItem.price;
-
-    if (!price) {
-      const latest = await BillableItemPriceHistory.findOne({
-        where: { billable_item_id: rule.billableItem.id },
-        order: [["effective_date", "DESC"]],
-        transaction,
-      });
-      if (latest) price = latest.new_price;
-    }
-
-    price = Number(price);
-    if (Number.isNaN(price)) {
-      debug.error("triggerAutoBilling → INVALID PRICE", { price });
-      throw new Error("Billing price is not numeric");
-    }
-
-    debug.log("triggerAutoBilling → PRICE RESOLVED", { price });
-
-    /* ================= INVOICE ================= */
-    const allowedReuseStatuses = ["draft", "issued", "unpaid", "partial"];
 
     let invoice = await Invoice.findOne({
       where: {
@@ -209,9 +168,12 @@ export const billingService = {
       transaction,
     });
 
-    if (!invoice) {
-      debug.log("triggerAutoBilling → CREATING NEW INVOICE");
+    // 🔥 enforce same currency
+    if (invoice && invoice.currency !== (entity.currency || "LRD")) {
+      invoice = null;
+    }
 
+    if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
@@ -220,26 +182,48 @@ export const billingService = {
           patient_id: entity.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          status: "draft",
-          currency: rule.billableItem.currency || "LRD", // ✅ keep your system default fallback
+          status: INVOICE_STATUS.DRAFT,
+          currency: entity.currency || "LRD",
           total: 0,
           total_paid: 0,
           balance: 0,
-          due_date: today.toISOString().slice(0, 10), // ✅ REQUIRED FIX
-          created_by_id: user?.id || null, // ✅ SAFE FIX
+          due_date: today.toISOString().slice(0, 10),
+          created_by_id: user?.id || null,
         },
         { transaction }
       );
+
+      // 🔥 NEW — CREATE CLAIM
+      if (invoice.insurance_provider_id) {
+        await insuranceService.createClaimFromInvoice({
+          invoice_id: invoice.id,
+          user,
+          transaction,
+        });
+      }
     }
 
-    /* ================= CREATE ITEM ================= */
     const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
     const taxAmount = price * (taxRate / 100);
 
-    debug.log("triggerAutoBilling → CREATING INVOICE ITEM", {
-      billable_item_id: rule.billableItem.id,
-      price,
-    });
+    /* ================= 🔥 INSURANCE SPLIT ================= */
+    const net = price + taxAmount;
+
+    let insuranceAmount = 0;
+    let patientAmount = net;
+
+    if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
+      let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+
+      insuranceAmount = Math.min(net, remainingCoverage);
+      patientAmount = net - insuranceAmount;
+
+      // 🔥 IMPORTANT — reduce coverage after use
+      invoice.coverage_amount = Math.max(
+        0,
+        remainingCoverage - insuranceAmount
+      );
+    }
 
     const item = await InvoiceItem.create(
       {
@@ -252,7 +236,12 @@ export const billingService = {
         quantity: 1,
         tax_amount: taxAmount,
         total_price: price,
-        net_amount: price + taxAmount,
+        net_amount: net,
+
+        // 🔥 NEW
+        insurance_amount: insuranceAmount,
+        patient_amount: patientAmount,
+
         feature_module_id,
         entity_id: entity.id,
         created_by_id: user?.id || null,
@@ -261,12 +250,8 @@ export const billingService = {
       { transaction }
     );
 
-    await recalcInvoice(invoice.id, transaction);
-
-    debug.log("triggerAutoBilling → SUCCESS", {
-      invoice_id: invoice.id,
-      item_id: item.id,
-    });
+      await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
 
     return { invoice, item };
   },
@@ -297,14 +282,6 @@ export const billingService = {
       body: labRequest,
     });
 
-    /* ================= TRIGGER CHECK ================= */
-    debug.log("billLabRequestItems → CHECK TRIGGER", {
-      feature_module_id,
-      status: labRequest.status,
-      orgId,
-      facilityId,
-    });
-
     const allowed = await shouldTriggerBillingDB({
       feature_module_id,
       status: labRequest.status,
@@ -312,38 +289,15 @@ export const billingService = {
       facility_id: facilityId,
     });
 
-    if (!allowed) {
-      debug.warn("billLabRequestItems → TRIGGER BLOCKED", {
-        feature_module_id,
-        status: labRequest.status,
-        orgId,
-        facilityId,
-      });
-      return null;
-    }
+    if (!allowed) return null;
 
-    debug.log("billLabRequestItems → TRIGGER PASSED");
-
-    /* ================= LOAD ITEMS ================= */
     const items = await LabRequestItem.findAll({
       where: { lab_request_id: labRequest.id },
       include: [{ model: BillableItem, as: "labTest" }],
       transaction,
     });
 
-    if (!items.length) {
-      debug.warn("billLabRequestItems → NO ITEMS FOUND", {
-        request_id: labRequest.id,
-      });
-      return null;
-    }
-
-    debug.log("billLabRequestItems → ITEMS LOADED", {
-      count: items.length,
-    });
-
-    /* ================= INVOICE ================= */
-    const allowedStatuses = ["draft", "issued", "unpaid", "partial"];
+    if (!items.length) return null;
 
     let invoice = await Invoice.findOne({
       where: {
@@ -358,9 +312,12 @@ export const billingService = {
       transaction,
     });
 
-    if (!invoice) {
-      debug.log("billLabRequestItems → CREATING INVOICE");
+    // 🔥 enforce same currency
+    if (invoice && invoice.currency !== (labRequest.currency || "LRD")) {
+      invoice = null;
+    }
 
+    if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
@@ -369,8 +326,8 @@ export const billingService = {
           patient_id: labRequest.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          status: "draft",
-          currency: "LRD",
+          status: INVOICE_STATUS.DRAFT,
+          currency: labRequest.currency || "LRD",
           total: 0,
           total_paid: 0,
           balance: 0,
@@ -379,35 +336,32 @@ export const billingService = {
         },
         { transaction }
       );
+
+      // 🔥 NEW — CREATE CLAIM
+      if (invoice.insurance_provider_id) {
+        await insuranceService.createClaimFromInvoice({
+          invoice_id: invoice.id,
+          user,
+          transaction,
+        });
+      }
     }
 
-    /* ================= PROCESS ITEMS ================= */
     let billedCount = 0;
 
     for (const li of items) {
 
-      if (li.billed) {
-        debug.warn("billLabRequestItems → ALREADY BILLED", {
-          item_id: li.id,
-        });
-        continue;
-      }
+      if (li.billed) continue;
+      if (!li.labTest) continue;
 
-      if (!li.labTest) {
-        debug.warn("billLabRequestItems → NO BILLABLE ITEM", {
-          item_id: li.id,
-        });
-        continue;
-      }
-
-      const price = Number(li.labTest.price || 0);
-
-      if (Number.isNaN(price)) {
-        debug.error("billLabRequestItems → INVALID PRICE", {
-          item_id: li.id,
-        });
-        continue;
-      }
+      const { price } = await getBillableItemPrice({
+        billable_item_id: li.labTest.id,
+        payer_type: labRequest.payer_type || "cash",
+        currency: invoice.currency,
+        organization_id: orgId,
+        facility_id: facilityId,
+        transaction,
+      });
 
       const taxRate = li.labTest.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
@@ -421,19 +375,26 @@ export const billingService = {
         transaction,
       });
 
-      if (existingItem) {
-        debug.warn("billLabRequestItems → DUPLICATE ITEM", {
-          item_id: li.id,
-        });
-        continue;
+      if (existingItem) continue;
+
+      /* ================= 🔥 INSURANCE SPLIT ================= */
+      const net = price + taxAmount;
+
+      let insuranceAmount = 0;
+      let patientAmount = net;
+
+      if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
+        let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+
+        insuranceAmount = Math.min(net, remainingCoverage);
+        patientAmount = net - insuranceAmount;
+
+        // 🔥 IMPORTANT — reduce coverage after use
+        invoice.coverage_amount = Math.max(
+          0,
+          remainingCoverage - insuranceAmount
+        );
       }
-
-      debug.log("billLabRequestItems → BILLING ITEM", {
-        item_id: li.id,
-        name: li.labTest.name,
-        price,
-      });
-
       const invItem = await InvoiceItem.create(
         {
           invoice_id: invoice.id,
@@ -445,7 +406,12 @@ export const billingService = {
           quantity: 1,
           tax_amount: taxAmount,
           total_price: price,
-          net_amount: price + taxAmount,
+          net_amount: net,
+
+          // 🔥 NEW
+          insurance_amount: insuranceAmount,
+          patient_amount: patientAmount,
+
           feature_module_id,
           entity_id: li.id,
           created_by_id: user?.id || null,
@@ -465,7 +431,6 @@ export const billingService = {
       billedCount++;
     }
 
-    /* ================= FINALIZE ================= */
     if (billedCount > 0) {
       await labRequest.update(
         {
@@ -475,13 +440,9 @@ export const billingService = {
         { transaction }
       );
 
-      await recalcInvoice(invoice.id, transaction);
+    await recalcInvoice(invoice.id, transaction);
+    await updateInvoiceStatus(invoice.id, transaction);
     }
-
-    debug.log("billLabRequestItems → COMPLETE", {
-      request_id: labRequest.id,
-      billedCount,
-    });
 
     return { invoice, billedCount };
   },
@@ -507,7 +468,6 @@ export const billingService = {
       module_key,
     });
 
-    /* ================= FETCH ITEMS ================= */
     const items = await InvoiceItem.findAll({
       where: {
         entity_id: entityId,
@@ -523,16 +483,7 @@ export const billingService = {
       transaction,
     });
 
-    debug.log("voidCharges → ITEMS FOUND", {
-      count: items.length,
-    });
-
-    if (!items.length) {
-      debug.warn("voidCharges → NO ITEMS TO VOID", {
-        entityId,
-      });
-      return [];
-    }
+    if (!items.length) return [];
 
     /* ================= PAYMENT CHECK ================= */
     for (const item of items) {
@@ -541,10 +492,6 @@ export const billingService = {
       if (!invoice) continue;
 
       if ((invoice.total_paid || 0) > 0) {
-        debug.error("voidCharges → PAYMENT EXISTS", {
-          invoice_id: invoice.id,
-        });
-
         throw new Error(
           `Cannot void billing: invoice ${invoice.id} has payment(s)`
         );
@@ -556,14 +503,15 @@ export const billingService = {
       await item.update(
         {
           status: "voided",
+
+          // 🔥 CLEAR INSURANCE SPLIT (IMPORTANT)
+          insurance_amount: 0,
+          patient_amount: 0,
+
           updated_by_id: user?.id || null,
         },
         { transaction }
       );
-
-      debug.log("voidCharges → VOIDED ITEM", {
-        item_id: item.id,
-      });
     }
 
     /* ================= RECALCULATE ================= */
@@ -571,54 +519,65 @@ export const billingService = {
 
     for (const id of invoiceIds) {
       await recalcInvoice(id, transaction);
-
-      debug.log("voidCharges → RECALCULATED INVOICE", {
-        invoice_id: id,
-      });
+      await updateInvoiceStatus(id, transaction);
     }
-
-    debug.log("voidCharges → COMPLETE", {
-      entityId,
-      count: items.length,
-    });
 
     return items;
   },
 
-/* ============================================================
-   4️⃣ GET INVOICES BY PATIENT (READ — DEBUG ENABLED)
-============================================================ */
-async getInvoicesByPatient(patientId, user) {
+  /* ============================================================
+    4️⃣ GET INVOICES BY PATIENT (READ — DEBUG ENABLED)
+  ============================================================ */
+  async getInvoicesByPatient(patientId, user) {
 
-  debug.log("getInvoicesByPatient → START", {
-    patientId,
-    user_id: user?.id,
-  });
+    debug.log("getInvoicesByPatient → START", {
+      patientId,
+      user_id: user?.id,
+    });
 
-  const { orgId, facilityId } = await resolveOrgFacility({ user });
+    const { orgId, facilityId } = await resolveOrgFacility({ user });
 
-  debug.log("getInvoicesByPatient → TENANT RESOLVED", {
-    orgId,
-    facilityId,
-  });
+    const invoices = await Invoice.findAll({
+      where: {
+        patient_id: patientId,
+        organization_id: orgId,
+        facility_id: facilityId,
+      },
+      include: [
+        {
+          model: InvoiceItem,
+          as: "items",
+        },
 
-  const invoices = await Invoice.findAll({
-    where: {
-      patient_id: patientId,
-      organization_id: orgId,
-      facility_id: facilityId,
-    },
-    include: [{ model: InvoiceItem, as: "items" }],
-    order: [["created_at", "DESC"]],
-  });
+        // 🔥 NEW — SHOW INSURANCE PROVIDER
+        {
+          model: InsuranceProvider,
+          as: "insuranceProvider",
+          attributes: ["id", "name"],
+        },
 
-  debug.log("getInvoicesByPatient → RESULT", {
-    count: invoices.length,
-    patientId,
-  });
+        // 🔥 NEW — SHOW CLAIM INFO
+        {
+          model: InsuranceClaim,
+          as: "insuranceClaim",
+          attributes: [
+            "id",
+            "claim_amount",
+            "approved_amount",
+            "status",
+          ],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    });
 
-  return invoices;
-},
+    debug.log("getInvoicesByPatient → RESULT", {
+      count: invoices.length,
+      patientId,
+    });
+
+    return invoices;
+  },
 
   /* ============================================================
     5️⃣ BILL PRESCRIPTION ITEMS (DEBUG ENABLED — MASTER)
@@ -644,14 +603,6 @@ async getInvoicesByPatient(patientId, user) {
       body: prescription,
     });
 
-    /* ================= TRIGGER CHECK ================= */
-    debug.log("billPrescriptionItems → CHECK TRIGGER", {
-      feature_module_id,
-      status: prescription.status,
-      orgId,
-      facilityId,
-    });
-
     const allowed = await shouldTriggerBillingDB({
       feature_module_id,
       status: prescription.status,
@@ -659,37 +610,16 @@ async getInvoicesByPatient(patientId, user) {
       facility_id: facilityId,
     });
 
-    if (!allowed) {
-      debug.warn("billPrescriptionItems → TRIGGER BLOCKED", {
-        feature_module_id,
-        status: prescription.status,
-        orgId,
-        facilityId,
-      });
-      return null;
-    }
+    if (!allowed) return null;
 
-    debug.log("billPrescriptionItems → TRIGGER PASSED");
-
-    /* ================= LOAD ITEMS ================= */
     const items = await sequelize.models.PrescriptionItem.findAll({
       where: { prescription_id: prescription.id },
       include: [{ model: BillableItem, as: "billableItem" }],
       transaction,
     });
 
-    if (!items.length) {
-      debug.warn("billPrescriptionItems → NO ITEMS FOUND", {
-        prescription_id: prescription.id,
-      });
-      return null;
-    }
+    if (!items.length) return null;
 
-    debug.log("billPrescriptionItems → ITEMS LOADED", {
-      count: items.length,
-    });
-
-    /* ================= INVOICE ================= */
     let invoice = await Invoice.findOne({
       where: {
         patient_id: prescription.patient_id,
@@ -703,9 +633,12 @@ async getInvoicesByPatient(patientId, user) {
       transaction,
     });
 
-    if (!invoice) {
-      debug.log("billPrescriptionItems → CREATING INVOICE");
+    // 🔥 enforce same currency
+    if (invoice && invoice.currency !== (prescription.currency || "LRD")) {
+      invoice = null;
+    }
 
+    if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
@@ -714,29 +647,32 @@ async getInvoicesByPatient(patientId, user) {
           patient_id: prescription.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          status: "draft",
-          currency: "LRD", // ✅ your system default
+          status: INVOICE_STATUS.DRAFT,
+          currency: prescription.currency || "LRD",
           total: 0,
           total_paid: 0,
           balance: 0,
-          due_date: today.toISOString().slice(0, 10), // ✅ REQUIRED FIX
-          created_by_id: user?.id || null, // ✅ SAFE FIX
+          due_date: today.toISOString().slice(0, 10),
+          created_by_id: user?.id || null,
         },
         { transaction }
       );
+
+      // 🔥 NEW — CREATE CLAIM
+      if (invoice.insurance_provider_id) {
+        await insuranceService.createClaimFromInvoice({
+          invoice_id: invoice.id,
+          user,
+          transaction,
+        });
+      }
     }
 
-    /* ================= PROCESS ITEMS ================= */
     let billedCount = 0;
 
     for (const item of items) {
 
-      if (!item.billableItem) {
-        debug.warn("billPrescriptionItems → NO BILLABLE ITEM", {
-          item_id: item.id,
-        });
-        continue;
-      }
+      if (!item.billableItem) continue;
 
       const existing = await InvoiceItem.findOne({
         where: {
@@ -747,30 +683,38 @@ async getInvoicesByPatient(patientId, user) {
         transaction,
       });
 
-      if (existing) {
-        debug.warn("billPrescriptionItems → DUPLICATE ITEM", {
-          item_id: item.id,
-        });
-        continue;
-      }
+      if (existing) continue;
 
-      const price = Number(item.billableItem.price || 0);
-
-      if (Number.isNaN(price)) {
-        debug.error("billPrescriptionItems → INVALID PRICE", {
-          item_id: item.id,
-        });
-        continue;
-      }
-
-      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
-
-      debug.log("billPrescriptionItems → BILLING ITEM", {
-        item_id: item.id,
-        name: item.billableItem.name,
-        price,
+      const { price } = await getBillableItemPrice({
+        billable_item_id: item.billableItem.id,
+        payer_type: prescription.payer_type || "cash",
+        currency: invoice.currency,
+        organization_id: orgId,
+        facility_id: facilityId,
+        transaction,
       });
 
+      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+      const taxAmount = price * (taxRate / 100);
+
+      /* ================= 🔥 INSURANCE SPLIT ================= */
+      const net = price * (1 + taxRate / 100);
+
+      let insuranceAmount = 0;
+      let patientAmount = net;
+
+      if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
+        let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+
+        insuranceAmount = Math.min(net, remainingCoverage);
+        patientAmount = net - insuranceAmount;
+
+        // 🔥 IMPORTANT — reduce coverage after use
+        invoice.coverage_amount = Math.max(
+          0,
+          remainingCoverage - insuranceAmount
+        );
+      }
       const invItem = await InvoiceItem.create(
         {
           invoice_id: invoice.id,
@@ -780,9 +724,14 @@ async getInvoicesByPatient(patientId, user) {
           description: item.billableItem.name,
           unit_price: price,
           quantity: item.quantity || 1,
-          tax_amount: price * (taxRate / 100),
+          tax_amount: taxAmount,
           total_price: price,
-          net_amount: price * (1 + taxRate / 100),
+          net_amount: net,
+
+          // 🔥 NEW
+          insurance_amount: insuranceAmount,
+          patient_amount: patientAmount,
+
           feature_module_id,
           entity_id: item.id,
           created_by_id: user?.id || null,
@@ -802,7 +751,6 @@ async getInvoicesByPatient(patientId, user) {
       billedCount++;
     }
 
-    /* ================= FINALIZE ================= */
     if (billedCount > 0) {
       await prescription.update(
         {
@@ -813,15 +761,12 @@ async getInvoicesByPatient(patientId, user) {
       );
 
       await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
     }
-
-    debug.log("billPrescriptionItems → COMPLETE", {
-      prescription_id: prescription.id,
-      billedCount,
-    });
 
     return { invoice, billedCount };
   },
+
   /* ============================================================
     6️⃣ BILL ORDER ITEMS (DEBUG ENABLED — MASTER)
   ============================================================ */
@@ -846,53 +791,22 @@ async getInvoicesByPatient(patientId, user) {
       body: order,
     });
 
-    /* ================= TRIGGER CHECK ================= */
-    debug.log("billOrderItems → CHECK TRIGGER", {
-      feature_module_id,
-      status: order.status,
-      orgId,
-      facilityId,
-    });
-
     const allowed = await shouldTriggerBillingDB({
       feature_module_id,
       status: order.status,
       organization_id: orgId,
-      facility_id: facilityId || user.facility_ids?.[0], // ✅ FIX
+      facility_id: facilityId || user.facility_ids?.[0],
     });
 
-    if (!allowed) {
-      debug.warn("billOrderItems → TRIGGER BLOCKED", {
-        feature_module_id,
-        status: order.status,
-        orgId,
-        facilityId,
-      });
-      return null;
-    }
+    if (!allowed) return null;
 
-    debug.log("billOrderItems → TRIGGER PASSED");
-
-    /* ================= LOAD ITEMS ================= */
     const items = await sequelize.models.OrderItem.findAll({
       where: { order_id: order.id },
       include: [{ model: BillableItem, as: "billableItem" }],
       transaction,
     });
 
-    if (!items.length) {
-      debug.warn("billOrderItems → NO ITEMS FOUND", {
-        order_id: order.id,
-      });
-      return null;
-    }
-
-    debug.log("billOrderItems → ITEMS LOADED", {
-      count: items.length,
-    });
-
-    /* ================= INVOICE ================= */
-    const allowedStatuses = ["draft", "issued", "unpaid", "partial"];
+    if (!items.length) return null;
 
     let invoice = await Invoice.findOne({
       where: {
@@ -907,9 +821,12 @@ async getInvoicesByPatient(patientId, user) {
       transaction,
     });
 
-    if (!invoice) {
-      debug.log("billOrderItems → CREATING INVOICE");
+    // 🔥 enforce same currency
+    if (invoice && invoice.currency !== (order.currency || "LRD")) {
+      invoice = null;
+    }
 
+    if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
@@ -918,28 +835,32 @@ async getInvoicesByPatient(patientId, user) {
           patient_id: order.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
-          status: "draft",
-          currency: "LRD", // ✅ keep your system default
+          status: INVOICE_STATUS.DRAFT,
+          currency: order.currency || "LRD",
           total: 0,
           total_paid: 0,
           balance: 0,
-          due_date: today.toISOString().slice(0, 10), // ✅ REQUIRED
-          created_by_id: user?.id || null, // ✅ SAFE
+          due_date: today.toISOString().slice(0, 10),
+          created_by_id: user?.id || null,
         },
         { transaction }
       );
+
+      // 🔥 NEW — CREATE CLAIM
+      if (invoice.insurance_provider_id) {
+        await insuranceService.createClaimFromInvoice({
+          invoice_id: invoice.id,
+          user,
+          transaction,
+        });
+      }
     }
-    /* ================= PROCESS ITEMS ================= */
+
     let billedCount = 0;
 
     for (const item of items) {
 
-      if (!item.billableItem) {
-        debug.warn("billOrderItems → NO BILLABLE ITEM", {
-          item_id: item.id,
-        });
-        continue;
-      }
+      if (!item.billableItem) continue;
 
       const existing = await InvoiceItem.findOne({
         where: {
@@ -950,31 +871,38 @@ async getInvoicesByPatient(patientId, user) {
         transaction,
       });
 
-      if (existing) {
-        debug.warn("billOrderItems → DUPLICATE ITEM", {
-          item_id: item.id,
-        });
-        continue;
-      }
+      if (existing) continue;
 
-      const price = Number(item.billableItem.price || 0);
-
-      if (Number.isNaN(price)) {
-        debug.error("billOrderItems → INVALID PRICE", {
-          item_id: item.id,
-        });
-        continue;
-      }
+      const { price } = await getBillableItemPrice({
+        billable_item_id: item.billableItem.id,
+        payer_type: order.payer_type || "cash",
+        currency: invoice.currency,
+        organization_id: orgId,
+        facility_id: facilityId,
+        transaction,
+      });
 
       const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
 
-      debug.log("billOrderItems → BILLING ITEM", {
-        item_id: item.id,
-        name: item.billableItem.name,
-        price,
-      });
+      /* ================= 🔥 INSURANCE SPLIT ================= */
+      const net = price + taxAmount;
 
+      let insuranceAmount = 0;
+      let patientAmount = net;
+
+      if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
+        let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+
+        insuranceAmount = Math.min(net, remainingCoverage);
+        patientAmount = net - insuranceAmount;
+
+        // 🔥 IMPORTANT — reduce coverage after use
+        invoice.coverage_amount = Math.max(
+          0,
+          remainingCoverage - insuranceAmount
+        );
+      }
       const invItem = await InvoiceItem.create(
         {
           invoice_id: invoice.id,
@@ -986,7 +914,12 @@ async getInvoicesByPatient(patientId, user) {
           quantity: item.quantity || 1,
           tax_amount: taxAmount,
           total_price: price,
-          net_amount: price + taxAmount,
+          net_amount: net,
+
+          // 🔥 NEW
+          insurance_amount: insuranceAmount,
+          patient_amount: patientAmount,
+
           feature_module_id,
           entity_id: item.id,
           created_by_id: user?.id || null,
@@ -1006,7 +939,6 @@ async getInvoicesByPatient(patientId, user) {
       billedCount++;
     }
 
-    /* ================= FINALIZE ================= */
     if (billedCount > 0) {
       await order.update(
         {
@@ -1017,12 +949,8 @@ async getInvoicesByPatient(patientId, user) {
       );
 
       await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
     }
-
-    debug.log("billOrderItems → COMPLETE", {
-      order_id: order.id,
-      billedCount,
-    });
 
     return { invoice, billedCount };
   },

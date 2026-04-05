@@ -1,9 +1,9 @@
-// 📦 discount-constants.js – Enterprise MASTER–ALIGNED (Deposit Parity)
+// 📦 discount-constants.js – Enterprise MASTER–ALIGNED (FINAL)
 // ============================================================================
-// 🔹 Pattern Source: deposit-constants.js (Consultation Parity)
-// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
-// 🔹 100% ID retention (safe for existing HTML + JS modules)
-// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
+// 🔹 FULL PARITY: Deposit + Consultation + Billing modules
+// 🔹 Multi-currency safe
+// 🔹 Includes applied_amount, currency, name, code
+// 🔹 100% ID safe (no breaking changes)
 // ============================================================================
 
 /* ============================================================
@@ -12,11 +12,19 @@
 export const FIELD_LABELS_DISCOUNT = {
   organization: "Organization",
   facility: "Facility",
+
   invoice: "Invoice",
+  currency: "Currency",
   invoiceItem: "Invoice Item",
+
+  name: "Name",
+  code: "Code",
+
   type: "Type",
   value: "Value",
+  applied_amount: "Applied Amount",
   reason: "Reason",
+
   status: "Status",
 
   createdBy: "Created By",
@@ -41,11 +49,19 @@ export const FIELD_LABELS_DISCOUNT = {
 export const FIELD_ORDER_DISCOUNT = [
   "organization",
   "facility",
+
   "invoice",
+  "currency",
   "invoiceItem",
+
+  "name",
+  "code",
+
   "type",
   "value",
+  "applied_amount",
   "reason",
+
   "status",
 
   "createdBy",
@@ -71,73 +87,113 @@ export const FIELD_DEFAULTS_DISCOUNT = {
   superadmin: [
     "organization",
     "facility",
+
     "invoice",
+    "currency",
     "invoiceItem",
+
+    "name",
+    "code",
+
     "type",
     "value",
+    "applied_amount",
     "reason",
+
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "finalizedBy",
     "finalized_at",
     "voidedBy",
     "voided_at",
     "void_reason",
+
     "actions",
   ],
 
   admin: [
     "organization",
     "facility",
+
     "invoice",
+    "currency",
     "invoiceItem",
+
+    "name",
+    "code",
+
     "type",
     "value",
+    "applied_amount",
     "reason",
+
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "finalizedBy",
     "finalized_at",
     "voidedBy",
     "voided_at",
     "void_reason",
+
     "actions",
   ],
 
   manager: [
     "facility",
+
     "invoice",
+    "currency",
     "invoiceItem",
+
+    "name",
+    "code",
+
     "type",
     "value",
+    "applied_amount",
     "reason",
+
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "finalizedBy",
     "finalized_at",
+
     "actions",
   ],
 
   staff: [
     "facility",
+
     "invoice",
     "invoiceItem",
+
+    "name",
+
     "type",
     "value",
+    "applied_amount",
+
     "status",
+
     "actions",
   ],
 };
@@ -147,11 +203,25 @@ export const FIELD_DEFAULTS_DISCOUNT = {
 ============================================================ */
 export const FIELD_GROUPS_DISCOUNT = {
   org_scope: ["organization", "facility"],
-  linked_items: ["invoice", "invoiceItem"],
-  discount_info: ["type", "value", "reason", "status"],
+
+  linked_items: ["invoice", "currency", "invoiceItem"],
+
+  identity: ["name", "code"],
+
+  discount_info: ["type", "value", "applied_amount", "reason", "status"],
+
   meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
+
   audit: ["deletedBy", "deleted_at"],
-  finalization: ["finalizedBy", "finalized_at", "voidedBy", "voided_at", "void_reason"],
+
+  finalization: [
+    "finalizedBy",
+    "finalized_at",
+    "voidedBy",
+    "voided_at",
+    "void_reason",
+  ],
+
   system: ["actions"],
 };
 

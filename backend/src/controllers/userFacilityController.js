@@ -70,8 +70,8 @@ function buildUserFacilitySchema(mode = "create") {
     role_id: Joi.string().uuid().allow("", null),
     is_default: Joi.boolean().default(false),
     is_active: Joi.string()
-      .valid(...USER_FACILITY_STATUS)
-      .default(USER_FACILITY_STATUS[0]),
+      .valid(...Object.values(USER_FACILITY_STATUS))
+      .default(USER_FACILITY_STATUS.ACTIVE),
   };
 
   if (mode === "update") {
@@ -155,7 +155,7 @@ export const getAllUserFacilities = async (req, res) => {
 
     if (
       req.query.is_active &&
-      USER_FACILITY_STATUS.includes(req.query.is_active)
+      Object.values(USER_FACILITY_STATUS).includes(req.query.is_active)
     ) {
       options.where[Op.and].push({
         is_active: req.query.is_active,
@@ -173,8 +173,8 @@ export const getAllUserFacilities = async (req, res) => {
 
     const summary = buildDynamicSummary(rows, {
       total: () => count,
-      active: (r) => r.is_active === USER_FACILITY_STATUS[0],
-      inactive: (r) => r.is_active === USER_FACILITY_STATUS[1],
+      active: (r) => r.is_active === USER_FACILITY_STATUS.ACTIVE,
+      inactive: (r) => r.is_active === USER_FACILITY_STATUS.INACTIVE,
     });
 
     await auditService.logAction({
@@ -261,7 +261,7 @@ export const getUserFacilitiesLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      is_active: USER_FACILITY_STATUS[0],
+      is_active: USER_FACILITY_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
@@ -563,7 +563,7 @@ export const toggleUserFacilityStatus = async (req, res) => {
       return error(res, "User-Facility link not found", null, 404);
     }
 
-    const [ACTIVE, INACTIVE] = USER_FACILITY_STATUS;
+    const { ACTIVE, INACTIVE } = USER_FACILITY_STATUS;
     const newStatus = link.is_active === ACTIVE ? INACTIVE : ACTIVE;
 
     await link.update({

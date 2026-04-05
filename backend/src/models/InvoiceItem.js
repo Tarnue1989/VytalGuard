@@ -1,5 +1,6 @@
 // 📁 backend/src/models/InvoiceItem.js
 import { DataTypes, Model } from "sequelize";
+import { INVOICE_LINE_EXTENSION_STATUS } from "../constants/enums.js";
 
 export default (sequelize) => {
   class InvoiceItem extends Model {
@@ -16,37 +17,40 @@ export default (sequelize) => {
         foreignKey: "billable_item_id",
       });
 
-      // 🔹 Feature Module (FK-driven, REQUIRED)
+      // 🔹 Feature Module
       InvoiceItem.belongsTo(models.FeatureModule, {
         as: "featureModule",
         foreignKey: "feature_module_id",
       });
 
-      // 🔹 Applied Discount / Tax
+      // 🔹 Discount / Tax
       InvoiceItem.belongsTo(models.Discount, {
         as: "discount",
         foreignKey: "discount_id",
       });
+
       InvoiceItem.belongsTo(models.Tax, {
         as: "tax",
         foreignKey: "tax_id",
       });
 
-      // 🔹 Policies (audit / applied rules)
+      // 🔹 Policies
       InvoiceItem.belongsTo(models.DiscountPolicy, {
         as: "discountPolicy",
         foreignKey: "discount_policy_id",
       });
+
       InvoiceItem.belongsTo(models.TaxPolicy, {
         as: "taxPolicy",
         foreignKey: "tax_policy_id",
       });
 
-      // 🔹 Org / Facility scope
+      // 🔹 Tenant
       InvoiceItem.belongsTo(models.Organization, {
         as: "organization",
         foreignKey: "organization_id",
       });
+
       InvoiceItem.belongsTo(models.Facility, {
         as: "facility",
         foreignKey: "facility_id",
@@ -57,16 +61,18 @@ export default (sequelize) => {
         as: "createdBy",
         foreignKey: "created_by_id",
       });
+
       InvoiceItem.belongsTo(models.User, {
         as: "updatedBy",
         foreignKey: "updated_by_id",
       });
+
       InvoiceItem.belongsTo(models.User, {
         as: "deletedBy",
         foreignKey: "deleted_by_id",
       });
 
-      // 🔁 Reverse link: LabRequestItem → InvoiceItem
+      // 🔁 Reverse link
       InvoiceItem.hasMany(models.LabRequestItem, {
         as: "labRequestItems",
         foreignKey: "invoice_item_id",
@@ -82,52 +88,81 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // 🔗 Parent
+      /* ================= LINKS ================= */
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       billable_item_id: { type: DataTypes.UUID, allowNull: false },
-
-      // 🔗 Feature module (REQUIRED — replaces legacy module string)
       feature_module_id: { type: DataTypes.UUID, allowNull: false },
 
-      // 🔗 Tenant scope
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
-      // 🔗 Applied Discount / Tax
-      discount_id: { type: DataTypes.UUID, allowNull: true },
-      tax_id: { type: DataTypes.UUID, allowNull: true },
+      discount_id: { type: DataTypes.UUID },
+      tax_id: { type: DataTypes.UUID },
 
-      // 🔗 Policies
-      discount_policy_id: { type: DataTypes.UUID, allowNull: true },
-      tax_policy_id: { type: DataTypes.UUID, allowNull: true },
+      discount_policy_id: { type: DataTypes.UUID },
+      tax_policy_id: { type: DataTypes.UUID },
 
-      // 📑 Item details
+      /* ================= DETAILS ================= */
       description: { type: DataTypes.STRING },
-      unit_price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-      quantity: { type: DataTypes.INTEGER, defaultValue: 1 },
 
-      // 🔹 Financial adjustments
-      discount_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      tax_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      total_price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-      net_amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-      note: { type: DataTypes.TEXT },
-
-      // 🔑 Entity tracking (auto-billing / rollback)
-      entity_id: { type: DataTypes.UUID, allowNull: true },
-
-      status: {
-        type: DataTypes.ENUM("applied", "voided"),
+      unit_price: {
+        type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
-        defaultValue: "applied",
       },
 
-      // 🔹 Audit
-      created_by_id: { type: DataTypes.UUID, allowNull: true },
-      updated_by_id: { type: DataTypes.UUID, allowNull: true },
-      deleted_by_id: { type: DataTypes.UUID, allowNull: true },
+      quantity: {
+        type: DataTypes.INTEGER,
+        defaultValue: 1,
+      },
 
-      // 🔹 Virtual subtotal
+      /* ================= FINANCIAL ================= */
+      discount_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      tax_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      total_price: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+      },
+
+      net_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+      },
+
+      /* ================= 🏥 INSURANCE SPLIT ================= */
+      insurance_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      patient_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      note: { type: DataTypes.TEXT },
+
+      /* ================= TRACKING ================= */
+      entity_id: { type: DataTypes.UUID },
+
+      status: {
+        type: DataTypes.ENUM(...Object.values(INVOICE_LINE_EXTENSION_STATUS)),
+        defaultValue: INVOICE_LINE_EXTENSION_STATUS.APPLIED,
+      },
+
+      /* ================= AUDIT ================= */
+      created_by_id: { type: DataTypes.UUID },
+      updated_by_id: { type: DataTypes.UUID },
+      deleted_by_id: { type: DataTypes.UUID },
+
+      /* ================= VIRTUAL ================= */
       subtotal: {
         type: DataTypes.VIRTUAL,
         get() {
@@ -137,7 +172,6 @@ export default (sequelize) => {
         },
       },
 
-      // 🔹 Virtual total
       total: {
         type: DataTypes.VIRTUAL,
         get() {
@@ -155,18 +189,21 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by_id"] },
       },
+
       scopes: {
         withDeleted: { paranoid: false },
         applied: { where: { status: "applied", deleted_at: null } },
         voided: { where: { status: "voided", deleted_at: null } },
+
         tenant(facilityId) {
-          if (!facilityId) return {};
-          return { where: { facility_id: facilityId } };
+          return facilityId ? { where: { facility_id: facilityId } } : {};
         },
       },
+
       indexes: [
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
@@ -177,7 +214,6 @@ export default (sequelize) => {
         { fields: ["tax_id"] },
         { fields: ["discount_policy_id"] },
         { fields: ["tax_policy_id"] },
-        { fields: ["created_by_id"] },
         { fields: ["entity_id"] },
         { fields: ["status"] },
       ],
@@ -185,16 +221,18 @@ export default (sequelize) => {
   );
 
   /* ============================================================
-     🔁 Hooks
+     🔁 HOOKS
   ============================================================ */
 
-  // Sync org/facility from parent invoice
+  // 🔹 Sync tenant + audit
   InvoiceItem.beforeCreate(async (item, options) => {
     const { Invoice } = await import("../models/index.js");
+
     const invoice = await Invoice.findByPk(item.invoice_id, {
       transaction: options?.transaction,
     });
-    if (!invoice) throw new Error("Invalid invoice_id for invoice item");
+
+    if (!invoice) throw new Error("Invalid invoice_id");
 
     item.organization_id ||= invoice.organization_id;
     item.facility_id ||= invoice.facility_id;
@@ -205,24 +243,33 @@ export default (sequelize) => {
     }
   });
 
-  // 🔁 Ensure calculated fields
+  // 🔁 Calculate values
   InvoiceItem.beforeValidate((item) => {
     const price = parseFloat(item.unit_price || 0);
     const qty = parseInt(item.quantity || 0);
+
     const subtotal = price * qty;
     const discount = parseFloat(item.discount_amount || 0);
     const tax = parseFloat(item.tax_amount || 0);
 
+    const net = subtotal - discount + tax;
+
     item.total_price = subtotal;
-    item.net_amount = subtotal - discount + tax;
+    item.net_amount = net;
+
+    // 🔥 Insurance split (will be updated later in billingService)
+    item.insurance_amount ||= 0;
+    item.patient_amount ||= net;
   });
 
-  // 🔹 Audit on update
+  // 🔒 Prevent editing locked invoice
   InvoiceItem.beforeUpdate(async (item, options) => {
     const { Invoice } = await import("../models/index.js");
+
     const invoice = await Invoice.findByPk(item.invoice_id, {
       transaction: options?.transaction,
     });
+
     if (invoice?.is_locked) {
       throw new Error("Cannot modify items of a locked invoice");
     }
@@ -232,14 +279,14 @@ export default (sequelize) => {
     }
   });
 
-  // 🔹 Audit on delete
+  // 🔹 Audit delete
   InvoiceItem.beforeDestroy((item, options) => {
     if (options.user) {
       item.deleted_by_id = options.user.id;
     }
   });
 
-  // 🔁 Recalculate parent invoice after changes
+  // 🔁 Recalculate invoice
   InvoiceItem.afterCreate(async (item, options) => {
     const { Invoice } = await import("../models/index.js");
     return Invoice.recalculate(item.invoice_id, options?.transaction);

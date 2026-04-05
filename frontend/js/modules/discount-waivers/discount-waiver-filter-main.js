@@ -115,6 +115,7 @@ const filterOrg      = qs("filterOrganizationSelect");
 const filterFacility = qs("filterFacilitySelect");
 const filterStatus   = qs("filterStatus");
 const dateRange      = qs("dateRange");
+const filterCurrency = qs("filterCurrency");
 
 const filterInvoice        = qs("filterInvoice");
 const filterInvoiceHidden  = qs("filterInvoiceId");
@@ -146,7 +147,7 @@ setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
-  selectInputs: [filterOrg, filterFacility, filterStatus],
+  selectInputs: [filterOrg, filterFacility, filterStatus, filterCurrency],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
@@ -160,6 +161,7 @@ function getFilters() {
     organization_id: filterOrg?.value,
     facility_id: filterFacility?.value,
     status: filterStatus?.value,
+    currency: filterCurrency?.value,
     invoice_id: filterInvoiceHidden?.value,
     patient_id: filterPatientHidden?.value,
     dateRange: dateRange?.value, // UI-only
@@ -185,13 +187,14 @@ async function loadEntries(page = 1) {
       q.set("sort_order", sortDir);
     }
 
-    if (f.search)          q.set("search", f.search);
-    if (f.dateRange)       q.set("dateRange", f.dateRange);
-    if (f.organization_id) q.set("organization_id", f.organization_id);
-    if (f.facility_id)     q.set("facility_id", f.facility_id);
-    if (f.status)          q.set("status", f.status);
-    if (f.invoice_id)      q.set("invoice_id", f.invoice_id);
-    if (f.patient_id)      q.set("patient_id", f.patient_id);
+      if (f.search)          q.set("search", f.search);
+      if (f.dateRange)       q.set("dateRange", f.dateRange);
+      if (f.organization_id) q.set("organization_id", f.organization_id);
+      if (f.facility_id)     q.set("facility_id", f.facility_id);
+      if (f.status)          q.set("status", f.status);      // 🔥 ADD THIS BACK
+      if (f.currency)        q.set("currency", f.currency);
+      if (f.invoice_id)      q.set("invoice_id", f.invoice_id);
+      if (f.patient_id)      q.set("patient_id", f.patient_id);
 
     const res = await authFetch(`/api/discount-waivers?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -263,6 +266,7 @@ qs("resetFilterBtn").onclick = () => {
     filterOrg,
     filterFacility,
     filterStatus,
+    filterCurrency,
     filterInvoice,
     filterPatient,
     dateRange,

@@ -18,7 +18,7 @@ import { buildQueryOptions } from "../utils/queryHelper.js";
 import { validate } from "../utils/validation.js";
 import { validatePaginationStrict } from "../utils/query-utils.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
-
+import { refundService } from "../services/refundService.js";
 import {
   isSuperAdmin,
   isOrgLevelUser,
@@ -26,7 +26,7 @@ import {
 
 import { makeModuleLogger } from "../utils/debugLogger.js";
 
-import { REFUND_STATUS, PAYMENT_STATUS } from "../constants/enums.js";
+import { REFUND_STATUS, PAYMENT_STATUS, CURRENCY } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
@@ -48,27 +48,23 @@ const debug = makeModuleLogger("refundController", DEBUG_OVERRIDE);
    🔖 STATUS MAPS (ENUM-SAFE – MASTER STYLE)
    ❗ DO NOT HARD-CODE STRINGS
 ============================================================ */
-const RS = {
-  PENDING:   REFUND_STATUS[0], // 'pending'
-  APPROVED:  REFUND_STATUS[1], // 'approved'
-  REJECTED:  REFUND_STATUS[2], // 'rejected'
-  PROCESSED: REFUND_STATUS[3], // 'processed'
-  CANCELLED: REFUND_STATUS[4], // 'cancelled'
-  REVERSED:  REFUND_STATUS[5], // 'reversed'
-  VOIDED:    REFUND_STATUS[6], // 'voided'
+const RS = REFUND_STATUS;
+
+const ALLOWED_TRANSITIONS = {
+  [RS.PENDING]: [RS.APPROVED, RS.REJECTED, RS.CANCELLED],
+  [RS.APPROVED]: [RS.PROCESSED, RS.CANCELLED],
+  [RS.PROCESSED]: [RS.REVERSED],
+  [RS.REJECTED]: [],
+  [RS.CANCELLED]: [],
+  [RS.REVERSED]: [],
+  [RS.VOIDED]: [],
 };
+
+
 /* ============================================================
    🔖 PAYMENT STATUS MAP (ENUM-SAFE – MASTER)
 ============================================================ */
-const PS = {
-  PENDING:   PAYMENT_STATUS[0],
-  COMPLETED: PAYMENT_STATUS[1],
-  FAILED:    PAYMENT_STATUS[2],
-  CANCELLED: PAYMENT_STATUS[3],
-  REVERSED:  PAYMENT_STATUS[4],
-  VOIDED:    PAYMENT_STATUS[5],
-  VERIFIED:  PAYMENT_STATUS[6],
-};
+const PS = PAYMENT_STATUS;
 
 /* ============================================================
    🔗 SHARED INCLUDES (MASTER PARITY)
@@ -121,6 +117,10 @@ function buildRefundSchema(userRole, mode = "create") {
   const base = {
     payment_id: Joi.string().uuid().required(),
     amount: Joi.number().positive().required(),
+
+    // 🔥 SERVER CONTROLLED (DO NOT ALLOW CLIENT)
+    currency: Joi.forbidden(),
+
     reason: Joi.string().min(3).required(),
 
     // ❌ NEVER client-controlled
@@ -141,7 +141,6 @@ function buildRefundSchema(userRole, mode = "create") {
     base.reason = Joi.string().min(5).required();
   }
 
-  // ✅ tenant resolution is SERVER-SIDE
   if (userRole === "superadmin") {
     base.organization_id = Joi.string().uuid().optional();
     base.facility_id = Joi.string().uuid().allow(null).optional();
@@ -152,7 +151,6 @@ function buildRefundSchema(userRole, mode = "create") {
 
   return Joi.object(base);
 }
-
 /* ============================================================
    📌 CREATE Refund (MASTER PARITY – TENANT INHERITED)
 ============================================================ */
@@ -178,7 +176,6 @@ export const createRefund = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= LOCK PAYMENT (SOURCE OF TRUTH) ================= */
     const payment = await Payment.findByPk(value.payment_id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -199,7 +196,7 @@ export const createRefund = async (req, res) => {
       return error(res, "❌ Deposits cannot be refunded here", null, 400);
     }
 
-    /* ================= LOAD PROCESSED REFUNDS ================= */
+    /* ================= 🔒 LOCK EXISTING REFUNDS ================= */
     const refunds = await Refund.findAll({
       where: {
         payment_id: payment.id,
@@ -207,6 +204,7 @@ export const createRefund = async (req, res) => {
       },
       attributes: ["amount"],
       transaction: t,
+      lock: t.LOCK.UPDATE, // 🔥 CRITICAL FIX
     });
 
     const processedRefunds = refunds.reduce(
@@ -227,8 +225,8 @@ export const createRefund = async (req, res) => {
       );
     }
 
-    /* ================= APPLY REFUND (TENANT FROM PAYMENT) ================= */
-    const { refund } = await financialService.applyRefund({
+    /* ================= CREATE ================= */
+    const refund = await refundService.createRefund({
       ...value,
       method: payment.method,
       organization_id: payment.organization_id,
@@ -260,7 +258,6 @@ export const createRefund = async (req, res) => {
   }
 };
 
-
 /* ============================================================
    📌 UPDATE Refund (MASTER PARITY – TENANT LOCKED)
 ============================================================ */
@@ -286,7 +283,6 @@ export const updateRefund = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= LOCK REFUND ================= */
     const record = await Refund.findByPk(req.params.id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -302,7 +298,6 @@ export const updateRefund = async (req, res) => {
       return error(res, "❌ Processed refunds cannot be updated", null, 400);
     }
 
-    /* ================= LOCK PAYMENT (TENANT SOURCE) ================= */
     const payment = await Payment.findByPk(record.payment_id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -318,7 +313,22 @@ export const updateRefund = async (req, res) => {
       return error(res, "❌ Invalid payment for refund", null, 400);
     }
 
-    /* ================= LOAD OTHER PROCESSED REFUNDS ================= */
+    /* ================= 🔒 STATUS TRANSITION GUARD ================= */
+    if (value.status && value.status !== record.status) {
+      const allowed = ALLOWED_TRANSITIONS[record.status] || [];
+
+      if (!allowed.includes(value.status)) {
+        await t.rollback();
+        return error(
+          res,
+          `❌ Invalid status transition from ${record.status} → ${value.status}`,
+          null,
+          400
+        );
+      }
+    }
+
+    /* ================= 💰 REFUNDABLE BALANCE (LOCKED) ================= */
     const refunds = await Refund.findAll({
       where: {
         payment_id: payment.id,
@@ -327,6 +337,7 @@ export const updateRefund = async (req, res) => {
       },
       attributes: ["amount"],
       transaction: t,
+      lock: t.LOCK.UPDATE, // 🔥 FINAL FIX (prevents race condition)
     });
 
     const processedRefunds = refunds.reduce(
@@ -350,7 +361,7 @@ export const updateRefund = async (req, res) => {
       );
     }
 
-    /* ================= APPLY UPDATE (TENANT IMMUTABLE) ================= */
+    /* ================= UPDATE ================= */
     await record.update(
       {
         ...value,
@@ -382,9 +393,8 @@ export const updateRefund = async (req, res) => {
     return error(res, "❌ Failed to update refund", err);
   }
 };
-
 /* ============================================================
-   📌 GET ALL Refunds (MASTER PARITY – PAYMENT/DEPOSIT ALIGNED)
+   📌 GET ALL Refunds (MASTER PARITY – FIXED)
 ============================================================ */
 export const getAllRefunds = async (req, res) => {
   try {
@@ -416,8 +426,12 @@ export const getAllRefunds = async (req, res) => {
       "DESC",
       visibleFields
     );
-    options.where = { [Op.and]: [] };
 
+    /* 🔥 FIX */
+    options.where = options.where || {};
+    options.where[Op.and] = options.where[Op.and] || [];
+
+    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -427,6 +441,7 @@ export const getAllRefunds = async (req, res) => {
       }
     }
 
+    /* ================= TENANCY ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -454,6 +469,7 @@ export const getAllRefunds = async (req, res) => {
       }
     }
 
+    /* ================= FILTERS ================= */
     if (req.query.payment_id)
       options.where[Op.and].push({ payment_id: req.query.payment_id });
 
@@ -469,12 +485,15 @@ export const getAllRefunds = async (req, res) => {
     if (req.query.method)
       options.where[Op.and].push({ method: req.query.method });
 
-    /* ================= GLOBAL SEARCH (FIXED) ================= */
+    if (req.query.currency)
+      options.where[Op.and].push({ currency: req.query.currency });
+
+    /* ================= GLOBAL SEARCH ================= */
     if (options.search) {
       const term = `%${options.search}%`;
       options.where[Op.and].push({
         [Op.or]: [
-          { refund_number: { [Op.iLike]: term } }, // ✅ FIX
+          { refund_number: { [Op.iLike]: term } },
           { reason: { [Op.iLike]: term } },
           sequelize.where(
             sequelize.cast(sequelize.col("Refund.status"), "text"),
@@ -556,7 +575,6 @@ export const getAllRefunds = async (req, res) => {
   }
 };
 
-
 /* ============================================================
    📌 GET Refunds Lite (MASTER AUTOCOMPLETE)
 ============================================================ */
@@ -585,11 +603,10 @@ export const getAllRefundsLite = async (req, res) => {
       }
     }
 
-    /* ================= SEARCH (FIXED) ================= */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
-          { refund_number: { [Op.iLike]: `%${q}%` } }, // ✅ FIX
+          { refund_number: { [Op.iLike]: `%${q}%` } },
           { reason: { [Op.iLike]: `%${q}%` } },
           sequelize.where(
             sequelize.cast(sequelize.col("Refund.status"), "text"),
@@ -603,8 +620,9 @@ export const getAllRefundsLite = async (req, res) => {
       where,
       attributes: [
         "id",
-        "refund_number", // ✅ ADD
+        "refund_number",
         "amount",
+        "currency", // 🔥 ONLY ADD THIS
         "reason",
         "status",
         "created_at",
@@ -628,11 +646,12 @@ export const getAllRefundsLite = async (req, res) => {
     const records = refunds.map((r) => ({
       id: r.id,
       amount: r.amount,
+      currency: r.currency, // 🔥 ONLY ADD THIS
       status: r.status,
       reason: r.reason,
       method: r.payment?.method || "",
       payment: r.payment?.transaction_ref || "",
-      label: r.refund_number || r.payment?.transaction_ref || r.id, // ✅ FIX
+      label: r.refund_number || r.payment?.transaction_ref || r.id,
       patient: r.patient
         ? `${r.patient.pat_no} - ${r.patient.first_name} ${r.patient.last_name}`
         : "",
@@ -651,7 +670,6 @@ export const getAllRefundsLite = async (req, res) => {
     return error(res, "❌ Failed to load refunds (lite)", err);
   }
 };
-
 
 /* ============================================================
    📌 GET Refund by ID (MASTER PARITY – TENANT LOCKED)

@@ -443,15 +443,27 @@ export const FIELD_VISIBILITY_REFUND_TRANSACTION = {
 
 /* -------------------- Registration Log -------------------- */
 export const FIELD_VISIBILITY_REGISTRATION_LOG = {
-    superadmin: FIELD_ORDER_REGISTRATION_LOG,
+  superadmin: FIELD_ORDER_REGISTRATION_LOG,
   organization_admin: FIELD_ORDER_REGISTRATION_LOG,
+
   manager: [
     "id", "patient_id", "registrar_id", "invoice_id", "registration_type_id",
+
+    // 🔥 NEW
+    "payer_type",
+    "patient_insurance_id",
+
     "registration_method", "registration_source", "patient_category",
     "visit_reason", "is_emergency", "registration_time", "log_status", "notes"
   ],
+
   staff: [
-    "id", "patient_id", "registration_method", "patient_category",
+    "id", "patient_id",
+
+    // 🔥 NEW (only this one)
+    "payer_type",
+
+    "registration_method", "patient_category",
     "visit_reason", "is_emergency", "registration_time", "log_status"
   ]
 };

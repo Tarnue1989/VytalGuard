@@ -109,6 +109,7 @@ export async function setupDepositFormSubmission({ form }) {
 
   const appliedInvoiceHidden = document.getElementById("appliedInvoiceId");
   const amountInput = document.getElementById("amount");
+  const currencySelect = document.getElementById("currencySelect");
   const methodSelect = document.getElementById("methodSelect");
   const transactionRefInput = document.getElementById("transactionRef");
   const notesInput = document.getElementById("notes");
@@ -202,6 +203,7 @@ export async function setupDepositFormSubmission({ form }) {
         : "";
 
       appliedInvoiceHidden.value = entry.applied_invoice_id || "";
+      currencySelect.value = entry.currency || "";
       amountInput.value = entry.amount ?? "";
       methodSelect.value = entry.method || "";
       transactionRefInput.value = entry.transaction_ref || "";
@@ -255,6 +257,7 @@ export async function setupDepositFormSubmission({ form }) {
 
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
+      currency: currencySelect.value || null,
       applied_invoice_id: normalizeUUID(appliedInvoiceHidden?.value),
       amount: normalizeNumber(amountInput.value),
       method: methodSelect.value || null,

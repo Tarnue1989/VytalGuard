@@ -1,15 +1,30 @@
+// 📁 backend/src/models/Invoice.js
 import { DataTypes, Model } from "sequelize";
-import { INVOICE_STATUS, PAYER_TYPES } from "../constants/enums.js";
+import {
+  INVOICE_STATUS,
+  PAYER_TYPES,
+  CURRENCY,
+} from "../constants/enums.js";
 
 export default (sequelize) => {
   class Invoice extends Model {
     static associate(models) {
       // 🔹 Core
-      Invoice.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
+      Invoice.belongsTo(models.Patient, {
+        as: "patient",
+        foreignKey: "patient_id",
+      });
 
       // 🔹 Org / Facility
-      Invoice.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
-      Invoice.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
+      Invoice.belongsTo(models.Organization, {
+        as: "organization",
+        foreignKey: "organization_id",
+      });
+
+      Invoice.belongsTo(models.Facility, {
+        as: "facility",
+        foreignKey: "facility_id",
+      });
 
       // 🔹 Invoice Details
       Invoice.hasMany(models.InvoiceItem, {
@@ -18,10 +33,26 @@ export default (sequelize) => {
         onDelete: "CASCADE",
         hooks: true,
       });
-      Invoice.hasMany(models.Payment, { as: "payments", foreignKey: "invoice_id" });
-      Invoice.hasMany(models.Refund, { as: "refunds", foreignKey: "invoice_id" });
-      Invoice.hasMany(models.DiscountWaiver, { as: "waivers", foreignKey: "invoice_id" });
-      Invoice.hasMany(models.Deposit, { as: "appliedDeposits", foreignKey: "applied_invoice_id" });
+
+      Invoice.hasMany(models.Payment, {
+        as: "payments",
+        foreignKey: "invoice_id",
+      });
+
+      Invoice.hasMany(models.Refund, {
+        as: "refunds",
+        foreignKey: "invoice_id",
+      });
+
+      Invoice.hasMany(models.DiscountWaiver, {
+        as: "waivers",
+        foreignKey: "invoice_id",
+      });
+
+      Invoice.hasMany(models.Deposit, {
+        as: "appliedDeposits",
+        foreignKey: "applied_invoice_id",
+      });
 
       // 🔹 Insurance
       Invoice.belongsTo(models.InsuranceProvider, {
@@ -29,18 +60,39 @@ export default (sequelize) => {
         foreignKey: "insurance_provider_id",
       });
 
+      Invoice.belongsTo(models.InsuranceClaim, {
+        as: "insuranceClaim",
+        foreignKey: "insurance_claim_id",
+      });
+
       // 🔹 Audit
-      Invoice.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
-      Invoice.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
-      Invoice.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
+      Invoice.belongsTo(models.User, {
+        as: "createdBy",
+        foreignKey: "created_by_id",
+      });
+
+      Invoice.belongsTo(models.User, {
+        as: "updatedBy",
+        foreignKey: "updated_by_id",
+      });
+
+      Invoice.belongsTo(models.User, {
+        as: "deletedBy",
+        foreignKey: "deleted_by_id",
+      });
     }
 
     /* ============================================================
-       🔁 Central Recalculation Method (delegates to service)
+       🔁 Central Recalculation Method
     ============================================================ */
     static async recalculate(invoice_id, transaction = null) {
-      const { financialService } = await import("../services/financialService.js");
-      return await financialService.recalcInvoice(invoice_id, transaction);
+      const { financialService } = await import(
+        "../services/financialService.js"
+      );
+      return await financialService.recalcInvoice(
+        invoice_id,
+        transaction
+      );
     }
   }
 
@@ -52,61 +104,121 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // 🔗 Links
+      /* ================= LINKS ================= */
       patient_id: { type: DataTypes.UUID, allowNull: false },
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: true },
 
-      // 📑 Invoice info
-      invoice_number: { type: DataTypes.STRING, allowNull: true, unique: true }, // generated in hook
+      /* ================= INFO ================= */
+      invoice_number: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        unique: true,
+      },
+
       invoice_date: {
         type: DataTypes.DATEONLY,
         allowNull: false,
         defaultValue: sequelize.literal("CURRENT_DATE"),
       },
-      module: { type: DataTypes.STRING, allowNull: true },
+
+      module: { type: DataTypes.STRING },
+
       status: {
-        type: DataTypes.ENUM(...INVOICE_STATUS),
+        type: DataTypes.ENUM(...Object.values(INVOICE_STATUS)),
         allowNull: false,
-        defaultValue: INVOICE_STATUS[0], // draft
+        defaultValue: INVOICE_STATUS.DRAFT,
       },
-      currency: { type: DataTypes.STRING, allowNull: false, defaultValue: "LRD" },
 
-      // ✅ Due Date — required with 30-day grace period
-      due_date: { type: DataTypes.DATEONLY, allowNull: false },
-
-      is_locked: { type: DataTypes.BOOLEAN, defaultValue: false },
-
-      // 💵 Aggregates
-      subtotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },      // ✅ new
-      total_tax: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },     // ✅ already there
-      total: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      total_discount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      total_paid: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      refunded_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      applied_deposits: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-      balance: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-
-      // 🏥 Insurance & Payer
       payer_type: {
-        type: DataTypes.ENUM(...PAYER_TYPES),
+        type: DataTypes.ENUM(...Object.values(PAYER_TYPES)),
         allowNull: false,
-        defaultValue: PAYER_TYPES[0], // cash
+        defaultValue: PAYER_TYPES.CASH,
       },
-      insurance_provider_id: { type: DataTypes.UUID, allowNull: true },
-      insurance_claim_id: { type: DataTypes.UUID, allowNull: true },
-      coverage_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
 
-      // 📌 Lifecycle reasons
-      void_reason: { type: DataTypes.TEXT, allowNull: true },
-      cancel_reason: { type: DataTypes.TEXT, allowNull: true },
+      /* ================= 💱 CURRENCY ================= */
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: false,
+        defaultValue: CURRENCY.LRD,
+      },
 
+      due_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: false,
+      },
+
+      is_locked: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+
+      /* ================= 💵 TOTALS ================= */
+      subtotal: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      total_tax: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      total: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      total_discount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      total_paid: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      refunded_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      applied_deposits: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      balance: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      /* ================= 🏥 INSURANCE ================= */
+      insurance_provider_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      insurance_claim_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      coverage_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      /* ================= NOTES ================= */
+      void_reason: { type: DataTypes.TEXT },
+      cancel_reason: { type: DataTypes.TEXT },
       notes: { type: DataTypes.TEXT },
 
-      // 🔹 Audit
-      created_by_id: { type: DataTypes.UUID, allowNull: true },
-      updated_by_id: { type: DataTypes.UUID, allowNull: true },
-      deleted_by_id: { type: DataTypes.UUID, allowNull: true },
+      /* ================= AUDIT ================= */
+      created_by_id: { type: DataTypes.UUID },
+      updated_by_id: { type: DataTypes.UUID },
+      deleted_by_id: { type: DataTypes.UUID },
     },
     {
       sequelize,
@@ -118,15 +230,21 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by_id"] },
       },
+
       scopes: {
         withDeleted: { paranoid: false },
+
         tenant(facilityId) {
-          return facilityId ? { where: { facility_id: facilityId } } : {};
+          return facilityId
+            ? { where: { facility_id: facilityId } }
+            : {};
         },
       },
+
       indexes: [
         { fields: ["patient_id"] },
         { fields: ["organization_id"] },
@@ -139,13 +257,17 @@ export default (sequelize) => {
   );
 
   /* ============================================================
-     🔁 Hooks
+     🔁 HOOKS
   ============================================================ */
+
+  // 🔒 Prevent editing locked invoices
   Invoice.beforeUpdate((invoice) => {
-    if (invoice.is_locked) throw new Error("Locked invoices cannot be modified");
+    if (invoice.is_locked) {
+      throw new Error("Locked invoices cannot be modified");
+    }
   });
 
-  // Auto-generate invoice number & due_date
+  // 🔢 Generate invoice number + due date
   Invoice.beforeValidate(async (invoice) => {
     if (!invoice.invoice_number) {
       const lastInvoice = await Invoice.findOne({
@@ -157,6 +279,7 @@ export default (sequelize) => {
       });
 
       let seq = 1;
+
       if (lastInvoice?.invoice_number) {
         const match = lastInvoice.invoice_number.match(/(\d+)$/);
         if (match) seq = parseInt(match[1], 10) + 1;
@@ -173,7 +296,7 @@ export default (sequelize) => {
     }
   });
 
-  // 🔹 Audit hooks
+  // 🔹 Audit
   Invoice.beforeCreate((invoice, options) => {
     if (options.user) {
       invoice.created_by_id = options.user.id;

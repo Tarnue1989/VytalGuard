@@ -40,9 +40,7 @@ const debug = makeModuleLogger("masterItem");
 /* ============================================================
    🧩 ENUM NORMALIZATION (MASTER SAFE)
 ============================================================ */
-const MASTER_ITEM_STATUS_VALUES = Array.isArray(MASTER_ITEM_STATUS)
-  ? MASTER_ITEM_STATUS
-  : Object.values(MASTER_ITEM_STATUS);
+const MASTER_ITEM_STATUS_VALUES = Object.values(MASTER_ITEM_STATUS);
 
 /* ============================================================
    🔗 SHARED INCLUDES

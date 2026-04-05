@@ -77,11 +77,11 @@ function normalizeEnumFields(value, enumFields) {
    🔐 ENUM MAPS (ORDER-SAFE)
 ============================================================ */
 const GENDER = Object.fromEntries(
-  GENDER_TYPES.map((v) => [v.toLowerCase(), v])
+  Object.values(GENDER_TYPES).map((v) => [v.toLowerCase(), v])
 );
 
 const REG_STATUS = Object.fromEntries(
-  REGISTRATION_LOG_STATUS.map((v) => [v.toUpperCase(), v])
+  Object.values(REGISTRATION_LOG_STATUS).map((v) => [v.toUpperCase(), v])
 );
 
 /* ============================================================
@@ -166,20 +166,20 @@ function buildPatientSchema(user, mode = "create") {
     /* ================= DOB ================= */
     date_of_birth: Joi.date().allow(null),
     date_of_birth_precision: Joi.string()
-      .valid(...DOB_PRECISION)
+      .valid(...Object.values(DOB_PRECISION))
       .allow("", null),
 
     /* ================= DEMOGRAPHICS ================= */
     gender: Joi.string()
-      .valid(...GENDER_TYPES)
+      .valid(...Object.values(GENDER_TYPES))
       .allow("", null),
 
     marital_status: Joi.string()
-      .valid(...MARITAL_STATUS)
+      .valid(...Object.values(MARITAL_STATUS))
       .allow("", null),
 
     religion: Joi.string()
-      .valid(...RELIGIONS)
+      .valid(...Object.values(RELIGIONS))
       .allow("", null),
 
     profession: Joi.string().max(120).allow("", null),

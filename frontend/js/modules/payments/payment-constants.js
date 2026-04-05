@@ -16,6 +16,7 @@ export const FIELD_LABELS_PAYMENT = {
   patient: "Patient",
   invoice: "Invoice",
   amount: "Amount",
+  currency: "Currency", // ✅ ADDED
   method: "Method",
   transaction_ref: "Transaction Ref",
   is_deposit: "Deposit?",
@@ -40,6 +41,7 @@ export const FIELD_ORDER_PAYMENT = [
   "patient",
   "invoice",
   "amount",
+  "currency", // ✅ ADDED
   "method",
   "transaction_ref",
   "is_deposit",
@@ -65,6 +67,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
     "patient",
     "invoice",
     "amount",
+    "currency", // ✅ ADDED
     "method",
     "transaction_ref",
     "is_deposit",
@@ -86,6 +89,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
     "patient",
     "invoice",
     "amount",
+    "currency", // ✅ ADDED
     "method",
     "transaction_ref",
     "is_deposit",
@@ -106,6 +110,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
     "patient",
     "invoice",
     "amount",
+    "currency", // ✅ ADDED
     "method",
     "transaction_ref",
     "is_deposit",
@@ -124,6 +129,7 @@ export const FIELD_DEFAULTS_PAYMENT = {
     "patient",
     "invoice",
     "amount",
+    "currency", // ✅ ADDED
     "method",
     "transaction_ref",
     "is_deposit",
@@ -138,7 +144,13 @@ export const FIELD_DEFAULTS_PAYMENT = {
 export const FIELD_GROUPS_PAYMENT = {
   org_scope: ["organization", "facility"],
   patient_info: ["patient", "invoice"],
-  financials: ["amount", "method", "transaction_ref", "is_deposit"],
+  financials: [
+    "amount",
+    "currency", // ✅ ADDED
+    "method",
+    "transaction_ref",
+    "is_deposit",
+  ],
   notes: ["reason"],
   meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
   system: ["deletedBy", "deleted_at", "actions"],

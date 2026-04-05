@@ -6,7 +6,7 @@
 // 🔹 UI-only dateRange (MASTER)
 // 🔹 View toggle + summary + export
 // 🔹 Suggestion dependency (patient → deposits)
-// 🔹 NO DOM changes, NO API changes
+// 🔹 MINIMAL DOM EXTENSION (currency filter added)
 // ============================================================================
 
 import {
@@ -130,6 +130,7 @@ const filterPatientSuggestions = qs("filterPatientSuggestions");
 const filterDeposit            = qs("filterDeposit");
 const filterDepositHidden      = qs("filterDepositId");
 const filterDepositSuggestions = qs("filterDepositSuggestions");
+const filterCurrency = qs("filterCurrency"); 
 
 /* ============================================================
    🔃 SORT BRIDGE (MASTER)
@@ -161,6 +162,7 @@ setupAutoFilters({
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -179,6 +181,7 @@ function getFilters() {
     patient_id: filterPatientHidden?.value,
     deposit_id: filterDepositHidden?.value,
     dateRange: dateRange?.value,
+    currency: filterCurrency?.value,
   };
 }
 
@@ -207,6 +210,7 @@ async function loadEntries(page = 1) {
     if (f.facility_id)     q.set("facility_id", f.facility_id);
     if (f.status)          q.set("status", f.status);
     if (f.method)          q.set("method", f.method);
+    if (f.currency) q.set("currency", f.currency); 
     if (f.patient_id)      q.set("patient_id", f.patient_id);
     if (f.deposit_id)      q.set("deposit_id", f.deposit_id);
 
@@ -301,6 +305,7 @@ qs("resetFilterBtn")?.addEventListener("click", () => {
     filterPatient,
     filterDeposit,
     dateRange,
+    filterCurrency,
   ].forEach((el) => el && (el.value = ""));
 
   filterPatientHidden.value = "";
@@ -339,7 +344,33 @@ export async function initRefundDepositModule() {
     "filterChevron",
     "refundDepositFilterVisible"
   );
+  /* ========================================================
+    🔧 DEFAULT DEPOSIT SEARCH (NO PATIENT SELECTED)
+  ======================================================== */
+  setupSuggestionInputDynamic(
+    filterDeposit,
+    filterDepositSuggestions,
+    async (q) => {
+      const patientId = filterPatientHidden.value;
 
+      const url = patientId
+        ? `/api/lite/deposits?patient_id=${patientId}&q=${q}`
+        : `/api/lite/deposits?q=${q}`;
+
+      const res = await authFetch(url);
+      const json = await res.json();
+      return json.data?.records || [];
+    },
+    (selected) => {
+      filterDepositHidden.value = selected?.id || "";
+      filterDeposit.value = selected?.label || "";
+      loadEntries(1);
+    },
+    "label"
+  );
+  /* ========================================================
+     👤 PATIENT → DEPOSIT DEPENDENCY (FIXED)
+  ======================================================== */
   setupSuggestionInputDynamic(
     filterPatient,
     filterPatientSuggestions,
@@ -348,18 +379,10 @@ export async function initRefundDepositModule() {
       filterPatientHidden.value = selected?.id || "";
       filterPatient.value = selected?.label || "";
 
-      if (selected?.id) {
-        const deposits = await loadPaymentsLite({ patient_id: selected.id }); // reuse loader
-        setupSelectOptions(
-          filterDeposit,
-          deposits,
-          "id",
-          "label",
-          "-- All Deposits --"
-        );
-      } else {
-        setupSelectOptions(filterDeposit, [], "id", "label", "-- All Deposits --");
+      if (!selected?.id) {
+        filterDeposit.value = "";
         filterDepositHidden.value = "";
+        filterDepositSuggestions.innerHTML = "";
       }
 
       loadEntries(1);
@@ -367,18 +390,24 @@ export async function initRefundDepositModule() {
     "label"
   );
 
-  setupSuggestionInputDynamic(
-    filterDeposit,
-    filterDepositSuggestions,
-    "/api/lite/deposits",
-    (selected) => {
-      filterDepositHidden.value = selected?.id || "";
-      filterDeposit.value = selected?.label || "";
-      loadEntries(1);
-    },
-    "label"
-  );
+  /* ========================================================
+     🔥 RESET ON PATIENT INPUT (CRITICAL)
+  ======================================================== */
+  filterPatient.addEventListener("input", () => {
+    filterPatientHidden.value = "";
+    filterDeposit.value = "";
+    filterDepositHidden.value = "";
+    filterDepositSuggestions.innerHTML = "";
+  });
 
+  /* ========================================================
+     ⚠️ IMPORTANT: REMOVE DUPLICATE DEPOSIT SETUP
+     (DO NOT ADD ANOTHER setupSuggestionInputDynamic FOR DEPOSIT)
+  ======================================================== */
+
+  /* ========================================================
+     🏢 ORG / FACILITY (MASTER)
+  ======================================================== */
   if (userRole.includes("super")) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
@@ -397,6 +426,7 @@ export async function initRefundDepositModule() {
     filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
   } else if (userRole.includes("admin")) {
     filterOrg?.closest(".form-group")?.classList.add("hidden");
+
     const facs = await loadFacilitiesLite({}, true);
     facs.unshift({ id: "", name: "-- All Facilities --" });
     setupSelectOptions(filterFacility, facs, "id", "name");
@@ -405,9 +435,11 @@ export async function initRefundDepositModule() {
     filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
+  /* ========================================================
+     🚀 INITIAL LOAD
+  ======================================================== */
   await loadEntries(1);
 }
-
 /* ============================================================
    🏁 BOOT
 ============================================================ */

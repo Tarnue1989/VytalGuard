@@ -32,7 +32,11 @@ export default (sequelize) => {
       facility_id: { type: DataTypes.UUID, allowNull: false, unique: true },
 
       // 🏷️ Status
-      status: { type: DataTypes.ENUM(...THEME_STATUS), allowNull: false, defaultValue: THEME_STATUS[0] },
+      status: {
+        type: DataTypes.ENUM(...Object.values(THEME_STATUS)),
+        allowNull: false,
+        defaultValue: THEME_STATUS.ACTIVE,
+      },
 
       // 🎨 Theme & Assets
       theme: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },

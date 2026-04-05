@@ -88,24 +88,23 @@ const MODULE_KEY = "prescriptions"; // ✅ FIXED (plural — matches billing)
    🔖 STATUS MAP (ENUM-DRIVEN — MASTER)
 ============================================================ */
 const PS = {
-  DRAFT: PRESCRIPTION_STATUS[0],
-  ISSUED: PRESCRIPTION_STATUS[1],
-  DISPENSED: PRESCRIPTION_STATUS[2],
-  COMPLETED: PRESCRIPTION_STATUS[3],
-  CANCELLED: PRESCRIPTION_STATUS[4],
-  VOIDED: PRESCRIPTION_STATUS[5],
-  VERIFIED: PRESCRIPTION_STATUS[6],
+  DRAFT: PRESCRIPTION_STATUS.DRAFT,
+  ISSUED: PRESCRIPTION_STATUS.ISSUED,
+  DISPENSED: PRESCRIPTION_STATUS.DISPENSED,
+  COMPLETED: PRESCRIPTION_STATUS.COMPLETED,
+  CANCELLED: PRESCRIPTION_STATUS.CANCELLED,
+  VOIDED: PRESCRIPTION_STATUS.VOIDED,
+  VERIFIED: PRESCRIPTION_STATUS.VERIFIED,
 };
 
 const PIS = {
-  DRAFT: PRESCRIPTION_ITEM_STATUS[0],
-  ISSUED: PRESCRIPTION_ITEM_STATUS[1],
-  DISPENSED: PRESCRIPTION_ITEM_STATUS[2],
-  PARTIALLY_DISPENSED: PRESCRIPTION_ITEM_STATUS[3],
-  CANCELLED: PRESCRIPTION_ITEM_STATUS[4],
-  VOIDED: PRESCRIPTION_ITEM_STATUS[5],
+  DRAFT: PRESCRIPTION_ITEM_STATUS.DRAFT,
+  ISSUED: PRESCRIPTION_ITEM_STATUS.ISSUED,
+  DISPENSED: PRESCRIPTION_ITEM_STATUS.DISPENSED,
+  PARTIALLY_DISPENSED: PRESCRIPTION_ITEM_STATUS.PARTIALLY_DISPENSED,
+  CANCELLED: PRESCRIPTION_ITEM_STATUS.CANCELLED,
+  VOIDED: PRESCRIPTION_ITEM_STATUS.VOIDED,
 };
-
 /* ============================================================
    🔗 PARENT → ITEM STATUS MAP (MASTER)
 ============================================================ */
@@ -1076,7 +1075,7 @@ export const togglePrescriptionStatus = async (req, res) => {
     if (!allowed) return;
 
     const { status } = req.body;
-    if (!status || !PRESCRIPTION_STATUS.includes(status)) {
+    if (!status || !Object.values(PRESCRIPTION_STATUS).includes(status)) {
       await t.rollback();
       return error(res, "Invalid status", null, 400);
     }
@@ -1838,7 +1837,7 @@ export const getAllPrescriptions = async (req, res) => {
       group: ["status"],
     });
 
-    PRESCRIPTION_STATUS.forEach((s) => {
+    Object.values(PRESCRIPTION_STATUS).forEach((s) => {
       const found = statusCounts.find((r) => r.status === s);
       summary[s] = found ? Number(found.get("count")) : 0;
     });

@@ -73,9 +73,9 @@ export default (sequelize) => {
 
       // 🏷️ Status
       status: {
-        type: DataTypes.ENUM(...CONSULTATION_STATUS),
+        type: DataTypes.ENUM(...Object.values(CONSULTATION_STATUS)),
         allowNull: false,
-        defaultValue: CONSULTATION_STATUS[0], // "open"
+        defaultValue: CONSULTATION_STATUS.OPEN,
       },
 
       // 📝 Cancellation / Void reasons

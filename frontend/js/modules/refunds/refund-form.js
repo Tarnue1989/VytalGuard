@@ -26,7 +26,7 @@ import {
 } from "../../utils/form-ux.js";
 
 import { authFetch } from "../../authSession.js";
-
+import { getCurrencySymbol } from "../../utils/currency-utils.js"; 
 import {
   loadPaymentsLite,
   setupSelectOptions,
@@ -174,7 +174,7 @@ const formattedPayments = payments.map((p) => {
 
   return {
     ...p,
-    label: `${base} — LR$ ${amount} — Bal: LR$ ${balance}`,
+    label: `${base} — ${getCurrencySymbol(p.currency)} ${amount} — Bal: ${getCurrencySymbol(p.currency)} ${balance}`,
   };
 });
         /* ===================== ✅ FIX END ===================== */
@@ -190,6 +190,11 @@ const formattedPayments = payments.map((p) => {
         paymentSelect.onchange = () => {
           const p = payments.find((x) => x.id === paymentSelect.value);
           if (!p) return;
+
+          const symbolEl = document.getElementById("currencySymbol"); // ✅ ADD
+          if (symbolEl) {
+            symbolEl.textContent = getCurrencySymbol(p.currency);
+          }
 
           methodSelect.value = p.method || "";
           invoiceHidden.value = p.invoice_id || "";
@@ -248,6 +253,10 @@ const formattedPayments = payments.map((p) => {
       methodSelect.value = entry.method || "";
 
       amountInput.value = entry.amount ?? "";
+      const symbolEl = document.getElementById("currencySymbol");
+      if (symbolEl && entry.currency) {
+        symbolEl.textContent = getCurrencySymbol(entry.currency);
+      }
       reasonInput.value = entry.reason ?? "";
 
       patientInput.disabled = true;

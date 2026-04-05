@@ -47,21 +47,23 @@ export default (sequelize) => {
       refund_id: { type: DataTypes.UUID, allowNull: true },
       deposit_id: { type: DataTypes.UUID, allowNull: true },
       discount_waiver_id: { type: DataTypes.UUID, allowNull: true },
-
       // 💵 Financial details
       transaction_type: {
-        type: DataTypes.ENUM(...LEDGER_TRANSACTION_TYPE), // "credit", "debit"
+        type: DataTypes.ENUM(...Object.values(LEDGER_TRANSACTION_TYPE)), // "credit", "debit"
         allowNull: false,
       },
       amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
 
       // 🔹 Payment method (reuse PAYMENT_METHODS)
-      method: { type: DataTypes.ENUM(...PAYMENT_METHODS), allowNull: true },
+      method: {
+        type: DataTypes.ENUM(...Object.values(PAYMENT_METHODS)),
+        allowNull: true,
+      },
 
       status: {
-        type: DataTypes.ENUM(...LEDGER_STATUS), // "pending", "completed", "voided", etc.
+        type: DataTypes.ENUM(...Object.values(LEDGER_STATUS)), // "pending", "completed", "voided", etc.
         allowNull: false,
-        defaultValue: "pending",
+        defaultValue: LEDGER_STATUS.PENDING,
       },
       note: { type: DataTypes.TEXT },
 

@@ -26,6 +26,7 @@ const SORTABLE_FIELDS = new Set([
   "facility_id",
   "patient_id",
   "amount",
+  "currency",
   "applied_amount",
   "remaining_balance",
   "method",
@@ -183,16 +184,17 @@ function renderValue(entry, field) {
 
     case "appliedInvoice":
       return entry.appliedInvoice
-        ? `${entry.appliedInvoice.invoice_number} (Bal: $${Number(
+        ? `${entry.appliedInvoice.invoice_number} (Bal: ${getCurrencySymbol(entry.currency)} ${Number(
             entry.appliedInvoice.balance
           ).toFixed(2)})`
         : "—";
-
+    case "currency":
+      return safe(entry.currency);
     case "amount":
     case "applied_amount":
     case "remaining_balance":
       return entry[field] != null
-        ? `$${Number(entry[field]).toFixed(2)}`
+        ? `${getCurrencySymbol(entry.currency)} ${Number(entry[field]).toFixed(2)}`
         : "—";
 
     case "method":
@@ -232,7 +234,7 @@ export function renderCard(entry, visibleFields, user) {
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+  const money = (v) => `${getCurrencySymbol(entry.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
@@ -294,6 +296,7 @@ export function renderCard(entry, visibleFields, user) {
         ${row("Amount", money(entry.amount))}
         ${row("Available", money(entry.remaining_balance))}
         ${hasRefund ? row("Refunded", money(refundedAmount)) : ""}
+        ${row("Currency", entry.currency)}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>

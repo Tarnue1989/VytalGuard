@@ -71,8 +71,8 @@ function buildFacilitySchema(userRole, mode = "create") {
     phone: Joi.string().allow("", null),
     email: Joi.string().email().allow("", null),
     status: Joi.string()
-      .valid(...FACILITY_STATUS)
-      .default(FACILITY_STATUS[0]),
+      .valid(...Object.values(FACILITY_STATUS))
+      .default(FACILITY_STATUS.ACTIVE)
   };
 
   if (mode === "update") {
@@ -362,7 +362,7 @@ export const toggleFacilityStatus = async (req, res) => {
       return error(res, "Facility not found", null, 404);
     }
 
-    const [ACTIVE, INACTIVE] = FACILITY_STATUS;
+    const { ACTIVE, INACTIVE } = FACILITY_STATUS;
     const newStatus = facility.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await facility.update({
@@ -552,7 +552,7 @@ export const getAllFacilities = async (req, res) => {
     /* ========================================================
        📌 STATUS FILTER (AUTHORITATIVE)
     ======================================================== */
-    if (req.query.status && FACILITY_STATUS.includes(req.query.status)) {
+    if (req.query.status && Object.values(FACILITY_STATUS).includes(req.query.status)) {
       options.where[Op.and].push({
         status: req.query.status,
       });
@@ -575,8 +575,8 @@ export const getAllFacilities = async (req, res) => {
     ======================================================== */
     const summary = {
       total: count,
-      active: rows.filter(r => r.status === FACILITY_STATUS[0]).length,
-      inactive: rows.filter(r => r.status === FACILITY_STATUS[1]).length,
+      active: rows.filter(r => r.status === FACILITY_STATUS.ACTIVE).length,
+      inactive: rows.filter(r => r.status === FACILITY_STATUS.INACTIVE).length,
     };
 
     await auditService.logAction({
@@ -622,7 +622,7 @@ export const getAllFacilitiesLite = async (req, res) => {
     const { q } = req.query;
 
     const where = {
-      status: FACILITY_STATUS[0],
+      status: FACILITY_STATUS.ACTIVE,
       [Op.and]: [],
     };
 

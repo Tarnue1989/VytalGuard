@@ -34,6 +34,12 @@ export default (sequelize) => {
       central_stock_id: { type: DataTypes.UUID, allowNull: false },
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
+      // 🔹 Lifecycle
+      status: {
+        type: DataTypes.ENUM(...Object.values(STOCK_ADJUSTMENT_STATUS)),
+        allowNull: false,
+        defaultValue: STOCK_ADJUSTMENT_STATUS.DRAFT,
+      },
 
       // ⚖️ Adjustment details
       adjustment_type: {
@@ -43,12 +49,7 @@ export default (sequelize) => {
       quantity: { type: DataTypes.INTEGER, allowNull: false },
       reason: { type: DataTypes.TEXT },
 
-      // 🔹 Lifecycle
-      status: {
-        type: DataTypes.ENUM(...Object.values(STOCK_ADJUSTMENT_STATUS)),
-        allowNull: false,
-        defaultValue: Object.values(STOCK_ADJUSTMENT_STATUS)[0], // "draft"
-      },
+
 
       // ✅ Approval
       approved_by_id: { type: DataTypes.UUID, allowNull: true },

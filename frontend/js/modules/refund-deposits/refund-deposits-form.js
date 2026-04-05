@@ -18,7 +18,7 @@ import {
   initLogoutWatcher,
   autoPagePermissionKey,
 } from "../../utils/index.js";
-
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 import {
   enableLiveValidation,
   clearFormErrors,
@@ -171,9 +171,11 @@ const readable = deposits.map((d) => {
     maximumFractionDigits: 2,
   });
 
+  const symbol = getCurrencySymbol(d.currency);
+
   return {
     ...d,
-    label: `${base} — LR$ ${amount} — Bal: LR$ ${balance}`,
+    label: `${base} — ${symbol} ${amount} — Bal: ${symbol} ${balance}`,
   };
 });
 
@@ -191,6 +193,12 @@ const readable = deposits.map((d) => {
 
         depositHidden.value = dep.id;
         methodSelect.value = dep.method || "";
+
+        // 🔥 ADD THIS (currency symbol sync)
+        const symbolEl = document.getElementById("currencySymbol");
+        if (symbolEl) {
+          symbolEl.textContent = getCurrencySymbol(dep.currency);
+        }
 
         const bal = Number(dep.remaining_balance || 0);
         amountInput.value = bal.toFixed(2);

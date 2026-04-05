@@ -368,9 +368,15 @@ export const FIELD_ORDER_REGISTRATION_LOG = [
   "id", "patient_id", "registrar_id",
   "organization_id", "facility_id",
   "invoice_id", "registration_type_id",
+
+  // 🔥 NEW
+  "payer_type",
+  "patient_insurance_id",
+
   "registration_method", "registration_source", "patient_category",
   "visit_reason", "is_emergency", "registration_time", "notes",
   "log_status",
+
   "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];

@@ -130,6 +130,9 @@ const filterCategory = qs("filterCategory");
 const filterReason = qs("filterReason");
 const filterSource = qs("filterSource");
 
+// ✅ ADDED
+const filterPayerType = qs("filterPayerType");
+
 /* ============================================================
    🔃 SORT BRIDGE
 ============================================================ */
@@ -162,6 +165,7 @@ setupAutoFilters({
     filterType,
     filterMethod,
     filterCategory,
+    filterPayerType, // ✅ ADDED
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -184,6 +188,9 @@ function getFilters() {
     visit_reason: filterReason?.value,
     registration_source: filterSource?.value,
     dateRange: dateRange?.value,
+
+    // ✅ ADDED
+    payer_type: filterPayerType?.value,
   };
 }
 
@@ -286,6 +293,7 @@ qs("resetFilterBtn")?.addEventListener("click", () => {
     filterReason,
     filterSource,
     dateRange,
+    filterPayerType, // ✅ ADDED
   ].forEach(el => el && (el.value = ""));
 
   if (filterPatient) filterPatient.value = "";

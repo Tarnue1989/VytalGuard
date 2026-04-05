@@ -43,11 +43,10 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...APPOINTMENT_STATUS),
+        type: DataTypes.ENUM(...Object.values(APPOINTMENT_STATUS)),
         allowNull: false,
-        defaultValue: APPOINTMENT_STATUS[0], // "scheduled"
+        defaultValue: APPOINTMENT_STATUS.SCHEDULED,
       },
-
       notes: { type: DataTypes.TEXT },
 
       // Audit

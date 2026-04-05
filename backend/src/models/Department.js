@@ -57,9 +57,9 @@ export default (sequelize) => {
 
       // Status
       status: {
-        type: DataTypes.ENUM(...DEPARTMENT_STATUS),
+        type: DataTypes.ENUM(...Object.values(DEPARTMENT_STATUS)),
         allowNull: false,
-        defaultValue: DEPARTMENT_STATUS[0], // usually "active"
+        defaultValue: DEPARTMENT_STATUS.ACTIVE,
       },
 
       // Audit

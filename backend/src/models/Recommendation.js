@@ -79,9 +79,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...RECOMMENDATION_STATUS),
+        type: DataTypes.ENUM(...Object.values(RECOMMENDATION_STATUS)),
         allowNull: false,
-        defaultValue: RECOMMENDATION_STATUS[0], // "pending"
+        defaultValue: RECOMMENDATION_STATUS.PENDING,
       },
 
       // Audit

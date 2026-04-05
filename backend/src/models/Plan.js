@@ -23,9 +23,9 @@ export default (sequelize) => {
       price: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
 
       status: {
-        type: DataTypes.ENUM(...PLAN_STATUS),
+        type: DataTypes.ENUM(...Object.values(PLAN_STATUS)),
         allowNull: false,
-        defaultValue: PLAN_STATUS[0], // "active"
+        defaultValue: PLAN_STATUS.ACTIVE,
       },
 
       // 🔹 Audit

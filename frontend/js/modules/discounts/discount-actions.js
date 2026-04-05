@@ -145,7 +145,7 @@ export function setupActionHandlers({
     }
 
     if (cls.contains("print-btn")) {
-      if (!hasPerm("discounts:view"))
+      if (!hasPerm("discounts:print"))
         return showToast("⛔ No permission to print discounts");
       return handlePrint(entry);
     }
@@ -334,7 +334,7 @@ export function setupActionHandlers({
   });
 
   window.printDiscount = (id) => {
-    if (!hasPerm("discounts:view"))
+    if (!hasPerm("discounts:print"))
       return showToast("⛔ No permission to print discounts");
     const entry = findEntry(id);
     if (entry) handlePrint(entry);

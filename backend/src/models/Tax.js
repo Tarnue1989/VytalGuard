@@ -35,20 +35,22 @@ export default (sequelize) => {
       name: { type: DataTypes.STRING, allowNull: false },
       code: { type: DataTypes.STRING, allowNull: true },
       description: { type: DataTypes.TEXT },
-      type: { type: DataTypes.ENUM(...TAX_TYPE), allowNull: false }, // percentage | fixed | exempt
       rate: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0.0,
         comment: "If percentage: 7 = 7%, if fixed: amount in currency",
       },
-
-      status: {
-        type: DataTypes.ENUM(...TAX_STATUS),
+      type: {
+        type: DataTypes.ENUM(...Object.values(TAX_TYPE)),
         allowNull: false,
-        defaultValue: "active",
       },
 
+      status: {
+        type: DataTypes.ENUM(...Object.values(TAX_STATUS)),
+        allowNull: false,
+        defaultValue: TAX_STATUS.ACTIVE,
+      },
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

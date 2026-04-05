@@ -56,14 +56,12 @@ export default (sequelize) => {
 
       // ⚡ Full datetime
       request_date: { type: DataTypes.DATEONLY, allowNull: false },
-
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...LAB_REQUEST_STATUS),
+        type: DataTypes.ENUM(...Object.values(LAB_REQUEST_STATUS)),
         allowNull: false,
-        defaultValue: LAB_REQUEST_STATUS[0],
+        defaultValue: LAB_REQUEST_STATUS.DRAFT,
       },
-
       notes: { type: DataTypes.TEXT },
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       billed: { type: DataTypes.BOOLEAN, defaultValue: false },

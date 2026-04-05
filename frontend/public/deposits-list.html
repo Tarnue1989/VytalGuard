@@ -138,7 +138,17 @@
                           </select>
                         </div>
                       </div>
-
+                      <!-- Currency -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="filterCurrencySelect">Currency</label>
+                          <select id="filterCurrencySelect" class="form-select">
+                            <option value="">All</option>
+                            <option value="USD">USD</option>
+                            <option value="LRD">LRD</option>
+                          </select>
+                        </div>
+                      </div>
                       <!-- Status -->
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="field-wrapper">
@@ -340,6 +350,17 @@
       </div>
     </div>
   </div>
+  <!-- BOOTSTRAP JS -->
+  <!-- View Modal -->
+<div id="viewModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="viewModalTitle">Details</h2>
+      <button id="closeViewModal" class="close-btn">&times;</button>
+    </div>
+    <div class="modal-body" id="viewModalBody"></div>
+  </div>
+</div>
 
     <!-- JS -->
   <script src="assets/js/jquery.min.js"></script>
@@ -362,5 +383,10 @@
   <script type="module" src="/js/modules/deposits/deposit-render.js"></script>
   <script type="module" src="/js/modules/shared/list-export.js"></script>
 <script type="module" src="/js/utils/navigation.js"></script>
+
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

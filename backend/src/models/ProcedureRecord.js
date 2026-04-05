@@ -51,11 +51,10 @@ export default (sequelize) => {
       // Lifecycle
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       status: {
-        type: DataTypes.ENUM(...PROCEDURE_STATUS),
+        type: DataTypes.ENUM(...Object.values(PROCEDURE_STATUS)),
         allowNull: false,
-        defaultValue: PROCEDURE_STATUS[0], // "scheduled"
+        defaultValue: PROCEDURE_STATUS.SCHEDULED,
       },
-
       // Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

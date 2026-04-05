@@ -1,22 +1,31 @@
 // 📁 backend/src/models/RefundDeposit.js
 import { DataTypes, Model } from "sequelize";
-import { DEPOSIT_REFUND_STATUS } from "../constants/enums.js";
+import { DEPOSIT_REFUND_STATUS, CURRENCY } from "../constants/enums.js";
 
-// Lifecycle shortcuts
-const DR = DEPOSIT_REFUND_STATUS;
+/* ============================================================
+   🔖 Enum map (OBJECT SAFE)
+============================================================ */
+const DR = {
+  PENDING:   DEPOSIT_REFUND_STATUS.PENDING,
+  REVIEW:    DEPOSIT_REFUND_STATUS.REVIEW,
+  APPROVED:  DEPOSIT_REFUND_STATUS.APPROVED,
+  REJECTED:  DEPOSIT_REFUND_STATUS.REJECTED,
+  PROCESSED: DEPOSIT_REFUND_STATUS.PROCESSED,
+  VOIDED:    DEPOSIT_REFUND_STATUS.VOIDED,
+  CANCELLED: DEPOSIT_REFUND_STATUS.CANCELLED,
+  REVERSED:  DEPOSIT_REFUND_STATUS.REVERSED,
+  RESTORED:  DEPOSIT_REFUND_STATUS.RESTORED,
+};
 
 export default (sequelize) => {
   class RefundDeposit extends Model {
     static associate(models) {
-
-      /* ============================================================ */
       RefundDeposit.belongsTo(models.Deposit, { as: "deposit", foreignKey: "deposit_id" });
       RefundDeposit.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
 
       RefundDeposit.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
       RefundDeposit.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
 
-      /* ============================================================ */
       RefundDeposit.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       RefundDeposit.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       RefundDeposit.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -47,13 +56,20 @@ export default (sequelize) => {
         unique: true,
       },
 
+      // 🔗 Links
       deposit_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
-      /* ============================================================ */
+      // 💱 🔥 REQUIRED (MATCH DEPOSIT)
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: false,
+      },
+
+      // 💵 Refund
       refund_amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -72,10 +88,10 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(DEPOSIT_REFUND_STATUS)),
         allowNull: false,
-        defaultValue: DR.PENDING,
+        defaultValue: DEPOSIT_REFUND_STATUS.PENDING,
       },
 
-      /* ============================================================ */
+      // 🔹 Audit
       created_by_id: DataTypes.UUID,
       updated_by_id: DataTypes.UUID,
       deleted_by_id: DataTypes.UUID,
@@ -110,7 +126,6 @@ export default (sequelize) => {
       tableName: "refund_deposits",
       underscored: true,
       paranoid: true,
-
       timestamps: true,
       createdAt: "created_at",
       updatedAt: "updated_at",
@@ -123,7 +138,7 @@ export default (sequelize) => {
         { fields: ["patient_id"] },
         { fields: ["status"] },
         { fields: ["method"] },
-        { fields: ["refund_deposit_number"], unique: true }, // ✅ important
+        { fields: ["refund_deposit_number"], unique: true },
       ],
     }
   );
@@ -132,21 +147,23 @@ export default (sequelize) => {
      🔁 Hooks
   ============================================================ */
 
-  // ✅ Generate number + inherit deposit (FIXED ORDER)
+  // 🔥 Inherit deposit + enforce currency
   RefundDeposit.beforeValidate(async (refund) => {
     const { Deposit } = await import("../models/index.js");
 
-    // 🔹 Ensure tenant BEFORE numbering
-    if (!refund.organization_id || !refund.facility_id) {
-      const deposit = await Deposit.findByPk(refund.deposit_id);
-      if (!deposit) throw new Error("Invalid deposit_id for refund");
+    const deposit = await Deposit.findByPk(refund.deposit_id);
+    if (!deposit) throw new Error("Invalid deposit_id");
 
-      refund.organization_id = deposit.organization_id;
-      refund.facility_id = deposit.facility_id;
-      refund.patient_id = deposit.patient_id;
-    }
+    refund.organization_id = deposit.organization_id;
+    refund.facility_id = deposit.facility_id;
+    refund.patient_id = deposit.patient_id;
 
-    // 🔹 Generate number
+    // 🔥 enforce currency match
+    refund.currency = deposit.currency;
+  });
+
+  // 🔥 Generate number
+  RefundDeposit.beforeCreate(async (refund) => {
     if (!refund.refund_deposit_number) {
       const last = await RefundDeposit.findOne({
         where: {
@@ -168,7 +185,7 @@ export default (sequelize) => {
     }
   });
 
-  // ✅ Lifecycle stamping (SAFE — no recursion)
+  // 🔥 Lifecycle tracking
   RefundDeposit.afterUpdate((refund, options) => {
     if (!refund.changed("status")) return;
 

@@ -450,7 +450,7 @@ export const togglePharmacyTransactionStatus = async (req, res) => {
       const oldStatus = txn.status;
       let newStatus = oldStatus;
 
-      if (req.body?.status && PHARMACY_TRANSACTION_STATUS.includes(req.body.status)) {
+      if (req.body?.status && Object.values(PHARMACY_TRANSACTION_STATUS).includes(req.body.status)) {
         newStatus = req.body.status;
       } else if (oldStatus === PS.PENDING) {
         newStatus = PS.CANCELLED;

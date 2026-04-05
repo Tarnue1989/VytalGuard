@@ -27,12 +27,84 @@ try {
 }
 
 // -------------------- Idle Timeout --------------------
-const IDLE_LIMIT = 15 * 60 * 1000; // 15 minutes
-const WARNING_TIME = 1 * 60 * 1000; // show warning 1 min before logout
+const IDLE_LIMIT = 1 * 60 * 1000;
+const WARNING_TIME = 30 * 1000;
 
 let idleTimer = null;
 let warningTimer = null;
+let isUserActive = false;
 
+/* ================= SESSION MODAL ================= */
+function showSessionWarningModal(onStay) {
+  // 🔥 Always remove old modal
+  const old = document.getElementById("sessionTimeoutModal");
+  if (old) old.remove();
+
+  // 🔥 Create new modal
+  const modal = document.createElement("div");
+  modal.id = "sessionTimeoutModal";
+
+  modal.innerHTML = `
+    <div style="
+      position:fixed; inset:0;
+      background:rgba(0,0,0,0.6);
+      display:flex; align-items:center; justify-content:center;
+      z-index:9999;
+      animation: fadeIn 0.25s ease;
+    ">
+      
+      <div id="sessionBox" style="
+        background:#fff;
+        padding:20px;
+        border-radius:10px;
+        width:320px;
+        text-align:center;
+        box-shadow:0 10px 25px rgba(0,0,0,0.2);
+        transform: translateY(20px) scale(0.95);
+        opacity:0;
+        animation: popIn 0.25s ease forwards;
+      ">
+        <h3>⚠️ Session Expiring</h3>
+        <p>
+          You will be logged out in 
+          <strong id="sessionCountdown">
+            ${Math.floor(WARNING_TIME / 1000)}
+          </strong> seconds.
+        </p>
+
+        <button id="stayLoggedInBtn" style="
+          margin-top:10px;
+          padding:8px 16px;
+          border:none;
+          background:#0d6efd;
+          color:#fff;
+          border-radius:6px;
+          cursor:pointer;">
+          Stay Logged In
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // 🔥 FIX: stop timers when user stays
+  document.getElementById("stayLoggedInBtn").onclick = () => {
+    modal.remove();
+
+    isUserActive = true; // 🔥 mark activity
+
+    clearTimeout(idleTimer);
+    clearTimeout(warningTimer);
+
+    onStay?.();
+
+    setTimeout(() => {
+      isUserActive = false; // reset after safe window
+    }, 2000);
+  };
+  return modal;
+}
 function broadcastActivity() {
   try {
     localStorage.setItem("lastActivity", Date.now().toString());
@@ -45,35 +117,85 @@ function resetIdleTimer() {
   clearTimeout(idleTimer);
   clearTimeout(warningTimer);
 
-  // schedule warning
+  // 🔔 schedule warning (modal + countdown)
   warningTimer = setTimeout(() => {
-    if (typeof showToast === "function") {
-      showToast("⚠️ You will be logged out in 1 minute due to inactivity.");
-    } else {
-      console.warn("⚠️ You will be logged out in 1 minute due to inactivity.");
-    }
+    let seconds = Math.floor(WARNING_TIME / 1000);
+
+    let interval = null;
+
+    const modal = showSessionWarningModal(async () => {
+      try {
+        await refreshAccessToken();
+      } catch (e) {
+        console.warn("Refresh failed:", e);
+      }
+
+      // ✅ stop countdown when user stays
+      if (interval) clearInterval(interval);
+
+      broadcastActivity();
+    });
+
+    const countdownEl = document.getElementById("sessionCountdown");
+
+    interval = setInterval(() => {
+      seconds--;
+
+      if (countdownEl) {
+        countdownEl.textContent = seconds;
+      }
+
+      if (seconds <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
   }, IDLE_LIMIT - WARNING_TIME);
 
-  // schedule actual logout
+  // ⏳ schedule actual logout
   idleTimer = setTimeout(() => {
+    if (isUserActive) {
+      console.log("✅ User stayed active — skip logout");
+      return;
+    }
+
     console.warn("⏳ Idle timeout reached. Logging out.");
     logout();
   }, IDLE_LIMIT);
 }
 
 // Listen for user activity in this tab
+let lastActivityUpdate = 0;
+const ACTIVITY_THROTTLE = 3000; // 3 seconds
+
 ["mousemove", "keydown", "click", "scroll"].forEach(event => {
   window.addEventListener(event, () => {
-    broadcastActivity();   // sync to all tabs
-    resetIdleTimer();      // reset locally
+    const now = Date.now();
+
+    // ⛔ Prevent spam (CRITICAL FIX)
+    if (now - lastActivityUpdate < ACTIVITY_THROTTLE) return;
+
+    lastActivityUpdate = now;
+
+    broadcastActivity();
+    resetIdleTimer();
   });
 });
 
 // Listen for activity from *other* tabs
+let lastStorageUpdate = 0;
+
 window.addEventListener("storage", (e) => {
-  if (e.key === "lastActivity") {
-    resetIdleTimer(); // reset timer if another tab signaled activity
-  }
+  if (e.key !== "lastActivity") return;
+
+  const now = Date.now();
+
+  // ⛔ prevent storage spam (CRITICAL)
+  if (now - lastStorageUpdate < 3000) return;
+
+  lastStorageUpdate = now;
+
+  resetIdleTimer();
 });
 
 // -------------------- Storage Helpers --------------------

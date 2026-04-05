@@ -1,13 +1,14 @@
 // 📁 frontend/js/modules/payments/payment-receipt.js
 // ============================================================================
 // 💳 Payment Receipt (INVOICE-STYLE PARITY)
-// 🔹 Matches invoice-receipt.js structure EXACTLY
+// 🔹 FIXED: currency support (USD / LRD)
 // 🔹 Clean grid + totals layout
 // 🔹 Uses unified printTemplate (logo + branding + watermark)
 // 🔹 UUID REMOVED (ONLY uses payment_number)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    📅 Date Formatter
@@ -50,7 +51,8 @@ function buildPaymentReceiptHTML(payment) {
   const printedBy = getPrintedBy(payment);
   const printedAt = new Date().toLocaleString();
 
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+  const money = (v) =>
+    `${getCurrencySymbol(payment.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const invoiceLabel = payment.invoice
     ? `${payment.invoice.invoice_number || "—"}`

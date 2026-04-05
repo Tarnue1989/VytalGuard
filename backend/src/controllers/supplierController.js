@@ -83,7 +83,7 @@ function buildSupplierSchema(userRole, mode = "create") {
     notes: Joi.string().allow("", null),
     status: Joi.string()
       .valid(...SUPPLIER_STATUS_VALUES)
-      .default(SUPPLIER_STATUS_VALUES[0]),
+      .default(SUPPLIER_STATUS.ACTIVE),
   };
 
   if (mode === "update") {
@@ -361,7 +361,7 @@ export const toggleSupplierStatus = async (req, res) => {
     }
 
     // ✅ FIXED LINE
-    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS_VALUES;
+    const { ACTIVE, INACTIVE } = SUPPLIER_STATUS;
 
     const newStatus = supplier.status === ACTIVE ? INACTIVE : ACTIVE;
 
@@ -562,7 +562,7 @@ export const getAllSuppliers = async (req, res) => {
     /* ========================================================
        📊 SUMMARY (MASTER PARITY)
     ======================================================== */
-    const [ACTIVE, INACTIVE] = SUPPLIER_STATUS_VALUES;
+    const { ACTIVE, INACTIVE } = SUPPLIER_STATUS;
 
     const summary = {
       total: count,
@@ -623,7 +623,7 @@ export const getAllSuppliersLite = async (req, res) => {
     ======================================================== */
     if (SUPPLIER_STATUS_VALUES.length) {
       where[Op.and].push({
-        status: SUPPLIER_STATUS_VALUES[0],
+        status: SUPPLIER_STATUS.ACTIVE,
       });
     }
 

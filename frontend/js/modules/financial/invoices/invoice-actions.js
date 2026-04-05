@@ -285,6 +285,7 @@ export function setupActionHandlers({
     modal.dataset.patientId = entry?.patient_id || entry?.patient?.id || "";
     modal.dataset.organizationId = entry?.organization_id || "";
     modal.dataset.facilityId = entry?.facility_id || "";
+    modal.dataset.currency = entry?.currency || "USD";
     modal.dataset.type = extra.type || "";
 
     const form = modal.querySelector("form");
@@ -364,7 +365,7 @@ export function setupActionHandlers({
         });
       }
     }
-
+    
     // Refund: fetch eligible payments
     if (modalId === "refundModal") {
       const select = document.getElementById("refundPaymentSelect");
@@ -375,17 +376,24 @@ export function setupActionHandlers({
         const res = await authFetch(`/api/payments?invoice_id=${invoiceId}`);
         const { data } = await res.json();
         const payments = data?.records || [];
-        if (payments.length === 0)
+
+        if (payments.length === 0) {
           select.innerHTML = `<option value="">No payments found</option>`;
-        else
+        } else {
           payments.forEach((p) => {
             const opt = document.createElement("option");
             opt.value = p.id;
-            opt.textContent = `${p.method} · $${Number(p.amount).toFixed(
+
+            const currency =
+              p.currency || entry.currency || "USD";
+
+            opt.textContent = `${p.method} · ${currency} ${Number(p.amount).toFixed(
               2
             )} · ${p.status}`;
+
             select.appendChild(opt);
           });
+        }
       } catch {
         showToast("❌ Could not load payments for refund");
       } finally {
@@ -450,6 +458,7 @@ export function setupActionHandlers({
       amount: Number(document.getElementById("paymentAmount").value),
       method: document.getElementById("paymentMethod").value,
       transaction_ref: document.getElementById("paymentRef").value,
+      currency: m.dataset.currency, // ✅ ADD THIS
     });
     closeModal("paymentModal");
   });
@@ -476,6 +485,7 @@ export function setupActionHandlers({
       facility_id: m.dataset.facilityId || null,
       amount: Number(document.getElementById("depositAmount").value),
       method: document.getElementById("depositMethod").value,
+      currency: m.dataset.currency, // ✅ THIS FIXES YOUR ERROR
     });
     closeModal("depositModal");
   });

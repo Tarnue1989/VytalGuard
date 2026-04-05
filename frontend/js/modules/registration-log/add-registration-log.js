@@ -65,6 +65,8 @@ function resetForm() {
     "organizationSelect",
     "facilitySelect",
     "registrationTypeSelect",
+    "payerType",                 // ✅ ADDED
+    "patientInsuranceSelect",    // ✅ ADDED
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -73,6 +75,13 @@ function resetForm() {
   // Reset emergency checkbox
   const emergencyEl = document.getElementById("isEmergency");
   if (emergencyEl) emergencyEl.checked = false;
+
+  // ✅ ADDED
+  const insuranceSelect = document.getElementById("patientInsuranceSelect");
+  if (insuranceSelect) {
+    insuranceSelect.value = "";
+    insuranceSelect.disabled = true;
+  }
 
   // Reset UI labels
   const titleEl = document.querySelector(".card-title");

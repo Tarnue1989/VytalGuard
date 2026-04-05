@@ -36,14 +36,13 @@ export default (sequelize) => {
         allowNull: true,
         comment: "Facility where the chart was accessed",
       },
-
       /* ============================================================
-         📋 View Action Metadata
+        📋 View Action Metadata
       ============================================================ */
       action: {
-        type: DataTypes.ENUM(...PATIENT_CHART_VIEW_ACTION),
+        type: DataTypes.ENUM(...Object.values(PATIENT_CHART_VIEW_ACTION)),
         allowNull: false,
-        defaultValue: "view",
+        defaultValue: PATIENT_CHART_VIEW_ACTION.VIEW,
         comment: "Action performed on the patient chart (view/export/print)",
       },
       viewed_at: {

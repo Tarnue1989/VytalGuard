@@ -65,12 +65,12 @@ export default (sequelize) => {
       },
 
       /* ============================================================
-         🏷️ STATUS
+        🏷️ STATUS
       ============================================================ */
       status: {
-        type: DataTypes.ENUM(...THEME_STATUS),
+        type: DataTypes.ENUM(...Object.values(THEME_STATUS)),
         allowNull: false,
-        defaultValue: THEME_STATUS[0],
+        defaultValue: THEME_STATUS.ACTIVE,
       },
 
       /* ============================================================
@@ -231,7 +231,7 @@ export default (sequelize) => {
         },
 
         active: {
-          where: { status: THEME_STATUS[0] },
+          where: { status: THEME_STATUS.ACTIVE },
         },
       },
     }

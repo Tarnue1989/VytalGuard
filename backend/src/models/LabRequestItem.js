@@ -74,9 +74,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...LAB_REQUEST_ITEM_STATUS),
+        type: DataTypes.ENUM(...Object.values(LAB_REQUEST_ITEM_STATUS)),
         allowNull: false,
-        defaultValue: LAB_REQUEST_ITEM_STATUS[0],
+        defaultValue: LAB_REQUEST_ITEM_STATUS.DRAFT,
       },
       notes: { type: DataTypes.TEXT },
       billed: { type: DataTypes.BOOLEAN, defaultValue: false },

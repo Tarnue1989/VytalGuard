@@ -103,7 +103,7 @@ function buildUserSchema(mode = "create", userRole = "staff") {
     first_name: Joi.string().max(150).allow("", null),
     last_name: Joi.string().max(150).allow("", null),
 
-    status: Joi.string().valid(...USER_STATUS),
+    status: Joi.string().valid(...Object.values(USER_STATUS)),
 
     // ✅ NEW (flat structure)
     role_id: Joi.string().uuid(),
@@ -120,7 +120,7 @@ function buildUserSchema(mode = "create", userRole = "staff") {
     base.password = base.password.required();
 
     base.role_id = base.role_id.required();   // 🔥 REQUIRED now
-    base.status = base.status.default("active");
+    base.status = base.status.default(USER_STATUS.ACTIVE);
   }
 
   /* ================= UPDATE ================= */
@@ -483,7 +483,7 @@ export const getAllUsers = async (req, res) => {
     /* ========================================================
        📌 STATUS FILTER
     ======================================================== */
-    if (req.query.status && USER_STATUS.includes(req.query.status)) {
+    if (req.query.status && Object.values(USER_STATUS).includes(req.query.status)) {
       options.where[Op.and].push({
         status: req.query.status,
       });
@@ -528,9 +528,9 @@ export const getAllUsers = async (req, res) => {
     ======================================================== */
     const summary = {
       total: count,
-      active: rows.filter((r) => r.status === "active").length,
-      inactive: rows.filter((r) => r.status === "inactive").length,
-      suspended: rows.filter((r) => r.status === "suspended").length,
+      active: rows.filter((r) => r.status === USER_STATUS.ACTIVE).length,
+      inactive: rows.filter((r) => r.status === USER_STATUS.INACTIVE).length,
+      suspended: rows.filter((r) => r.status === USER_STATUS.SUSPENDED).length,
     };
 
     /* ========================================================
@@ -588,7 +588,7 @@ export const getAllUsersLite = async (req, res) => {
 
     /* ================= BASE WHERE ================= */
     const where = {
-      status: "active",
+      status: USER_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
@@ -819,7 +819,7 @@ export const toggleUserStatus = async (req, res) => {
       }
     }
 
-    const [ACTIVE, INACTIVE] = USER_STATUS;
+    const { ACTIVE, INACTIVE } = USER_STATUS;
     const newStatus = record.status === ACTIVE ? INACTIVE : ACTIVE;
     const oldStatus = record.status;
 

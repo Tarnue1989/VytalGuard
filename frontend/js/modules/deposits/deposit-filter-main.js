@@ -1,13 +1,4 @@
 // 📦 deposit-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
-// ============================================================================
-// 🔹 FULLY mirrors consultation-filter-main.js MASTER pattern
-// 🔹 Auto search, auto filters, sorting, pagination
-// 🔹 UI-only dateRange (single input, NEVER DB column)
-// 🔹 Org / Facility fully wired (role-aware)
-// 🔹 Deposit Status fully wired
-// 🔹 Summary + export aligned
-// 🔹 ALL existing Deposit API calls PRESERVED
-// ============================================================================
 
 import {
   showToast,
@@ -106,7 +97,7 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 FILTER DOM (MASTER STRUCTURE)
+   🔎 FILTER DOM
 ============================================================ */
 const qs = (id) => document.getElementById(id);
 
@@ -120,11 +111,12 @@ const filterPatient            = qs("filterPatient");
 const filterPatientHidden      = qs("filterPatientId");
 const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-const filterMethod        = qs("filterMethodSelect");
+const filterMethod         = qs("filterMethodSelect");
 const filterTransactionRef = qs("filterTransactionRef");
+const filterCurrency       = qs("filterCurrencySelect");
 
 /* ============================================================
-   🔃 SORT BRIDGE (MASTER)
+   🔃 SORT
 ============================================================ */
 window.setDepositSort = (field, dir) => {
   sortBy = field;
@@ -142,7 +134,7 @@ const getPagination = initPaginationControl(
 );
 
 /* ============================================================
-   🔎 AUTO SEARCH / FILTERS (MASTER)
+   🔎 AUTO SEARCH / FILTERS
 ============================================================ */
 setupAutoSearch(globalSearch, loadEntries);
 
@@ -153,13 +145,14 @@ setupAutoFilters({
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
 
 /* ============================================================
-   📋 FILTER BUILDER (MASTER SAFE)
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
@@ -171,11 +164,12 @@ function getFilters() {
     transaction_ref: filterTransactionRef?.value,
     patient_id: filterPatientHidden?.value,
     dateRange: dateRange?.value,
+    currency: filterCurrency?.value,
   };
 }
 
 /* ============================================================
-   📦 LOAD DEPOSITS (MASTER SAFE)
+   📦 LOAD
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -261,7 +255,7 @@ qs("cardViewBtn").onclick = () => {
 };
 
 /* ============================================================
-   🔄 RESET FILTERS (MASTER)
+   🔄 RESET FILTERS
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
   [
@@ -270,6 +264,7 @@ qs("resetFilterBtn").onclick = () => {
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
     filterTransactionRef,
     filterPatient,
     dateRange,
@@ -279,7 +274,7 @@ qs("resetFilterBtn").onclick = () => {
 };
 
 /* ============================================================
-   ⬇️ EXPORT (MASTER)
+   ⬇️ EXPORT
 ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
@@ -317,7 +312,7 @@ export async function initDepositModule() {
     (selected) => {
       filterPatientHidden.value = selected?.id || "";
       filterPatient.value = selected?.label || "";
-      loadEntries(1); // ✅ IMMEDIATE SEARCH
+      loadEntries(1);
     },
     "label"
   );

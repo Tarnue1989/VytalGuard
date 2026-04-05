@@ -1,3 +1,4 @@
+// 📁 backend/src/models/Conversation.js
 import { DataTypes, Model } from "sequelize";
 
 export default (sequelize) => {
@@ -10,11 +11,12 @@ export default (sequelize) => {
         onDelete: "CASCADE",
       });
 
-      // 🔹 Participants (generic links)
+      // 🔹 Participants
       Conversation.belongsTo(models.Patient, {
         foreignKey: "patient_id",
         as: "patient",
       });
+
       Conversation.belongsTo(models.Employee, {
         foreignKey: "employee_id",
         as: "employee",
@@ -26,6 +28,7 @@ export default (sequelize) => {
         as: "organization",
         onDelete: "CASCADE",
       });
+
       Conversation.belongsTo(models.Facility, {
         foreignKey: "facility_id",
         as: "facility",
@@ -41,25 +44,30 @@ export default (sequelize) => {
 
   Conversation.init(
     {
-      id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true,
+      },
 
-      // Scope
+      // 🔹 Scope
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
-      // Participants
+      // 🔹 Participants
       patient_id: { type: DataTypes.UUID, allowNull: true },
       employee_id: { type: DataTypes.UUID, allowNull: true },
 
-      // Meta
+      // 🔹 Meta
       topic: { type: DataTypes.STRING(255), allowNull: true },
+
       conversation_type: {
         type: DataTypes.ENUM("internal", "clinical", "helpdesk"),
         allowNull: false,
         defaultValue: "internal",
       },
 
-      // Audit
+      // 🔹 Audit
       created_by: { type: DataTypes.UUID },
       updated_by: { type: DataTypes.UUID },
       deleted_by: { type: DataTypes.UUID },
@@ -71,34 +79,34 @@ export default (sequelize) => {
       underscored: true,
       paranoid: true,
       timestamps: true,
+
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
+      // ✅ FIXED (removed duplicate scopes)
       defaultScope: {
         attributes: { exclude: ["deleted_at", "deleted_by"] },
       },
+
       scopes: {
         withDeleted: { paranoid: false },
+
         byPatient(patientId) {
           return { where: { patient_id: patientId } };
         },
+
         byEmployee(employeeId) {
           return { where: { employee_id: employeeId } };
         },
+
         byFacility(facilityId) {
           return { where: { facility_id: facilityId } };
         },
-      },
-      defaultScope: {
-        attributes: { exclude: ["deleted_at", "deleted_by_id"] },
-      },
-      scopes: {
-        withDeleted: { paranoid: false },
-        active: { where: { status: "active" } },
-        inactive: { where: { status: "inactive" } },
-        // 🔑 Needed for setTenantScope
+
+        // 🔑 Tenant scope
         tenant(facilityId) {
-          if (!facilityId) return {}; // superadmin fallback (no filter)
+          if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
         },
       },

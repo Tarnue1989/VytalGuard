@@ -57,7 +57,7 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(PRESCRIPTION_ITEM_STATUS)),
         allowNull: false,
-        defaultValue: PRESCRIPTION_ITEM_STATUS.DRAFT, // ✅ explicit
+        defaultValue: PRESCRIPTION_ITEM_STATUS.DRAFT,
       },
       dispensed_qty: { type: DataTypes.INTEGER, defaultValue: 0 }, // ✅ partial dispensing
       dispensed_at: { type: DataTypes.DATE, allowNull: true },

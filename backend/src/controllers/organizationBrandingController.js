@@ -40,7 +40,7 @@ const brandingSchema = Joi.object({
   locale: Joi.string().allow("", null),
   timezone: Joi.string().allow("", null),
 
-  status: Joi.string().valid(...THEME_STATUS).optional(),
+  status: Joi.string().valid(...Object.values(THEME_STATUS)).optional(),
 
   // 🔥 REMOVE FLAGS (IMPORTANT)
   remove_logo: Joi.alternatives().try(Joi.boolean(), Joi.string()),

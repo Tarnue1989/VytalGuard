@@ -99,11 +99,10 @@ export default (sequelize) => {
       // =============================
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       status: {
-        type: DataTypes.ENUM(...MATERNITY_VISIT_STATUS),
+        type: DataTypes.ENUM(...Object.values(MATERNITY_VISIT_STATUS)),
         allowNull: false,
-        defaultValue: MATERNITY_VISIT_STATUS[0], // scheduled
+        defaultValue: MATERNITY_VISIT_STATUS.SCHEDULED,
       },
-
       // =============================
       // ⏱ Lifecycle Timestamps
       // =============================

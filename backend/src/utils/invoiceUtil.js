@@ -1,12 +1,6 @@
 // 📁 backend/src/utils/invoiceUtil.js
 // ============================================================================
-// 💰 Invoice Utility – Enterprise Master Pattern (Aligned + Discount Integration)
-// ----------------------------------------------------------------------------
-// 🔹 Computes subtotal, taxes, discounts, deposits, payments, refunds, balance
-// 🔹 Includes finalized Discounts + approved/applied Waivers
-// 🔹 Includes verified/cleared deposits and processed/approved refunds
-// 🔹 Auto-updates status: draft → issued → unpaid → partial → paid → voided
-// 🔹 Logs recalculation audit entry (organization/facility-aware)
+// 💰 Invoice Utility – Enterprise Master Pattern (FIXED ENUM SAFE)
 // ============================================================================
 
 import db, { sequelize } from "../models/index.js";
@@ -42,7 +36,6 @@ export async function recalcInvoice(invoiceId, t = null) {
           AND i.status <> 'voided') AS total_items,
 
       (
-        -- 🧾 Discount Waivers (legacy/promo reductions)
         SELECT COALESCE(SUM(w.applied_total),0)
         FROM discount_waivers w
         WHERE w.invoice_id = inv.id
@@ -50,7 +43,6 @@ export async function recalcInvoice(invoiceId, t = null) {
       )
       +
       (
-        -- 💸 Finalized Discounts (manual/user-applied reductions)
         SELECT COALESCE(SUM(d.value),0)
         FROM discounts d
         WHERE d.invoice_id = inv.id
@@ -84,7 +76,7 @@ export async function recalcInvoice(invoiceId, t = null) {
   const subtotal      = parseFloat(t0.subtotal)      || 0;
   const totalTax      = parseFloat(t0.total_tax)     || 0;
   const totalItems    = parseFloat(t0.total_items)   || 0;
-  const totalWaivers  = parseFloat(t0.total_waivers) || 0; // includes discounts + waivers
+  const totalWaivers  = parseFloat(t0.total_waivers) || 0;
   const totalDeposits = parseFloat(t0.total_deposits)|| 0;
   const totalPaid     = parseFloat(t0.total_paid)    || 0;
   const totalRefunds  = parseFloat(t0.total_refunds) || 0;
@@ -92,32 +84,36 @@ export async function recalcInvoice(invoiceId, t = null) {
 
   // 💵 Compute balance
   let balance = totalItems - totalWaivers - totalDeposits - totalPaid + totalRefunds;
-  if (balance < 0) balance = 0; // safeguard floor
+  if (balance < 0) balance = 0;
 
   const invoice = await db.Invoice.findByPk(invoiceId, { transaction: t });
   if (!invoice) throw new Error("❌ Invoice not found");
 
   // 🚫 Cancelled/voided invoices are locked
-  if ([INVOICE_STATUS[5], INVOICE_STATUS[6]].includes(invoice.status)) {
+  if (
+    [INVOICE_STATUS.CANCELLED, INVOICE_STATUS.VOIDED].includes(invoice.status)
+  ) {
     balance = 0;
   }
 
   /* ============================================================
-     🔹 Auto-update STATUS
+     🔹 Auto-update STATUS (FIXED ENUM SAFE)
   ============================================================ */
   let newStatus = invoice.status;
 
-  if (![INVOICE_STATUS[5], INVOICE_STATUS[6]].includes(newStatus)) {
+  if (
+    ![INVOICE_STATUS.CANCELLED, INVOICE_STATUS.VOIDED].includes(newStatus)
+  ) {
     if (activeItems === 0 && subtotal === 0) {
-      newStatus = INVOICE_STATUS[6]; // voided
+      newStatus = INVOICE_STATUS.VOIDED;
     } else if (balance <= 0 && totalItems > 0) {
-      newStatus = INVOICE_STATUS[4]; // paid
+      newStatus = INVOICE_STATUS.PAID;
     } else if ((totalPaid > 0 || totalDeposits > 0) && balance > 0) {
-      newStatus = INVOICE_STATUS[3]; // partial
+      newStatus = INVOICE_STATUS.PARTIAL;
     } else if (totalItems > 0 && totalPaid === 0 && totalDeposits === 0) {
-      newStatus = INVOICE_STATUS[2]; // unpaid
-    } else if (newStatus === INVOICE_STATUS[0] && totalItems > 0) {
-      newStatus = INVOICE_STATUS[1]; // issued
+      newStatus = INVOICE_STATUS.UNPAID;
+    } else if (newStatus === INVOICE_STATUS.DRAFT && totalItems > 0) {
+      newStatus = INVOICE_STATUS.ISSUED;
     }
   }
 
@@ -152,7 +148,7 @@ export async function recalcInvoice(invoiceId, t = null) {
   });
 
   /* ============================================================
-     🧭 Audit Log (System Trace)
+     🧭 Audit Log
   ============================================================ */
   try {
     await auditService.logAction({

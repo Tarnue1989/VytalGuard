@@ -83,13 +83,13 @@ const MODULE_KEY = "lab-requests";
    🔖 STATUS MAP (ENUM-DRIVEN, MASTER)
 ============================================================ */
 const LRS = {
-  DRAFT: LAB_REQUEST_STATUS[0],
-  PENDING: LAB_REQUEST_STATUS[1],
-  IN_PROGRESS: LAB_REQUEST_STATUS[2],
-  COMPLETED: LAB_REQUEST_STATUS[3],
-  VERIFIED: LAB_REQUEST_STATUS[4],
-  CANCELLED: LAB_REQUEST_STATUS[5],
-  VOIDED: LAB_REQUEST_STATUS[6],
+  DRAFT: LAB_REQUEST_STATUS.DRAFT,
+  PENDING: LAB_REQUEST_STATUS.PENDING,
+  IN_PROGRESS: LAB_REQUEST_STATUS.IN_PROGRESS,
+  COMPLETED: LAB_REQUEST_STATUS.COMPLETED,
+  VERIFIED: LAB_REQUEST_STATUS.VERIFIED,
+  CANCELLED: LAB_REQUEST_STATUS.CANCELLED,
+  VOIDED: LAB_REQUEST_STATUS.VOIDED,
 };
 
 /* ============================================================
@@ -1150,7 +1150,7 @@ export const deleteLabRequests = async (req, res) => {
       );
 
       await LabResult.update(
-        { status: "cancelled" },
+       { status: LRS.CANCELLED },
         { where: { lab_request_id: r.id }, transaction: t }
       );
 
@@ -1331,7 +1331,7 @@ export const verifyLabRequests = async (req, res) => {
       const unverified = await LabResult.count({
         where: {
           lab_request_id: r.id,
-          status: { [Op.ne]: "verified" },
+          status: { [Op.ne]: LRS.VERIFIED },
         },
         transaction: t,
       });
@@ -1463,7 +1463,7 @@ export const cancelLabRequests = async (req, res) => {
       );
 
       await LabResult.update(
-        { status: "cancelled" },
+       { status: LRS.CANCELLED },
         { where: { lab_request_id: r.id }, transaction: t }
       );
 
@@ -1568,7 +1568,7 @@ export const voidLabRequests = async (req, res) => {
       );
 
       await LabResult.update(
-        { status: "voided" },
+       { status: LRS.VOIDED },
         { where: { lab_request_id: r.id }, transaction: t }
       );
 

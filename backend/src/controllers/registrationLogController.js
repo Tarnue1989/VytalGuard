@@ -21,6 +21,8 @@ import {
   Invoice,
   BillableItem,
   InvoiceItem,
+  PatientInsurance, // ✅ ADDED
+  InsuranceProvider 
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
@@ -36,6 +38,7 @@ import {
   REGISTRATION_LOG_STATUS,
   REGISTRATION_METHODS,
   REGISTRATION_CATEGORIES,
+  PAYER_TYPES, // ✅ ADDED
 } from "../constants/enums.js";
 
 import { FIELD_VISIBILITY_REGISTRATION_LOG } from "../constants/fieldVisibility.js";
@@ -62,6 +65,21 @@ const REGISTRATION_LOG_INCLUDES = [
   { model: Employee.unscoped(), as: "registrar", attributes: ["id", "first_name", "last_name"] },
   { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
   { model: BillableItem, as: "registrationType", attributes: ["id", "name", "price"] },
+
+  // ✅ ADDED (insurance link)
+  {
+  model: PatientInsurance,
+    as: "patientInsurance",
+    attributes: ["id", "provider_id"],
+    include: [
+      {
+        model: InsuranceProvider,
+        as: "provider",
+        attributes: ["id", "name"]
+      }
+    ]
+  },
+
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
@@ -80,11 +98,11 @@ function buildRegistrationLogSchema(mode = "create") {
     invoice_id: Joi.string().uuid().allow(null),
 
     registration_method: Joi.string()
-      .valid(...REGISTRATION_METHODS)
+      .valid(...Object.values(REGISTRATION_METHODS))
       .required(),
 
     patient_category: Joi.string()
-      .valid(...REGISTRATION_CATEGORIES)
+      .valid(...Object.values(REGISTRATION_CATEGORIES))
       .required(),
 
     registration_source: Joi.string().max(120).allow("", null),
@@ -92,6 +110,13 @@ function buildRegistrationLogSchema(mode = "create") {
     notes: Joi.string().allow("", null),
     is_emergency: Joi.boolean().default(false),
     registration_time: Joi.date().default(() => new Date()),
+
+    // ✅ ADDED (billing logic)
+    payer_type: Joi.string()
+      .valid(...Object.values(PAYER_TYPES))
+      .default(PAYER_TYPES.CASH),
+
+    patient_insurance_id: Joi.string().uuid().allow(null, ""),
 
     // 🔒 lifecycle / tenant controlled
     log_status: Joi.forbidden(),
@@ -132,6 +157,36 @@ export const createRegistrationLog = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
+    // ⚡ AUTO-SET payer_type
+    if (value.patient_insurance_id) {
+      value.payer_type = PAYER_TYPES.INSURANCE;
+    }
+
+    // ✅ ENFORCE RULE
+    if (value.payer_type === PAYER_TYPES.INSURANCE && !value.patient_insurance_id) {
+      await t.rollback();
+      return error(res, "Insurance requires patient_insurance_id", null, 400);
+    }
+
+    if (value.payer_type === PAYER_TYPES.CASH) {
+      value.patient_insurance_id = null;
+    }
+
+    // 🔒 VALIDATE insurance belongs to patient
+    if (value.patient_insurance_id) {
+      const insurance = await PatientInsurance.findOne({
+        where: {
+          id: value.patient_insurance_id,
+          patient_id: value.patient_id,
+        },
+      });
+
+      if (!insurance) {
+        await t.rollback();
+        return error(res, "Selected insurance does not belong to patient", null, 400);
+      }
+    }
+
     /* ================= TENANT RESOLUTION (MASTER-CORRECT) ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
@@ -153,7 +208,7 @@ export const createRegistrationLog = async (req, res) => {
         organization_id: orgId,
         facility_id: facilityId,
         created_by_id: req.user?.id || null,
-        log_status: REGISTRATION_LOG_STATUS[0], // draft
+        log_status: REGISTRATION_LOG_STATUS.DRAFT,
       },
       { transaction: t }
     );
@@ -179,6 +234,7 @@ export const createRegistrationLog = async (req, res) => {
     return error(res, "❌ Failed to create registration log", err);
   }
 };
+
 
 /* ============================================================
    📌 UPDATE REGISTRATION LOG — MASTER PARITY (FIXED)
@@ -206,7 +262,7 @@ export const updateRegistrationLog = async (req, res) => {
       return error(res, "Validation failed", errors, 400);
     }
 
-    /* ================= TENANT RESOLUTION (MASTER-CORRECT) ================= */
+    /* ================= TENANT RESOLUTION ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value,
@@ -221,6 +277,42 @@ export const updateRegistrationLog = async (req, res) => {
     if (!log) {
       await t.rollback();
       return error(res, "❌ Registration Log not found", null, 404);
+    }
+
+    // 🔒 HARD LOCK verified logs
+    if (log.log_status === REGISTRATION_LOG_STATUS.VERIFIED) {
+      await t.rollback();
+      return error(res, "Verified registration cannot be modified", null, 400);
+    }
+
+    // ⚡ AUTO-SET payer_type
+    if (value.patient_insurance_id) {
+      value.payer_type = PAYER_TYPES.INSURANCE;
+    }
+
+    // ✅ ENFORCE RULE
+    if (value.payer_type === PAYER_TYPES.INSURANCE && !value.patient_insurance_id) {
+      await t.rollback();
+      return error(res, "Insurance requires patient_insurance_id", null, 400);
+    }
+
+    if (value.payer_type === PAYER_TYPES.CASH) {
+      value.patient_insurance_id = null;
+    }
+
+    // 🔒 VALIDATE insurance belongs to patient
+    if (value.patient_insurance_id) {
+      const insurance = await PatientInsurance.findOne({
+        where: {
+          id: value.patient_insurance_id,
+          patient_id: value.patient_id || log.patient_id,
+        },
+      });
+
+      if (!insurance) {
+        await t.rollback();
+        return error(res, "Selected insurance does not belong to patient", null, 400);
+      }
     }
 
     /* ================= REGISTRAR AUTO-LINK ================= */
@@ -261,7 +353,6 @@ export const updateRegistrationLog = async (req, res) => {
     return error(res, "❌ Failed to update registration log", err);
   }
 };
-
 /* ============================================================
    📌 GET ALL REGISTRATION LOGS — MASTER (ORG ADMIN FAC-FILTER SAFE)
 ============================================================ */
@@ -329,10 +420,17 @@ export const getAllRegistrationLogs = async (req, res) => {
       }
     }
 
+    // ✅ ADDED (payer filter)
+    if (req.query.payer_type) {
+      options.where[Op.and].push({
+        payer_type: req.query.payer_type,
+      });
+    }
+
     /* ================= MAIN QUERY ================= */
     const { count, rows } = await RegistrationLog.findAndCountAll({
       where: options.where,
-      include: REGISTRATION_LOG_INCLUDES,
+      include: REGISTRATION_LOG_INCLUDES, // ✅ already includes patientInsurance
       order: options.order,
       offset: options.offset,
       limit: options.limit,
@@ -351,7 +449,7 @@ export const getAllRegistrationLogs = async (req, res) => {
       group: ["log_status"],
     });
 
-    REGISTRATION_LOG_STATUS.forEach((s) => {
+    Object.values(REGISTRATION_LOG_STATUS).forEach((s) => {
       const found = statusCounts.find((r) => r.log_status === s);
       summary[s] = found ? Number(found.get("count")) : 0;
     });
@@ -378,14 +476,12 @@ export const getAllRegistrationLogs = async (req, res) => {
       },
     });
   } catch (err) {
-    /* ================= HARD DEBUG (TEMPORARY) ================= */
     console.error("🚨 REGISTRATION LOG STACK TRACE 🚨");
     console.error(err?.stack || err);
 
     return error(res, "❌ Failed to load registration logs", err);
   }
 };
-
 
 /* ============================================================
    📌 GET REGISTRATION LOG BY ID — MASTER PARITY
@@ -408,7 +504,7 @@ export const getRegistrationLogById = async (req, res) => {
 
     const log = await RegistrationLog.findOne({
       where,
-      include: REGISTRATION_LOG_INCLUDES,
+      include: REGISTRATION_LOG_INCLUDES, // ✅ includes insurance now
     });
 
     if (!log) return error(res, "❌ Registration Log not found", null, 404);
@@ -427,6 +523,7 @@ export const getRegistrationLogById = async (req, res) => {
   }
 };
 
+
 /* ============================================================
    📌 GET ALL REGISTRATION LOGS LITE — MASTER PARITY
 ============================================================ */
@@ -441,7 +538,7 @@ export const getAllRegistrationLogsLite = async (req, res) => {
     if (!allowed) return;
 
     const { q } = req.query;
-    const [, , ACTIVE] = REGISTRATION_LOG_STATUS;
+    const { ACTIVE } = REGISTRATION_LOG_STATUS;
 
     const { organization_id, facility_id } = resolveOrgFacility(req);
 
@@ -519,7 +616,7 @@ export const activateRegistrationLog = async (req, res) => {
       body: {},
     });
 
-    const [, PENDING, ACTIVE] = REGISTRATION_LOG_STATUS;
+    const { PENDING, ACTIVE } = REGISTRATION_LOG_STATUS;
 
     const log = await RegistrationLog.findOne({
       where: {
@@ -601,7 +698,7 @@ export const completeRegistrationLog = async (req, res) => {
       body: {},
     });
 
-    const [, , ACTIVE, COMPLETED] = REGISTRATION_LOG_STATUS;
+    const { ACTIVE, COMPLETED } = REGISTRATION_LOG_STATUS;
 
     const log = await RegistrationLog.findOne({
       where: {
@@ -683,7 +780,7 @@ export const cancelRegistrationLog = async (req, res) => {
       body: {},
     });
 
-    const [, PENDING, ACTIVE, , CANCELLED] = REGISTRATION_LOG_STATUS;
+    const { PENDING, ACTIVE, CANCELLED } = REGISTRATION_LOG_STATUS;
 
     const log = await RegistrationLog.findOne({
       where: {
@@ -786,7 +883,7 @@ export const voidRegistrationLog = async (req, res) => {
     const oldStatus = log.log_status;
 
     await log.update(
-      { log_status: "voided", updated_by_id: req.user?.id || null },
+      { log_status: REGISTRATION_LOG_STATUS.VOIDED, updated_by_id: req.user?.id || null },
       { transaction: t }
     );
 
@@ -805,7 +902,7 @@ export const voidRegistrationLog = async (req, res) => {
       action: "void",
       entityId: id,
       entity: log,
-      details: { from: oldStatus, to: "voided" },
+      details: { from: oldStatus, to: REGISTRATION_LOG_STATUS.VOIDED },
     });
 
     return success(res, "✅ Registration Log voided and charges voided", log);
@@ -849,13 +946,13 @@ export const submitRegistrationLog = async (req, res) => {
       return error(res, "❌ Registration Log not found", null, 404);
     }
 
-    if (log.log_status !== REGISTRATION_LOG_STATUS[0]) {
+    if (log.log_status !== REGISTRATION_LOG_STATUS.DRAFT) {
       await t.rollback();
       return error(res, "❌ Only draft logs can be submitted", null, 400);
     }
 
     await log.update(
-      { log_status: "pending", updated_by_id: req.user?.id || null },
+      { log_status: REGISTRATION_LOG_STATUS.PENDING, updated_by_id: req.user?.id || null },
       { transaction: t }
     );
 
@@ -867,7 +964,7 @@ export const submitRegistrationLog = async (req, res) => {
       action: "submit",
       entityId: id,
       entity: log,
-      details: { from: "draft", to: "pending" },
+      details: { from: REGISTRATION_LOG_STATUS.DRAFT, to: REGISTRATION_LOG_STATUS.PENDING },
     });
 
     return success(res, "✅ Registration Log submitted (pending)", log);

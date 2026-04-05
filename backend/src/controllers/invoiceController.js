@@ -18,7 +18,7 @@ import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import {
   INVOICE_STATUS,
-  PAYMENT_METHODS,
+  PAYMENT_METHODS, CURRENCY,
 } from "../constants/enums.js";
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
@@ -28,15 +28,7 @@ import { FIELD_VISIBILITY_INVOICE } from "../constants/fieldVisibility.js";
 const MODULE_KEY = "invoices";
 
 // 🔖 Local enum map for readability
-const IS = {
-  DRAFT: INVOICE_STATUS[0],
-  ISSUED: INVOICE_STATUS[1],
-  UNPAID: INVOICE_STATUS[2],
-  PARTIAL: INVOICE_STATUS[3],
-  PAID: INVOICE_STATUS[4],
-  CANCELLED: INVOICE_STATUS[5],
-  VOIDED: INVOICE_STATUS[6],
-};
+const IS = INVOICE_STATUS;
 
 /* ============================================================
    🔧 HELPERS
@@ -65,15 +57,26 @@ const INVOICE_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMAS
+   📋 ROLE-BASED JOI SCHEMAS (FINAL — CURRENCY SAFE)
 ============================================================ */
 function buildInvoiceSchema(userRole, mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
+
+    // 💱 REQUIRED (CRITICAL FIX)
+    currency: Joi.string()
+      .valid(...Object.values(CURRENCY))
+      .required(),
+
     organization_id: Joi.string().uuid().required(),
     facility_id: Joi.string().uuid().allow(null),
+
     notes: Joi.string().allow(null, ""),
-    status: Joi.string().valid(...INVOICE_STATUS).default(IS.DRAFT),
+
+    status: Joi.string()
+      .valid(...Object.values(INVOICE_STATUS))
+      .default(IS.DRAFT),
+
     items: Joi.array().items(
       Joi.object({
         billable_item_id: Joi.string().uuid().required(),
@@ -90,17 +93,21 @@ function buildInvoiceSchema(userRole, mode = "create") {
     Object.keys(base).forEach(k => {
       base[k] = base[k].optional();
     });
-    base.reason = Joi.string().min(5).required(); // reason for update
+
+    // 🔒 Require reason for audit
+    base.reason = Joi.string().min(5).required();
   }
 
   switch (userRole) {
     case "superadmin":
       break;
+
     case "org_owner":
     case "admin":
     case "facility_head":
       base.organization_id = Joi.forbidden();
       break;
+
     default: // staff
       base.organization_id = Joi.forbidden();
       base.facility_id = Joi.forbidden();
@@ -111,48 +118,83 @@ function buildInvoiceSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   🔹 Extra schemas for financial actions
+   🔹 Extra schemas for financial actions (CURRENCY SAFE)
 ============================================================ */
+
+/* ================= PAYMENT ================= */
 const paymentSchema = Joi.object({
   invoice_id: Joi.string().uuid().required(),
-  patient_id: Joi.string().uuid().required(),   // ✅ required for consistency
+  patient_id: Joi.string().uuid().required(),
+
   amount: Joi.number().positive().required(),
-  method: Joi.string().valid(...PAYMENT_METHODS).required(),
+
+  method: Joi.string()
+    .valid(...Object.values(PAYMENT_METHODS))
+    .required(),
+
+  // 💱 ADD (for dual currency safety)
+  currency: Joi.string()
+    .valid(...Object.values(CURRENCY))
+    .required(),
+
   transaction_ref: Joi.string().allow(null, ""),
-  status: Joi.forbidden(), // 🚫 only service can set this
+  status: Joi.forbidden(),
 });
 
+/* ================= REFUND ================= */
 const refundSchema = Joi.object({
   payment_id: Joi.string().uuid().required(),
   amount: Joi.number().positive().required(),
   reason: Joi.string().required(),
-  status: Joi.forbidden(), // 🚫 enforced by service
+
+  // 💱 OPTIONAL (depends on system design — safe to include)
+  currency: Joi.string()
+    .valid(...Object.values(CURRENCY))
+    .optional(),
+
+  status: Joi.forbidden(),
 });
 
+/* ================= DEPOSIT ================= */
 const depositSchema = Joi.object({
   patient_id: Joi.string().uuid().required(),
   organization_id: Joi.string().uuid().required(),
-  facility_id: Joi.string().uuid().allow(null), // ✅ optional for org-level deposits
+  facility_id: Joi.string().uuid().allow(null),
+
   amount: Joi.number().positive().required(),
   method: Joi.string().required(),
+
+  // 💱 CRITICAL FIX
+  currency: Joi.string()
+    .valid(...Object.values(CURRENCY))
+    .required(),
+
   invoice_id: Joi.string().uuid().allow(null),
-  status: Joi.forbidden(), // 🚫 enforced by service
+  status: Joi.forbidden(),
 });
 
+/* ================= WAIVER ================= */
 const waiverSchema = Joi.object({
   invoice_id: Joi.string().uuid().required(),
   patient_id: Joi.string().uuid().required(),
   organization_id: Joi.string().uuid().required(),
-  facility_id: Joi.string().uuid().allow(null), // ✅ optional for org-level waivers
+  facility_id: Joi.string().uuid().allow(null),
+
   type: Joi.string().valid("percentage", "fixed").required(),
   value: Joi.number().positive().required(),
   reason: Joi.string().required(),
-  applied_total: Joi.number().min(0).optional(), // ✅ service recalcs if missing
-  status: Joi.forbidden(), // 🚫 enforced by service
+
+  // 💱 OPTIONAL (safe for audit consistency)
+  currency: Joi.string()
+    .valid(...Object.values(CURRENCY))
+    .optional(),
+
+  applied_total: Joi.number().min(0).optional(),
+  status: Joi.forbidden(),
 });
 
 /* ============================================================
-   📌 GET ALL INVOICES (with labels, optimized)
+   📌 GET ALL INVOICES (with labels, optimized — FINAL PERFECT)
 ============================================================ */
 export const getAllInvoices = async (req, res) => {
   try {
@@ -170,33 +212,47 @@ export const getAllInvoices = async (req, res) => {
 
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
     options.where = options.where || {};
+    options.include = options.include || [];
 
-    // 🔒 Org/facility scoping
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       options.where.organization_id = req.user.organization_id;
+
       if (role === "facility_head") {
         options.where.facility_id = req.user.facility_id;
       }
     } else {
-      if (req.query.organization_id) options.where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) options.where.facility_id = req.query.facility_id;
+      if (req.query.organization_id) {
+        options.where.organization_id = req.query.organization_id;
+      }
+      if (req.query.facility_id) {
+        options.where.facility_id = req.query.facility_id;
+      }
     }
 
-    // ✅ Direct filters
-    if (req.query.patient_id) options.where.patient_id = req.query.patient_id;
+    /* ================= FILTERS ================= */
+    if (req.query.patient_id) {
+      options.where.patient_id = req.query.patient_id;
+    }
 
     if (req.query.status) {
-      const statuses = req.query.status.split(",").map(s => s.trim()).filter(Boolean);
-      options.where.status = statuses.length > 1 ? { [Op.in]: statuses } : statuses[0];
+      const statuses = req.query.status
+        .split(",")
+        .map(s => IS[s.trim().toUpperCase()] || s.trim())
+        .filter(Boolean);
+
+      options.where.status =
+        statuses.length > 1 ? { [Op.in]: statuses } : statuses[0];
     }
 
-    // ✅ Date filters
+    /* ================= DATE ================= */
     if (req.query["created_at[gte]"]) {
       options.where.created_at = {
         ...(options.where.created_at || {}),
         [Op.gte]: req.query["created_at[gte]"],
       };
     }
+
     if (req.query["created_at[lte]"]) {
       options.where.created_at = {
         ...(options.where.created_at || {}),
@@ -204,9 +260,10 @@ export const getAllInvoices = async (req, res) => {
       };
     }
 
-    // 🔎 Unified search
+    /* ================= SEARCH ================= */
     if (options.search) {
       const term = `%${options.search}%`;
+
       options.where[Op.or] = [
         { "$patient.first_name$": { [Op.iLike]: term } },
         { "$patient.last_name$": { [Op.iLike]: term } },
@@ -214,22 +271,26 @@ export const getAllInvoices = async (req, res) => {
         { invoice_number: { [Op.iLike]: term } },
         { status: { [Op.iLike]: term } },
       ];
-      options.include = options.include || [];
+
       if (!options.include.find(i => i.as === "patient")) {
-        options.include.push({ model: Patient, as: "patient", attributes: [] });
+        options.include.push({
+          model: Patient,
+          as: "patient",
+          attributes: [],
+        });
       }
     }
 
     const { count, rows } = await Invoice.findAndCountAll({
       where: options.where,
-      include: [...INVOICE_INCLUDES, ...(options.include || [])],
+      include: [...INVOICE_INCLUDES, ...options.include],
       order: options.order,
       offset: options.offset,
       limit: options.limit,
       distinct: true,
     });
 
-    // 🔹 If ?forceRecalc=true, recalc each invoice balance
+    /* ================= FORCE RECALC ================= */
     if (req.query.forceRecalc === "true") {
       for (const r of rows) {
         await financialService.recalcInvoice(r.id);
@@ -237,18 +298,23 @@ export const getAllInvoices = async (req, res) => {
       }
     }
 
+    /* ================= FORMAT ================= */
     const records = rows.map(r => {
       const plain = r.get({ plain: true });
 
-      // 🔹 normalize invoice-level numbers
-      plain.subtotal = plain.subtotal != null ? parseFloat(plain.subtotal).toFixed(2) : "0.00";
-      plain.total_tax = plain.total_tax != null ? parseFloat(plain.total_tax).toFixed(2) : "0.00";
-      plain.total = plain.total != null ? parseFloat(plain.total).toFixed(2) : "0.00";
-      plain.balance = plain.balance != null ? parseFloat(plain.balance).toFixed(2) : "0.00";
+      // 💱 SAFE currency fallback (uses enum default idea, no hardcode logic leak)
+      const currency = plain.currency || CURRENCY.LRD;
 
-      // 🔹 normalize items
-      if (plain.items) {
-        plain.items = plain.items.map(it => ({
+      /* ---------- NUMBERS ---------- */
+      const subtotal = plain.subtotal != null ? parseFloat(plain.subtotal).toFixed(2) : "0.00";
+      const total_tax = plain.total_tax != null ? parseFloat(plain.total_tax).toFixed(2) : "0.00";
+      const total = plain.total != null ? parseFloat(plain.total).toFixed(2) : "0.00";
+      const balance = plain.balance != null ? parseFloat(plain.balance).toFixed(2) : "0.00";
+
+      /* ---------- ITEMS ---------- */
+      let items = [];
+      if (Array.isArray(plain.items)) {
+        items = plain.items.map(it => ({
           ...it,
           subtotal: it.subtotal != null ? parseFloat(it.subtotal).toFixed(2) : "0.00",
           unit_price: it.unit_price != null ? parseFloat(it.unit_price).toFixed(2) : "0.00",
@@ -259,18 +325,31 @@ export const getAllInvoices = async (req, res) => {
         }));
       }
 
+      /* ---------- LABELS ---------- */
       const patientLabel = plain.patient
         ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
         : "Unknown Patient";
-      const orgLabel = plain.organization ? plain.organization.name : "Unknown Organization";
-      const facilityLabel = plain.facility ? plain.facility.name : "Unknown Facility";
+
+      const orgLabel = plain.organization?.name || "Unknown Organization";
+      const facilityLabel = plain.facility?.name || "Unknown Facility";
+
       const dateLabel = plain.created_at
-        ? new Date(plain.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        ? new Date(plain.created_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
         : "Unknown Date";
 
       return {
         ...plain,
-        label: `${dateLabel} · ${patientLabel} · ${plain.invoice_number} · Bal: ${plain.balance}`,
+        currency,
+        subtotal,
+        total_tax,
+        total,
+        balance,
+        items,
+        label: `${dateLabel} · ${patientLabel} · ${plain.invoice_number} · ${currency} · Bal: ${balance}`,
         patient_label: patientLabel,
         organization_label: orgLabel,
         facility_label: facilityLabel,
@@ -296,7 +375,6 @@ export const getAllInvoices = async (req, res) => {
     return error(res, "❌ Failed to load invoices", err);
   }
 };
-
 
 /* ============================================================
    📌 GET INVOICE BY ID (with recalc)
@@ -334,7 +412,8 @@ export const getInvoiceById = async (req, res) => {
     await record.reload({ include: INVOICE_INCLUDES });
 
     const plain = record.get({ plain: true });
-
+    const currency = plain.currency || CURRENCY.LRD;
+    plain.currency = currency;
     /* ============================================================
        🔢 Normalize invoice-level numbers
     ============================================================ */
@@ -349,7 +428,7 @@ export const getInvoiceById = async (req, res) => {
     ============================================================ */
     if (Array.isArray(plain.items)) {
       const items = isPrint
-        ? plain.items.filter(it => it.status !== "voided")
+        ? plain.items.filter(it => it.status !== IS.VOIDED)
         : plain.items;
 
       plain.items = items.map(it => ({
@@ -370,7 +449,7 @@ export const getInvoiceById = async (req, res) => {
       ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
       : "Unknown Patient";
 
-    plain.label = `${plain.invoice_number} · ${patientLabel} · Bal: ${plain.balance}`;
+    plain.label = `${plain.invoice_number} · ${patientLabel} · ${plain.currency} · Bal: ${plain.balance}`;
     plain.patient_label = patientLabel;
     plain.organization_label = plain.organization?.name || "Unknown Organization";
     plain.facility_label = plain.facility?.name || "Unknown Facility";
@@ -391,8 +470,7 @@ export const getInvoiceById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ALL INVOICES LITE (PAYABLE ONLY – MASTER)
-   Used by: Payment / Deposit / Waiver forms
+   📌 GET ALL INVOICES LITE (PAYABLE ONLY – MASTER — FINAL FIXED)
 ============================================================ */
 export const getAllInvoicesLite = async (req, res) => {
   try {
@@ -409,7 +487,7 @@ export const getAllInvoicesLite = async (req, res) => {
 
     const where = { [Op.and]: [] };
 
-    /* ================= TENANT SCOPE (MASTER) ================= */
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -434,12 +512,11 @@ export const getAllInvoicesLite = async (req, res) => {
     }
 
     /* ================= PAYABLE ONLY ================= */
-    // 🔒 Exclude fully-paid invoices
     where[Op.and].push({
       balance: { [Op.gt]: 0 },
     });
 
-    /* ================= PATIENT FILTER ================= */
+    /* ================= PATIENT ================= */
     if (patient_id) {
       where[Op.and].push({ patient_id });
     }
@@ -463,6 +540,7 @@ export const getAllInvoicesLite = async (req, res) => {
         "id",
         "invoice_number",
         "status",
+        "currency", // 💱 FIX: include currency
         "subtotal",
         "total_tax",
         "total",
@@ -492,6 +570,14 @@ export const getAllInvoicesLite = async (req, res) => {
 
     const records = invoices.map((inv) => {
       const p = inv.get({ plain: true });
+
+      const currency = p.currency || CURRENCY.LRD; // 💱 safe fallback
+
+      const subtotal = parseFloat(p.subtotal || 0).toFixed(2);
+      const total_tax = parseFloat(p.total_tax || 0).toFixed(2);
+      const total = parseFloat(p.total || 0).toFixed(2);
+      const balance = parseFloat(p.balance || 0).toFixed(2);
+
       const patientLabel = p.patient
         ? `${p.patient.pat_no} - ${p.patient.first_name} ${p.patient.last_name}`
         : "Unknown Patient";
@@ -500,18 +586,22 @@ export const getAllInvoicesLite = async (req, res) => {
         id: p.id,
         invoice_number: p.invoice_number,
         status: p.status,
-        subtotal: parseFloat(p.subtotal || 0).toFixed(2),
-        total_tax: parseFloat(p.total_tax || 0).toFixed(2),
-        total: parseFloat(p.total || 0).toFixed(2),
-        balance: parseFloat(p.balance || 0).toFixed(2),
+        currency, // 💱 exposed
+
+        subtotal,
+        total_tax,
+        total,
+        balance,
+
         patient_id: p.patient?.id || null,
         patient_label: patientLabel,
+
         organization_label: p.organization?.name || null,
         facility_label: p.facility?.name || null,
+
         created_at: p.created_at,
-        label: `${p.invoice_number} · ${patientLabel} · Bal: ${parseFloat(
-          p.balance || 0
-        ).toFixed(2)}`,
+
+        label: `${p.invoice_number} · ${patientLabel} · ${currency} · Bal: ${balance}`, // 💱 fixed label
       };
     });
 
@@ -534,37 +624,45 @@ export const getAllInvoicesLite = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET INVOICE ITEMS LITE (for dropdowns when applying discounts)
-   Endpoint: GET /api/lite/invoices/:id/items
+   📌 GET INVOICE ITEMS LITE (FINAL FIXED — SAFE)
 ============================================================ */
 export const getInvoiceItemsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
-      module: MODULE_KEY, // still "invoice"
+      module: MODULE_KEY,
       action: "read",
       res,
     });
     if (!allowed) return;
 
-    const { id } = req.params; // invoice_id
+    const { id } = req.params;
     const { q } = req.query;
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
 
-    // 🔒 Scope check
+    /* ================= TENANT CHECK ================= */
     const whereInvoice = { id };
+
     if (!isSuperAdmin(req.user)) {
       whereInvoice.organization_id = req.user.organization_id;
-      if (role === "facility_head") whereInvoice.facility_id = req.user.facility_id;
+
+      if (role === "facility_head") {
+        whereInvoice.facility_id = req.user.facility_id;
+      }
     }
 
     const invoice = await Invoice.findOne({ where: whereInvoice });
-    if (!invoice) return error(res, "❌ Invoice not found", null, 404);
 
-    // 🔍 Item filtering
+    if (!invoice) {
+      return error(res, "❌ Invoice not found", null, 404);
+    }
+
+    /* ================= ITEM FILTER ================= */
     const whereItem = { invoice_id: id };
+
     if (q) {
       const term = `%${q}%`;
+
       whereItem[Op.or] = [
         { description: { [Op.iLike]: term } },
         sequelize.where(
@@ -592,18 +690,22 @@ export const getInvoiceItemsLite = async (req, res) => {
 
     const result = items.map((it) => {
       const plain = it.get({ plain: true });
+
+      const net = parseFloat(plain.net_amount || 0).toFixed(2);
+
       return {
         id: plain.id,
         description: plain.description || "Unnamed Item",
-        unit_price: plain.unit_price,
+        unit_price: parseFloat(plain.unit_price || 0).toFixed(2),
         quantity: plain.quantity,
-        discount_amount: plain.discount_amount,
-        tax_amount: plain.tax_amount,
-        total_price: plain.total_price,
-        net_amount: plain.net_amount,
+        discount_amount: parseFloat(plain.discount_amount || 0).toFixed(2),
+        tax_amount: parseFloat(plain.tax_amount || 0).toFixed(2),
+        total_price: parseFloat(plain.total_price || 0).toFixed(2),
+        net_amount: net,
         status: plain.status,
-        // ✅ Compact label for dropdowns
-        label: `${plain.description || "Item"} · Qty ${plain.quantity} · ${plain.net_amount}`,
+
+        // ✅ clean + safe label
+        label: `${plain.description || "Item"} · Qty ${plain.quantity} · ${net}`,
       };
     });
 
@@ -615,15 +717,16 @@ export const getInvoiceItemsLite = async (req, res) => {
       details: { count: result.length, query: q || null },
     });
 
-    return success(res, "✅ Invoice items loaded (lite)", { records: result });
+    return success(res, "✅ Invoice items loaded (lite)", {
+      records: result,
+    });
   } catch (err) {
     return error(res, "❌ Failed to load invoice items (lite)", err);
   }
 };
 
-
 /* ============================================================
-   📌 UPDATE INVOICE (limited fields)
+   📌 UPDATE INVOICE (FINAL — SAFE)
 ============================================================ */
 export const updateInvoice = async (req, res) => {
   const t = await sequelize.transaction();
@@ -638,8 +741,11 @@ export const updateInvoice = async (req, res) => {
 
     const { id } = req.params;
     const role = (req.user?.roleNames?.[0] || "").toLowerCase();
+
     const schema = buildInvoiceSchema(role, "update");
-    const { error: validationError, value } = schema.validate(req.body, { stripUnknown: true });
+    const { error: validationError, value } = schema.validate(req.body, {
+      stripUnknown: true,
+    });
 
     if (validationError) {
       await t.rollback();
@@ -652,10 +758,23 @@ export const updateInvoice = async (req, res) => {
       return error(res, "❌ Invoice not found", null, 404);
     }
 
-    // Restrict locked/finalized invoices
-    if (record.is_locked || [IS.PAID, IS.CANCELLED, IS.VOIDED].includes(record.status)) {
+    /* ================= LOCK PROTECTION ================= */
+    if (
+      record.is_locked ||
+      [IS.PAID, IS.CANCELLED, IS.VOIDED].includes(record.status)
+    ) {
       await t.rollback();
-      return error(res, "❌ Cannot update a locked or finalized invoice", null, 400);
+      return error(
+        res,
+        "❌ Cannot update a locked or finalized invoice",
+        null,
+        400
+      );
+    }
+
+    /* ================= 🔒 PROTECT CURRENCY ================= */
+    if ("currency" in value) {
+      delete value.currency;
     }
 
     await record.update(
@@ -668,7 +787,10 @@ export const updateInvoice = async (req, res) => {
 
     await t.commit();
 
-    const full = await Invoice.findOne({ where: { id }, include: INVOICE_INCLUDES });
+    const full = await Invoice.findOne({
+      where: { id },
+      include: INVOICE_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -686,16 +808,44 @@ export const updateInvoice = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   💵 APPLY PAYMENT
+   💵 APPLY PAYMENT (FINAL — SAFE + CURRENCY LOCKED)
 ============================================================ */
 export const applyPayment = async (req, res) => {
   try {
-    const { error: validationError, value } = paymentSchema.validate(req.body, { stripUnknown: true });
-    if (validationError) return error(res, "Validation failed", validationError, 400);
+    const { error: validationError, value } = paymentSchema.validate(req.body, {
+      stripUnknown: true,
+    });
 
-    const { payment, invoice } = await financialService.applyPayment({ ...value, user: req.user });
+    if (validationError) {
+      return error(res, "Validation failed", validationError, 400);
+    }
 
+    /* ================= 💱 CURRENCY CHECK ================= */
+    const invoice = await Invoice.findByPk(value.invoice_id);
+
+    if (!invoice) {
+      return error(res, "❌ Invoice not found", null, 404);
+    }
+
+    if (value.currency !== invoice.currency) {
+      return error(
+        res,
+        "❌ Currency mismatch with invoice",
+        null,
+        400
+      );
+    }
+
+    /* ================= APPLY PAYMENT ================= */
+    const { payment, invoice: updatedInvoice } =
+      await financialService.applyPayment({
+        ...value,
+        user: req.user,
+      });
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -705,22 +855,52 @@ export const applyPayment = async (req, res) => {
       details: value,
     });
 
-    return success(res, "✅ Payment applied", { payment, invoice });
+    return success(res, "✅ Payment applied", {
+      payment,
+      invoice: updatedInvoice,
+    });
   } catch (err) {
     return error(res, "❌ Failed to apply payment", err);
   }
 };
 
 /* ============================================================
-   🔄 APPLY REFUND
+   🔄 APPLY REFUND (FINAL — SAFE + CURRENCY LOCKED)
 ============================================================ */
 export const applyRefund = async (req, res) => {
   try {
-    const { error: validationError, value } = refundSchema.validate(req.body, { stripUnknown: true });
-    if (validationError) return error(res, "Validation failed", validationError, 400);
+    const { error: validationError, value } = refundSchema.validate(req.body, {
+      stripUnknown: true,
+    });
 
-    const { refund, invoice } = await financialService.applyRefund({ ...value, user: req.user });
+    if (validationError) {
+      return error(res, "Validation failed", validationError, 400);
+    }
 
+    /* ================= 💱 CURRENCY CHECK ================= */
+    const payment = await Payment.findByPk(value.payment_id);
+
+    if (!payment) {
+      return error(res, "❌ Payment not found", null, 404);
+    }
+
+    // If currency is provided, enforce match
+    if (value.currency && value.currency !== payment.currency) {
+      return error(
+        res,
+        "❌ Currency mismatch with payment",
+        null,
+        400
+      );
+    }
+
+    /* ================= APPLY REFUND ================= */
+    const { refund, invoice } = await financialService.applyRefund({
+      ...value,
+      user: req.user,
+    });
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -735,16 +915,41 @@ export const applyRefund = async (req, res) => {
     return error(res, "❌ Failed to apply refund", err);
   }
 };
-
 /* ============================================================
-   💰 APPLY DEPOSIT
+   💰 APPLY DEPOSIT (FINAL — SAFE)
 ============================================================ */
 export const applyDeposit = async (req, res) => {
   try {
-    const { error: validationError, value } = depositSchema.validate(req.body, { stripUnknown: true });
-    if (validationError) return error(res, "Validation failed", validationError, 400);
+    const { error: validationError, value } = depositSchema.validate(req.body, {
+      stripUnknown: true,
+    });
 
-    const { deposit, invoice } = await financialService.applyDeposit({ ...value, user: req.user });
+    if (validationError) {
+      return error(res, "Validation failed", validationError, 400);
+    }
+
+    /* ================= 💱 CURRENCY CHECK ================= */
+    if (value.invoice_id) {
+      const invoice = await Invoice.findByPk(value.invoice_id);
+
+      if (!invoice) {
+        return error(res, "❌ Invoice not found", null, 404);
+      }
+
+      if (value.currency !== invoice.currency) {
+        return error(
+          res,
+          "❌ Currency mismatch with invoice",
+          null,
+          400
+        );
+      }
+    }
+
+    const { deposit, invoice } = await financialService.applyDeposit({
+      ...value,
+      user: req.user,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -761,15 +966,24 @@ export const applyDeposit = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   🎟️ APPLY WAIVER
+   🎟️ APPLY WAIVER (FINAL — SAFE)
 ============================================================ */
 export const applyWaiver = async (req, res) => {
   try {
-    const { error: validationError, value } = waiverSchema.validate(req.body, { stripUnknown: true });
-    if (validationError) return error(res, "Validation failed", validationError, 400);
+    const { error: validationError, value } = waiverSchema.validate(req.body, {
+      stripUnknown: true,
+    });
 
-    const { waiver, invoice } = await financialService.applyWaiver({ ...value, user: req.user });
+    if (validationError) {
+      return error(res, "Validation failed", validationError, 400);
+    }
+
+    const { waiver, invoice } = await financialService.applyWaiver({
+      ...value,
+      user: req.user,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -786,17 +1000,24 @@ export const applyWaiver = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   ❌ REVERSE TRANSACTION (any type)
+   ❌ REVERSE TRANSACTION (FINAL — FIXED)
 ============================================================ */
 export const reverseTransaction = async (req, res) => {
   try {
     const { type, id, reason } = req.body;
+
     if (!["payment", "refund", "deposit", "waiver"].includes(type)) {
       return error(res, "❌ Invalid reversal type", null, 400);
     }
 
-    const result = await financialService.reverseTransaction({ type, id, user: req.user });
+    const result = await financialService.reverseTransaction({
+      type,
+      id,
+      reason, // ✅ FIX: pass reason
+      user: req.user,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -812,11 +1033,14 @@ export const reverseTransaction = async (req, res) => {
     return error(res, "❌ Failed to reverse transaction", err);
   }
 };
+
+
 /* ============================================================
-   📌 TOGGLE INVOICE STATUS (draft ↔ issued)
+   📌 TOGGLE INVOICE STATUS (FINAL — SAFE)
 ============================================================ */
 export const toggleInvoiceStatus = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const allowed = await authzService.checkPermission({
       user: req.user,
@@ -827,30 +1051,43 @@ export const toggleInvoiceStatus = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
+
     const record = await Invoice.findByPk(id, { transaction: t });
+
     if (!record) {
       await t.rollback();
       return error(res, "❌ Invoice not found", null, 404);
     }
 
+    /* ================= 🔒 LOCK PROTECTION ================= */
+    if (record.is_locked) {
+      await t.rollback();
+      return error(res, "❌ Cannot modify locked invoice", null, 400);
+    }
+
     const oldStatus = record.status;
     let newStatus = oldStatus;
 
-    // 🔹 Only allow toggling between Draft ↔ Issued
+    /* ================= STATUS TOGGLE ================= */
     if (oldStatus === IS.DRAFT) newStatus = IS.ISSUED;
     else if (oldStatus === IS.ISSUED) newStatus = IS.DRAFT;
 
-    // ✅ Update only if status actually changes
     if (newStatus !== oldStatus) {
       await record.update(
-        { status: newStatus, updated_by_id: req.user?.id || null },
+        {
+          status: newStatus,
+          updated_by_id: req.user?.id || null,
+        },
         { transaction: t }
       );
     }
 
     await t.commit();
 
-    const full = await Invoice.findOne({ where: { id }, include: INVOICE_INCLUDES });
+    const full = await Invoice.findOne({
+      where: { id },
+      include: INVOICE_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
@@ -858,13 +1095,17 @@ export const toggleInvoiceStatus = async (req, res) => {
       action: "toggle_status",
       entityId: id,
       entity: full,
-      details: { from: oldStatus, to: newStatus, changed: newStatus !== oldStatus },
+      details: {
+        from: oldStatus,
+        to: newStatus,
+        changed: newStatus !== oldStatus,
+      },
     });
 
     const msg =
       newStatus !== oldStatus
         ? `✅ Invoice status changed from ${oldStatus} → ${newStatus}`
-        : `ℹ️ Invoice status left unchanged (${oldStatus})`;
+        : `ℹ️ Invoice status unchanged (${oldStatus})`;
 
     return success(res, msg, full);
   } catch (err) {

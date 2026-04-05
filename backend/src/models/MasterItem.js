@@ -64,6 +64,13 @@ export default (sequelize) => {
         type: DataTypes.ENUM(...Object.values(MASTER_ITEM_TYPES)),
         allowNull: false,
       },
+
+      // 🔹 Lifecycle
+      status: {
+        type: DataTypes.ENUM(...Object.values(MASTER_ITEM_STATUS)),
+        allowNull: false,
+        defaultValue: MASTER_ITEM_STATUS.ACTIVE,
+      },
       category_id: { type: DataTypes.UUID },
       department_id: { type: DataTypes.UUID },
 
@@ -86,13 +93,7 @@ export default (sequelize) => {
       reference_price: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
       currency: { type: DataTypes.STRING, defaultValue: "USD" },
 
-      // 🔹 Lifecycle
-      status: {
-        type: DataTypes.ENUM(...Object.values(MASTER_ITEM_STATUS)),
-        allowNull: false,
-        defaultValue: MASTER_ITEM_STATUS.ACTIVE,
-      },
-
+ 
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

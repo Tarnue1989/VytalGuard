@@ -1,14 +1,5 @@
 // 📦 deposit-constants.js – Enterprise MASTER–ALIGNED (Consultation Parity)
-// ============================================================================
-// 🔹 Pattern Source: consultation-constants.js / appointment-constants.js
-// 🔹 Structural Consistency: labels, order, RBAC visibility, metadata
-// 🔹 100% ID retention (safe for existing HTML + JS modules)
-// 🔹 Supports dynamic tables, cards, field selector, exports, summaries
-// ============================================================================
 
-/* ============================================================
-   🏷️ FIELD LABELS (Enterprise Standard)
-============================================================ */
 export const FIELD_LABELS_DEPOSIT = {
   deposit_number: "Deposit #",
   organization: "Organization",
@@ -18,6 +9,7 @@ export const FIELD_LABELS_DEPOSIT = {
   amount: "Amount",
   applied_amount: "Applied Amount",
   remaining_balance: "Remaining Balance",
+  currency: "Currency",
   method: "Method",
   transaction_ref: "Transaction Ref",
   notes: "Notes",
@@ -32,9 +24,6 @@ export const FIELD_LABELS_DEPOSIT = {
   actions: "Actions",
 };
 
-/* ============================================================
-   📋 FIELD ORDER (Enterprise-Consistent)
-============================================================ */
 export const FIELD_ORDER_DEPOSIT = [
   "deposit_number",
   "organization",
@@ -44,6 +33,7 @@ export const FIELD_ORDER_DEPOSIT = [
   "amount",
   "applied_amount",
   "remaining_balance",
+  "currency",
   "method",
   "transaction_ref",
   "notes",
@@ -58,12 +48,6 @@ export const FIELD_ORDER_DEPOSIT = [
   "actions",
 ];
 
-/* ============================================================
-   👥 ROLE-BASED FIELD DEFAULTS (MASTER RBAC)
-============================================================ */
-// 🧩 Admin: full financial + audit visibility
-// 🧩 Manager: operational + financial, scoped
-// 🧩 Staff: essential operational fields only
 export const FIELD_DEFAULTS_DEPOSIT = {
   superadmin: [
     "deposit_number",
@@ -74,6 +58,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "amount",
     "applied_amount",
     "remaining_balance",
+    "currency",
     "method",
     "transaction_ref",
     "notes",
@@ -97,6 +82,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "amount",
     "applied_amount",
     "remaining_balance",
+    "currency",
     "method",
     "transaction_ref",
     "notes",
@@ -119,6 +105,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "amount",
     "applied_amount",
     "remaining_balance",
+    "currency",
     "method",
     "transaction_ref",
     "notes",
@@ -139,6 +126,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "amount",
     "applied_amount",
     "remaining_balance",
+    "currency",
     "method",
     "transaction_ref",
     "status",
@@ -146,9 +134,6 @@ export const FIELD_DEFAULTS_DEPOSIT = {
   ],
 };
 
-/* ============================================================
-   🧠 FIELD GROUPS (Enterprise Optional Extension)
-============================================================ */
 export const FIELD_GROUPS_DEPOSIT = {
   org_scope: ["organization", "facility"],
   patient_info: ["patient", "appliedInvoice"],
@@ -156,6 +141,7 @@ export const FIELD_GROUPS_DEPOSIT = {
     "amount",
     "applied_amount",
     "remaining_balance",
+    "currency",
     "method",
     "transaction_ref",
   ],
@@ -164,15 +150,9 @@ export const FIELD_GROUPS_DEPOSIT = {
   system: ["deletedBy", "deleted_at", "actions"],
 };
 
-/* ============================================================
-   ⚙️ MODULE METADATA (Enterprise UI Context)
-============================================================ */
 export const MODULE_KEY_DEPOSIT = "deposits";
 export const MODULE_LABEL_DEPOSIT = "Deposit";
 
-/* ============================================================
-   📦 EXPORT (Unified)
-============================================================ */
 export default {
   FIELD_LABELS_DEPOSIT,
   FIELD_ORDER_DEPOSIT,

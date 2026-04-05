@@ -45,7 +45,9 @@ export const departmentStockService = {
     try {
       const deptStock = await db.DepartmentStock.findByPk(id, { transaction: t });
       if (!deptStock) throw new Error("Department stock not found");
-      if (deptStock.status === DEPARTMENT_STOCK_STATUS[1]) {
+
+      // ✅ FIXED
+      if (deptStock.status === DEPARTMENT_STOCK_STATUS.INACTIVE) {
         throw new Error("Stock is locked and cannot be updated");
       }
 
@@ -240,7 +242,8 @@ export const departmentStockService = {
       const deptStock = await db.DepartmentStock.findByPk(departmentStockId, { transaction: t });
       if (!deptStock) throw new Error("Department stock not found");
 
-      await deptStock.update({ status: DEPARTMENT_STOCK_STATUS[1] }, { transaction: t });
+      // ✅ FIXED
+      await deptStock.update({ status: DEPARTMENT_STOCK_STATUS.INACTIVE }, { transaction: t });
 
       await db.StockLedger.create({
         organization_id: deptStock.organization_id,
@@ -271,7 +274,8 @@ export const departmentStockService = {
       const deptStock = await db.DepartmentStock.findByPk(departmentStockId, { transaction: t });
       if (!deptStock) throw new Error("Department stock not found");
 
-      await deptStock.update({ status: DEPARTMENT_STOCK_STATUS[0] }, { transaction: t });
+      // ✅ FIXED
+      await deptStock.update({ status: DEPARTMENT_STOCK_STATUS.ACTIVE }, { transaction: t });
 
       await db.StockLedger.create({
         organization_id: deptStock.organization_id,

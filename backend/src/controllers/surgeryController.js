@@ -40,15 +40,14 @@ import { shouldTriggerBilling } from "../constants/billing.js";
 // 🔖 Local constants
 const MODULE_KEY = "surgery";
 const SSS = {
-  SCHEDULED: SURGERY_STATUS[0],
-  IN_PROGRESS: SURGERY_STATUS[1],
-  COMPLETED: SURGERY_STATUS[2],
-  VERIFIED: SURGERY_STATUS[3],
-  FINALIZED: SURGERY_STATUS[4],
-  CANCELLED: SURGERY_STATUS[5],
-  VOIDED: SURGERY_STATUS[6],
+  SCHEDULED: SURGERY_STATUS.SCHEDULED,
+  IN_PROGRESS: SURGERY_STATUS.IN_PROGRESS,
+  COMPLETED: SURGERY_STATUS.COMPLETED,
+  VERIFIED: SURGERY_STATUS.VERIFIED,
+  FINALIZED: SURGERY_STATUS.FINALIZED,
+  CANCELLED: SURGERY_STATUS.CANCELLED,
+  VOIDED: SURGERY_STATUS.VOIDED,
 };
-
 /* ============================================================
    🔧 HELPERS
 ============================================================ */

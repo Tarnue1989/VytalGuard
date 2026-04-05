@@ -12,11 +12,12 @@
 
 import { FIELD_LABELS_DISCOUNT_WAIVER } from "./discount-waiver-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -57,10 +58,9 @@ function getDiscountWaiverActionButtons(entry, user) {
   return buildActionButtons({
     module: "discount_waiver",
     status: (entry.status || "").toLowerCase(),
-    entry,
     entryId: entry.id,
     user,
-    permissionPrefix: "discount-waivers",
+    permissionPrefix: "discount_waivers",
   });
 }
 
@@ -179,6 +179,8 @@ function renderValue(entry, field) {
     case "invoice_id":
       return entry.invoice?.invoice_number || "—";
 
+    case "currency":
+      return entry.currency || "—";
     case "patient":
     case "patient_id":
       return renderPatient(entry);
@@ -192,7 +194,7 @@ function renderValue(entry, field) {
     case "amount":
     case "applied_total":
       return entry[field] != null
-        ? `$${Number(entry[field]).toFixed(2)}`
+        ? `${getCurrencySymbol(entry.currency)} ${Number(entry[field]).toFixed(2)}`
         : "—";
 
     case "reason":
@@ -214,7 +216,7 @@ function renderValue(entry, field) {
     case "created_at":
     case "updated_at":
     case "deleted_at":
-      return entry[field] ? formatDate(entry[field]) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
     default: {
       const v = entry[field];
@@ -231,7 +233,11 @@ function renderValue(entry, field) {
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
-  const money = (v) => `$${Number(v || 0).toFixed(2)}`;
+
+  const money = (v) =>
+    v !== null && v !== undefined
+      ? `${getCurrencySymbol(entry.currency)} ${Number(v).toFixed(2)}`
+      : "—";
 
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
@@ -263,6 +269,7 @@ export function renderCard(entry, visibleFields, user) {
         ${entry.organization ? `<div>🏥 ${entry.organization.name}</div>` : ""}
         ${entry.facility ? `<div>📍 ${entry.facility.name}</div>` : ""}
         ${entry.invoice ? `<div>🧾 ${entry.invoice.invoice_number}</div>` : ""}
+        ${entry.currency ? `<div>💱 ${entry.currency}</div>` : ""}
       </div>
 
       <div class="entity-card-body">
@@ -273,21 +280,36 @@ export function renderCard(entry, visibleFields, user) {
         ${row("Reason", entry.reason)}
       </div>
 
+      ${
+        entry.approvedBy ||
+        entry.approved_at ||
+        entry.rejectedBy ||
+        entry.rejected_at ||
+        entry.voidedBy ||
+        entry.voided_at ||
+        entry.createdBy ||
+        entry.created_at ||
+        entry.updatedBy ||
+        entry.updated_at
+          ? `
       <details class="entity-notes">
         <summary>Audit</summary>
         <div class="entity-card-body">
-          ${row("Approved By", renderUserName(entry.approvedBy))}
-          ${row("Approved At", formatDate(entry.approved_at))}
-          ${row("Rejected By", renderUserName(entry.rejectedBy))}
-          ${row("Rejected At", formatDate(entry.rejected_at))}
-          ${row("Voided By", renderUserName(entry.voidedBy))}
-          ${row("Voided At", formatDate(entry.voided_at))}
-          ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDate(entry.created_at))}
-          ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDate(entry.updated_at))}
+          ${entry.approvedBy ? row("Approved By", renderUserName(entry.approvedBy)) : ""}
+          ${entry.approved_at ? row("Approved At", formatDateTime(entry.approved_at)) : ""}
+          ${entry.rejectedBy ? row("Rejected By", renderUserName(entry.rejectedBy)) : ""}
+          ${entry.rejected_at ? row("Rejected At", formatDateTime(entry.rejected_at)) : ""}
+          ${entry.voidedBy ? row("Voided By", renderUserName(entry.voidedBy)) : ""}
+          ${entry.voided_at ? row("Voided At", formatDateTime(entry.voided_at)) : ""}
+          ${entry.createdBy ? row("Created By", renderUserName(entry.createdBy)) : ""}
+          ${entry.created_at ? row("Created At", formatDateTime(entry.created_at)) : ""}
+          ${entry.updatedBy ? row("Updated By", renderUserName(entry.updatedBy)) : ""}
+          ${entry.updated_at ? row("Updated At", formatDateTime(entry.updated_at)) : ""}
         </div>
       </details>
+      `
+          : ""
+      }
 
       ${
         has("actions")

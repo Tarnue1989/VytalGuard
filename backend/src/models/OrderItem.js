@@ -82,19 +82,18 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: true,
         },
+        // 🔄 Lifecycle
+        status: {
+          type: DataTypes.ENUM(...Object.values(ORDER_ITEM_STATUS)),
+          allowNull: false,
+          defaultValue: ORDER_ITEM_STATUS.DRAFT,
+        },
 
-      // 🔄 Lifecycle
-      status: {
-        type: DataTypes.ENUM(...ORDER_ITEM_STATUS),
-        allowNull: false,
-        defaultValue: ORDER_ITEM_STATUS[0],
-      },
-
-      billing_status: {
-        type: DataTypes.ENUM(...ORDER_BILLING_STATUS),
-        allowNull: false,
-        defaultValue: "not_billed",
-      },
+        billing_status: {
+          type: DataTypes.ENUM(...Object.values(ORDER_BILLING_STATUS)),
+          allowNull: false,
+          defaultValue: ORDER_BILLING_STATUS.NOT_BILLED,
+        },
 
       billed: {
         type: DataTypes.BOOLEAN,

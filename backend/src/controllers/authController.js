@@ -41,8 +41,6 @@ const cookieOptions = {
   path: "/",
 };
 
-
-
 // -------------------- Validation Schemas --------------------
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -167,7 +165,7 @@ export const register = async (req, res) => {
         password_hash: hash,
         employee_id: employee_id || null,
         organization_id: organization_id || null,
-        status: USER_STATUS[0],
+        status: USER_STATUS.ACTIVE,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }

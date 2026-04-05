@@ -4,6 +4,7 @@ import {
   REGISTRATION_LOG_STATUS,
   REGISTRATION_METHODS,
   REGISTRATION_CATEGORIES,
+  PAYER_TYPES,
 } from "../constants/enums.js";
 
 export default (sequelize) => {
@@ -30,6 +31,12 @@ export default (sequelize) => {
       RegistrationLog.belongsTo(models.BillableItem, {
         as: "registrationType",
         foreignKey: "registration_type_id",
+      });
+
+      // 🔹 Insurance (NEW LINK)
+      RegistrationLog.belongsTo(models.PatientInsurance, {
+        as: "patientInsurance",
+        foreignKey: "patient_insurance_id",
       });
 
       // 🔹 Org / Facility
@@ -81,29 +88,45 @@ export default (sequelize) => {
       invoice_id: { type: DataTypes.UUID, allowNull: true },
       registration_type_id: { type: DataTypes.UUID, allowNull: true },
 
+      // 🏷️ Lifecycle
+      log_status: {
+        type: DataTypes.ENUM(...Object.values(REGISTRATION_LOG_STATUS)),
+        allowNull: false,
+        defaultValue: REGISTRATION_LOG_STATUS.DRAFT,
+      },
+
       // 📝 Info
       registration_method: {
-        type: DataTypes.ENUM(...REGISTRATION_METHODS),
+        type: DataTypes.ENUM(...Object.values(REGISTRATION_METHODS)),
         allowNull: false,
-        defaultValue: REGISTRATION_METHODS[0],
+        defaultValue: REGISTRATION_METHODS.WALK_IN,
       },
+
       registration_source: { type: DataTypes.STRING(120), allowNull: true },
+
       patient_category: {
-        type: DataTypes.ENUM(...REGISTRATION_CATEGORIES),
+        type: DataTypes.ENUM(...Object.values(REGISTRATION_CATEGORIES)),
         allowNull: false,
-        defaultValue: REGISTRATION_CATEGORIES[0],
+        defaultValue: REGISTRATION_CATEGORIES.GENERAL,
       },
+
+      // 💳 Billing decision (NEW)
+      payer_type: {
+        type: DataTypes.ENUM(...Object.values(PAYER_TYPES)),
+        allowNull: false,
+        defaultValue: PAYER_TYPES.CASH,
+      },
+
+      // 🔗 Selected insurance policy (NEW)
+      patient_insurance_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
       visit_reason: { type: DataTypes.TEXT, allowNull: true },
       is_emergency: { type: DataTypes.BOOLEAN, defaultValue: false },
       registration_time: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
       notes: { type: DataTypes.TEXT, allowNull: true },
-
-      // 🏷️ Lifecycle
-      log_status: {
-        type: DataTypes.ENUM(...REGISTRATION_LOG_STATUS),
-        allowNull: false,
-        defaultValue: REGISTRATION_LOG_STATUS[0],
-      },
 
       // 🔹 Audit
       created_by_id: { type: DataTypes.UUID, allowNull: true },
@@ -127,9 +150,8 @@ export default (sequelize) => {
         withDeleted: { paranoid: false },
         active: { where: { deleted_at: null } },
 
-        // 🔑 Tenant scope → required for setTenantScope
         tenant(facilityId) {
-          if (!facilityId) return {}; // safeguard superadmin case
+          if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
         },
       },
@@ -139,6 +161,7 @@ export default (sequelize) => {
         { fields: ["facility_id"] },
         { fields: ["registrar_id"] },
         { fields: ["invoice_id"] },
+        { fields: ["payer_type"] }, // 🔥 helpful for billing queries
       ],
     }
   );

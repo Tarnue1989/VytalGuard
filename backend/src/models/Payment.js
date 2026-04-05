@@ -1,6 +1,6 @@
 // 📁 backend/src/models/Payment.js
 import { DataTypes, Model } from "sequelize";
-import { PAYMENT_METHODS, PAYMENT_STATUS } from "../constants/enums.js";
+import { PAYMENT_METHODS, PAYMENT_STATUS, CURRENCY } from "../constants/enums.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 
 /* ============================================================
@@ -61,6 +61,12 @@ export default (sequelize) => {
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
+      // 💱 🔥 REQUIRED (MULTI-CURRENCY SAFE)
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: false,
+      },
+
       // 💵 Payment details
       amount: {
         type: DataTypes.DECIMAL(12, 2),
@@ -68,12 +74,15 @@ export default (sequelize) => {
         validate: { min: 0 },
       },
 
-      method: { type: DataTypes.ENUM(...PAYMENT_METHODS), allowNull: false },
+      method: {
+        type: DataTypes.ENUM(...Object.values(PAYMENT_METHODS)),
+        allowNull: false,
+      },
 
       status: {
-        type: DataTypes.ENUM(...PAYMENT_STATUS),
+        type: DataTypes.ENUM(...Object.values(PAYMENT_STATUS)),
         allowNull: false,
-        defaultValue: PS.PENDING,
+        defaultValue: PAYMENT_STATUS.PENDING,
       },
 
       transaction_ref: { type: DataTypes.STRING },
@@ -121,7 +130,7 @@ export default (sequelize) => {
         { fields: ["patient_id"], name: "idx_payments_patient_id" },
         { fields: ["status"], name: "idx_payments_status" },
         { fields: ["method"], name: "idx_payments_method" },
-        { fields: ["payment_number"], unique: true }, // ✅ important
+        { fields: ["payment_number"], unique: true },
       ],
     }
   );
@@ -130,11 +139,10 @@ export default (sequelize) => {
      🔁 Hooks
   ============================================================ */
 
-  // ✅ Generate number + sync invoice (MATCHES INVOICE PATTERN)
+  // ✅ Generate number + sync invoice
   Payment.beforeValidate(async (payment) => {
     const { Invoice } = await import("../models/index.js");
 
-    // 🔹 Ensure tenant fields exist BEFORE numbering
     if (!payment.organization_id || !payment.facility_id) {
       const invoice = await Invoice.findByPk(payment.invoice_id);
       if (!invoice) throw new Error("Invalid invoice_id for payment");
@@ -142,9 +150,11 @@ export default (sequelize) => {
       payment.organization_id = invoice.organization_id;
       payment.facility_id = invoice.facility_id;
       payment.patient_id = invoice.patient_id;
+
+      // 🔥 ensure currency matches invoice
+      payment.currency = invoice.currency;
     }
 
-    // 🔹 Generate payment number
     if (!payment.payment_number) {
       const last = await Payment.findOne({
         where: {
@@ -166,7 +176,16 @@ export default (sequelize) => {
     }
   });
 
-  // ✅ Auto-recalculate invoice when payment is completed
+  // 🔥 FIX: handle create
+  Payment.afterCreate(async (payment, options) => {
+    if (payment.status === PS.COMPLETED) {
+      if (payment.invoice_id) {
+        await recalcInvoice(payment.invoice_id, options?.transaction);
+      }
+    }
+  });
+
+  // 🔥 existing update hook
   Payment.afterUpdate(async (payment, options) => {
     if (payment.status === PS.COMPLETED) {
       if (payment.invoice_id) {

@@ -59,9 +59,9 @@ export default (sequelize) => {
 
       // 🏷️ Status
       status: {
-        type: DataTypes.ENUM(...VITAL_STATUS),
+        type: DataTypes.ENUM(...Object.values(VITAL_STATUS)),
         allowNull: false,
-        defaultValue: VITAL_STATUS[0],
+        defaultValue: VITAL_STATUS.OPEN,
       },
 
       // 🩺 Vital Signs

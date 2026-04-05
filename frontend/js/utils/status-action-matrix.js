@@ -29,7 +29,7 @@ export const STATUS_ACTION_MATRIX = {
 
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
-    pending:["edit","clear","cancel","void","delete", "print"],
+    pending:["edit","clear","cancel","void", "print"],
     cleared:["apply","void","reverse", "print"],
     applied:["apply","reverse","verify","void","print"],
     verified:["print"],
@@ -52,7 +52,7 @@ export const STATUS_ACTION_MATRIX = {
 
   /* ======================== 🧾 INVOICE ======================== */
   invoice:{
-    draft:["edit","delete","void"],
+    draft:["edit","void"],
     unpaid:["collect","deposit","waiver","void","print"],
     partial:["collect","deposit","waiver","refund","void","print"],
     paid:["refund","reverse","print"],
@@ -63,9 +63,9 @@ export const STATUS_ACTION_MATRIX = {
 
   /* ======================== 💸 DISCOUNT ======================== */
   discount:{
-    draft:["edit","toggle-status","delete","void"],
-    active:["toggle-status","finalize","void"],
-    inactive:["toggle-status","void"],
+    draft:["edit","toggle-status","void"],
+    active:["toggle-status","finalize","void","print"],
+    inactive:["toggle-status","void","print"],
     finalized:["void","restore","print"],
     voided:["restore"],
     deleted:["restore"]
@@ -76,9 +76,9 @@ export const STATUS_ACTION_MATRIX = {
     pending:["edit","approve","reject","void","delete"],
     approved:["finalize","void","print"],
     applied:["void","print"],
-    rejected:["restore"],
-    voided:["restore"],
     finalized:["print","void","restore"],
+    rejected:["restore","print"],
+    voided:["restore"],
     deleted:["restore"],
   },
 

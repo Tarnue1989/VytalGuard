@@ -99,7 +99,7 @@
                       <div class="col-xxl-3 col-lg-4 col-sm-6">
                         <div class="mb-3 form-group">
                           <label class="form-label" for="registrationTypeSelect">
-                            Registration Type
+                            Registration Type <span class="text-danger">*</span>
                           </label>
                           <select
                             class="form-control"
@@ -218,7 +218,46 @@
                           ></textarea>
                         </div>
                       </div>
+                      <!-- ================= Billing ================= -->
+                      <div class="col-12">
+                        <h6 class="mt-3">Billing</h6>
+                        <hr />
+                      </div>
 
+                      <!-- Payer Type -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <div class="mb-3">
+                          <label class="form-label" for="payerType">
+                            Payer Type <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="payerType"
+                            name="payer_type"
+                            required
+                          >
+                            <option value="" disabled selected>-- Select Payer Type --</option>
+                            <option value="cash">Cash</option>
+                            <option value="insurance">Insurance</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- Insurance (controlled by payer type) -->
+                      <div id="insuranceWrapper" class="col-xxl-3 col-lg-4 col-sm-6 hidden">
+                        <div class="mb-3">
+                          <label class="form-label" for="patientInsuranceSelect">
+                            Insurance <span class="text-danger">*</span>
+                          </label>
+                          <select
+                            class="form-control"
+                            id="patientInsuranceSelect"
+                            name="patient_insurance_id"
+                          >
+                            <option value="">-- Select Insurance --</option>
+                          </select>
+                        </div>
+                      </div>
                       <!-- ================= Scope ================= -->
                       <div class="col-12">
                         <h6 class="mt-3">Scope</h6>
@@ -323,5 +362,11 @@
 
   <!-- Module JS -->
   <script type="module" src="js/modules/registration-log/add-registration-log.js"></script>
+ 
+  
+
+  <!-- AUTH -->
+  <script type="module" src="/js/authSession.js"></script>
+
 </body>
 </html>

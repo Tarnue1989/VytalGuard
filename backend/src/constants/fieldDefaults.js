@@ -371,12 +371,26 @@ export const FIELD_DEFAULTS_REGISTRATION_LOG = {
   manager: [
     "patient_id", "registrar_id", "organization_id", "facility_id",
     "invoice_id", "registration_type_id",
-    "registration_method", "registration_source", "patient_category", "visit_reason", "is_emergency",
+
+    // 🔥 NEW
+    "payer_type",
+    "patient_insurance_id",
+
+    "registration_method", "registration_source", "patient_category",
+    "visit_reason", "is_emergency",
     "registration_time", "notes", "log_status"
   ],
-  staff: ["patient_id", "registration_method", "patient_category", "visit_reason", "is_emergency", "log_status"]
-};
+  staff: [
+    "patient_id",
+    "registration_method",
+    "patient_category",
 
+    // 🔥 OPTIONAL (recommended)
+    "payer_type",
+
+    "visit_reason", "is_emergency", "log_status"
+  ]
+};
 /* -------------------- Plan Module -------------------- */
 export const FIELD_DEFAULTS_PLAN_MODULE = {
   admin: FIELD_ORDER_PLAN_MODULE,

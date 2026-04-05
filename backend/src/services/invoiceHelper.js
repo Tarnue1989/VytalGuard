@@ -2,13 +2,19 @@ import { Op } from "sequelize";
 import { Invoice } from "../models/index.js";
 import { INVOICE_STATUS } from "../constants/enums.js";
 
+/* ============================================================
+   🔹 Active Invoice Statuses (FIXED)
+============================================================ */
 const ACTIVE_STATUSES = [
-  INVOICE_STATUS[0], // draft
-  INVOICE_STATUS[1], // issued
-  INVOICE_STATUS[2], // unpaid
-  INVOICE_STATUS[3], // partial
+  INVOICE_STATUS.DRAFT,
+  INVOICE_STATUS.ISSUED,
+  INVOICE_STATUS.UNPAID,
+  INVOICE_STATUS.PARTIAL,
 ];
 
+/* ============================================================
+   🔹 Get or Create Active Invoice
+============================================================ */
 export async function getOrCreateActiveInvoice({
   patient_id,
   organization_id,
@@ -36,7 +42,7 @@ export async function getOrCreateActiveInvoice({
         patient_id,
         organization_id,
         facility_id,
-        status: INVOICE_STATUS[0], // draft
+        status: INVOICE_STATUS.DRAFT,
       },
       { user, transaction }
     );

@@ -13,11 +13,12 @@
 
 import { FIELD_LABELS_DISCOUNT } from "./discount-constants.js";
 
-import { formatDate, initTooltips } from "../../utils/ui-utils.js";
+import { formatDate, formatDateTime, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -169,13 +170,20 @@ function renderValue(entry, field) {
       return entry.facility?.name || "—";
 
     case "invoice":
+    case "invoice":
     case "invoice_id":
       return entry.invoice
-        ? `${entry.invoice.invoice_number} (Bal: $${Number(
+        ? `${entry.invoice.invoice_number} (Bal: ${getCurrencySymbol(entry.currency)} ${Number(
             entry.invoice.balance || 0
           ).toFixed(2)})`
         : "—";
+    case "currency":
+      return entry.currency || "—";
 
+    case "applied_amount":
+      return entry.applied_amount != null
+        ? `${getCurrencySymbol(entry.currency)} ${Number(entry.applied_amount).toFixed(2)}`
+        : "—";
     case "invoiceItem":
       return entry.invoiceItem
         ? `${entry.invoiceItem.description} · Qty ${entry.invoiceItem.quantity}`
@@ -187,8 +195,9 @@ function renderValue(entry, field) {
     case "value":
       if (entry.type === "percentage")
         return `${Number(entry.value || 0)}%`;
+
       return entry.value != null
-        ? `$${Number(entry.value).toFixed(2)}`
+        ? `${getCurrencySymbol(entry.currency)} ${Number(entry.value).toFixed(2)}`
         : "—";
 
     case "reason":
@@ -253,7 +262,7 @@ export function renderCard(entry, visibleFields, user) {
             ${
               entry.type === "percentage"
                 ? `${Number(entry.value || 0)}%`
-                : `$${Number(entry.value || 0).toFixed(2)}`
+                : `${getCurrencySymbol(entry.currency)} ${Number(entry.value || 0).toFixed(2)}`
             }
           </div>
         </div>
@@ -276,10 +285,17 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <!-- =========================
-           MAIN DETAILS
+          MAIN DETAILS
       ========================== -->
       <div class="entity-card-body">
         ${row("Reason", entry.reason)}
+
+        ${row(
+          "Applied Amount",
+          entry.applied_amount != null
+            ? `${getCurrencySymbol(entry.currency)} ${Number(entry.applied_amount).toFixed(2)}`
+            : "—"
+        )}
       </div>
 
       <!-- =========================
@@ -293,14 +309,14 @@ export function renderCard(entry, visibleFields, user) {
           ${row("Finalized By", renderUserName(entry.finalizedBy))}
           ${row(
             "Finalized At",
-            entry.finalized_at ? formatDate(entry.finalized_at) : "—"
+            entry.finalized_at ? formatDateTime(entry.finalized_at) : "—"
           )}
 
           ${row("Void Reason", entry.void_reason)}
           ${row("Voided By", renderUserName(entry.voidedBy))}
           ${row(
             "Voided At",
-            entry.voided_at ? formatDate(entry.voided_at) : "—"
+            entry.voided_at ? formatDateTime(entry.voided_at) : "—"
           )}
         </div>
       </details>
@@ -314,12 +330,12 @@ export function renderCard(entry, visibleFields, user) {
           ${row("Created By", renderUserName(entry.createdBy))}
           ${row(
             "Created At",
-            entry.created_at ? formatDate(entry.created_at) : "—"
+            entry.created_at ? formatDateTime(entry.created_at) : "—"
           )}
           ${row("Updated By", renderUserName(entry.updatedBy))}
           ${row(
             "Updated At",
-            entry.updated_at ? formatDate(entry.updated_at) : "—"
+            entry.updated_at ? formatDateTime(entry.updated_at) : "—"
           )}
         </div>
       </details>

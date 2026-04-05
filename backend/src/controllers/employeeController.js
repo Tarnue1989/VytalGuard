@@ -54,7 +54,7 @@ const debug = makeModuleLogger("employeeController", DEBUG_OVERRIDE);
    🔐 ENUM MAPS (ORDER-SAFE)
 ============================================================ */
 const EMP_STATUS = Object.fromEntries(
-  EMPLOYEE_STATUS.map((v) => [v.toLowerCase(), v])
+  Object.values(EMPLOYEE_STATUS).map((v) => [v.toLowerCase(), v])
 );
 
 /* ============================================================
@@ -116,7 +116,7 @@ function buildEmployeeSchema(user, mode = "create") {
     first_name: Joi.string().max(80).required(),
     middle_name: Joi.string().max(80).allow("", null),
     last_name: Joi.string().max(80).required(),
-    gender: Joi.string().valid(...GENDER_TYPES).required(),
+    gender: Joi.string().valid(...Object.values(GENDER_TYPES)).required(),
     dob: Joi.date().allow(null),
 
     /* ================= CONTACT ================= */
@@ -126,8 +126,8 @@ function buildEmployeeSchema(user, mode = "create") {
 
     /* ================= EMPLOYMENT ================= */
     employee_no: Joi.string().max(50).required(),
-    position: Joi.string().valid(...EMPLOYEE_POSITIONS).required(),
-    status: Joi.string().valid(...EMPLOYEE_STATUS),
+    position: Joi.string().valid(...Object.values(EMPLOYEE_POSITIONS)).required(),
+    status: Joi.string().valid(...Object.values(EMPLOYEE_STATUS)),
     department_id: Joi.string().uuid().allow("", null),
 
     /* ================= CREDENTIALS ================= */
@@ -760,8 +760,8 @@ export const getAllEmployees = async (req, res) => {
     };
 
     rows.forEach((e) => {
-      if (e.status === "active") summary.active++;
-      if (e.status === "inactive") summary.inactive++;
+      if (e.status === EMPLOYEE_STATUS.ACTIVE) summary.active++;
+      if (e.status === EMPLOYEE_STATUS.INACTIVE) summary.inactive++;
     });
 
     const genderCounts = await Employee.findAll({
@@ -774,8 +774,8 @@ export const getAllEmployees = async (req, res) => {
     });
 
     genderCounts.forEach((g) => {
-      if (g.gender === "male") summary.male = Number(g.get("count"));
-      if (g.gender === "female") summary.female = Number(g.get("count"));
+      if (g.gender === GENDER_TYPES.MALE) summary.male = Number(g.get("count"));
+      if (g.gender === GENDER_TYPES.FEMALE) summary.female = Number(g.get("count"));
     });
 
     await auditService.logAction({
@@ -876,7 +876,7 @@ export const getAllEmployeesLiteWithEmail = async (req, res) => {
 
     const where = {
       deleted_at: null,
-      status: "active",
+      status: EMPLOYEE_STATUS.ACTIVE,
     };
 
     /* ================= TENANT SCOPE ================= */
@@ -977,7 +977,7 @@ export const getAllEmployeesLite = async (req, res) => {
 
     const where = {
       deleted_at: null,
-      status: "active",
+      status: EMPLOYEE_STATUS.ACTIVE,
     };
 
     /* ================= TENANT SCOPE ================= */

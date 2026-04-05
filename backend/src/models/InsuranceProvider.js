@@ -42,9 +42,9 @@ export default (sequelize) => {
 
       // 📌 Lifecycle
       status: {
-        type: DataTypes.ENUM(...INSURANCE_PROVIDER_STATUS),
+        type: DataTypes.ENUM(...Object.values(INSURANCE_PROVIDER_STATUS)),
         allowNull: false,
-        defaultValue: INSURANCE_PROVIDER_STATUS[0],
+        defaultValue: INSURANCE_PROVIDER_STATUS.ACTIVE,
       },
 
       // 🔹 Audit

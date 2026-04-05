@@ -31,14 +31,13 @@ export default (sequelize) => {
       day_of_week: { type: DataTypes.STRING, allowNull: false },
       shift_start_time: { type: DataTypes.TIME, allowNull: false },
       shift_end_time: { type: DataTypes.TIME, allowNull: false },
-
+      
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...EMPLOYEE_SHIFT_STATUS),
+        type: DataTypes.ENUM(...Object.values(EMPLOYEE_SHIFT_STATUS)),
         allowNull: false,
-        defaultValue: EMPLOYEE_SHIFT_STATUS[0], // "active"
+        defaultValue: EMPLOYEE_SHIFT_STATUS.ACTIVE,
       },
-
       // Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },

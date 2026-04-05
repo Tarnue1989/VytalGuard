@@ -58,13 +58,13 @@ import { resolveClinicalLinks } from "../utils/autoLinkHelpers.js";
 
 // 🔖 Local enum map for readability
 const USS = {
-  PENDING: ULTRASOUND_STATUS[0],
-  IN_PROGRESS: ULTRASOUND_STATUS[1],
-  COMPLETED: ULTRASOUND_STATUS[2],
-  VERIFIED: ULTRASOUND_STATUS[3],
-  FINALIZED: ULTRASOUND_STATUS[4], // ✅ newly added
-  CANCELLED: ULTRASOUND_STATUS[5],
-  VOIDED: ULTRASOUND_STATUS[6],
+  PENDING: ULTRASOUND_STATUS.PENDING,
+  IN_PROGRESS: ULTRASOUND_STATUS.IN_PROGRESS,
+  COMPLETED: ULTRASOUND_STATUS.COMPLETED,
+  VERIFIED: ULTRASOUND_STATUS.VERIFIED,
+  FINALIZED: ULTRASOUND_STATUS.FINALIZED,
+  CANCELLED: ULTRASOUND_STATUS.CANCELLED,
+  VOIDED: ULTRASOUND_STATUS.VOIDED,
 };
 
 const MODULE_KEY = "ultrasound-record";
@@ -1142,7 +1142,7 @@ export const getAllUltrasounds = async (req, res) => {
       const statuses = (Array.isArray(req.query.status)
         ? req.query.status
         : [req.query.status]
-      ).filter((s) => ULTRASOUND_STATUS.includes(s));
+      ).filter((s) => Object.values(ULTRASOUND_STATUS).includes(s));
       if (statuses.length) {
         options.where.status = { [Op.in]: statuses };
       }

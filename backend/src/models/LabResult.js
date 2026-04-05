@@ -70,9 +70,9 @@ export default (sequelize) => {
 
       // Lifecycle
       status: {
-        type: DataTypes.ENUM(...LAB_RESULT_STATUS),
+        type: DataTypes.ENUM(...Object.values(LAB_RESULT_STATUS)),
         allowNull: false,
-        defaultValue: LAB_RESULT_STATUS[0], // "draft"
+        defaultValue: LAB_RESULT_STATUS.DRAFT,
       },
 
       reviewed_at: { type: DataTypes.DATE },

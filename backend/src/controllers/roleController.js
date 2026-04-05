@@ -89,7 +89,7 @@ function buildRoleSchema(isSuper, mode = "create") {
     base.is_system = base.is_system.default(false);
     base.requires_facility = base.requires_facility.default(false);
   } else {
-    base.status = Joi.string().valid(...ROLE_STATUS).optional();
+    base.status = Joi.string().valid(...Object.values(ROLE_STATUS)).optional();
     Object.keys(base).forEach(k => (base[k] = base[k].optional()));
   }
 
@@ -434,7 +434,7 @@ export const getAllRoles = async (req, res) => {
     /* ========================================================
        📌 STATUS FILTER (DB FILTER → req.query, ENUM SAFE)
     ======================================================== */
-    if (req.query.status && ROLE_STATUS.includes(req.query.status)) {
+    if (req.query.status && Object.values(ROLE_STATUS).includes(req.query.status)) {
       options.where[Op.and].push({
         status: req.query.status,
       });
@@ -562,7 +562,7 @@ export const getAllRolesLite = async (req, res) => {
     const { q, organization_id, facility_id } = req.query;
 
     const where = {
-      status: ROLE_STATUS[0],
+      status: ROLE_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
@@ -669,7 +669,7 @@ export const toggleRoleStatus = async (req, res) => {
       return error(res, "❌ Cannot toggle a system role", null, 403);
     }
 
-    const [ACTIVE, INACTIVE] = ROLE_STATUS;
+    const { ACTIVE, INACTIVE } = ROLE_STATUS;
     const newStatus = role.status === ACTIVE ? INACTIVE : ACTIVE;
 
     await role.update({

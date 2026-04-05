@@ -69,8 +69,17 @@ export default (sequelize) => {
       delivery_record_id: { type: DataTypes.UUID, allowNull: false },
 
       // 👶 Baby details
-      gender: { type: DataTypes.ENUM(...GENDER_TYPES), allowNull: false },
+      gender: {
+        type: DataTypes.ENUM(...Object.values(GENDER_TYPES)),
+        allowNull: false,
+      },
 
+      // 🚼 Lifecycle
+      status: {
+        type: DataTypes.ENUM(...Object.values(NEWBORN_STATUS)),
+        allowNull: false,
+        defaultValue: NEWBORN_STATUS.ALIVE,
+      },
       birth_weight: { type: DataTypes.DECIMAL(5, 2) }, // e.g., 3.45 kg
       birth_length: { type: DataTypes.DECIMAL(5, 2) }, // cm
       head_circumference: { type: DataTypes.DECIMAL(5, 2) }, // cm
@@ -82,12 +91,7 @@ export default (sequelize) => {
       complications: { type: DataTypes.TEXT },
       notes: { type: DataTypes.TEXT },
 
-      // 🚼 Lifecycle
-      status: {
-        type: DataTypes.ENUM(...NEWBORN_STATUS),
-        allowNull: false,
-        defaultValue: "alive",
-      },
+
 
       // 🚼 Lifecycle details
       death_reason: { type: DataTypes.TEXT },

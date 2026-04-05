@@ -52,15 +52,15 @@ export default (sequelize) => {
         validate: { min: 0 },
       },
       amount_approved: { type: DataTypes.DECIMAL(12, 2) },
-      validity_date: { type: DataTypes.DATEONLY }, // until when approval is valid
+      validity_date: { type: DataTypes.DATEONLY },
       notes: { type: DataTypes.TEXT },
       rejection_reason: { type: DataTypes.TEXT },
-
+      
       // 📌 Lifecycle
       status: {
-        type: DataTypes.ENUM(...INSURANCE_PREAUTH_STATUS),
+        type: DataTypes.ENUM(...Object.values(INSURANCE_PREAUTH_STATUS)),
         allowNull: false,
-        defaultValue: INSURANCE_PREAUTH_STATUS[0], // "pending"
+        defaultValue: INSURANCE_PREAUTH_STATUS.PENDING,
       },
 
       // 🔹 Audit
@@ -83,12 +83,12 @@ export default (sequelize) => {
       },
       scopes: {
         withDeleted: { paranoid: false },
-        pending: { where: { status: "pending" } },
-        approved: { where: { status: "approved" } },
-        rejected: { where: { status: "rejected" } },
-        cancelled: { where: { status: "cancelled" } }, // include if in enum
+        pending: { where: { status: INSURANCE_PREAUTH_STATUS.PENDING } },
+        approved: { where: { status: INSURANCE_PREAUTH_STATUS.APPROVED } },
+        rejected: { where: { status: INSURANCE_PREAUTH_STATUS.REJECTED } },
+        cancelled: { where: { status: INSURANCE_PREAUTH_STATUS.CANCELLED } },
         tenant(facilityId) {
-          if (!facilityId) return {}; // superadmin fallback
+          if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
         },
       },

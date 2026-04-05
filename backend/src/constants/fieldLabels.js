@@ -434,9 +434,18 @@ export const FIELD_LABELS_REFUND_TRANSACTION = {
 
 /* -------------------- Registration Log -------------------- */
 export const FIELD_LABELS_REGISTRATION_LOG = {
-  id: "ID", patient_id: "Patient", registrar_id: "Registrar",
-  organization_id: "Organization", facility_id: "Facility",
-  invoice_id: "Invoice", registration_type_id: "Registration Type",
+  id: "ID",
+  patient_id: "Patient",
+  registrar_id: "Registrar",
+  organization_id: "Organization",
+  facility_id: "Facility",
+  invoice_id: "Invoice",
+  registration_type_id: "Registration Type",
+
+  // 🔥 NEW
+  payer_type: `Payer Type (${joinValues(PAYER_TYPES)})`,
+  patient_insurance_id: "Patient Insurance",
+
   registration_method: `Registration Method (${joinValues(REGISTRATION_METHODS)})`,
   registration_source: "Registration Source",
   patient_category: `Patient Category (${joinValues(REGISTRATION_CATEGORIES)})`,
@@ -445,8 +454,13 @@ export const FIELD_LABELS_REGISTRATION_LOG = {
   registration_time: "Registration Time",
   notes: "Notes",
   log_status: `Log Status (${joinValues(REGISTRATION_LOG_STATUS)})`,
-  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
-  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+
+  created_at: "Created At",
+  updated_at: "Updated At",
+  deleted_at: "Deleted At",
+  created_by_id: "Created By",
+  updated_by_id: "Updated By",
+  deleted_by_id: "Deleted By"
 };
 
 /* -------------------- Plan Module -------------------- */
