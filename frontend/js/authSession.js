@@ -38,75 +38,64 @@ let idleTimer = null;
 let warningTimer = null;
 let isUserActive = false;
 
-/* ================= SESSION MODAL ================= */
+/* ================= SESSION MODAL (FIXED — HTML BASED) ================= */
 function showSessionWarningModal(onStay) {
-  // 🔥 Always remove old modal
-  const old = document.getElementById("sessionTimeoutModal");
-  if (old) old.remove();
+  const modal = document.getElementById("sessionTimeoutModal");
+  if (!modal) {
+    console.warn("⚠️ sessionTimeoutModal not found in HTML");
+    return;
+  }
 
-  // 🔥 Create new modal
-  const modal = document.createElement("div");
-  modal.id = "sessionTimeoutModal";
+  // ✅ SHOW modal
+  modal.classList.remove("hidden");
 
-  modal.innerHTML = `
-    <div style="
-      position:fixed; inset:0;
-      background:rgba(0,0,0,0.6);
-      display:flex; align-items:center; justify-content:center;
-      z-index:9999;
-      animation: fadeIn 0.25s ease;
-    ">
-      
-      <div id="sessionBox" style="
-        background:#fff;
-        padding:20px;
-        border-radius:10px;
-        width:320px;
-        text-align:center;
-        box-shadow:0 10px 25px rgba(0,0,0,0.2);
-        transform: translateY(20px) scale(0.95);
-        opacity:0;
-        animation: popIn 0.25s ease forwards;
-      ">
-        <h3>⚠️ Session Expiring</h3>
-        <p>
-          You will be logged out in 
-          <strong id="sessionCountdown">
-            ${Math.floor(WARNING_TIME / 1000)}
-          </strong> seconds.
-        </p>
+  const btn = document.getElementById("stayLoggedInBtn");
+  const countdownEl = document.getElementById("sessionCountdown");
 
-        <button id="stayLoggedInBtn" style="
-          margin-top:10px;
-          padding:8px 16px;
-          border:none;
-          background:#0d6efd;
-          color:#fff;
-          border-radius:6px;
-          cursor:pointer;">
-          Stay Logged In
-        </button>
-      </div>
-    </div>
-  `;
+  let seconds = Math.floor(WARNING_TIME / 1000);
+  let interval = null;
 
-  document.body.appendChild(modal);
+  // ✅ Start countdown
+  if (countdownEl) {
+    countdownEl.textContent = seconds;
 
-  // 🔥 FIX: stop timers when user stays
-  document.getElementById("stayLoggedInBtn").onclick = () => {
-    modal.remove();
+    interval = setInterval(() => {
+      seconds--;
 
-    isUserActive = true; // 🔥 mark activity
+      countdownEl.textContent = seconds;
+
+      if (seconds <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  }
+
+  // ✅ Stay Logged In button
+  btn.onclick = async () => {
+    // hide modal
+    modal.classList.add("hidden");
+
+    isUserActive = true;
 
     clearTimeout(idleTimer);
     clearTimeout(warningTimer);
 
-    onStay?.();
+    // stop countdown
+    if (interval) clearInterval(interval);
+
+    try {
+      await onStay?.();
+    } catch (e) {
+      console.warn("⚠️ Refresh failed:", e);
+    }
+
+    broadcastActivity();
 
     setTimeout(() => {
-      isUserActive = false; // reset after safe window
+      isUserActive = false;
     }, 2000);
   };
+
   return modal;
 }
 function broadcastActivity() {

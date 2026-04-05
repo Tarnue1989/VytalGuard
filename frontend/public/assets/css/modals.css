@@ -150,3 +150,33 @@ button.export-ignore,
   visibility: visible !important;
 }
 
+/* =============================================================
+   🆕 GENERIC MODAL (for session + reusable modals)
+============================================================= */
+
+/* Hidden */
+.modal.hidden {
+  display: none;
+}
+
+/* Generic overlay */
+.modal {
+  position: fixed;
+  z-index: 9999;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Generic modal box */
+.modal .modal-content {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 10px;
+  width: 320px;
+  max-width: 90%;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
