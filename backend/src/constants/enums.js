@@ -197,6 +197,7 @@ export const DEPOSIT_REFUND_STATUS = {
   RESTORED: "restored",
 };
 
+
 /* -------------------- Refund Transaction Status -------------------- */
 export const REFUND_TRANSACTION_STATUS = {
   PENDING: 'pending',
@@ -231,7 +232,23 @@ export const DISCOUNT_WAIVER_STATUS = {
   FINALIZED:'finalized'
 };
 
+// ============================================================
+// 🔹 Billing Pricing (NEW)
+// ============================================================
+export const BILLING_MODE = {
+  FIXED: "fixed",
+  VARIABLE: "variable",
+  TIERED: "tiered",
+};
 
+// ============================================================
+// 🔹 Price Change Type (NEW)
+// ============================================================
+export const PRICE_CHANGE_TYPE = {
+  PRICE_UPDATE: "price_update",
+  CURRENCY_UPDATE: "currency_update",
+  BOTH: "both",
+};
 export const POLICY_APPLIES_TO = {
   ALL:'all',
   BILLABLE_ITEM:'billable_item',

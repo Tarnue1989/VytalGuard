@@ -2,7 +2,7 @@ import {
   FIELD_ORDER_ORGANIZATION, FIELD_ORDER_FACILITY, FIELD_ORDER_ROLE, FIELD_ORDER_USER,
   FIELD_ORDER_USER_FACILITY, FIELD_ORDER_DEPARTMENT, FIELD_ORDER_EMPLOYEE, FIELD_ORDER_FEATURE_MODULE,
   FIELD_ORDER_FEATURE_ACCESS, FIELD_ORDER_PATIENT, FIELD_ORDER_VITAL, FIELD_ORDER_CONSULTATION_STAFF,
-  FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY, FIELD_ORDER_FACILITY_BRANDING, FIELD_ORDER_ORGANIZATION_BRANDING,
+  FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,  FIELD_ORDER_FACILITY_BRANDING, FIELD_ORDER_ORGANIZATION_BRANDING,
   FIELD_ORDER_LETTERHEAD_TEMPLATE, FIELD_ORDER_PLAN, FIELD_ORDER_ORGANIZATION_PLAN, FIELD_ORDER_STOCK_REQUEST,
   FIELD_ORDER_STOCK_REQUEST_ITEM, FIELD_ORDER_SUPPLIER, FIELD_ORDER_BILLABLE_ITEM, FIELD_ORDER_CONSULTATION,
   FIELD_ORDER_DEPOSIT, FIELD_ORDER_INVOICE_ITEM, FIELD_ORDER_REFUND_DEPOSIT, FIELD_ORDER_REFUND, FIELD_ORDER_REGISTRATION_LOG,
@@ -20,7 +20,7 @@ import {
   FIELD_ORDER_TRIAGE_RECORD,  FIELD_ORDER_EKG_RECORD, FIELD_ORDER_DEPARTMENT_STOCK, 
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
   FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
-  FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,
+  FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE,
 } from "./fieldOrder.js";
 
 
@@ -208,13 +208,6 @@ export const FIELD_VISIBILITY_PATIENT = {
   ]
 };
 
-/* -------------------- Billable Item Price History -------------------- */
-export const FIELD_VISIBILITY_BILLABLE_ITEM_PRICE_HISTORY = {
-    superadmin: FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,
-  organization_admin: FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,
-  manager: ["id", "billable_item_id", "old_price", "new_price", "effective_date"],
-  staff: ["id", "billable_item_id", "new_price", "effective_date"]
-};
 
 /* -------------------- Facility Branding -------------------- */
 export const FIELD_VISIBILITY_FACILITY_BRANDING = {
@@ -322,15 +315,76 @@ export const FIELD_VISIBILITY_SUPPLIER = {
 
 /* -------------------- Billable Item -------------------- */
 export const FIELD_VISIBILITY_BILLABLE_ITEM = {
-    superadmin: FIELD_ORDER_BILLABLE_ITEM,
+  superadmin: FIELD_ORDER_BILLABLE_ITEM,
   organization_admin: FIELD_ORDER_BILLABLE_ITEM,
   manager: [
     "id", "master_item_id", "department_id", "name", "category_id", "description",
-    "price", "currency", "taxable", "discountable", "override_allowed", "status"
+
+    "item_type", "billing_mode",
+
+    "price", "currency", "taxable", "discountable", "override_allowed",
+
+    "is_active",
+
+    "status"
   ],
-  staff: ["id", "name", "price", "currency", "status"]
+  staff: [
+    "id", "name",
+
+    "item_type",
+
+    "price", "currency", "status"
+  ]
 };
 
+/* -------------------- Billable Item Price -------------------- */
+export const FIELD_VISIBILITY_BILLABLE_ITEM_PRICE = {
+  superadmin: FIELD_ORDER_BILLABLE_ITEM_PRICE,
+  organization_admin: FIELD_ORDER_BILLABLE_ITEM_PRICE,
+  manager: [
+    "id", "billable_item_id",
+
+    "payer_type", "currency",
+    "price",
+
+    "is_default",
+
+    "effective_from", "effective_to"
+  ],
+  staff: [
+    "id", "billable_item_id",
+
+    "currency",
+    "price",
+
+    "effective_from"
+  ]
+};
+/* -------------------- Billable Item Price History -------------------- */
+export const FIELD_VISIBILITY_BILLABLE_ITEM_PRICE_HISTORY = {
+  superadmin: FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,
+  organization_admin: FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,
+  manager: [
+    "id", "billable_item_id",
+
+    "payer_type", "currency",
+
+    "old_price", "new_price",
+
+    "change_type",
+
+    "effective_date"
+  ],
+  staff: [
+    "id", "billable_item_id",
+
+    "currency",
+
+    "new_price",
+
+    "effective_date"
+  ]
+};
 /* -------------------- Consultation -------------------- */
 export const FIELD_VISIBILITY_CONSULTATION = {
     superadmin: FIELD_ORDER_CONSULTATION,
