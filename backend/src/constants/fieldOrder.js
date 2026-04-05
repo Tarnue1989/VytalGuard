@@ -141,13 +141,6 @@ export const FIELD_ORDER_CONSULTATION_STAFF = [
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
 
-/* -------------------- Billable Item Price History -------------------- */
-export const FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY = [
-  "id", "organization_id", "facility_id",
-  "billable_item_id",
-  "old_price", "new_price", "effective_date",
-  "created_at", "created_by_id"
-];
 
 /* -------------------- Facility Branding -------------------- */
 export const FIELD_ORDER_FACILITY_BRANDING = [
@@ -262,12 +255,47 @@ export const FIELD_ORDER_BILLABLE_ITEM = [
   "id", "organization_id", "facility_id",
   "master_item_id", "department_id",
   "name", "category_id", "description",
+
+  "item_type", "billing_mode",
+
   "price", "currency", "taxable", "discountable", "override_allowed",
+
+  "is_active",
+
   "status",
   "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
+/* -------------------- Billable Item Price -------------------- */
+export const FIELD_ORDER_BILLABLE_ITEM_PRICE = [
+  "id", "organization_id", "facility_id",
+  "billable_item_id",
 
+  "payer_type", "currency",
+  "price",
+
+  "is_default",
+
+  "effective_from", "effective_to",
+
+  "created_at", "updated_at", "deleted_at",
+  "created_by_id", "updated_by_id", "deleted_by_id"
+];
+
+/* -------------------- Billable Item Price History -------------------- */
+export const FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY = [
+  "id", "organization_id", "facility_id",
+  "billable_item_id",
+
+  "payer_type", "currency",
+
+  "old_price", "new_price",
+
+  "change_type",
+
+  "effective_date",
+  "created_at", "created_by_id"
+];
 
 /* -------------------- Consultation -------------------- */
 export const FIELD_ORDER_CONSULTATION = [

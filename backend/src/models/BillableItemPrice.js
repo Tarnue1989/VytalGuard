@@ -1,5 +1,5 @@
 import { DataTypes, Model } from "sequelize";
-import { PAYER_TYPES, CURRENCY } from "../constants/enums.js";
+import { PAYER_TYPES, CURRENCY, PRICE_CHANGE_TYPE } from "../constants/enums.js";
 
 export default (sequelize) => {
   class BillableItemPrice extends Model {
@@ -87,6 +87,18 @@ export default (sequelize) => {
         defaultValue: false,
       },
 
+      // 🔥 MASTER DATE SUPPORT
+      effective_from: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+
+      effective_to: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+
       /* ================= AUDIT ================= */
       created_by_id: DataTypes.UUID,
       updated_by_id: DataTypes.UUID,
@@ -105,18 +117,59 @@ export default (sequelize) => {
         { fields: ["currency"] },
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
+        { fields: ["billable_item_id", "effective_from"] }, // 🔥 date lookup
 
-        // 🔥 Prevent duplicates per payer + currency
-        {
-          unique: true,
-          fields: ["billable_item_id", "payer_type", "currency"],
-        },
+        // ✅ REMOVED strict unique (allows future pricing)
       ],
     }
   );
 
   /* ============================================================
-     🔥 AFTER UPDATE — CREATE PRICE HISTORY (MULTI-CURRENCY SAFE)
+     🔥 BEFORE CREATE — CLOSE PREVIOUS ACTIVE PRICE
+  ============================================================ */
+  BillableItemPrice.beforeCreate(async (item, options) => {
+    const { BillableItemPrice } = await import("../models/index.js");
+
+    const existing = await BillableItemPrice.findOne({
+      where: {
+        billable_item_id: item.billable_item_id,
+        payer_type: item.payer_type,
+        currency: item.currency,
+        effective_to: null,
+      },
+      transaction: options?.transaction,
+    });
+
+    if (existing) {
+      await existing.update(
+        { effective_to: new Date() },
+        { transaction: options?.transaction }
+      );
+    }
+  });
+
+  /* ============================================================
+     🔥 BEFORE SAVE — ENFORCE SINGLE DEFAULT
+  ============================================================ */
+  BillableItemPrice.beforeSave(async (item, options) => {
+    if (!item.is_default) return;
+
+    const { BillableItemPrice } = await import("../models/index.js");
+
+    await BillableItemPrice.update(
+      { is_default: false },
+      {
+        where: {
+          billable_item_id: item.billable_item_id,
+          currency: item.currency,
+        },
+        transaction: options?.transaction,
+      }
+    );
+  });
+
+  /* ============================================================
+     🔥 AFTER UPDATE — CREATE PRICE HISTORY
   ============================================================ */
   BillableItemPrice.afterUpdate(async (item, options) => {
     try {
@@ -129,17 +182,20 @@ export default (sequelize) => {
 
       if (!priceChanged && !currencyChanged) return;
 
-      // 🔥 DETERMINE CHANGE TYPE
-      let changeType = "price_update";
-      if (priceChanged && currencyChanged) changeType = "both";
-      else if (currencyChanged) changeType = "currency_update";
+      // 🔥 ENUM SAFE CHANGE TYPE
+      let changeType = PRICE_CHANGE_TYPE.PRICE_UPDATE;
+
+      if (priceChanged && currencyChanged) {
+        changeType = PRICE_CHANGE_TYPE.BOTH;
+      } else if (currencyChanged) {
+        changeType = PRICE_CHANGE_TYPE.CURRENCY_UPDATE;
+      }
 
       await BillableItemPriceHistory.create(
         {
           organization_id: item.organization_id,
           facility_id: item.facility_id,
 
-          // 🔥 CRITICAL LINKS
           billable_item_id: item.billable_item_id,
           billable_item_price_id: item.id,
 

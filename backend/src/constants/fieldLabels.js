@@ -32,7 +32,10 @@ import {
   THEME_STATUS, HOME_CONTENT_STATUS, ANNOUNCEMENT_STATUS, VIDEO_STATUS, 
   LEDGER_STATUS, LEDGER_TRANSACTION_TYPE, LAB_REQUEST_ITEM_STATUS, DEPARTMENT_STOCK_STATUS,
   DISCOUNT_TYPE, DISCOUNT_STATUS, POLICY_APPLIES_TO, POLICY_STATUS,
-  
+
+  // 🔥 NEW (BILLING)
+  BILLING_MODE, PRICE_CHANGE_TYPE,
+
 } from "./enums.js";
 // 🧠 Safe join helper for enums (handles both arrays & objects)
 const joinValues = (e) =>
@@ -183,13 +186,7 @@ export const FIELD_LABELS_CONSULTATION_STAFF = {
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };
 
-/* -------------------- Billable Item Price History -------------------- */
-export const FIELD_LABELS_BILLABLE_ITEM_PRICE_HISTORY = {
-  id: "ID", organization_id: "Organization", facility_id: "Facility",
-  billable_item_id: "Billable Item",
-  old_price: "Old Price", new_price: "New Price", effective_date: "Effective Date",
-  created_at: "Created At", created_by_id: "Created By"
-};
+
 
 /* -------------------- Facility Branding -------------------- */
 export const FIELD_LABELS_FACILITY_BRANDING = {
@@ -323,18 +320,61 @@ export const FIELD_LABELS_MASTER_ITEM = {
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };
-
 /* -------------------- Billable Item -------------------- */
 export const FIELD_LABELS_BILLABLE_ITEM = {
   id: "ID", organization_id: "Organization", facility_id: "Facility",
   master_item_id: "Master Item", department_id: "Department",
+
   name: "Item Name", category_id: "Category", description: "Description",
+
+  // 🔥 NEW
+  item_type: "Item Type", billing_mode: `Billing Mode (${joinValues(BILLING_MODE)})`,
+
   price: "Price", currency: "Currency",
+
   taxable: "Taxable", discountable: "Discountable", override_allowed: "Allow Override",
+
+  // 🔥 NEW
+  is_active: "Active",
+
   status: `Status (${joinValues(BILLABLE_ITEM_STATUS)})`,
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };
+/* -------------------- Billable Item Price -------------------- */
+export const FIELD_LABELS_BILLABLE_ITEM_PRICE = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  billable_item_id: "Billable Item",
+
+  payer_type: "Payer Type", currency: "Currency",
+  price: "Price",
+
+  is_default: "Default",
+
+  effective_from: "Effective From", effective_to: "Effective To",
+
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+};
+
+/* -------------------- Billable Item Price History -------------------- */
+export const FIELD_LABELS_BILLABLE_ITEM_PRICE_HISTORY = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  billable_item_id: "Billable Item",
+
+  // 🔥 CONTEXT
+  payer_type: "Payer Type", currency: "Currency",
+
+  old_price: "Old Price", new_price: "New Price",
+
+  // 🔥 NEW
+  change_type: "Change Type",
+
+  effective_date: "Effective Date",
+  created_at: "Created At", created_by_id: "Created By"
+};
+
+
 
 
 /* -------------------- Invoice Item -------------------- */

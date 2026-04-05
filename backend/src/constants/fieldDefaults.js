@@ -20,7 +20,7 @@ import {
   FIELD_ORDER_AUTO_BILLING_RULE, FIELD_ORDER_MESSAGE, FIELD_ORDER_MESSAGE_ATTACHMENT, FIELD_ORDER_CONVERSATION,
   FIELD_ORDER_TRIAGE_RECORD, FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,
   FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION, FIELD_ORDER_FINANCIAL_LEDGER,
-  FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_LAB_REQUEST_ITEM, FIELD_ORDER_BILLING_TRIGGER  
+  FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_LAB_REQUEST_ITEM, FIELD_ORDER_BILLING_TRIGGER, FIELD_ORDER_BILLABLE_ITEM_PRICE,  
 
 } from "./fieldOrder.js";
 
@@ -203,17 +203,89 @@ export const FIELD_DEFAULTS_PATIENT = {
     "last_name", "date_of_birth", "gender", "phone_number", "email_address"]
 };
 
+/* -------------------- Billable Item -------------------- */
+export const FIELD_DEFAULTS_BILLABLE_ITEM = {
+  admin: FIELD_ORDER_BILLABLE_ITEM,
+  manager: [
+    "organization_id", "facility_id",
+    "master_item_id", "department_id",
+    "name", "category_id", "description",
+
+    // 🔥 NEW
+    "item_type",
+    "billing_mode",
+
+    "price", "currency",
+    "taxable", "discountable", "override_allowed",
+
+    // 🔥 NEW
+    "is_active",
+
+    "status"
+  ],
+  staff: [
+    "name",
+
+    // 🔥 NEW
+    "item_type",
+
+    "price", "currency",
+    "status"
+  ]
+};
+
+/* -------------------- Billable Item Price -------------------- */
+export const FIELD_DEFAULTS_BILLABLE_ITEM_PRICE = {
+  admin: FIELD_ORDER_BILLABLE_ITEM_PRICE,
+  manager: [
+    "organization_id", "facility_id",
+    "billable_item_id",
+
+    "payer_type", "currency",
+    "price",
+
+    "is_default",
+
+    "effective_from", "effective_to"
+  ],
+  staff: [
+    "billable_item_id",
+
+    "currency",
+    "price",
+
+    "effective_from"
+  ]
+};
+
 /* -------------------- Billable Item Price History -------------------- */
 export const FIELD_DEFAULTS_BILLABLE_ITEM_PRICE_HISTORY = {
   admin: FIELD_ORDER_BILLABLE_ITEM_PRICE_HISTORY,
   manager: [
     "organization_id", "facility_id",
     "billable_item_id",
-    "old_price", "new_price", "effective_date"
-  ],
-  staff: ["billable_item_id", "new_price", "effective_date"]
-};
 
+    // 🔥 CONTEXT
+    "payer_type",
+    "currency",
+
+    "old_price", "new_price",
+
+    // 🔥 NEW (BETTER VISIBILITY)
+    "change_type",
+
+    "effective_date"
+  ],
+  staff: [
+    "billable_item_id",
+
+    // 🔥 CONTEXT
+    "currency",
+
+    "new_price",
+    "effective_date"
+  ]
+};
 /* -------------------- Facility Branding -------------------- */
 export const FIELD_DEFAULTS_FACILITY_BRANDING = {
   admin: FIELD_ORDER_FACILITY_BRANDING,
@@ -435,18 +507,6 @@ export const FIELD_DEFAULTS_SUPPLIER = {
   staff: ["name", "status", "contact_phone"]
 };
 
-/* -------------------- Billable Item -------------------- */
-export const FIELD_DEFAULTS_BILLABLE_ITEM = {
-  admin: FIELD_ORDER_BILLABLE_ITEM,
-  manager: [
-    "organization_id", "facility_id",
-    "master_item_id", "department_id",
-    "name", "category_id", "description",
-    "price", "currency", "taxable", "discountable", "override_allowed",
-    "status"
-  ],
-  staff: ["name", "price", "currency", "status"]
-};
 
 
 /* -------------------- Appointment -------------------- */

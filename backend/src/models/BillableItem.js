@@ -1,5 +1,9 @@
 import { DataTypes, Model } from "sequelize";
-import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
+import {
+  BILLABLE_ITEM_STATUS,
+  MASTER_ITEM_TYPES,
+  BILLING_MODE,
+} from "../constants/enums.js";
 
 export default (sequelize) => {
   class BillableItem extends Model {
@@ -32,7 +36,7 @@ export default (sequelize) => {
         foreignKey: "category_id",
       });
 
-      // 🔥 NEW → MULTI-PRICE SUPPORT
+      // 🔥 MULTI-PRICE SUPPORT
       BillableItem.hasMany(models.BillableItemPrice, {
         as: "prices",
         foreignKey: "billable_item_id",
@@ -70,10 +74,23 @@ export default (sequelize) => {
       department_id: { type: DataTypes.UUID, allowNull: true },
       category_id: { type: DataTypes.UUID, allowNull: true },
 
+      // 🔥 CRITICAL (DENORMALIZED FROM MASTER)
+      item_type: {
+        type: DataTypes.ENUM(...Object.values(MASTER_ITEM_TYPES)),
+        allowNull: false,
+      },
+
       /* ================= IDENTITY ================= */
       name: { type: DataTypes.STRING(150), allowNull: false },
       code: { type: DataTypes.STRING(100) },
       description: { type: DataTypes.TEXT },
+
+      /* ================= BILLING ================= */
+
+      billing_mode: {
+        type: DataTypes.ENUM(...Object.values(BILLING_MODE)),
+        defaultValue: BILLING_MODE.FIXED,
+      },
 
       /* ================= DEFAULT PRICE (FALLBACK ONLY) ================= */
       price: {
@@ -90,6 +107,11 @@ export default (sequelize) => {
       taxable: { type: DataTypes.BOOLEAN, defaultValue: false },
       discountable: { type: DataTypes.BOOLEAN, defaultValue: true },
       override_allowed: { type: DataTypes.BOOLEAN, defaultValue: true },
+
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
 
       /* ================= STATUS ================= */
       status: {
@@ -112,7 +134,27 @@ export default (sequelize) => {
   );
 
   /* ============================================================
-     ✅ AFTER CREATE — AUTO BILLING RULE
+     🔥 BEFORE CREATE — SYNC FROM MASTER ITEM
+  ============================================================ */
+  BillableItem.beforeCreate(async (item, options) => {
+    try {
+      const { MasterItem } = await import("../models/index.js");
+
+      const master = await MasterItem.findByPk(item.master_item_id, {
+        attributes: ["item_type"],
+        transaction: options?.transaction,
+      });
+
+      if (master) {
+        item.item_type = master.item_type;
+      }
+    } catch (err) {
+      console.error("⚠️ beforeCreate sync error:", err.message);
+    }
+  });
+
+  /* ============================================================
+     🔥 AFTER CREATE — AUTO BILLING RULE
   ============================================================ */
   BillableItem.afterCreate(async (item, options) => {
     try {
@@ -148,12 +190,7 @@ export default (sequelize) => {
         master?.featureModule?.id ||
         null;
 
-      if (!triggerFeatureModuleId) {
-        console.warn(
-          `⚠️ Skip AutoBillingRule create (no feature module) item=${item.id}`
-        );
-        return;
-      }
+      if (!triggerFeatureModuleId) return;
 
       await AutoBillingRule.create(
         {
@@ -170,12 +207,12 @@ export default (sequelize) => {
         { transaction }
       );
     } catch (err) {
-      console.error("⚠️ afterCreate hook error (IGNORED):", err.message);
+      console.error("⚠️ afterCreate hook error:", err.message);
     }
   });
 
   /* ============================================================
-     ✅ AFTER UPDATE — SYNC AUTO BILLING ONLY
+     🔥 AFTER UPDATE — SYNC BILLING RULE
   ============================================================ */
   BillableItem.afterUpdate(async (item, options) => {
     try {
@@ -242,25 +279,24 @@ export default (sequelize) => {
         }
       }
     } catch (err) {
-      console.error("⚠️ afterUpdate hook error (IGNORED):", err.message);
+      console.error("⚠️ afterUpdate hook error:", err.message);
     }
   });
 
   /* ============================================================
-     ✅ AFTER DELETE — SOFT DISABLE BILLING RULE
+     🔥 AFTER DELETE — DISABLE BILLING RULE
   ============================================================ */
   BillableItem.afterDestroy(async (item, options) => {
     try {
       const { AutoBillingRule } = await import("../models/index.js");
-      const transaction = options?.transaction;
 
       const rule = await AutoBillingRule.findOne({
         where: { billable_item_id: item.id },
-        transaction,
+        transaction: options?.transaction,
       });
 
       if (rule) {
-        await rule.update({ status: "inactive" }, { transaction });
+        await rule.update({ status: "inactive" }, { transaction: options?.transaction });
       }
     } catch (err) {
       console.error("⚠️ afterDestroy error:", err.message);
