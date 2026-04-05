@@ -11,6 +11,10 @@ const LOGOUT_ENDPOINT = "/api/auth/logout";
 const LOGOUT_ALL_ENDPOINT = "/api/auth/logout-all";
 const ME_ENDPOINT = "/api/auth/me";
 
+// 🔒 PAGE GUARD (CRITICAL FIX)
+const isLoginPage = window.location.pathname.includes("login");
+const hasToken = !!localStorage.getItem("accessToken");
+
 const REFRESH_BUFFER = 60; // 1 minute before expiration
 let refreshTimer = null;
 // -------------------- Restore Global Current User --------------------
@@ -154,6 +158,7 @@ function resetIdleTimer() {
 
   // ⏳ schedule actual logout
   idleTimer = setTimeout(() => {
+    if (isLoginPage || !hasToken) return;
     if (isUserActive) {
       console.log("✅ User stayed active — skip logout");
       return;
@@ -168,35 +173,37 @@ function resetIdleTimer() {
 let lastActivityUpdate = 0;
 const ACTIVITY_THROTTLE = 3000; // 3 seconds
 
-["mousemove", "keydown", "click", "scroll"].forEach(event => {
-  window.addEventListener(event, () => {
-    const now = Date.now();
+if (!isLoginPage && hasToken) {
+  ["mousemove", "keydown", "click", "scroll"].forEach(event => {
+    window.addEventListener(event, () => {
+      const now = Date.now();
 
-    // ⛔ Prevent spam (CRITICAL FIX)
-    if (now - lastActivityUpdate < ACTIVITY_THROTTLE) return;
+      if (now - lastActivityUpdate < ACTIVITY_THROTTLE) return;
 
-    lastActivityUpdate = now;
+      lastActivityUpdate = now;
 
-    broadcastActivity();
-    resetIdleTimer();
+      broadcastActivity();
+      resetIdleTimer();
+    });
   });
-});
+}
 
 // Listen for activity from *other* tabs
 let lastStorageUpdate = 0;
 
-window.addEventListener("storage", (e) => {
-  if (e.key !== "lastActivity") return;
+if (!isLoginPage && hasToken) {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== "lastActivity") return;
 
-  const now = Date.now();
+    const now = Date.now();
 
-  // ⛔ prevent storage spam (CRITICAL)
-  if (now - lastStorageUpdate < 3000) return;
+    if (now - lastStorageUpdate < 3000) return;
 
-  lastStorageUpdate = now;
+    lastStorageUpdate = now;
 
-  resetIdleTimer();
-});
+    resetIdleTimer();
+  });
+}
 
 // -------------------- Storage Helpers --------------------
 function setSession({ accessToken, user }) {
@@ -397,7 +404,9 @@ async function refreshAccessToken() {
   } catch (err) {
     console.error("Token refresh error:", err);
     clearSession();
-    window.location.href = "/login.html";
+    if (!window.location.pathname.includes("login")) {
+      window.location.href = "/login.html";
+    }
   }
 }
 
@@ -452,7 +461,11 @@ async function logout() {
     console.error("Logout API call failed:", err);
   } finally {
     clearSession();
-    window.location.href = "/login.html";
+
+    // 🔒 prevent login refresh loop
+    if (!window.location.pathname.includes("login")) {
+      window.location.href = "/login.html";
+    }
   }
 }
 
@@ -466,7 +479,9 @@ async function logoutAll() {
     console.error("LogoutAll API call failed:", err);
   } finally {
     clearSession();
-    window.location.href = "/login.html";
+    if (!window.location.pathname.includes("login")) {
+      window.location.href = "/login.html";
+    }
   }
 }
 
