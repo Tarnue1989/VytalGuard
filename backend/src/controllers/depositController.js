@@ -299,9 +299,7 @@ export const updateDeposit = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
-   ✅ FIXED: facility_ids handling
-   ✅ FIXED: org/fac query override parity
-   ✅ SAFE: no override conflicts
+   ✅ FIXED → FACILITY ACCESS MATCHES REGISTRATION LOG
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
@@ -336,9 +334,7 @@ export const getAllDeposits = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
-    /* ========================================================
-       📅 DATE RANGE (UI ONLY)
-    ======================================================== */
+    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
       if (start && end) {
@@ -348,18 +344,16 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       🔐 TENANT SCOPE (FIXED + MASTER PARITY)
-    ======================================================== */
+    /* ================= TENANT SCOPE (FIXED) ================= */
     if (!isSuperAdmin(req.user)) {
+      // 🔒 ALWAYS restrict by org
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (
-        Array.isArray(req.user.facility_ids) &&
-        req.user.facility_ids.length > 0
-      ) {
+      // ✅ MATCH REGISTRATION LOG
+      if (isFacilityHead(req.user)) {
+        // facility head → ONLY their facility
         options.where[Op.and].push({
           [Op.or]: [
             { facility_id: { [Op.in]: req.user.facility_ids } },
@@ -372,8 +366,14 @@ export const getAllDeposits = async (req, res) => {
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
+      } else if (req.query.facility_id) {
+        // others → can filter facility
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     } else {
+      // superadmin → full control
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -386,9 +386,7 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
-    /* ========================================================
-       🔎 FILTERS
-    ======================================================== */
+    /* ================= FILTERS ================= */
     if (req.query.patient_id) {
       options.where[Op.and].push({
         patient_id: req.query.patient_id,
@@ -433,6 +431,7 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -442,6 +441,7 @@ export const getAllDeposits = async (req, res) => {
       distinct: true,
     });
 
+    /* ================= SUMMARY ================= */
     const summary = { total: count };
 
     const statusCounts = await Deposit.findAll({
@@ -458,6 +458,7 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -469,6 +470,7 @@ export const getAllDeposits = async (req, res) => {
       },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Deposits loaded", {
       records: rows,
       summary,
