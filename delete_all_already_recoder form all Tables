@@ -1,0 +1,35 @@
+DO $$ 
+DECLARE 
+    r RECORD;
+    has_deleted_at BOOLEAN;
+    has_deletedAt BOOLEAN;
+BEGIN
+    FOR r IN (
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+    )
+    LOOP
+        -- Check for deleted_at
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = r.table_name 
+              AND column_name = 'deleted_at'
+        ) INTO has_deleted_at;
+
+        -- Check for deletedAt
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = r.table_name 
+              AND column_name = 'deletedAt'
+        ) INTO has_deletedAt;
+
+        -- Run correct delete
+        IF has_deleted_at THEN
+            EXECUTE 'DELETE FROM "' || r.table_name || '" WHERE deleted_at IS NOT NULL';
+        ELSIF has_deletedAt THEN
+            EXECUTE 'DELETE FROM "' || r.table_name || '" WHERE "deletedAt" IS NOT NULL';
+        END IF;
+
+    END LOOP;
+END $$;
