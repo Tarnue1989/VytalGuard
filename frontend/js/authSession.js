@@ -31,8 +31,8 @@ try {
 }
 
 // -------------------- Idle Timeout --------------------
-const IDLE_LIMIT = 1 * 60 * 1000;
-const WARNING_TIME = 30 * 1000;
+const IDLE_LIMIT = 15 * 60 * 1000;   // 15 minutes
+const WARNING_TIME = 2 * 60 * 1000;  // 2 minutes warning
 
 let idleTimer = null;
 let warningTimer = null;
