@@ -117,10 +117,17 @@ if (!fs.existsSync(publicDir)) {
 }
 app.use(express.static(publicDir));
 
+// ✅ JS
 if (fs.existsSync(frontendJsDir)) {
   app.use("/js", express.static(frontendJsDir));
 }
 
+// ✅ ADD THIS — CRITICAL FIX
+const assetsDir = path.resolve(__dirname, "../../frontend/assets");
+
+if (fs.existsSync(assetsDir)) {
+  app.use("/assets", express.static(assetsDir));
+}
 /* ============================================================
    API ROUTES
 ============================================================ */
