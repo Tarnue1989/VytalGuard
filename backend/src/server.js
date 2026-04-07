@@ -48,12 +48,10 @@ const frontendJsDir = path.resolve(__dirname, "../../frontend/js");
 /* ============================================================
    SECURITY & PARSING
 ============================================================ */
-app.use(
-  helmet({
-    contentSecurityPolicy: process.env.NODE_ENV === "production",
-    crossOriginEmbedderPolicy: true,
-  })
-);
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*", credentials: true }));
 app.use(express.json({ limit: "2mb" }));
@@ -120,11 +118,7 @@ app.use(express.static(publicDir));
 if (fs.existsSync(frontendJsDir)) {
   app.use("/js", express.static(frontendJsDir));
 }
-// ✅ FIX CSS + ASSETS
-const rootDir = path.resolve(__dirname, "../../");
 
-app.use("/assets", express.static(path.join(rootDir, "assets")));
-app.use("/js", express.static(path.join(rootDir, "js")));
 /* ============================================================
    API ROUTES
 ============================================================ */
