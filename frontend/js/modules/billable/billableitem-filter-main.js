@@ -1,10 +1,8 @@
-// 📦 billableitem-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// 📦 billableitem-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY - UPDATED)
 // ============================================================================
-// 🔹 Mirrors department-filter-main.js EXACTLY
-// 🔹 Auto search, auto filters, sorting, pagination
-// 🔹 UI-only dateRange (never DB column)
-// 🔹 Org / Facility fully wired
-// 🔹 Billable Item Status fully wired
+// 🔹 Controller-aligned (payer_type added)
+// 🔹 MASTER structure preserved
+// 🔹 No refactor — only upgrades
 // ============================================================================
 
 import {
@@ -114,6 +112,10 @@ const filterFacility = qs("filterFacilitySelect");
 const filterDept     = qs("filterDepartmentSelect");
 const filterStatus   = qs("filterStatusSelect");
 const dateRange      = qs("dateRange");
+const filterCurrency = qs("filterCurrencySelect"); // 🔥 ADD THIS
+
+/* 🔥 NEW (Controller-aligned) */
+const filterPayerType = qs("filterPayerTypeSelect");
 
 const filterMasterItem = qs("filterMasterItem");
 const filterMasterItemSuggestions = qs("filterMasterItemSuggestions");
@@ -150,13 +152,15 @@ setupAutoFilters({
     filterFacility,
     filterDept,
     filterStatus,
+    filterPayerType, 
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
 
 /* ============================================================
-   📋 FILTER BUILDER
+   📋 FILTER BUILDER (UPDATED)
 ============================================================ */
 function getFilters() {
   return {
@@ -167,12 +171,14 @@ function getFilters() {
     master_item_id: filterMasterItem?.dataset?.value,
     category_id: filterCategory?.dataset?.value,
     status: filterStatus?.value,
+    payer_type: filterPayerType?.value,
+    currency: filterCurrency?.value,
     dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 LOAD ENTRIES
+   📦 LOAD ENTRIES (UPDATED)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -258,7 +264,7 @@ qs("cardViewBtn").onclick = () => {
 };
 
 /* ============================================================
-   🔄 RESET FILTERS
+   🔄 RESET FILTERS (UPDATED)
 ============================================================ */
 qs("resetFilterBtn").onclick = () => {
   [
@@ -267,6 +273,8 @@ qs("resetFilterBtn").onclick = () => {
     filterFacility,
     filterDept,
     filterStatus,
+    filterPayerType, 
+    filterCurrency, 
     dateRange,
     filterMasterItem,
     filterCategory,
@@ -310,26 +318,36 @@ export async function initBillableItemModule() {
     "billableItemFilterVisible"
   );
 
-  /* ----------------- Organization ----------------- */
   if (filterOrg) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
     setupSelectOptions(filterOrg, orgs, "id", "name");
   }
+  /* ========================================================
+    🔗 LINK ORG → FACILITY (FINAL FIX)
+  ======================================================== */
+  if (filterOrg && filterFacility) {
+    filterOrg.addEventListener("change", async () => {
+      const orgId = filterOrg.value || null;
 
-  /* ----------------- Facility ----------------- */
+      const facs = await loadFacilitiesLite(
+        orgId ? { organization_id: orgId } : {},
+        true
+      );
+
+      facs.unshift({ id: "", name: "-- All Facilities --" });
+
+      setupSelectOptions(filterFacility, facs, "id", "name");
+    });
+  }
   if (filterFacility) {
     const facs = await loadFacilitiesLite();
     facs.unshift({ id: "", name: "-- All Facilities --" });
     setupSelectOptions(filterFacility, facs, "id", "name");
   }
 
-  /* ----------------- Status ----------------- */
-  // Status is static in HTML — no loader needed
-
   await loadEntries(1);
 }
-
 
 /* ============================================================
    🏁 BOOT

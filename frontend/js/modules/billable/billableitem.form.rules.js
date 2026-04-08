@@ -1,5 +1,5 @@
 // =============================================
-// Billable Item Form Rules (Controller-aligned)
+// Billable Item Form Rules (Controller-aligned - UPDATED)
 // =============================================
 
 export const BILLABLE_ITEM_FORM_RULES = [
@@ -13,7 +13,8 @@ export const BILLABLE_ITEM_FORM_RULES = [
   // Category (autofill)
   { id: "category_id", message: "Category is required", when: () => false },
 
-  // Pricing
+  // 🔥 PRICING (UPDATED)
+  { id: "payer_type", message: "Payer type is required" }, // ✅ NEW (controller aligned)
   { id: "price", message: "Price is required" },
   { id: "currency", message: "Currency is required", when: () => false },
 
@@ -24,7 +25,7 @@ export const BILLABLE_ITEM_FORM_RULES = [
 
   // Status
   {
-  id: "status",
+    id: "status",
     message: "Billable item status is required",
     when: () => true,
   },
@@ -39,7 +40,7 @@ export const BILLABLE_ITEM_FORM_RULES = [
         .includes("super"),
   },
 
-  // Facility (facility-scoped users only)
+  // Facility (role-aware)
   {
     id: "facilitySelect",
     message: "Facility is required",

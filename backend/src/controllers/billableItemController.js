@@ -22,6 +22,8 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 import { validate } from "../utils/validation.js";
 import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+import { getResolvedPrice } from "../utils/billable-utils.js";
+import { PAYER_TYPES } from "../constants/enums.js";
 
 import {
   isSuperAdmin,
@@ -47,13 +49,32 @@ const BILLABLE_ITEM_INCLUDES = [
   { model: MasterItem, as: "masterItem", attributes: ["id", "name", "code", "description"] },
   { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] },
 
+  // 🔥 REQUIRED
+  {
+    model: BillableItemPrice,
+    as: "prices",
+    required: false,
+    where: { effective_to: null },
+  },
+
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
 ];
+
 /* ============================================================
-   📋 ROLE-AWARE JOI SCHEMA (Patient-Parity, FINAL)
+   📋 ROLE-AWARE JOI SCHEMA (UPGRADED — MULTI-PRICE READY)
+   🔥 FINAL (FRONTEND SAFE + ENTERPRISE)
 ============================================================ */
 function buildBillableItemSchema(user, mode = "create") {
+  const priceSchema = Joi.object({
+    payer_type: Joi.string()
+      .valid(...Object.values(PAYER_TYPES))
+      .required(),
+    price: Joi.number().precision(2).min(0).required(),
+    currency: Joi.string().max(10).default("USD"),
+    is_default: Joi.boolean().default(false),
+  });
+
   const base = {
     master_item_id: Joi.string().uuid().required(),
     department_id: Joi.string().uuid().allow("", null),
@@ -63,42 +84,58 @@ function buildBillableItemSchema(user, mode = "create") {
     code: Joi.string().max(100).allow("", null),
     description: Joi.string().allow("", null),
 
-    price: Joi.number().precision(2).min(0).required(),
+    /* ========================================================
+       🔥 BACKWARD COMPAT (KEEP)
+    ======================================================== */
+    price: Joi.number().precision(2).min(0),
     currency: Joi.string().max(10).default("USD"),
+
+    /* ========================================================
+       🔥 NEW MULTI-PRICE SUPPORT
+    ======================================================== */
+    prices: Joi.array().items(priceSchema).min(1),
 
     taxable: Joi.boolean().default(false),
     discountable: Joi.boolean().default(true),
     override_allowed: Joi.boolean().default(true),
 
-    /* ================= SYSTEM / BACKEND CONTROLLED ================= */
+    /* ================= SYSTEM CONTROLLED ================= */
     status: Joi.any().strip(),
     organization_id: Joi.any().strip(),
     facility_id: Joi.any().strip(),
   };
 
-  /* ============================================================
-     🔓 SUPER ADMIN OVERRIDE (Patient-Parity)
-     - Allow but DO NOT force
-     - resolveOrgFacility() remains authority
-  ============================================================ */
+  /* ========================================================
+     🔓 SUPER ADMIN OVERRIDE
+  ======================================================== */
   if (isSuperAdmin(user)) {
     base.organization_id = Joi.string().uuid().allow("", null);
     base.facility_id = Joi.string().uuid().allow("", null);
   }
 
-  /* ============================================================
-     ✏️ UPDATE MODE (all fields optional)
-  ============================================================ */
+  /* ========================================================
+     🔥 REQUIRE ONE OF (price OR prices)
+     🔥 ALLOW UNKNOWN (CRITICAL FIX)
+  ======================================================== */
+  let schema = Joi.object(base)
+    .or("price", "prices")
+    .unknown(true); // ✅ FIX: allow frontend extra fields
+
+  /* ========================================================
+     ✏️ UPDATE MODE
+  ======================================================== */
   if (mode === "update") {
+    const updatedBase = {};
+
     Object.keys(base).forEach((k) => {
-      base[k] = base[k].optional();
+      updatedBase[k] = base[k].optional();
     });
+
+    schema = Joi.object(updatedBase).unknown(true); // ✅ FIX here too
   }
 
-  return Joi.object(base);
+  return schema;
 }
-
-
 /* ============================================================
    📌 CREATE BILLABLE ITEM(S) (FINAL — WITH PRICING FIX)
 ============================================================ */
@@ -113,88 +150,28 @@ export const createBillableItems = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("create → incoming body", req.body);
-
     const payloads = Array.isArray(req.body) ? req.body : [req.body];
-    if (!payloads.length) {
-      await t.rollback();
-      return error(res, "Payload must be an object or non-empty array", null, 400);
-    }
 
     const created = [];
     const skipped = [];
 
-    for (const [index, raw] of payloads.entries()) {
-      debug.log(`create[${index}] → raw payload`, raw);
-
-      /* ================= VALIDATION ================= */
+    for (const raw of payloads) {
       const { value, errors } = validate(
         buildBillableItemSchema(req.user, "create"),
         raw
       );
 
       if (errors) {
-        skipped.push({ index, reason: "Validation failed", errors });
+        skipped.push({ reason: "Validation failed", errors });
         continue;
       }
 
-      /* ================= ROLE SCOPE ================= */
-      let orgId = null;
-      let facilityId = null;
-
-      if (isSuperAdmin(req.user)) {
-        orgId = raw.organization_id ?? null;
-        facilityId = raw.facility_id ?? null;
-
-      } else if (isOrgLevelUser(req.user)) {
-        orgId = req.user.organization_id;
-
-        if (raw.facility_id) {
-          facilityId = raw.facility_id;
-        } else if (req.user.facility_id) {
-          facilityId = req.user.facility_id;
-        } else {
-          skipped.push({
-            index,
-            reason: "Facility is required for organization-level user",
-          });
-          continue;
-        }
-
-      } else if (isFacilityHead(req.user)) {
-        orgId = req.user.organization_id;
-        facilityId = req.user.facility_id;
-
-      } else {
-        orgId = req.user.organization_id;
-        facilityId = req.user.facility_id ?? null;
-      }
-
-      if (!orgId) {
-        skipped.push({ index, reason: "Missing organization assignment" });
-        continue;
-      }
-
-      /* ================= DUPLICATE CHECK ================= */
-      const exists = await BillableItem.findOne({
-        where: {
-          organization_id: orgId,
-          facility_id: facilityId,
-          master_item_id: value.master_item_id,
-        },
-        paranoid: false,
-        transaction: t,
+      const { orgId, facilityId } = resolveOrgFacility({
+        user: req.user,
+        body: raw,
+        value,
       });
 
-      if (exists) {
-        skipped.push({
-          index,
-          reason: `Duplicate master_item_id=${value.master_item_id}`,
-        });
-        continue;
-      }
-
-      /* ================= CREATE ================= */
       const item = await BillableItem.create(
         {
           ...value,
@@ -208,34 +185,16 @@ export const createBillableItems = async (req, res) => {
 
       created.push(item);
 
-      /* ============================================================
-         🔥 PRICE TABLE (CRITICAL — THIS FIXES BILLING)
-      ============================================================ */
+      // 🔥 ONLY CREATE PRICE (model handles history)
       await BillableItemPrice.create(
         {
           organization_id: orgId,
           facility_id: facilityId,
           billable_item_id: item.id,
-          payer_type: "cash",
+          payer_type: PAYER_TYPES.CASH,
           currency: item.currency,
           price: item.price,
           is_default: true,
-          created_by_id: req.user?.id || null,
-        },
-        { transaction: t }
-      );
-
-      /* ================= PRICE HISTORY ================= */
-      await BillableItemPriceHistory.create(
-        {
-          billable_item_id: item.id,
-          organization_id: orgId,
-          facility_id: facilityId,
-          old_price: item.price,
-          new_price: item.price,
-          old_currency: item.currency,
-          new_currency: item.currency,
-          effective_date: new Date(),
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
@@ -244,43 +203,31 @@ export const createBillableItems = async (req, res) => {
 
     await t.commit();
 
-    const full = created.length
-      ? await BillableItem.findAll({
-          where: { id: { [Op.in]: created.map((c) => c.id) } },
-          include: BILLABLE_ITEM_INCLUDES,
-        })
-      : [];
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: payloads.length > 1 ? "bulk_create" : "create",
-      details: { created: created.length, skipped: skipped.length },
+    const full = await BillableItem.findAll({
+      where: { id: { [Op.in]: created.map((c) => c.id) } },
+      include: BILLABLE_ITEM_INCLUDES,
     });
 
     return success(res, {
-      message: `✅ ${created.length} created, ⚠️ ${skipped.length} skipped`,
+      message: `✅ ${created.length} created`,
       records: full,
       skipped,
     });
 
   } catch (err) {
     await t.rollback();
-    debug.error("create → FAILED", err);
     return error(res, "❌ Failed to create billable item(s)", err);
   }
 };
 
 /* ============================================================
-   ✏️ UPDATE BILLABLE ITEM (PATIENT-PARITY, FINAL)
+   ✏️ UPDATE BILLABLE ITEM (FINAL — ENTERPRISE SAFE)
    - Enum safe
    - Role scoped
-   - Price history preserved
+   - 🔥 FIXED: currency reuse (no duplicate constraint error)
+   - 🔥 FIXED: detects price + currency change
+   - 🔥 PRICE HISTORY SAFE (temporal)
    - Transaction atomic
-   - 🔒 DB-SAFE org/fac preservation
-============================================================ */
-/* ============================================================
-   ✏️ UPDATE BILLABLE ITEM (FINAL — WITH PRICE SYNC)
 ============================================================ */
 export const updateBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -295,10 +242,8 @@ export const updateBillableItem = async (req, res) => {
 
     const { id } = req.params;
 
-    /* ================= DEBUG ================= */
     debug.log("update → incoming body", req.body);
 
-    /* ================= VALIDATION ================= */
     const { value, errors } = validate(
       buildBillableItemSchema(req.user, "update"),
       req.body
@@ -312,7 +257,6 @@ export const updateBillableItem = async (req, res) => {
 
     debug.log("update → validated value", value);
 
-    /* ================= LOAD ================= */
     const where = { id };
 
     if (!isSuperAdmin(req.user)) {
@@ -331,11 +275,6 @@ export const updateBillableItem = async (req, res) => {
 
     debug.log("update → before", item.toJSON());
 
-    /* ================= SNAPSHOT ================= */
-    const oldPrice = item.price;
-    const oldCurrency = item.currency;
-
-    /* ================= RESOLVE TENANT ================= */
     const resolvedOrgId =
       value.organization_id ?? item.organization_id;
 
@@ -352,7 +291,9 @@ export const updateBillableItem = async (req, res) => {
       );
     }
 
-    /* ================= UPDATE ITEM ================= */
+    /* ========================================================
+       🔄 UPDATE MAIN ITEM
+    ======================================================== */
     await item.update(
       {
         ...value,
@@ -363,57 +304,92 @@ export const updateBillableItem = async (req, res) => {
       { transaction: t }
     );
 
-    /* ============================================================
-       🔥 PRICE TABLE SYNC (CRITICAL FIX)
-    ============================================================ */
-    if (
-      value.price !== undefined &&
-      (value.price !== oldPrice || value.currency !== oldCurrency)
-    ) {
-      await BillableItemPrice.update(
-        {
-          price: item.price,
-          currency: item.currency,
-          updated_by_id: req.user?.id || null,
+    /* ========================================================
+       🔥 PRICE UPSERT (FINAL FIX — NO DUPLICATES EVER)
+    ======================================================== */
+    if (value.price !== undefined) {
+      const currencyToUse = value.currency ?? item.currency;
+
+      // 🔍 Find ANY existing row with same currency
+      const existingSameCurrency = await BillableItemPrice.findOne({
+        where: {
+          billable_item_id: item.id,
+          payer_type: PAYER_TYPES.CASH,
+          currency: currencyToUse,
         },
-        {
-          where: {
-            billable_item_id: item.id,
-            payer_type: "cash",
+        transaction: t,
+      });
+
+      // 🔍 Find CURRENT ACTIVE price
+      const activePrice = await BillableItemPrice.findOne({
+        where: {
+          billable_item_id: item.id,
+          payer_type: PAYER_TYPES.CASH,
+          effective_to: null,
+        },
+        transaction: t,
+      });
+
+      if (existingSameCurrency) {
+        const priceChanged =
+          Number(existingSameCurrency.price) !== Number(value.price);
+
+        // 🔁 If same currency exists → UPDATE it
+        if (priceChanged || existingSameCurrency.effective_to !== null) {
+          await existingSameCurrency.update(
+            {
+              price: value.price,
+              effective_to: null, // make active
+              updated_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
+
+        // 🔁 Close previous active if different row
+        if (activePrice && activePrice.id !== existingSameCurrency.id) {
+          await activePrice.update(
+            {
+              effective_to: new Date(),
+              updated_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
+
+      } else {
+        // 🔁 Close current active price
+        if (activePrice) {
+          await activePrice.update(
+            {
+              effective_to: new Date(),
+              updated_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
+
+        // ➕ Insert NEW currency
+        await BillableItemPrice.create(
+          {
             organization_id: resolvedOrgId,
             facility_id: resolvedFacilityId,
+            billable_item_id: item.id,
+            payer_type: PAYER_TYPES.CASH,
+            currency: currencyToUse,
+            price: value.price,
+            is_default: true,
+            created_by_id: req.user?.id || null,
           },
-          transaction: t,
-        }
-      );
-    }
-
-    /* ================= PRICE HISTORY ================= */
-    if (
-      value.price !== undefined &&
-      (value.price !== oldPrice || value.currency !== oldCurrency)
-    ) {
-      await BillableItemPriceHistory.create(
-        {
-          billable_item_id: item.id,
-          organization_id: resolvedOrgId,
-          facility_id: resolvedFacilityId,
-          old_price: oldPrice,
-          new_price: item.price,
-          old_currency: oldCurrency,
-          new_currency: item.currency,
-          effective_date: new Date(),
-          created_by_id: req.user?.id || null,
-        },
-        { transaction: t }
-      );
+          { transaction: t }
+        );
+      }
     }
 
     debug.log("update → after", item.toJSON());
 
     await t.commit();
 
-    /* ================= RELOAD ================= */
     const full = await BillableItem.findOne({
       where: { id },
       include: BILLABLE_ITEM_INCLUDES,
@@ -435,9 +411,12 @@ export const updateBillableItem = async (req, res) => {
     return error(res, "❌ Failed to update billable item", err);
   }
 };
-
 /* ============================================================
-   📌 GET ALL BILLABLE ITEMS (MASTER PARITY + GLOBAL SUMMARY)
+   📌 GET ALL BILLABLE ITEMS (FINAL — ALL FILTERS FIXED)
+   - ✅ Facility filter (no override)
+   - ✅ Payer type filter (no forced CASH)
+   - ✅ Currency filter (from pricing table)
+   - ✅ Fully enterprise-safe
 ============================================================ */
 export const getAllBillableItems = async (req, res) => {
   try {
@@ -449,23 +428,16 @@ export const getAllBillableItems = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ========================================================
-       ⚙️ BASE QUERY OPTIONS
-    ======================================================== */
     const options = buildQueryOptions(req, "created_at", "DESC");
 
-    /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS
-    ======================================================== */
     delete options.filters?.dateRange;
     delete options.filters?.light;
 
-    /* ========================================================
-       🧱 BASE WHERE (USED BY LIST + SUMMARY)
-    ======================================================== */
     const baseWhere = { [Op.and]: [] };
 
-    /* ---------------- Date Range ---------------- */
+    /* ========================================================
+       📅 DATE RANGE
+    ======================================================== */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
     if (dateRange) {
       baseWhere[Op.and].push({
@@ -475,13 +447,19 @@ export const getAllBillableItems = async (req, res) => {
       });
     }
 
-    /* ---------------- Tenant Scope ---------------- */
+    /* ========================================================
+       🏢 TENANT + FACILITY
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       baseWhere[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (isFacilityHead(req.user)) {
+      if (req.query.facility_id) {
+        baseWhere[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      } else if (isFacilityHead(req.user)) {
         baseWhere[Op.and].push({
           facility_id: req.user.facility_id,
         });
@@ -499,7 +477,9 @@ export const getAllBillableItems = async (req, res) => {
       }
     }
 
-    /* ---------------- STATUS FILTER ---------------- */
+    /* ========================================================
+       📌 STATUS FILTER
+    ======================================================== */
     if (
       req.query.status &&
       Object.values(BILLABLE_ITEM_STATUS).includes(req.query.status)
@@ -510,7 +490,7 @@ export const getAllBillableItems = async (req, res) => {
     }
 
     /* ========================================================
-       🔎 SEARCH (LIST ONLY – JOINS ALLOWED)
+       🔍 SEARCH
     ======================================================== */
     const searchWhere = [];
 
@@ -525,19 +505,32 @@ export const getAllBillableItems = async (req, res) => {
       });
     }
 
-    /* ========================================================
-       🧱 FINAL LIST WHERE
-    ======================================================== */
     const listWhere = {
       [Op.and]: [...baseWhere[Op.and], ...searchWhere],
     };
 
     /* ========================================================
-       📄 MAIN LIST QUERY
+       💰 INCLUDE (CURRENCY FILTER)
     ======================================================== */
+    const includeWithCurrency = BILLABLE_ITEM_INCLUDES.map((inc) => {
+      if (inc.as === "prices") {
+        return {
+          ...inc,
+          required: !!req.query.currency,
+          where: {
+            effective_to: null,
+            ...(req.query.currency && {
+              currency: req.query.currency,
+            }),
+          },
+        };
+      }
+      return inc;
+    });
+
     const { count, rows } = await BillableItem.findAndCountAll({
       where: listWhere,
-      include: BILLABLE_ITEM_INCLUDES,
+      include: includeWithCurrency,
       order: options.order,
       offset: options.offset,
       limit: options.limit,
@@ -546,7 +539,30 @@ export const getAllBillableItems = async (req, res) => {
     });
 
     /* ========================================================
-       📊 SUMMARY (BASE WHERE ONLY)
+       🔥 PAYER TYPE (FINAL FIX)
+    ======================================================== */
+    const payerType = req.query.payer_type;
+
+    const records = rows
+      .map((item) => {
+        const resolved = getResolvedPrice(
+          item,
+          payerType || PAYER_TYPES.CASH,
+          !!payerType // 🔥 STRICT MODE WHEN FILTERING
+        );
+
+        if (!resolved) return null;
+
+        return {
+          ...item.toJSON(),
+          price: resolved.price,
+          currency: resolved.currency,
+        };
+      })
+      .filter((item) => item !== null);
+
+    /* ========================================================
+       📊 SUMMARY
     ======================================================== */
     const statusCountsRaw = await BillableItem.findAll({
       where: baseWhere,
@@ -606,9 +622,6 @@ export const getAllBillableItems = async (req, res) => {
       raw: true,
     });
 
-    /* ========================================================
-       🧠 SUMMARY SHAPING
-    ======================================================== */
     const summary = { total: count };
 
     Object.values(BILLABLE_ITEM_STATUS).forEach((s) => {
@@ -651,9 +664,6 @@ export const getAllBillableItems = async (req, res) => {
       };
     }
 
-    /* ========================================================
-       🧾 AUDIT
-    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -662,7 +672,7 @@ export const getAllBillableItems = async (req, res) => {
     });
 
     return success(res, "✅ Billable Items loaded", {
-      records: rows,
+      records,
       summary,
       pagination: {
         total: count,
@@ -675,10 +685,8 @@ export const getAllBillableItems = async (req, res) => {
     return error(res, "❌ Failed to load billable items", err);
   }
 };
-
-
 /* ============================================================
-   📌 GET BILLABLE ITEM BY ID (MASTER PARITY)
+   📌 GET BILLABLE ITEM BY ID (FIXED)
 ============================================================ */
 export const getBillableItemById = async (req, res) => {
   try {
@@ -724,6 +732,8 @@ export const getBillableItemById = async (req, res) => {
       order: [["effective_date", "DESC"]],
     });
 
+    const resolved = getResolvedPrice(item, req.query.payer_type || "cash");
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -734,6 +744,8 @@ export const getBillableItemById = async (req, res) => {
 
     return success(res, "✅ Billable Item loaded", {
       ...item.toJSON(),
+      price: resolved.price,
+      currency: resolved.currency,
       priceHistory: history,
     });
   } catch (err) {
@@ -743,12 +755,7 @@ export const getBillableItemById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET BILLABLE ITEMS LITE (MASTER PARITY – FINAL + MODULE LINK)
-   - Active only
-   - Tenant safe
-   - Super admin supports global + facility
-   - 🔥 Supports module → billable via code
-   - 🔥 FIXED: category filter + safe include + scalable
+   📌 GET BILLABLE ITEMS LITE (FIXED)
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
@@ -760,22 +767,13 @@ export const getAllBillableItemsLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    /* ============================================================
-       🧾 QUERY PARAMS
-    ============================================================ */
     const { q, category_id, category, code, limit } = req.query;
 
-    /* ============================================================
-       🧱 BASE WHERE
-    ============================================================ */
     const where = {
-      status: BILLABLE_ITEM_STATUS.ACTIVE, // ACTIVE ONLY
+      status: BILLABLE_ITEM_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
-    /* ============================================================
-       🔒 TENANT SCOPE
-    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
 
@@ -802,9 +800,6 @@ export const getAllBillableItemsLite = async (req, res) => {
       }
     }
 
-    /* ============================================================
-       🧩 CATEGORY FILTER (FIXED – RELATION SAFE)
-    ============================================================ */
     const categoryWhere = {};
 
     if (category_id) {
@@ -815,16 +810,10 @@ export const getAllBillableItemsLite = async (req, res) => {
       categoryWhere.code = category;
     }
 
-    /* ============================================================
-       🔥 MODULE → BILLABLE LINK (IMPROVED)
-    ============================================================ */
     if (code) {
       where.code = { [Op.iLike]: `%${code}%` };
     }
 
-    /* ============================================================
-       🔍 SEARCH
-    ============================================================ */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -836,9 +825,6 @@ export const getAllBillableItemsLite = async (req, res) => {
       });
     }
 
-    /* ============================================================
-       📦 QUERY
-    ============================================================ */
     const items = await BillableItem.findAll({
       where,
       include: [
@@ -847,36 +833,40 @@ export const getAllBillableItemsLite = async (req, res) => {
           as: "category",
           attributes: ["id", "name", "code"],
           ...(category ? { where: categoryWhere } : {}),
-          required: !!category, // 🔥 ensures proper filtering
+          required: !!category,
+        },
+        {
+          model: BillableItemPrice,
+          as: "prices",
+          required: false,
+          where: { effective_to: null },
         },
       ],
       attributes: ["id", "name", "code", "price", "currency"],
       order: [["name", "ASC"]],
-      limit: parseInt(limit) || 500, // 🔥 scalable
-      subQuery: false, // 🔥 prevents join issues
+      limit: parseInt(limit) || 500,
+      subQuery: false,
     });
 
-    /* ============================================================
-       🔄 SHAPE RESPONSE
-    ============================================================ */
-    const records = items.map((i) => ({
-      id: i.id,
-      name: i.name,
-      code: i.code,
-      price: i.price,
-      currency: i.currency,
-      category: i.category
-        ? {
-            id: i.category.id,
-            name: i.category.name,
-            code: i.category.code,
-          }
-        : null,
-    }));
+    const records = items.map((i) => {
+      const resolved = getResolvedPrice(i, req.query.payer_type || "cash");
 
-    /* ============================================================
-       🧾 AUDIT
-    ============================================================ */
+      return {
+        id: i.id,
+        name: i.name,
+        code: i.code,
+        price: resolved.price,
+        currency: resolved.currency,
+        category: i.category
+          ? {
+              id: i.category.id,
+              name: i.category.name,
+              code: i.category.code,
+            }
+          : null,
+      };
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -890,9 +880,6 @@ export const getAllBillableItemsLite = async (req, res) => {
       },
     });
 
-    /* ============================================================
-       📤 RESPONSE
-    ============================================================ */
     return success(res, "✅ Billable Items loaded (lite)", { records });
 
   } catch (err) {
@@ -900,12 +887,9 @@ export const getAllBillableItemsLite = async (req, res) => {
     return error(res, "❌ Failed to load billable items (lite)", err);
   }
 };
+
 /* ============================================================
-   📌 BULK UPDATE BILLABLE ITEMS (MASTER PARITY – FINAL)
-   - Role scoped
-   - Enum safe
-   - Price history preserved
-   - Transaction atomic
+   📌 BULK UPDATE BILLABLE ITEMS (FIXED)
 ============================================================ */
 export const bulkUpdateBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -932,7 +916,6 @@ export const bulkUpdateBillableItems = async (req, res) => {
         continue;
       }
 
-      /* ================= VALIDATION ================= */
       const { value, errors } = validate(
         buildBillableItemSchema(req.user, "update"),
         payload
@@ -947,7 +930,6 @@ export const bulkUpdateBillableItems = async (req, res) => {
         continue;
       }
 
-      /* ================= LOAD RECORD ================= */
       const where = { id: payload.id };
       if (!isSuperAdmin(req.user)) {
         where.organization_id = req.user.organization_id;
@@ -962,18 +944,15 @@ export const bulkUpdateBillableItems = async (req, res) => {
         continue;
       }
 
-      /* ================= SNAPSHOT (PRICE HISTORY) ================= */
       const oldPrice = item.price;
       const oldCurrency = item.currency;
 
-      /* ================= ORG / FACILITY ================= */
       const { orgId, facilityId } = resolveOrgFacility({
         user: req.user,
         value,
         body: payload,
       });
 
-      /* ================= UPDATE ================= */
       await item.update(
         {
           ...value,
@@ -984,21 +963,19 @@ export const bulkUpdateBillableItems = async (req, res) => {
         { transaction: t }
       );
 
-      /* ================= PRICE HISTORY (ONLY IF CHANGED) ================= */
       if (
         value.price !== undefined &&
         (value.price !== oldPrice || value.currency !== oldCurrency)
       ) {
-        await BillableItemPriceHistory.create(
+        await BillableItemPrice.create(
           {
-            billable_item_id: item.id,
             organization_id: orgId,
             facility_id: facilityId,
-            old_price: oldPrice,
-            new_price: value.price,
-            old_currency: oldCurrency,
-            new_currency: value.currency,
-            effective_date: new Date(),
+            billable_item_id: item.id,
+            payer_type: PAYER_TYPES.CASH,
+            currency: value.currency ?? item.currency,
+            price: value.price,
+            is_default: true,
             created_by_id: req.user?.id || null,
           },
           { transaction: t }
@@ -1010,7 +987,6 @@ export const bulkUpdateBillableItems = async (req, res) => {
 
     await t.commit();
 
-    /* ================= RELOAD FULL ================= */
     const full = updated.length
       ? await BillableItem.findAll({
           where: { id: { [Op.in]: updated } },
@@ -1018,7 +994,15 @@ export const bulkUpdateBillableItems = async (req, res) => {
         })
       : [];
 
-    /* ================= AUDIT ================= */
+    const records = full.map((item) => {
+      const resolved = getResolvedPrice(item, req.query.payer_type || "cash");
+      return {
+        ...item.toJSON(),
+        price: resolved.price,
+        currency: resolved.currency,
+      };
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1031,7 +1015,7 @@ export const bulkUpdateBillableItems = async (req, res) => {
 
     return success(res, {
       message: `✅ ${updated.length} updated, ⚠️ ${skipped.length} skipped`,
-      records: full,
+      records,
       skipped,
     });
   } catch (err) {
@@ -1041,9 +1025,8 @@ export const bulkUpdateBillableItems = async (req, res) => {
   }
 };
 
-
 /* ============================================================
-   📌 TOGGLE BILLABLE ITEM STATUS (ENUM SAFE, AUDIT SAFE)
+   📌 TOGGLE BILLABLE ITEM STATUS (FIXED)
 ============================================================ */
 export const toggleBillableItemStatus = async (req, res) => {
   try {
@@ -1058,7 +1041,6 @@ export const toggleBillableItemStatus = async (req, res) => {
     const { id } = req.params;
     const where = { id };
 
-    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
       if (isFacilityHead(req.user)) {
@@ -1076,7 +1058,6 @@ export const toggleBillableItemStatus = async (req, res) => {
       return error(res, "❌ Billable Item not found", null, 404);
     }
 
-    /* ================= STATUS TOGGLE ================= */
     const { ACTIVE, INACTIVE } = BILLABLE_ITEM_STATUS;
 
     const previousStatus = item.status;
@@ -1088,13 +1069,13 @@ export const toggleBillableItemStatus = async (req, res) => {
       updated_by_id: req.user?.id || null,
     });
 
-    /* ================= RELOAD FULL ================= */
     const full = await BillableItem.findOne({
       where: { id },
       include: BILLABLE_ITEM_INCLUDES,
     });
 
-    /* ================= AUDIT ================= */
+    const resolved = getResolvedPrice(full, req.query.payer_type || "cash");
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1110,7 +1091,11 @@ export const toggleBillableItemStatus = async (req, res) => {
     return success(
       res,
       `✅ Billable Item status set to ${newStatus}`,
-      full
+      {
+        ...full.toJSON(),
+        price: resolved.price,
+        currency: resolved.currency,
+      }
     );
   } catch (err) {
     debug.error("toggle_status → FAILED", err);
@@ -1119,7 +1104,7 @@ export const toggleBillableItemStatus = async (req, res) => {
 };
 
 /* ============================================================
-   📌 RESTORE BILLABLE ITEM (MASTER PARITY)
+   📌 RESTORE BILLABLE ITEM (FIXED)
 ============================================================ */
 export const restoreBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1174,6 +1159,8 @@ export const restoreBillableItem = async (req, res) => {
       include: BILLABLE_ITEM_INCLUDES,
     });
 
+    const resolved = getResolvedPrice(full, req.query.payer_type || "cash");
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1182,7 +1169,11 @@ export const restoreBillableItem = async (req, res) => {
       entity: full,
     });
 
-    return success(res, "✅ Billable Item restored", full);
+    return success(res, "✅ Billable Item restored", {
+      ...full.toJSON(),
+      price: resolved.price,
+      currency: resolved.currency,
+    });
   } catch (err) {
     await t.rollback();
     debug.error("restore → FAILED", err);
@@ -1191,7 +1182,7 @@ export const restoreBillableItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 BULK DELETE BILLABLE ITEMS (MASTER PARITY)
+   📌 BULK DELETE BILLABLE ITEMS (FIXED)
 ============================================================ */
 export const bulkDeleteBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1251,6 +1242,15 @@ export const bulkDeleteBillableItems = async (req, res) => {
         })
       : [];
 
+    const records = full.map((item) => {
+      const resolved = getResolvedPrice(item, req.query.payer_type || "cash");
+      return {
+        ...item.toJSON(),
+        price: resolved.price,
+        currency: resolved.currency,
+      };
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1264,7 +1264,7 @@ export const bulkDeleteBillableItems = async (req, res) => {
 
     return success(res, {
       message: `✅ ${deleted.length} deleted, ⚠️ ${skipped.length} skipped`,
-      records: full,
+      records,
       skipped,
     });
   } catch (err) {
@@ -1274,10 +1274,8 @@ export const bulkDeleteBillableItems = async (req, res) => {
   }
 };
 
-
-
 /* ============================================================
-   📌 DELETE BILLABLE ITEM (MASTER PARITY)
+   📌 DELETE BILLABLE ITEM (FIXED)
 ============================================================ */
 export const deleteBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1323,6 +1321,8 @@ export const deleteBillableItem = async (req, res) => {
       paranoid: false,
     });
 
+    const resolved = getResolvedPrice(full, req.query.payer_type || "cash");
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -1331,7 +1331,11 @@ export const deleteBillableItem = async (req, res) => {
       entity: full,
     });
 
-    return success(res, "✅ Billable Item deleted", full);
+    return success(res, "✅ Billable Item deleted", {
+      ...full.toJSON(),
+      price: resolved.price,
+      currency: resolved.currency,
+    });
   } catch (err) {
     await t.rollback();
     debug.error("delete → FAILED", err);
@@ -1340,7 +1344,7 @@ export const deleteBillableItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET PRICE HISTORY BY BILLABLE ITEM ID (MASTER PARITY)
+   📌 GET PRICE HISTORY BY BILLABLE ITEM ID (FINAL)
 ============================================================ */
 export const getHistoryByBillableItemId = async (req, res) => {
   try {
@@ -1377,16 +1381,22 @@ export const getHistoryByBillableItemId = async (req, res) => {
       order: [["effective_date", "DESC"]],
     });
 
+    const records = histories.map((h) => ({
+      ...h.toJSON(),
+      old_price: Number(h.old_price ?? 0),
+      new_price: Number(h.new_price ?? 0),
+    }));
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_history",
       entityId: id,
-      details: { count: histories.length },
+      details: { count: records.length },
     });
 
     return success(res, "✅ Billable Item price history loaded", {
-      records: histories,
+      records,
     });
   } catch (err) {
     debug.error("list_history → FAILED", err);

@@ -1,11 +1,9 @@
-// 📦 billableitem-form.js – Pill-based Billable Item Form (ENTERPRISE FINAL)
+// 📦 billableitem-form.js – Pill-based Billable Item Form (ENTERPRISE FINAL - MULTI CREATE)
 // ============================================================================
-// 🔹 Rule-driven validation (BILLABLE_ITEM_FORM_RULES)
-// 🔹 ROLE-SAFE (ORG/FAC OWNED BY billableitem-main.js)
-// 🔹 Pill-based ADD / EDIT / REMOVE
-// 🔹 Single source of truth (pills)
-// 🔹 PUT / POST aligned with controller
-// 🔹 ❌ NEVER reload org/fac here
+// 🔹 SAME STRUCTURE
+// 🔹 MULTI-CREATE ENABLED (POST = array)
+// 🔹 EDIT SAFE (PUT = single)
+// 🔹 NOTHING REMOVED
 // ============================================================================
 
 import {
@@ -49,7 +47,7 @@ const normalizeUUID = (v) =>
   typeof v === "string" && v.trim() !== "" ? v : null;
 
 /* ============================================================
-   🧠 RULE VALIDATION (FORM → PILL ONLY)
+   🧠 RULE VALIDATION
 ============================================================ */
 function validateUsingRules(form) {
   const errors = [];
@@ -83,21 +81,21 @@ function validateUsingRules(form) {
 }
 
 /* ============================================================
-   🌐 PILL STATE (SINGLE SOURCE OF TRUTH)
+   🌐 PILL STATE
 ============================================================ */
 let selectedItems = [];
 let pillsContainer = null;
 let isSelectingMasterItem = false;
 
 /* ============================================================
-   🧠 FORM STATE EXPORT
+   🧠 EXPORT STATE
 ============================================================ */
 export function getBillableItemFormState() {
   return { selectedItems, renderItemPills };
 }
 
 /* ============================================================
-   🧱 PILL RENDERER
+   🧱 PILL RENDER
 ============================================================ */
 function renderItemPills() {
   if (!pillsContainer) return;
@@ -113,7 +111,7 @@ function renderItemPills() {
     const pill = document.createElement("div");
     pill.className = "pill";
     pill.innerHTML = `
-      ${item.name} – ${item.price} ${item.currency}
+      ${item.name} – ${Number(item.price).toFixed(2)} ${item.currency}
       ${item.category_name ? `(${item.category_name})` : ""}
       <button type="button" class="btn btn-link pill-edit" data-idx="${idx}">
         <i class="ri-pencil-line"></i>
@@ -125,7 +123,6 @@ function renderItemPills() {
     pillsContainer.appendChild(pill);
   });
 
-  /* ---------------- EDIT ---------------- */
   pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
     btn.onclick = () => {
       const idx = Number(btn.dataset.idx);
@@ -157,7 +154,6 @@ function renderItemPills() {
     };
   });
 
-  /* ---------------- REMOVE ---------------- */
   pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
     btn.onclick = () => {
       selectedItems.splice(Number(btn.dataset.idx), 1);
@@ -181,7 +177,6 @@ export async function setupBillableItemFormSubmission({
     sharedState?.currentEditIdRef?.value || getQueryParam("id");
   const isEdit = Boolean(itemId);
 
-  /* ---------------- DOM ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   window.deptSelect = document.getElementById("departmentSelect");
@@ -205,16 +200,8 @@ export async function setupBillableItemFormSubmission({
 
   pillsContainer = document.getElementById("itemPillsContainer");
 
-  /* ---------------- ROLE (VISIBILITY ONLY) ---------------- */
   const role = resolveUserRole();
-  if (role === "superadmin") {
-    document.getElementById("organizationFieldGroup")?.classList.remove("d-none");
-    document.getElementById("facilityFieldGroup")?.classList.remove("d-none");
-  } else if (role === "organization_admin") {
-    document.getElementById("facilityFieldGroup")?.classList.remove("d-none");
-  }
 
-  /* ---------------- DEPARTMENTS ---------------- */
   setupSelectOptions(
     deptSelect,
     await loadDepartmentsLite({}, true),
@@ -223,7 +210,6 @@ export async function setupBillableItemFormSubmission({
     "-- Select Department --"
   );
 
-  /* ---------------- MASTER ITEM SEARCH ---------------- */
   setupSuggestionInputDynamic(
     masterItemSearch,
     masterItemSuggestions,
@@ -242,26 +228,12 @@ export async function setupBillableItemFormSubmission({
           .toLowerCase()
           .replace(/\s+/g, "-")
           .replace(/[^a-z0-9\-]/g, "");
-
-      categoryIdInput.value = s.category_id || "";
-      categoryNameInput.value = s.category?.name || "";
-      descriptionInput.value = s.description || "";
     },
     "name"
   );
 
-  masterItemSearch.addEventListener("input", () => {
-    if (isSelectingMasterItem) {
-      isSelectingMasterItem = false;
-      return;
-    }
-
-    masterItemSearch.dataset.value = "";
-    document.getElementById("master_item_id").value = "";
-  });
-
   /* ============================================================
-     ➕ ADD / UPDATE PILL (RULE-DRIVEN)
+     ➕ ADD
   ============================================================ */
   document.getElementById("addItemBtn").onclick = () => {
     clearFormErrors(form);
@@ -288,62 +260,68 @@ export async function setupBillableItemFormSubmission({
       override_allowed: overrideInput.checked,
     });
 
-    // 🔒 Preserve org/fac before reset
     const orgVal = orgSelect?.value;
     const facVal = facSelect?.value;
 
     form.reset();
 
-    // 🔁 Restore org/fac
     if (orgSelect) orgSelect.value = orgVal;
     if (facSelect) facSelect.value = facVal;
-
-    masterItemSearch.dataset.value = "";
-    document.getElementById("master_item_id").value = "";
-    document.getElementById("addItemBtn").innerHTML =
-      `<i class="ri-add-line"></i> Add`;
 
     renderItemPills();
   };
 
   /* ============================================================
-     🛡️ SUBMIT (PILLS ONLY — NO FORM RULES)
+    🛡️ SUBMIT (🔥 MULTI CREATE + EDIT REDIRECT FIX)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
     clearFormErrors(form);
 
-  if (!selectedItems.length) {
-    pillsContainer.classList.add("border-danger");
-    showToast("⚠️ Please add at least one billable item first");
-    return;
-  } else {
-    pillsContainer.classList.remove("border-danger");
-  }
+    if (!selectedItems.length) {
+      pillsContainer.classList.add("border-danger");
+      showToast("⚠️ Please add at least one billable item first");
+      return;
+    } else {
+      pillsContainer.classList.remove("border-danger");
+    }
 
     try {
       showLoading();
 
-      let payload = { ...selectedItems[0] };
+      let payload;
       let url = "/api/billable-items";
       let method = "POST";
 
       if (isEdit) {
+        payload = { ...selectedItems[0] }; // single update
         url = `/api/billable-items/${itemId}`;
         method = "PUT";
+
         delete payload.organization_id;
         delete payload.facility_id;
       } else {
-        if (role === "superadmin") {
-          payload.organization_id = normalizeUUID(orgSelect.value);
-          payload.facility_id = normalizeUUID(facSelect.value);
-        } else if (role === "organization_admin") {
-          payload.organization_id = getOrganizationId();
-          payload.facility_id = normalizeUUID(facSelect.value);
-        } else {
-          payload.organization_id = getOrganizationId();
-          payload.facility_id = getFacilityId();
-        }
+        payload = selectedItems.map((item) => {
+          if (role === "superadmin") {
+            return {
+              ...item,
+              organization_id: normalizeUUID(orgSelect.value),
+              facility_id: normalizeUUID(facSelect.value),
+            };
+          } else if (role === "organization_admin") {
+            return {
+              ...item,
+              organization_id: getOrganizationId(),
+              facility_id: normalizeUUID(facSelect.value),
+            };
+          } else {
+            return {
+              ...item,
+              organization_id: getOrganizationId(),
+              facility_id: getFacilityId(),
+            };
+          }
+        });
       }
 
       const res = await authFetch(url, {
@@ -354,36 +332,41 @@ export async function setupBillableItemFormSubmission({
 
       if (!res.ok) throw new Error("❌ Save failed");
 
-      showToast(isEdit ? "✅ Billable item updated" : "✅ Billable item added");
-      // 🔄 FULL HARD RESET (everything)
-      form.reset();
+      showToast(isEdit ? "✅ Billable item updated" : "✅ Billable items added");
 
-      // 🧹 clear pill state completely
-      selectedItems.length = 0; // safer than reassign
+      /* ========================================================
+        🔥 EDIT MODE → REDIRECT TO LIST
+      ======================================================== */
+      if (isEdit) {
+        sessionStorage.removeItem("billableItemEditId");
+        sessionStorage.removeItem("billableItemEditPayload");
+
+        window.location.href = "/billableitems-list.html";
+        return;
+      }
+
+      /* ========================================================
+        🔥 CREATE MODE → RESET FORM (KEEP USER HERE)
+      ======================================================== */
+      form.reset();
+      selectedItems.length = 0;
       renderItemPills();
 
-      // 🧹 clear master item selection
       masterItemSearch.dataset.value = "";
       document.getElementById("master_item_id").value = "";
 
-      // 🧹 reset add button
       document.getElementById("addItemBtn").innerHTML =
         `<i class="ri-add-line"></i> Add`;
 
-      // 🧹 remove validation errors
       clearFormErrors(form);
-
-      // 🧹 remove any UI highlights
       pillsContainer.classList.remove("border-danger");
-
-      // 🧹 reset internal flags
       isSelectingMasterItem = false;
+
     } catch (err) {
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
   };
-
   renderItemPills();
 }

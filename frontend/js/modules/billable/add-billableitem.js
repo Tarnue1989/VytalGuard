@@ -1,11 +1,9 @@
-// 📦 billableitem-main.js – Billable Item Form Page Controller (ENTERPRISE FINAL)
+// 📦 billableitem-main.js – Billable Item Form Page Controller (ENTERPRISE FINAL - UPDATED)
 // ============================================================================
-// 🧭 FULL PARITY WITH department-main.js
-// 🔹 Auth guard + logout watcher
-// 🔹 Role-aware org/fac loading ONLY
-// 🔹 Edit session coordination (sessionStorage + URL)
-// 🔹 Delegates ALL business logic to billableitem-form.js
-// 🔹 ❌ Never touches pill state directly
+// 🔹 SAME STRUCTURE
+// 🔹 MULTI-CREATE SAFE
+// 🔹 EDIT PREFILL FIXED (payer_type added)
+// 🔹 NOTHING REMOVED
 // ============================================================================
 
 import {
@@ -36,7 +34,7 @@ initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 /* ============================================================
-   🌐 Shared State (SINGLE SOURCE OF TRUTH)
+   🌐 Shared State
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
@@ -53,7 +51,7 @@ const orgSelect = document.getElementById("organizationSelect");
 const facSelect = document.getElementById("facilitySelect");
 
 /* ============================================================
-   🚀 Init (Page Entry)
+   🚀 INIT
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   if (!form) return;
@@ -63,7 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isOrgAdmin = role === "organization_admin";
 
   /* ========================================================
-     🔑 EDIT MODE DETECTION (FIRST)
+     🔑 EDIT MODE DETECTION
   ======================================================== */
   const editId =
     sessionStorage.getItem("billableItemEditId") ||
@@ -74,7 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ========================================================
-     🌐 ORGANIZATION / FACILITY (ROLE OWNER)
+     🌐 ORGANIZATION / FACILITY
   ======================================================== */
   try {
     if (isSuper) {
@@ -122,7 +120,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ========================================================
-     🔗 Wire Form (AFTER editId is set)
+     🔗 FORM WIRING
   ======================================================== */
   setupBillableItemFormSubmission({
     form,
@@ -130,7 +128,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   /* ========================================================
-     ✏️ EDIT PREFILL (SEED FORM STATE ONLY)
+     ✏️ EDIT PREFILL (UPDATED)
   ======================================================== */
   const rawPayload = sessionStorage.getItem("billableItemEditPayload");
 
@@ -139,6 +137,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       getBillableItemFormState();
 
     selectedItems.length = 0;
+
     selectedItems.push({
       master_item_id: entry.master_item_id,
       itemName: entry.masterItem?.name || "",
@@ -146,6 +145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       code: entry.code || "",
       price: entry.price,
       currency: entry.currency || "USD",
+      payer_type: entry.payer_type || "cash", // 🔥 FIXED
       department_id: entry.department_id || null,
       category_id: entry.category_id || null,
       category_name: entry.category?.name || "",
@@ -156,7 +156,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     renderItemPills();
 
-    /* ---------------- UI Labels ---------------- */
+    /* ---------------- UI LABELS ---------------- */
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Billable Item";
 
@@ -166,7 +166,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         `<i class="ri-save-3-line me-1"></i> Update Billable Item`;
     }
 
-    /* ---------------- Org/Fac selection ---------------- */
+    /* ---------------- ORG / FAC ---------------- */
     if (isSuper && entry.organization_id) {
       orgSelect.value = entry.organization_id;
 
@@ -187,6 +187,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  /* ========================================================
+     📦 LOAD EDIT DATA
+  ======================================================== */
   if (editId && rawPayload) {
     try {
       await applyPrefill(JSON.parse(rawPayload));
@@ -206,7 +209,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ========================================================
-     🔘 Buttons
+     🔘 BUTTONS
   ======================================================== */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billableItemEditId");
@@ -217,6 +220,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   clearBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billableItemEditId");
     sessionStorage.removeItem("billableItemEditPayload");
-    window.location.reload(); // clean reset (ADD mode)
+    window.location.reload();
   });
 });
