@@ -1,9 +1,9 @@
-// 📁 billableitem-constants.js – Enterprise-Aligned Master Pattern
+// 📁 billableitem-constants.js – FINAL (Enterprise MASTER + Pricing-Aware)
 // ============================================================================
-// 🔹 Pattern Source: department-constants.js (Enterprise Master)
-// 🔹 Structural Consistency: Field labels, order, role-based visibility
-// 🔹 100% ID retention (safe for linked HTML + JS modules)
-// 🔹 Includes standardized metadata + hierarchical visibility map
+// 🔹 Upgraded for BILLABLE ITEM CONTROLLER (multi-price + payer_type ready)
+// 🔹 Maintains MASTER structure (department pattern)
+// 🔹 Adds payer_type support + audit consistency
+// 🔹 100% ID safe (no breaking changes)
 // ============================================================================
 
 /* ============================================================
@@ -18,23 +18,30 @@ export const FIELD_LABELS_BILLABLE_ITEM = {
   code: "Code",
   description: "Description",
   category: "Category",
+
+  // 🔥 PRICING (UPDATED)
+  payer_type: "Payer Type",
   price: "Price",
   currency: "Currency",
+
   taxable: "Taxable",
   discountable: "Discountable",
   override_allowed: "Allow Override",
   status: "Status",
+
+  // 🔥 AUDIT (CONSISTENT WITH CONTROLLER)
   createdBy: "Created By",
   created_at: "Created At",
   updatedBy: "Updated By",
   updated_at: "Updated At",
   deletedBy: "Deleted By",
   deleted_at: "Deleted At",
+
   actions: "Actions",
 };
 
 /* ============================================================
-   📋 Field Order (Enterprise-Consistent)
+   📋 Field Order (Enterprise-Consistent + Pricing Inserted)
 ============================================================ */
 export const FIELD_ORDER_BILLABLE_ITEM = [
   "organization",
@@ -45,23 +52,30 @@ export const FIELD_ORDER_BILLABLE_ITEM = [
   "code",
   "description",
   "category",
+
+  // 🔥 PRICING POSITIONED PROPERLY
+  "payer_type",
   "price",
   "currency",
+
   "taxable",
   "discountable",
   "override_allowed",
   "status",
+
+  // 🔥 AUDIT (ORDER STANDARDIZED)
   "createdBy",
   "created_at",
   "updatedBy",
   "updated_at",
   "deletedBy",
   "deleted_at",
+
   "actions",
 ];
 
 /* ============================================================
-   👥 Role-Based Field Visibility Defaults (Enterprise Master)
+   👥 Role-Based Field Visibility Defaults (Enterprise MASTER)
 ============================================================ */
 export const FIELD_DEFAULTS_BILLABLE_ITEM = {
   superadmin: [
@@ -73,18 +87,23 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "code",
     "description",
     "category",
+
+    "payer_type",
     "price",
     "currency",
+
     "taxable",
     "discountable",
     "override_allowed",
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
     "deletedBy",
     "deleted_at",
+
     "actions",
   ],
 
@@ -97,16 +116,21 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "code",
     "description",
     "category",
+
+    "payer_type",
     "price",
     "currency",
+
     "taxable",
     "discountable",
     "override_allowed",
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
@@ -118,16 +142,21 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "code",
     "description",
     "category",
+
+    "payer_type",
     "price",
     "currency",
+
     "taxable",
     "discountable",
     "override_allowed",
     "status",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
@@ -139,12 +168,16 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "code",
     "description",
     "category",
+
+    "payer_type",
     "price",
     "currency",
+
     "taxable",
     "discountable",
     "override_allowed",
     "status",
+
     "actions",
   ],
 
@@ -153,8 +186,11 @@ export const FIELD_DEFAULTS_BILLABLE_ITEM = {
     "masterItem",
     "name",
     "description",
+
+    "payer_type",
     "price",
     "currency",
+
     "status",
     "actions",
   ],

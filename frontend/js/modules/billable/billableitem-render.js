@@ -1,14 +1,8 @@
-// 📁 billableitem-render.js – Entity Card System (BILLABLE ITEM | ENTERPRISE FINAL)
+// 📁 billableitem-render.js – Entity Card System (BILLABLE ITEM | ENTERPRISE FINAL - UPDATED)
 // ============================================================================
-// 🧭 FULL MASTER PARITY WITH department-render.js
-// 🔹 Table = flat | Card = structured
-// 🔹 Field-selector safe
-// 🔹 Backend sorting bridge
-// 🔹 Column resize enabled
-// 🔹 Column drag reorder enabled
-// 🔹 Full audit section (created / updated / deleted)
-// 🔹 Permission-driven actions
-// 🔹 Export-safe
+// 🔹 Controller-aligned (payer_type + resolved price)
+// 🔹 FULL MASTER parity preserved
+// 🔹 No refactor — only upgrades
 // ============================================================================
 
 import { FIELD_LABELS_BILLABLE_ITEM } from "./billableitem-constants.js";
@@ -39,7 +33,7 @@ const SORTABLE_FIELDS = new Set([
 ]);
 
 /* ============================================================
-   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+   🔃 SORT STATE
 ============================================================ */
 let sortBy = localStorage.getItem("billableItemSortBy") || "";
 let sortDir = localStorage.getItem("billableItemSortDir") || "asc";
@@ -55,7 +49,6 @@ function toggleSort(field) {
   localStorage.setItem("billableItemSortBy", sortBy);
   localStorage.setItem("billableItemSortDir", sortDir);
 
-  // 🔗 Bridge to MAIN
   window.setBillableItemSort?.(sortBy, sortDir);
   window.loadBillableItemPage?.(1);
 }
@@ -74,7 +67,7 @@ function getBillableItemActionButtons(entry, user) {
 }
 
 /* ============================================================
-   🧱 DYNAMIC TABLE HEAD (SORT + RESIZE + DRAG)
+   🧱 TABLE HEAD
 ============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
@@ -123,7 +116,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   thead.appendChild(tr);
 
-  /* ================= Column resize ================= */
   let colgroup = table.querySelector("colgroup");
   if (colgroup) colgroup.remove();
 
@@ -137,7 +129,6 @@ export function renderDynamicTableHead(visibleFields) {
 
   enableColumnResize(table);
 
-  /* ================= Column drag ================= */
   enableColumnDrag({
     table,
     visibleFields,
@@ -162,7 +153,7 @@ function renderUserName(user) {
 }
 
 /* ============================================================
-   🧩 FIELD VALUE RENDERER
+   🧩 VALUE RENDER (UPDATED)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -198,9 +189,15 @@ function renderValue(entry, field) {
     case "category_id":
       return entry.category?.name || "—";
 
+    /* 🔥 FIXED (controller-aligned) */
     case "price":
       return entry.price != null
-        ? `${entry.price} ${entry.currency || ""}`
+        ? `${Number(entry.price).toFixed(2)} ${entry.currency || ""}`
+        : "—";
+
+    case "payer_type":
+      return entry.payer_type
+        ? entry.payer_type.toUpperCase()
         : "—";
 
     case "createdBy":
@@ -219,7 +216,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — BILLABLE ITEM
+   🗂️ CARD RENDERER (UPDATED)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -267,6 +264,7 @@ export function renderCard(entry, visibleFields, user) {
 
   const body = `
     <div class="entity-card-body">
+      ${has("payer_type") ? fieldRow("Payer Type", renderValue(entry, "payer_type")) : ""}
       ${has("price") ? fieldRow("Price", renderValue(entry, "price")) : ""}
       ${has("category") ? fieldRow("Category", entry.category?.name) : ""}
       ${has("masterItem") ? fieldRow("Master Item", entry.masterItem?.name) : ""}
@@ -294,14 +292,13 @@ export function renderCard(entry, visibleFields, user) {
       `
       : "";
 
-    const actions = has("actions")
-      ? `<div class="entity-card-footer export-ignore">
-          <div class="card-actions">
-            ${getBillableItemActionButtons(entry, user)}
-          </div>
-        </div>`
-      : "";
-
+  const actions = has("actions")
+    ? `<div class="entity-card-footer export-ignore">
+        <div class="card-actions">
+          ${getBillableItemActionButtons(entry, user)}
+        </div>
+      </div>`
+    : "";
 
   return `
     <div class="entity-card billableitem-card">
@@ -315,7 +312,7 @@ export function renderCard(entry, visibleFields, user) {
 }
 
 /* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
+   📋 LIST RENDERER
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("billableItemTableBody");
