@@ -1,9 +1,4 @@
-// 📦 invoice-main.js – Filters + Table/Card (Enterprise Pattern Aligned)
-// ============================================================================
-// 🔹 Mirrors payment-filter-main.js for unified summary, export & pagination
-// 🔹 Handles financial totals + role-aware org/facility filters
-// 🔹 Includes PDF/Excel export with summary header
-// ============================================================================
+// 📦 invoice-main.js – Filters + Table/Card (MASTER PARITY – PART 1)
 
 import {
   showToast,
@@ -17,16 +12,17 @@ import {
 } from "../../../utils/index.js";
 
 import { authFetch } from "../../../authSession.js";
+import { renderModuleSummary } from "../../../utils/render-module-summary.js";
 import {
   loadOrganizationsLite,
   loadFacilitiesLite,
-  loadPatientsLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
 } from "../../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../../utils/export-utils.js";
+
 import { renderList, renderDynamicTableHead } from "./invoice-render.js";
 import { setupActionHandlers } from "./invoice-actions.js";
 
@@ -37,6 +33,13 @@ import {
 
 import { setupVisibleFields } from "../../../utils/field-visibility.js";
 import { initPaginationControl } from "../../../utils/pagination-control.js";
+
+import {
+  setupAutoSearch,
+  setupAutoFilters,
+} from "../../../utils/search-utils.js";
+
+import { syncViewToggleUI } from "../../../utils/view-toggle.js";
 
 /* ============================================================
    🔐 Auth + Session
@@ -91,147 +94,117 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🧾 Summary Renderer (v2.3 – Financial + Count-Safe)
+   🔎 FILTER DOM (MASTER)
 ============================================================ */
-function renderModuleSummary(summary = {}) {
-  const container = document.getElementById("moduleSummary");
-  if (!container) return;
+const qs = (id) => document.getElementById(id);
 
-  const colorMap = {
-    draft: "text-muted",
-    issued: "text-info",
-    unpaid: "text-warning",
-    partial: "text-primary",
-    paid: "text-success",
-    cancelled: "text-secondary",
-    voided: "text-dark",
-    total: "text-dark fw-bold",
-  };
+const globalSearch = qs("globalSearch");
 
-  const formatVal = (key, val) => {
-    if (val == null) return 0;
-    const lower = key.toLowerCase();
+const filterOrg = qs("filterOrganizationSelect");
+const filterFacility = qs("filterFacilitySelect");
+const filterStatus = qs("filterStatus");
+const filterCurrency = qs("filterCurrency");
+const filterPayerType = qs("filterPayerType");
 
-    const countFields = ["count", "total_invoices"];
-    const isCount = countFields.some((k) => lower.includes(k));
-    const isMoney =
-      !isCount && /amount|balance|sum|value|total|paid|subtotal/.test(lower);
-      if (isMoney && !isNaN(val)) {
-        const num = parseFloat(val);
+const filterPatient = qs("filterPatient");
+const filterPatientHidden = qs("filterPatientId");
+const filterPatientSuggestions = qs("filterPatientSuggestions");
 
-        const currency =
-          summary.currency ||
-          window.entries?.[0]?.currency ||
-          "USD";
+const dateRange = qs("dateRange");
 
-        return `${currency} ${num.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`;
-      }
-    if (!isNaN(val)) return parseFloat(val).toLocaleString();
-    return val;
-  };
-
-  const keys = Object.keys(summary).filter(k => k !== "currency");
-  if (!keys.length) {
-    container.innerHTML = `<div class="text-muted small">No summary data</div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="d-flex flex-wrap gap-3 align-items-center small fw-semibold mb-2">
-      ${keys
-        .map((key) => {
-          const val = formatVal(key, summary[key]);
-          const label = key.replace(/_/g, " ").toUpperCase();
-          const color = colorMap[key.toLowerCase()] || "text-dark";
-          return `<span class="${color}">${label}: ${val}</span>`;
-        })
-        .join('<span class="text-muted"> | </span>')}
-    </div>
-  `;
-}
+const exportCSVBtn = qs("exportCSVBtn");
+const exportPDFBtn = qs("exportPDFBtn");
+const resetFilterBtn = qs("resetFilterBtn");
 
 /* ============================================================
-   🔎 Filters + Controls
+   🔁 SORT (MASTER)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterPatient = document.getElementById("filterPatient");
-const filterPatientHidden = document.getElementById("filterPatientId");
-const filterPatientSuggestions = document.getElementById("filterPatientSuggestions");
-const filterStatus = document.getElementById("filterStatus");
-const filterCurrency = document.getElementById("filterCurrency");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+let sortBy = "";
+let sortDir = "asc";
 
-const filterBtn = document.getElementById("filterBtn");
-const resetFilterBtn = document.getElementById("resetFilterBtn");
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+window.setInvoiceSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+
+window.loadInvoicePage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🔁 Pagination + View State
+   📄 PAGINATION
 ============================================================ */
 let currentPage = 1;
 let totalPages = 1;
 let viewMode = localStorage.getItem("invoiceView") || "table";
 
-const savedLimit = parseInt(localStorage.getItem("invoicePageLimit") || "25", 10);
-let getPagination = initPaginationControl("invoice", loadEntries, savedLimit);
-
-const recordsPerPageSelect = document.getElementById("recordsPerPage");
-if (recordsPerPageSelect) {
-  recordsPerPageSelect.value = savedLimit;
-  recordsPerPageSelect.addEventListener("change", async () => {
-    const newLimit = parseInt(recordsPerPageSelect.value, 10);
-    localStorage.setItem("invoicePageLimit", newLimit);
-    getPagination = initPaginationControl("invoice", loadEntries, newLimit);
-    await loadEntries(1);
-  });
-}
+const getPagination = initPaginationControl(
+  "invoice",
+  loadEntries,
+  Number(localStorage.getItem("invoicePageLimit") || 25)
+);
 
 /* ============================================================
-   📋 Filters Builder
+   🔎 AUTO SEARCH / FILTERS (MASTER)
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [
+    filterOrg,
+    filterFacility,
+    filterStatus,
+    filterCurrency,
+    filterPayerType,
+  ],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER (UPDATED)
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    patient_id: filterPatientHidden?.value || "",
-    currency: filterCurrency?.value || "",
-    status: filterStatus?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    organization_id: filterOrg?.value,
+    facility_id: filterFacility?.value,
+    status: filterStatus?.value,
+    patient_id: filterPatientHidden?.value,
+    dateRange: dateRange?.value,
+    currency: filterCurrency?.value,
+    payer_type: filterPayerType?.value, // ✅ ADD THIS
   };
 }
 
 /* ============================================================
-   📦 Load Invoices (with Summary)
+   📦 LOAD INVOICES (MASTER)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
-    const { page: safePage, limit: safeLimit } = getPagination(page);
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sort_by", sortBy);
+      q.set("sort_order", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || ["created_from", "created_to"].includes(k)) return;
-      q.append(k, v);
+    Object.entries(f).forEach(([k, v]) => {
+      if (v && String(v).trim() !== "" && v !== "null") {
+        q.set(k, v);
+      }
     });
 
     const safeFields = visibleFields.filter((f) =>
       FIELD_ORDER_INVOICE.includes(f)
     );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (safeFields.length) q.set("fields", safeFields.join(","));
 
     const res = await authFetch(`/api/invoices?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -239,6 +212,7 @@ async function loadEntries(page = 1) {
 
     const result = await res.json().catch(() => ({}));
     const payload = result?.data || {};
+
     const records = Array.isArray(payload.records) ? payload.records : [];
 
     const currency = records[0]?.currency || "USD";
@@ -247,12 +221,17 @@ async function loadEntries(page = 1) {
       ...(payload.summary || {}),
       currency,
     };
+
     window.entries = records;
     currentPage = Number(payload.pagination?.page) || safePage;
     totalPages = Number(payload.pagination?.pageCount) || 1;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
-    if (payload.summary) renderModuleSummary(payload.summary);
+
+    payload.summary &&
+      renderModuleSummary(payload.summary);
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({
       entries,
@@ -265,41 +244,41 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
       totalPages,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load invoices");
   } finally {
     hideLoading();
   }
 }
-
 /* ============================================================
-   🔘 Filter Buttons
+   🔄 RESET FILTERS (MASTER)
 ============================================================ */
-if (filterBtn) filterBtn.onclick = async () => await loadEntries(1);
 if (resetFilterBtn)
   resetFilterBtn.onclick = async () => {
     [
+      globalSearch,
       filterOrg,
       filterFacility,
       filterPatient,
       filterCurrency,
       filterPatientHidden,
       filterStatus,
-      filterCreatedFrom,
-      filterCreatedTo,
+      dateRange,
     ].forEach((el) => el && (el.value = ""));
+
     if (filterPatientSuggestions) filterPatientSuggestions.innerHTML = "";
+
     await loadEntries(1);
   };
 
 /* ============================================================
-   🪟 View Toggle
+   🪟 VIEW TOGGLE (MASTER SYNC)
 ============================================================ */
 const cardViewBtn = document.getElementById("cardViewBtn");
 const tableViewBtn = document.getElementById("tableViewBtn");
@@ -307,99 +286,43 @@ const tableViewBtn = document.getElementById("tableViewBtn");
 cardViewBtn?.addEventListener("click", () => {
   viewMode = "card";
   localStorage.setItem("invoiceView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 });
 
 tableViewBtn?.addEventListener("click", () => {
   viewMode = "table";
   localStorage.setItem("invoiceView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 });
 
 /* ============================================================
-   ⬇️ Export Tools (CURRENCY-SAFE — MASTER FIXED)
+   ⬇️ EXPORT (MASTER ALIGNED)
 ============================================================ */
 if (exportCSVBtn)
   exportCSVBtn.onclick = () => {
-    const currency = entries?.[0]?.currency || "USD";
+    if (!entries.length) return showToast("❌ No data");
 
     exportToExcel(
-      entries.map((e) => ({
-        ...e,
-        subtotal: e.subtotal != null ? `${currency} ${e.subtotal}` : "",
-        total: e.total != null ? `${currency} ${e.total}` : "",
-        total_paid: e.total_paid != null ? `${currency} ${e.total_paid}` : "",
-        refunded_amount: e.refunded_amount != null ? `${currency} ${e.refunded_amount}` : "",
-        balance: e.balance != null ? `${currency} ${e.balance}` : "",
-      })),
-      `invoices_${new Date().toISOString().slice(0, 10)}.xlsx`
+      entries,
+      `invoices_${new Date().toISOString().slice(0, 10)}.csv`
     );
   };
 
 if (exportPDFBtn)
   exportPDFBtn.onclick = () => {
-    try {
-      const targetSelector =
-        viewMode === "table" ? ".table-container" : "#invoiceList";
-      const target = document.querySelector(targetSelector);
-      if (!target) return showToast("⚠️ Nothing to export");
+    const targetSelector =
+      viewMode === "table" ? ".table-container" : "#invoiceList";
 
-      const currency = entries?.[0]?.currency || "USD";
-
-      const summaryEl = document.getElementById("moduleSummary");
-
-      // 🔧 Inject currency into summary display (safe replace)
-      let summaryHTML = "";
-      if (summaryEl) {
-        const raw = summaryEl.innerHTML || "";
-
-        const currencySafe = raw.replace(/(\d[\d,]*\.\d{2})/g, `${currency} $1`);
-
-        summaryHTML = `
-          <div class="export-summary mb-3 border rounded p-2 bg-light" style="font-size:11px; text-align:center;">
-            <h5 class="fw-bold mb-2">Invoice Summary</h5>
-            ${currencySafe}
-          </div>
-        `;
-      }
-
-      const combinedHTML = `<div id="exportWrapper">${summaryHTML}${target.outerHTML}</div>`;
-
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = combinedHTML;
-      document.body.appendChild(tempDiv);
-
-      exportToPDF("Invoices_Report", "#exportWrapper", "portrait", true);
-
-      setTimeout(() => tempDiv.remove(), 1000);
-    } catch (err) {
-      console.error("❌ exportPDF failed:", err);
-      showToast("❌ Failed to export PDF");
-    }
+    exportToPDF("Invoices List", targetSelector, "portrait");
   };
+
 /* ============================================================
-   🚀 Init Invoice Module (FULL – FIXED)
+   🚀 INIT (MASTER)
 ============================================================ */
 export async function initInvoiceModule() {
-  // ================================
-  // 🧱 Table Head
-  // ================================
   renderDynamicTableHead(visibleFields);
-
-  // ================================
-  // 🔽 Filter Toggle (Payments Pattern)
-  // ================================
-  const filterCollapse = document.getElementById("filterCollapse");
-  const filterChevron = document.getElementById("filterChevron");
-
-  const filterVisible = localStorage.getItem("invoiceFilterVisible") === "true";
-  if (filterVisible) {
-    filterCollapse?.classList.remove("hidden");
-    filterChevron?.classList.add("chevron-rotate");
-  } else {
-    filterCollapse?.classList.add("hidden");
-    filterChevron?.classList.remove("chevron-rotate");
-  }
 
   setupToggleSection(
     "toggleFilterBtn",
@@ -408,78 +331,52 @@ export async function initInvoiceModule() {
     "invoiceFilterVisible"
   );
 
-  // ================================
-  // 🔎 Patient Suggestion Search
-  // ================================
   setupSuggestionInputDynamic(
     filterPatient,
     filterPatientSuggestions,
     "/api/lite/patients",
     (selected) => {
       filterPatientHidden.value = selected?.id || "";
-      filterPatient.value =
-        selected?.label ||
-        (selected?.pat_no && selected?.full_name
-          ? `${selected.pat_no} - ${selected.full_name}`
-          : selected?.full_name || selected?.pat_no || "");
+      filterPatient.value = selected?.label || "";
+      loadEntries(1);
     },
     "label"
   );
 
-  // ================================
-  // 🏢 Organization / Facility (FIXED)
-  // ================================
   try {
-    if (userRole.includes("super")) {
-      // 🔹 Super Admin → Org + Facility
+    if (userRole.includes("super") || userRole.includes("admin")) {
       const orgs = await loadOrganizationsLite();
       orgs.unshift({ id: "", name: "-- All Organizations --" });
       setupSelectOptions(filterOrg, orgs, "id", "name");
 
-      async function reloadFacilities(orgId = null) {
+      const reloadFacilities = async (orgId = null) => {
         const facs = await loadFacilitiesLite(
           orgId ? { organization_id: orgId } : {},
           true
         );
         facs.unshift({ id: "", name: "-- All Facilities --" });
         setupSelectOptions(filterFacility, facs, "id", "name");
-      }
+      };
 
       await reloadFacilities();
 
-      filterOrg?.addEventListener("change", async () => {
-        await reloadFacilities(filterOrg.value || null);
-      });
-
-    } else if (userRole.includes("admin")) {
-      // 🔹 Admin → Facility only
-      filterOrg?.closest(".col-md-3")?.classList.add("hidden");
-
-      const facs = await loadFacilitiesLite({}, true);
-      facs.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facs, "id", "name");
-
+      filterOrg.onchange = () =>
+        reloadFacilities(filterOrg.value || null);
     } else {
-      // 🔹 Staff → Hide both
-      filterOrg?.closest(".col-md-3")?.classList.add("hidden");
-      filterFacility?.closest(".col-md-3")?.classList.add("hidden");
+      filterOrg?.closest(".form-group")?.classList.add("hidden");
+      filterFacility?.closest(".form-group")?.classList.add("hidden");
     }
   } catch (err) {
-    console.error("❌ preload org/fac failed:", err);
+    console.error(err);
     showToast("❌ Failed to load organization/facility filters");
   }
 
-  // ================================
-  // 📦 Initial Load
-  // ================================
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initInvoiceModule().catch((err) => console.error("initInvoiceModule failed:", err));
-}
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-else boot();
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initInvoiceModule)
+  : initInvoiceModule();

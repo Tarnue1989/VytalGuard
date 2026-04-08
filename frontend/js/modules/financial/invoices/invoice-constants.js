@@ -1,10 +1,10 @@
-// 📦 invoice-constants.js – Enterprise MASTER (FULL FIXED)
+// 📦 invoice-constants.js – Enterprise MASTER (FINAL FIXED)
 // ============================================================================
-// ✔ Currency fully supported
-// ✔ appliedDeposits aligned with backend
-// ✔ Role names synced (facility_head, org_owner, etc.)
-// ✔ Label + items + patient_label added
-// ✔ Safe for frontend rendering (table + cards + filters)
+// ✔ Fully aligned with Invoice model + backend GET
+// ✔ Includes invoice_date, due_date, payer_type, is_locked
+// ✔ Currency + appliedDeposits correct
+// ✔ Role-safe defaults
+// ✔ Ready for filters + table + cards + summary
 // ============================================================================
 
 /* ============================================================
@@ -23,10 +23,16 @@ export const FIELD_LABELS_INVOICE = {
   label: "Invoice",
   status: "Status",
 
+  // 📅 Billing Info (ADDED)
+  invoice_date: "Invoice Date",
+  due_date: "Due Date",
+  payer_type: "Payer Type",
+  is_locked: "Locked",
+
   // 📦 Items
   items: "Items",
 
-  // 💱 Currency (CRITICAL)
+  // 💱 Currency
   currency: "Currency",
 
   // 💰 Financials
@@ -37,7 +43,7 @@ export const FIELD_LABELS_INVOICE = {
   total_paid: "Amount Paid",
   refunded_amount: "Refunded",
 
-  // 💰 Deposits (aligned with backend relation)
+  // 💰 Deposits
   appliedDeposits: "Applied Deposits",
 
   balance: "Balance",
@@ -65,11 +71,16 @@ export const FIELD_ORDER_INVOICE = [
   "patient_label",
 
   "invoice_number",
+
+  // 🔥 CRITICAL BILLING INFO
+  "invoice_date",
+  "due_date",
+  "payer_type",
+  "is_locked",
+
   "items",
 
-  // 💱 MUST come early
   "currency",
-
   "status",
 
   "subtotal",
@@ -106,9 +117,15 @@ export const FIELD_DEFAULTS_INVOICE = {
     "facility",
     "patient_label",
     "invoice_number",
+
+    "invoice_date",
+    "due_date",
+    "payer_type",
+
     "items",
     "currency",
     "status",
+
     "subtotal",
     "total",
     "total_discount",
@@ -117,11 +134,14 @@ export const FIELD_DEFAULTS_INVOICE = {
     "refunded_amount",
     "appliedDeposits",
     "balance",
+
     "notes",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
@@ -130,9 +150,15 @@ export const FIELD_DEFAULTS_INVOICE = {
     "facility",
     "patient_label",
     "invoice_number",
+
+    "invoice_date",
+    "due_date",
+    "payer_type",
+
     "items",
     "currency",
     "status",
+
     "subtotal",
     "total",
     "total_discount",
@@ -141,11 +167,14 @@ export const FIELD_DEFAULTS_INVOICE = {
     "refunded_amount",
     "appliedDeposits",
     "balance",
+
     "notes",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
@@ -153,9 +182,15 @@ export const FIELD_DEFAULTS_INVOICE = {
     "facility",
     "patient_label",
     "invoice_number",
+
+    "invoice_date",
+    "due_date",
+    "payer_type",
+
     "items",
     "currency",
     "status",
+
     "subtotal",
     "total",
     "total_discount",
@@ -164,29 +199,35 @@ export const FIELD_DEFAULTS_INVOICE = {
     "refunded_amount",
     "appliedDeposits",
     "balance",
+
     "notes",
+
     "createdBy",
     "created_at",
     "updatedBy",
     "updated_at",
+
     "actions",
   ],
 
   staff: [
     "patient_label",
     "invoice_number",
+
+    "invoice_date",
+    "payer_type",
+
     "items",
     "currency",
     "status",
+
     "subtotal",
     "total",
     "total_tax",
     "total_paid",
 
-    // 🚫 optional (keep hidden if needed)
-    // "appliedDeposits",
-
     "balance",
+
     "created_at",
     "actions",
   ],
@@ -199,6 +240,12 @@ export const FIELD_GROUPS_INVOICE = {
   org_scope: ["organization", "facility"],
 
   patient_info: ["patient_label", "invoice_number"],
+
+  billing_info: [
+    "invoice_date",
+    "due_date",
+    "payer_type",
+  ],
 
   items: ["items"],
 
@@ -218,7 +265,7 @@ export const FIELD_GROUPS_INVOICE = {
 
   meta: ["createdBy", "created_at", "updatedBy", "updated_at"],
 
-  system: ["deletedBy", "deleted_at", "actions"],
+  system: ["is_locked", "deletedBy", "deleted_at", "actions"],
 };
 
 /* ============================================================

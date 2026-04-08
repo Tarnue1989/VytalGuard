@@ -25,6 +25,9 @@ import { auditService } from "../services/auditService.js";
 import { financialService } from "../services/financialService.js";
 import { FIELD_VISIBILITY_INVOICE } from "../constants/fieldVisibility.js";
 
+import { validatePaginationStrict } from "../utils/query-utils.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
+
 const MODULE_KEY = "invoices";
 
 // 🔖 Local enum map for readability
@@ -194,7 +197,7 @@ const waiverSchema = Joi.object({
 });
 
 /* ============================================================
-   📌 GET ALL INVOICES (with labels, optimized — FINAL PERFECT)
+   📌 GET ALL INVOICES (MASTER-ALIGNED — FINAL FIXED)
 ============================================================ */
 export const getAllInvoices = async (req, res) => {
   try {
@@ -206,73 +209,156 @@ export const getAllInvoices = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* ================= PAGINATION ================= */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_INVOICE[role] || FIELD_VISIBILITY_INVOICE.staff;
 
-    const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
-    options.where = options.where || {};
+    /* ================= SAFE QUERY (MASTER PARITY) ================= */
+    const { dateRange, ...safeQuery } = req.query;
+
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+
+    req.query = safeQuery;
+
+    const options = buildQueryOptions(
+      req,
+      "created_at",
+      "DESC",
+      visibleFields
+    );
+
+    options.where = { [Op.and]: [] };
     options.include = options.include || [];
 
-    /* ================= TENANT SCOPE ================= */
+    /* ================= DATE RANGE ================= */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
+      }
+    }
+
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
-      options.where.organization_id = req.user.organization_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
 
       if (role === "facility_head") {
-        options.where.facility_id = req.user.facility_id;
+        options.where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     } else {
       if (req.query.organization_id) {
-        options.where.organization_id = req.query.organization_id;
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
       }
+
       if (req.query.facility_id) {
-        options.where.facility_id = req.query.facility_id;
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     }
 
     /* ================= FILTERS ================= */
+
     if (req.query.patient_id) {
-      options.where.patient_id = req.query.patient_id;
+      options.where[Op.and].push({
+        patient_id: req.query.patient_id,
+      });
     }
 
     if (req.query.status) {
       const statuses = req.query.status
         .split(",")
-        .map(s => IS[s.trim().toUpperCase()] || s.trim())
+        .map((s) => IS[s.trim().toUpperCase()] || s.trim())
         .filter(Boolean);
 
-      options.where.status =
-        statuses.length > 1 ? { [Op.in]: statuses } : statuses[0];
+      options.where[Op.and].push({
+        status:
+          statuses.length > 1
+            ? { [Op.in]: statuses }
+            : statuses[0],
+      });
     }
 
-    /* ================= DATE ================= */
-    if (req.query["created_at[gte]"]) {
-      options.where.created_at = {
-        ...(options.where.created_at || {}),
-        [Op.gte]: req.query["created_at[gte]"],
-      };
+    if (req.query.currency) {
+      options.where[Op.and].push({
+        currency: req.query.currency,
+      });
     }
 
-    if (req.query["created_at[lte]"]) {
-      options.where.created_at = {
-        ...(options.where.created_at || {}),
-        [Op.lte]: req.query["created_at[lte]"],
-      };
+    if (req.query.payer_type) {
+      options.where[Op.and].push({
+        payer_type: req.query.payer_type,
+      });
+    }
+
+    if (req.query.invoice_number) {
+      options.where[Op.and].push({
+        invoice_number: req.query.invoice_number,
+      });
+    }
+
+    if (req.query.is_locked !== undefined) {
+      options.where[Op.and].push({
+        is_locked: req.query.is_locked === "true",
+      });
+    }
+
+    if (req.query.invoice_date) {
+      options.where[Op.and].push({
+        invoice_date: req.query.invoice_date,
+      });
+    }
+
+    if (req.query.due_date) {
+      options.where[Op.and].push({
+        due_date: req.query.due_date,
+      });
     }
 
     /* ================= SEARCH ================= */
     if (options.search) {
       const term = `%${options.search}%`;
 
-      options.where[Op.or] = [
-        { "$patient.first_name$": { [Op.iLike]: term } },
-        { "$patient.last_name$": { [Op.iLike]: term } },
-        { "$patient.pat_no$": { [Op.iLike]: term } },
-        { invoice_number: { [Op.iLike]: term } },
-        { status: { [Op.iLike]: term } },
+      options.where[Op.and].push({
+        [Op.or]: [
+          { "$patient.first_name$": { [Op.iLike]: term } },
+          { "$patient.last_name$": { [Op.iLike]: term } },
+          { "$patient.pat_no$": { [Op.iLike]: term } },
+          { invoice_number: { [Op.iLike]: term } },
+          { status: { [Op.iLike]: term } },
+          { payer_type: { [Op.iLike]: term } },
+        ],
+      });
+
+      const allIncludes = [
+        ...INVOICE_INCLUDES,
+        ...(options.include || []),
       ];
 
-      if (!options.include.find(i => i.as === "patient")) {
+      const hasPatient = allIncludes.some((i) => i.as === "patient");
+
+      if (!hasPatient) {
         options.include.push({
           model: Patient,
           as: "patient",
@@ -281,14 +367,44 @@ export const getAllInvoices = async (req, res) => {
       }
     }
 
+    /* ================= MAIN QUERY ================= */
     const { count, rows } = await Invoice.findAndCountAll({
       where: options.where,
       include: [...INVOICE_INCLUDES, ...options.include],
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
       distinct: true,
     });
+
+    /* ================= SUMMARY ================= */
+    const summary = { total: count };
+
+    const statusCounts = await Invoice.findAll({
+      where: options.where,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
+    });
+
+    Object.values(IS).forEach((status) => {
+      const found = statusCounts.find((s) => s.status === status);
+      summary[status] = found ? Number(found.get("count")) : 0;
+    });
+
+    const totals = await Invoice.findAll({
+      where: options.where,
+      attributes: [
+        [sequelize.fn("SUM", sequelize.col("total")), "total"],
+        [sequelize.fn("SUM", sequelize.col("balance")), "balance"],
+        [sequelize.fn("SUM", sequelize.col("total_paid")), "paid"],
+      ],
+      raw: true,
+    });
+
+    summary.financials = totals[0] || {};
 
     /* ================= FORCE RECALC ================= */
     if (req.query.forceRecalc === "true") {
@@ -299,46 +415,22 @@ export const getAllInvoices = async (req, res) => {
     }
 
     /* ================= FORMAT ================= */
-    const records = rows.map(r => {
+    const records = rows.map((r) => {
       const plain = r.get({ plain: true });
 
-      // 💱 SAFE currency fallback (uses enum default idea, no hardcode logic leak)
       const currency = plain.currency || CURRENCY.LRD;
 
-      /* ---------- NUMBERS ---------- */
-      const subtotal = plain.subtotal != null ? parseFloat(plain.subtotal).toFixed(2) : "0.00";
-      const total_tax = plain.total_tax != null ? parseFloat(plain.total_tax).toFixed(2) : "0.00";
-      const total = plain.total != null ? parseFloat(plain.total).toFixed(2) : "0.00";
-      const balance = plain.balance != null ? parseFloat(plain.balance).toFixed(2) : "0.00";
+      const subtotal = parseFloat(plain.subtotal || 0).toFixed(2);
+      const total_tax = parseFloat(plain.total_tax || 0).toFixed(2);
+      const total = parseFloat(plain.total || 0).toFixed(2);
+      const balance = parseFloat(plain.balance || 0).toFixed(2);
 
-      /* ---------- ITEMS ---------- */
-      let items = [];
-      if (Array.isArray(plain.items)) {
-        items = plain.items.map(it => ({
-          ...it,
-          subtotal: it.subtotal != null ? parseFloat(it.subtotal).toFixed(2) : "0.00",
-          unit_price: it.unit_price != null ? parseFloat(it.unit_price).toFixed(2) : "0.00",
-          discount_amount: it.discount_amount != null ? parseFloat(it.discount_amount).toFixed(2) : "0.00",
-          tax_amount: it.tax_amount != null ? parseFloat(it.tax_amount).toFixed(2) : "0.00",
-          total_price: it.total_price != null ? parseFloat(it.total_price).toFixed(2) : "0.00",
-          net_amount: it.net_amount != null ? parseFloat(it.net_amount).toFixed(2) : "0.00",
-        }));
-      }
-
-      /* ---------- LABELS ---------- */
       const patientLabel = plain.patient
         ? `${plain.patient.pat_no} - ${plain.patient.first_name} ${plain.patient.last_name}`
         : "Unknown Patient";
 
-      const orgLabel = plain.organization?.name || "Unknown Organization";
-      const facilityLabel = plain.facility?.name || "Unknown Facility";
-
       const dateLabel = plain.created_at
-        ? new Date(plain.created_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
+        ? new Date(plain.created_at).toLocaleDateString()
         : "Unknown Date";
 
       return {
@@ -348,34 +440,40 @@ export const getAllInvoices = async (req, res) => {
         total_tax,
         total,
         balance,
-        items,
         label: `${dateLabel} · ${patientLabel} · ${plain.invoice_number} · ${currency} · Bal: ${balance}`,
         patient_label: patientLabel,
-        organization_label: orgLabel,
-        facility_label: facilityLabel,
+        organization_label: plain.organization?.name || "",
+        facility_label: plain.facility?.name || "",
       };
     });
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        pagination: { page, limit },
+      },
     });
 
     return success(res, "✅ Invoices loaded", {
       records,
+      summary,
       pagination: {
         total: count,
-        page: options.pagination.page,
-        pageCount: Math.ceil(count / options.pagination.limit),
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
     });
   } catch (err) {
+    console.error("❌ getAllInvoices FAILED:", err);
     return error(res, "❌ Failed to load invoices", err);
   }
 };
-
 /* ============================================================
    📌 GET INVOICE BY ID (with recalc)
 ============================================================ */
