@@ -761,14 +761,21 @@ export const FIELD_VISIBILITY_SYSTEM_AUDIT_LOG = {
 
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_VISIBILITY_INSURANCE_CLAIM = {
-    superadmin: FIELD_ORDER_INSURANCE_CLAIM,
+  superadmin: FIELD_ORDER_INSURANCE_CLAIM,
   organization_admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
-    "id", "invoice_id", "patient_id", "provider_id", "claim_number",
-    "amount_claimed", "amount_approved", "claim_date", "response_date",
-    "rejection_reason", "status"
+    "id","invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","amount_approved","amount_paid",
+    "claim_date","response_date",
+    "reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","status"
   ],
-  staff: ["id", "invoice_id", "patient_id", "provider_id", "claim_number", "amount_claimed", "status"]
+  staff: [
+    "id","invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","status"
+  ]
 };
 
 /* -------------------- Newborn Record -------------------- */

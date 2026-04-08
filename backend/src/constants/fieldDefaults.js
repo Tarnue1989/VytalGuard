@@ -703,12 +703,20 @@ export const FIELD_DEFAULTS_SYSTEM_AUDIT_LOG = {
 export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
   admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
-    "organization_id", "facility_id",
-    "invoice_id", "patient_id", "provider_id",
-    "claim_number", "amount_claimed", "amount_approved",
-    "claim_date", "response_date", "rejection_reason", "status"
+    "organization_id","facility_id",
+    "invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","amount_approved","amount_paid",
+    "payment_reference",
+    "claim_date","response_date",
+    "reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","status"
   ],
-  staff: ["invoice_id", "patient_id", "provider_id", "claim_number", "amount_claimed", "status"]
+  staff: [
+    "invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","status"
+  ]
 };
 
 /* -------------------- Newborn Record -------------------- */
