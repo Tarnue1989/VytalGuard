@@ -1,4 +1,15 @@
-// 📁 invoice-receipt.js – FINAL (A4 + ORG-SAFE + CURRENCY-SAFE)
+// 📁 invoice-receipt.js – Enterprise MASTER (FINAL FIXED)
+// ============================================================================
+// ✔ Deposit parity structure
+// ✔ Safe user resolution (exact match)
+// ✔ Currency-safe formatting
+// ✔ Items + totals (invoice-specific)
+// ✔ Applied deposits aligned (appliedDeposits)
+// ✔ Multi-tenant safe
+// ✔ Clean enterprise output (NO internal IDs)
+// ============================================================================
+
+import { printDocument } from "../../../templates/printTemplate.js";
 
 /* ============================================================
    📅 Date Formatter
@@ -15,7 +26,7 @@ function formatDate(dateStr) {
 }
 
 /* ============================================================
-   👤 Resolve Current User
+   👤 Resolve Current User (EXACT DEPOSIT PARITY)
 ============================================================ */
 function getPrintedBy(invoice) {
   try {
@@ -35,19 +46,30 @@ function getPrintedBy(invoice) {
 }
 
 /* ============================================================
+   💱 MONEY FORMATTER (SAFE)
+============================================================ */
+function money(invoice, value) {
+  const currency = invoice?.currency || "USD";
+  return `${currency} ${Number(value || 0).toFixed(2)}`;
+}
+
+/* ============================================================
    🧾 BUILD RECEIPT HTML
 ============================================================ */
 export function buildInvoiceReceiptHTML(invoice) {
   const printedBy = getPrintedBy(invoice);
   const printedAt = new Date().toLocaleString();
 
-  const currency = invoice?.currency || "USD";
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const paidToDateValue = Number(invoice.total_paid ?? 0);
-  const paidToDateHTML =
-    paidToDateValue > 0
-      ? `<div><span>Paid:</span><span>${currency} ${paidToDateValue.toFixed(2)}</span></div>`
-      : "";
+  const patientName = invoice.patient
+    ? `${invoice.patient.first_name || ""} ${
+        invoice.patient.last_name || ""
+      }`
+    : "—";
+
+  const patientId = invoice.patient?.pat_no || "—";
 
   /* ================= ITEMS ================= */
   const itemsHTML =
@@ -55,51 +77,68 @@ export function buildInvoiceReceiptHTML(invoice) {
       .map(
         (i) => `
         <tr>
-          <td>${i.description || "—"}</td>
-          <td>${i.quantity ?? "—"}</td>
-          <td>${currency} ${Number(i.unit_price || 0).toFixed(2)}</td>
-          <td>${currency} ${Number(i.discount_amount || 0).toFixed(2)}</td>
-          <td>${currency} ${Number(i.tax_amount || 0).toFixed(2)}</td>
-          <td>${currency} ${Number(i.total_price || 0).toFixed(2)}</td>
+          <td>${safe(i.description)}</td>
+          <td>${safe(i.quantity)}</td>
+          <td>${money(invoice, i.unit_price)}</td>
+          <td>${money(invoice, i.discount_amount)}</td>
+          <td>${money(invoice, i.tax_amount)}</td>
+          <td>${money(invoice, i.total_price)}</td>
         </tr>`
       )
       .join("") || `<tr><td colspan="6">No items</td></tr>`;
 
+  /* ================= DEPOSITS ================= */
+  const appliedDepositsTotal = Array.isArray(invoice.appliedDeposits)
+    ? invoice.appliedDeposits.reduce(
+        (sum, d) => sum + Number(d.applied_amount || 0),
+        0
+      )
+    : Number(invoice.applied_deposits || 0);
+
+  /* ================= PAID ================= */
+  const paidToDateValue = Number(invoice.total_paid ?? 0);
+  const paidToDateHTML =
+    paidToDateValue > 0
+      ? `<div><span>Paid:</span><span>${money(
+          invoice,
+          paidToDateValue
+        )}</span></div>`
+      : "";
+
   return `
-    <!-- 🏢 Org -->
-    <div style="margin-bottom:10px; font-size:13px;">
-      <strong>Facility:</strong> ${invoice.facility?.name || "—"}
+    <!-- 🏢 Facility -->
+    <div style="margin-bottom:12px; font-size:13px;">
+      <strong>Facility:</strong> ${safe(invoice.facility?.name)}
     </div>
 
     <!-- 🔥 GRID HEADER -->
     <div class="grid-2">
 
       <div>
-        <div><strong>Patient:</strong> ${
-          invoice.patient?.first_name || ""
-        } ${invoice.patient?.last_name || ""}</div>
-
-        <div><strong>Patient ID:</strong> ${
-          invoice.patient?.pat_no || ""
-        }</div>
+        <div><strong>Patient:</strong> ${patientName}</div>
+        <div><strong>Patient ID:</strong> ${patientId}</div>
       </div>
 
       <div>
-        <div><strong>Invoice #:</strong> ${
-          invoice.invoice_number || ""
-        }</div>
+        <div><strong>Invoice #:</strong> ${safe(
+          invoice.invoice_number
+        )}</div>
 
         <div><strong>Date:</strong> ${formatDate(
           invoice.created_at
         )}</div>
 
-        <div><strong>Status:</strong> ${invoice.status || ""}</div>
+        <div><strong>Status:</strong> ${safe(invoice.status)}</div>
+
+        <div><strong>Currency:</strong> ${safe(
+          invoice.currency
+        )}</div>
       </div>
 
     </div>
 
     <!-- 📦 ITEMS -->
-    <h4 style="margin-top:15px;">Items</h4>
+    <h4 style="margin-top:18px;">Items</h4>
 
     <table>
       <thead>
@@ -118,31 +157,36 @@ export function buildInvoiceReceiptHTML(invoice) {
     <!-- 💵 TOTALS -->
     <div class="totals">
 
-      <div><span>Subtotal:</span><span>${currency} ${Number(
-        invoice.subtotal || 0
-      ).toFixed(2)}</span></div>
+      <div><span>Subtotal:</span><span>${money(
+        invoice,
+        invoice.subtotal
+      )}</span></div>
 
-      <div><span>Discount:</span><span>${currency} ${Number(
-        invoice.total_discount || 0
-      ).toFixed(2)}</span></div>
+      <div><span>Discount:</span><span>${money(
+        invoice,
+        invoice.total_discount
+      )}</span></div>
 
-      <div><span>Tax:</span><span>${currency} ${Number(
-        invoice.total_tax || 0
-      ).toFixed(2)}</span></div>
+      <div><span>Tax:</span><span>${money(
+        invoice,
+        invoice.total_tax
+      )}</span></div>
 
       ${paidToDateHTML}
 
-      <div><span>Deposits:</span><span>${currency} ${Number(
-        invoice.applied_deposits || 0
-      ).toFixed(2)}</span></div>
+      <div><span>Deposits:</span><span>${money(
+        invoice,
+        appliedDepositsTotal
+      )}</span></div>
 
-      <div><span>Refunded:</span><span>${currency} ${Number(
-        invoice.refunded_amount || 0
-      ).toFixed(2)}</span></div>
+      <div><span>Refunded:</span><span>${money(
+        invoice,
+        invoice.refunded_amount
+      )}</span></div>
 
       <div class="final">
         <span>Balance:</span>
-        <span>${currency} ${Number(invoice.balance || 0).toFixed(2)}</span>
+        <span>${money(invoice, invoice.balance)}</span>
       </div>
 
     </div>
@@ -158,4 +202,22 @@ export function buildInvoiceReceiptHTML(invoice) {
       Thank you for your business.
     </div>
   `;
+}
+
+/* ============================================================
+   🖨️ PRINT (MASTER)
+============================================================ */
+export function printInvoiceReceipt(invoice) {
+  const html = buildInvoiceReceiptHTML(invoice);
+
+  printDocument(html, {
+    title: "Invoice Receipt",
+
+    invoice: {
+      organization: invoice.organization,
+      status: invoice.status,
+    },
+
+    branding: JSON.parse(localStorage.getItem("branding") || "{}"),
+  });
 }
