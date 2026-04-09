@@ -203,7 +203,10 @@ export async function setupRegistrationLogFormSubmission({ form }) {
 
       setupSelectOptions(
         insuranceSelect,
-        [{ id: "", name: "-- Select Insurance --" }, ...list],
+        [
+          { id: "", label: "-- Select Insurance --" },
+          ...list
+        ],
         "id",
         "label"
       );

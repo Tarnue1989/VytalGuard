@@ -58,35 +58,24 @@ const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("registrationLogController", DEBUG_OVERRIDE);
 
 /* ============================================================
-   🔗 SHARED INCLUDES (MASTER PARITY)
+   🔗 SHARED INCLUDES (MASTER PARITY — FINAL CORRECT)
 ============================================================ */
 const REGISTRATION_LOG_INCLUDES = [
-  { model: Patient, as: "patient", attributes: ["id", "pat_no", "first_name", "last_name"] },
-  { model: Employee.unscoped(), as: "registrar", attributes: ["id", "first_name", "last_name"] },
-  { model: Invoice, as: "invoice", attributes: ["id", "invoice_number", "status", "total"] },
-  { model: BillableItem, as: "registrationType", attributes: ["id", "name", "price"] },
+  {model:Patient,as:"patient",attributes:["id","pat_no","first_name","last_name"]},
+  {model:Employee.unscoped(),as:"registrar",attributes:["id","first_name","last_name"]},
+  {model:Invoice,as:"invoice",attributes:["id","invoice_number","status","total","currency"]},
+  {model:BillableItem,as:"registrationType",attributes:["id","name","price"]},
 
-  // ✅ ADDED (insurance link)
-  {
-  model: PatientInsurance,
-    as: "patientInsurance",
-    attributes: ["id", "provider_id"],
-    include: [
-      {
-        model: InsuranceProvider,
-        as: "provider",
-        attributes: ["id", "name"]
-      }
-    ]
-  },
+  {model:PatientInsurance,as:"patientInsurance",attributes:["id","policy_number","plan_name","coverage_limit","currency","provider_id"],include:[
+    {model:InsuranceProvider,as:"provider",attributes:["id","name"]}
+  ]},
 
-  { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
-  { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
-  { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
-  { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  {model:Organization,as:"organization",attributes:["id","name","code"]},
+  {model:Facility,as:"facility",attributes:["id","name","code","organization_id"]},
+  {model:User,as:"createdBy",attributes:["id","first_name","last_name"]},
+  {model:User,as:"updatedBy",attributes:["id","first_name","last_name"]},
+  {model:User,as:"deletedBy",attributes:["id","first_name","last_name"]}
 ];
-
 /* ============================================================
    📋 JOI SCHEMA (MASTER – TENANT SAFE)
 ============================================================ */
@@ -372,7 +361,7 @@ export const getAllRegistrationLogs = async (req, res) => {
       FIELD_VISIBILITY_REGISTRATION_LOG[role] ||
       FIELD_VISIBILITY_REGISTRATION_LOG.staff;
 
-    /* ================= BASE QUERY OPTIONS (APPOINTMENT PARITY) ================= */
+    /* ================= BASE QUERY OPTIONS ================= */
     const options = buildQueryOptions(req, {
       defaultSort: ["registration_time", "DESC"],
       fields: visibleFields,
@@ -380,7 +369,7 @@ export const getAllRegistrationLogs = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
-    /* ================= DATE RANGE (UI-ONLY) ================= */
+    /* ================= DATE RANGE ================= */
     if (req.query.dateRange) {
       const { start, end } = normalizeDateRangeLocal(req.query.dateRange);
       if (start && end) {
@@ -392,7 +381,7 @@ export const getAllRegistrationLogs = async (req, res) => {
       }
     }
 
-    /* ================= TENANT SCOPE (MASTER-CORRECT) ================= */
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -420,7 +409,7 @@ export const getAllRegistrationLogs = async (req, res) => {
       }
     }
 
-    // ✅ ADDED (payer filter)
+    /* ================= PAYER FILTER ================= */
     if (req.query.payer_type) {
       options.where[Op.and].push({
         payer_type: req.query.payer_type,
@@ -430,14 +419,14 @@ export const getAllRegistrationLogs = async (req, res) => {
     /* ================= MAIN QUERY ================= */
     const { count, rows } = await RegistrationLog.findAndCountAll({
       where: options.where,
-      include: REGISTRATION_LOG_INCLUDES, // ✅ already includes patientInsurance
+      include: REGISTRATION_LOG_INCLUDES, // ✅ USE SHARED INCLUDE (FIXED)
       order: options.order,
       offset: options.offset,
       limit: options.limit,
       distinct: true,
     });
 
-    /* ================= SUMMARY (MASTER) ================= */
+    /* ================= SUMMARY ================= */
     const summary = { total: count };
 
     const statusCounts = await RegistrationLog.findAll({
@@ -482,7 +471,6 @@ export const getAllRegistrationLogs = async (req, res) => {
     return error(res, "❌ Failed to load registration logs", err);
   }
 };
-
 /* ============================================================
    📌 GET REGISTRATION LOG BY ID — MASTER PARITY
 ============================================================ */

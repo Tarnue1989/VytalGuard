@@ -21,7 +21,7 @@ import { resolveFeatureModuleId } from "../utils/resolveFeatureModule.js";
 import { getBillableItemPrice } from "../utils/getBillableItemPrice.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
 import { insuranceService } from "./insuranceService.js";
-
+import { fxService } from "./fxService.js";
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
@@ -68,6 +68,9 @@ async function resolveInsuranceFromEntity(entity, transaction) {
     payer_type: "insurance",
     insurance_provider_id: patientInsurance.provider_id,
     coverage_amount: parseFloat(patientInsurance.coverage_limit || 0),
+
+    // 🔥 ADD THIS (CRITICAL)
+    coverage_currency: patientInsurance.currency || "LRD",
   };
 }
 /**
@@ -207,6 +210,21 @@ export const billingService = {
 
     const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
     const taxAmount = price * (taxRate / 100);
+    /* ================= 🔥 FX CONVERSION ================= */
+    if (invoice.insurance_provider_id) {
+      // reuse existing insuranceData (already defined above)
+    if (insuranceData.coverage_currency !== invoice.currency) {
+      invoice.coverage_amount = await fxService.convert({
+        amount: invoice.coverage_amount,
+        from_currency: insuranceData.coverage_currency,
+        to_currency: invoice.currency,
+        orgId,
+        facilityId,
+        transaction,
+      });
+      await invoice.save({ transaction }); 
+    }
+}   
     const net = price + taxAmount;
 
     let insuranceAmount = 0;
@@ -359,7 +377,22 @@ export const billingService = {
       }
     }
     /* ================= 🔥 CLEAN FIX END ================= */
+    /* ================= 🔥 FX CONVERSION ================= */
+    if (invoice.insurance_provider_id) {
+      const insuranceData = await resolveInsuranceFromEntity(labRequest, transaction);
 
+      if (insuranceData.coverage_currency !== invoice.currency) {
+        invoice.coverage_amount = await fxService.convert({
+          amount: invoice.coverage_amount,
+          from_currency: insuranceData.coverage_currency,
+          to_currency: invoice.currency,
+          orgId,
+          facilityId,
+          transaction,
+        });
+        await invoice.save({ transaction });
+      }
+    }
     let billedCount = 0;
 
     for (const li of items) {
@@ -692,7 +725,22 @@ export const billingService = {
       }
     }
     /* ================= 🔥 CLEAN FIX END ================= */
+    /* ================= 🔥 FX CONVERSION ================= */
+    if (invoice.insurance_provider_id) {
+      const insuranceData = await resolveInsuranceFromEntity(prescription, transaction);
 
+      if (insuranceData.coverage_currency !== invoice.currency) {
+        invoice.coverage_amount = await fxService.convert({
+          amount: invoice.coverage_amount,
+          from_currency: insuranceData.coverage_currency,
+          to_currency: invoice.currency,
+          orgId,
+          facilityId,
+          transaction,
+        });
+        await invoice.save({ transaction }); 
+      }
+    }
     let billedCount = 0;
 
     for (const item of items) {
@@ -892,7 +940,22 @@ export const billingService = {
       }
     }
     /* ================= 🔥 CLEAN FIX END ================= */
+    /* ================= 🔥 FX CONVERSION ================= */
+    if (invoice.insurance_provider_id) {
+      const insuranceData = await resolveInsuranceFromEntity(order, transaction);
 
+      if (insuranceData.coverage_currency !== invoice.currency) {
+        invoice.coverage_amount = await fxService.convert({
+          amount: invoice.coverage_amount,
+          from_currency: insuranceData.coverage_currency,
+          to_currency: invoice.currency,
+          orgId,
+          facilityId,
+          transaction,
+        });
+        await invoice.save({ transaction }); 
+      }
+    }
     let billedCount = 0;
 
     for (const item of items) {

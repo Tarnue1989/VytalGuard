@@ -548,7 +548,7 @@ export const getPatientInsuranceById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET LITE (AUTOCOMPLETE)
+   📌 GET LITE (AUTOCOMPLETE) — ENTERPRISE MASTER FINAL
 ============================================================ */
 export const getAllPatientInsurancesLite = async (req, res) => {
   try {
@@ -567,10 +567,12 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       [Op.and]: [],
     };
 
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
     }
 
+    /* ================= FILTERS ================= */
     if (patient_id) {
       where.patient_id = patient_id;
     }
@@ -579,6 +581,7 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       where.provider_id = provider_id;
     }
 
+    /* ================= SEARCH ================= */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -588,19 +591,39 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       });
     }
 
+    /* ================= QUERY ================= */
     const records = await PatientInsurance.findAll({
       where,
       attributes: ["id", "policy_number", "plan_name"],
+      include: [
+        {
+          model: InsuranceProvider,
+          as: "provider",
+          attributes: ["name"],
+        },
+      ],
       order: [["created_at", "DESC"]],
       limit: 50,
     });
 
+    /* ================= TRANSFORM (MASTER KEY) ================= */
     const result = records.map(r => ({
       id: r.id,
+
+      // ⭐ ENTERPRISE LABEL (USED BY ALL DROPDOWNS)
+      label: `${r.policy_number}${
+        r.plan_name ? " - " + r.plan_name : ""
+      }${
+        r.provider?.name ? " (" + r.provider.name + ")" : ""
+      }`,
+
+      // 🔹 RAW DATA (optional but useful)
       policy_number: r.policy_number,
       plan_name: r.plan_name || "",
+      provider_name: r.provider?.name || "",
     }));
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -608,18 +631,21 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       details: {
         count: result.length,
         q: q || null,
+        patient_id: patient_id || null,
+        provider_id: provider_id || null,
       },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Patient insurances loaded (lite)", {
       records: result,
     });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load patient insurances (lite)", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE STATUS
 ============================================================ */
