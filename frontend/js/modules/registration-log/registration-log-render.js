@@ -184,7 +184,7 @@ function renderValue(entry, field) {
     /* ✅ INVOICE FIX */
     case "invoice":
       return entry.invoice
-        ? `${entry.invoice.invoice_number} - ${entry.invoice.total_amount || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
+        ? `${entry.invoice.invoice_number} - ${entry.invoice.total || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
         : "—";
 
     /* ✅ PAYER TYPE FIX */
