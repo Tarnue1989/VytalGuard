@@ -329,6 +329,17 @@ export const INSURANCE_CLAIM_TRANSITIONS = {
   [INSURANCE_CLAIM_STATUS.VOIDED]: {},
   [INSURANCE_CLAIM_STATUS.REVERSED]: {},
 };
+
+// ============================================================
+// 🔹 Patient Insurance (MISSING → CAUSING CRASH)
+// ============================================================
+export const PATIENT_INSURANCE_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  EXPIRED: "expired",
+  CANCELLED: "cancelled",
+};
+
 export const CLAIM_ACTIONS = {
   SUBMITTED: 'submitted',
   REVIEWED: 'reviewed',

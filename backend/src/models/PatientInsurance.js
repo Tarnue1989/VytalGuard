@@ -1,5 +1,5 @@
 import { DataTypes, Model } from "sequelize";
-import { INSURANCE_PROVIDER_STATUS } from "../constants/enums.js";
+import { PATIENT_INSURANCE_STATUS, CURRENCY  } from "../constants/enums.js";
 
 export default (sequelize) => {
   class PatientInsurance extends Model {
@@ -31,10 +31,12 @@ export default (sequelize) => {
         as: "createdBy",
         foreignKey: "created_by_id",
       });
+
       PatientInsurance.belongsTo(models.User, {
         as: "updatedBy",
         foreignKey: "updated_by_id",
       });
+
       PatientInsurance.belongsTo(models.User, {
         as: "deletedBy",
         foreignKey: "deleted_by_id",
@@ -80,7 +82,14 @@ export default (sequelize) => {
         allowNull: true,
         validate: { min: 0 },
       },
-
+      /* ============================================================
+        💰 Currency (ENUM - ENTERPRISE)
+      ============================================================ */
+      currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: false,
+        defaultValue: "USD",
+      },
       valid_from: {
         type: DataTypes.DATEONLY,
         allowNull: true,
@@ -103,9 +112,9 @@ export default (sequelize) => {
 
       // 📌 Status
       status: {
-        type: DataTypes.ENUM(...Object.values(INSURANCE_PROVIDER_STATUS)),
+        type: DataTypes.ENUM(...Object.values(PATIENT_INSURANCE_STATUS)),
         allowNull: false,
-        defaultValue: INSURANCE_PROVIDER_STATUS.ACTIVE,
+        defaultValue: PATIENT_INSURANCE_STATUS.ACTIVE,
       },
 
       // 🔹 Audit
@@ -130,7 +139,10 @@ export default (sequelize) => {
 
       scopes: {
         withDeleted: { paranoid: false },
-        active: { where: { status: INSURANCE_PROVIDER_STATUS.ACTIVE } },
+
+        active: {
+          where: { status: PATIENT_INSURANCE_STATUS.ACTIVE },
+        },
 
         tenant(facilityId) {
           if (!facilityId) return {};

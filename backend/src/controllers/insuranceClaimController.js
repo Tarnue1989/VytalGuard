@@ -474,6 +474,13 @@ export const getAllInsuranceClaims = async (req, res) => {
       });
     }
 
+    /* ================= CURRENCY (FIX ADDED) ================= */
+    if (req.query.currency) {
+      options.where[Op.and].push({
+        currency: req.query.currency,
+      });
+    }
+
     const { count, rows } = await InsuranceClaim.findAndCountAll({
       where: options.where,
       include: INSURANCE_CLAIM_INCLUDES,
@@ -518,7 +525,6 @@ export const getAllInsuranceClaims = async (req, res) => {
     return error(res, "❌ Failed to load insurance claims", err);
   }
 };
-
 
 /* ============================================================
    📌 GET BY ID (UNCHANGED — ALREADY PERFECT)
@@ -589,31 +595,38 @@ export const getAllInsuranceClaimsLite = async (req, res) => {
 
     const where = { [Op.and]: [] };
 
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
     }
 
+    /* ================= FILTERS ================= */
     if (patient_id) where.patient_id = patient_id;
     if (provider_id) where.provider_id = provider_id;
 
+    /* ================= SEARCH ================= */
     if (q) {
       where[Op.and].push({
         claim_number: { [Op.iLike]: `%${q}%` },
       });
     }
 
+    /* ================= QUERY ================= */
     const records = await InsuranceClaim.findAll({
       where,
-      attributes: ["id","claim_number"],
-      order: [["created_at","DESC"]],
+      attributes: ["id", "claim_number"],
+      order: [["created_at", "DESC"]],
       limit: 50,
     });
 
-    const result = records.map(r => ({
+    /* ================= FORMAT (FIXED) ================= */
+    const result = records.map((r) => ({
       id: r.id,
+      label: r.claim_number, // ✅ CRITICAL FIX (for suggestion input)
       claim_number: r.claim_number,
     }));
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -621,6 +634,8 @@ export const getAllInsuranceClaimsLite = async (req, res) => {
       details: {
         count: result.length,
         q: q || null,
+        patient_id: patient_id || null,
+        provider_id: provider_id || null,
       },
     });
 
@@ -632,7 +647,6 @@ export const getAllInsuranceClaimsLite = async (req, res) => {
     return error(res, "❌ Failed to load insurance claims (lite)", err);
   }
 };
-
 /* ============================================================
    📌 DELETE INSURANCE CLAIM
    (MASTER-PARITY, SAFE SOFT DELETE + AUDIT + STATUS PROTECTION)

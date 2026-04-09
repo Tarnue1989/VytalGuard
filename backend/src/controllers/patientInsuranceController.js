@@ -12,7 +12,7 @@ import {
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
-import { PATIENT_INSURANCE_STATUS } from "../constants/enums.js";
+import { PATIENT_INSURANCE_STATUS, CURRENCY  } from "../constants/enums.js";
 
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
@@ -41,7 +41,7 @@ const PATIENT_INSURANCE_INCLUDES = [
   {
     model: Patient,
     as: "patient",
-    attributes: ["id", "first_name", "last_name"],
+    attributes: ["id", "pat_no","first_name", "last_name"],
     required: false,
   },
   {
@@ -86,17 +86,18 @@ const PATIENT_INSURANCE_INCLUDES = [
    📋 JOI SCHEMA
 ============================================================ */
 function buildSchema(isSuper, mode = "create") {
-  const base = {
-    patient_id: Joi.string().uuid(),
-    provider_id: Joi.string().uuid(),
-    policy_number: Joi.string().max(120),
-    plan_name: Joi.string().allow("", null),
-    coverage_limit: Joi.number().min(0).allow(null),
-    valid_from: Joi.date().allow(null),
-    valid_to: Joi.date().allow(null),
-    is_primary: Joi.boolean(),
-    notes: Joi.string().allow("", null),
-  };
+    const base = {
+      patient_id: Joi.string().uuid(),
+      provider_id: Joi.string().uuid(),
+      policy_number: Joi.string().max(120),
+      plan_name: Joi.string().allow("", null),
+      coverage_limit: Joi.number().min(0).allow(null),
+      currency: Joi.string().valid(...Object.values(CURRENCY)).optional(), // ✅ ADD
+      valid_from: Joi.date().allow(null),
+      valid_to: Joi.date().min(Joi.ref("valid_from")).allow(null),
+      is_primary: Joi.boolean(),
+      notes: Joi.string().allow("", null),
+    };
 
   if (mode === "create") {
     base.patient_id = base.patient_id.required();
@@ -175,6 +176,7 @@ export const createPatientInsurance = async (req, res) => {
         organization_id: orgId,
         facility_id: facilityId ?? null,
         policy_number: value.policy_number,
+        provider_id: value.provider_id,
       },
       paranoid: false,
       transaction: t,
@@ -416,6 +418,13 @@ export const getAllPatientInsurances = async (req, res) => {
       });
     }
 
+    /* 🔥 ADD THIS (CURRENCY FILTER) */
+    if (req.query.currency) {
+      options.where[Op.and].push({
+        currency: req.query.currency,
+      });
+    }
+
     if (
       req.query.status &&
       Object.values(PATIENT_INSURANCE_STATUS).includes(req.query.status)
@@ -434,12 +443,31 @@ export const getAllPatientInsurances = async (req, res) => {
       limit: options.limit,
     });
 
-    const { ACTIVE, INACTIVE } = PATIENT_INSURANCE_STATUS;
+    /* ================= AUTO-EXPIRE ================= */
+    await PatientInsurance.update(
+      { status: PATIENT_INSURANCE_STATUS.EXPIRED },
+      {
+        where: {
+          valid_to: { [Op.lt]: new Date() },
+          status: PATIENT_INSURANCE_STATUS.ACTIVE,
+        },
+      }
+    );
+
+    /* ================= SUMMARY ================= */
+    const {
+      ACTIVE,
+      INACTIVE,
+      EXPIRED,
+      CANCELLED,
+    } = PATIENT_INSURANCE_STATUS;
 
     const summary = {
       total: count,
       active: rows.filter(r => r.status === ACTIVE).length,
       inactive: rows.filter(r => r.status === INACTIVE).length,
+      expired: rows.filter(r => r.status === EXPIRED).length,
+      cancelled: rows.filter(r => r.status === CANCELLED).length,
     };
 
     await auditService.logAction({

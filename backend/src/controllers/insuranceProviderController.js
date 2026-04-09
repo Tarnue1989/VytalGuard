@@ -486,6 +486,7 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       [Op.and]: [],
     };
 
+    /* ================= TENANT ================= */
     if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
       where.organization_id = organization_id;
     } else if (!isSuperAdmin(req.user)) {
@@ -503,6 +504,7 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       });
     }
 
+    /* ================= SEARCH ================= */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -513,20 +515,21 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       });
     }
 
+    /* ================= QUERY ================= */
     const providers = await InsuranceProvider.findAll({
       where,
-      attributes: ["id", "name", "email", "phone"],
+      attributes: ["id", "name"],
       order: [["name", "ASC"]],
       limit: 50,
     });
 
-    const result = providers.map(p => ({
+    /* ================= FIXED SHAPE ================= */
+    const result = providers.map((p) => ({
       id: p.id,
-      name: p.name,
-      email: p.email || "",
-      phone: p.phone || "",
+      label: p.name, // ⭐ REQUIRED FOR FRONTEND
     }));
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -539,13 +542,13 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Providers loaded (lite)", { records: result });
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load providers (lite)", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE INSURANCE PROVIDER STATUS
 ============================================================ */
