@@ -102,7 +102,7 @@ const OS = {
 };
 
 /* ============================================================
-   🔗 SHARED INCLUDES (MASTER PARITY — FIXED + COMPACT)
+   🔗 SHARED INCLUDES (MASTER PARITY — FIXED + ORDER_TYPE)
 ============================================================ */
 const ORDER_INCLUDES = [
   { model: Patient, as: "patient", attributes: ["id","pat_no","first_name","last_name"] },
@@ -114,14 +114,23 @@ const ORDER_INCLUDES = [
     model: OrderItem,
     as: "items",
     required: false,
-    where: { [Op.and]: [{ status: { [Op.ne]: OS.CANCELLED } }, { status: { [Op.ne]: OS.VOIDED } }] },
+    where: {
+      [Op.and]: [
+        { status: { [Op.ne]: OS.CANCELLED } },
+        { status: { [Op.ne]: OS.VOIDED } }
+      ]
+    },
     include: [
       {
         model: BillableItem,
         as: "billableItem",
         attributes: ["id","name","price"],
         include: [
-          { model: MasterItemCategory, as: "category", attributes: ["id","name"] }
+          {
+            model: MasterItemCategory,
+            as: "category",
+            attributes: ["id","name","order_type"] // ✅ ADDED
+          }
         ]
       }
     ]
@@ -133,19 +142,21 @@ const ORDER_INCLUDES = [
   { model: User, as: "deletedBy", attributes: ["id","first_name","last_name"] },
 ];
 
+/* ============================================================
+   🔧 RESOLVE ORDER TYPE (ENTERPRISE FIX)
+============================================================ */
 function resolveOrderTypeFromCategory(items = []) {
-  if (!items.length) return "general";
+  if (!items.length) return ORDER_TYPE.SERVICE;
 
-  const categories = items
-    .map(i => i.billableItem?.category?.name)
-    .filter(Boolean)
-    .map(c => c.toLowerCase());
+  const types = items
+    .map(i => i.billableItem?.category?.order_type)
+    .filter(Boolean);
 
-  const unique = [...new Set(categories)];
+  const unique = [...new Set(types)];
 
   if (unique.length === 1) return unique[0];
 
-  return "mixed";
+  return ORDER_TYPE.MIXED;
 }
 
 /* ============================================================
@@ -1327,8 +1338,8 @@ export const voidOrders = async (req, res) => {
 
 /* ============================================================
    📌 SUBMIT ORDER(S) (draft → pending)
-   🔥 BILLING AT PENDING (ITEM-LEVEL — PRESCRIPTION PATTERN)
-   ✅ FINAL FIX: VALIDATION SAFE + NO BLOCKING + DEBUG ENABLED
+   🔥 BILLING AT PENDING (ITEM-LEVEL — ATOMIC, NO SILENT FAIL)
+   ✅ FINAL: ALL-OR-NOTHING (ROLLBACK ON ANY FAILURE)
 ============================================================ */
 export const submitOrders = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1398,73 +1409,61 @@ export const submitOrders = async (req, res) => {
     }
 
     const updated = [];
-    const skipped = [];
 
+    /* ================= ATOMIC LOOP ================= */
     for (const o of orders) {
-      try {
-        const orderItems = itemsByOrder[o.id] || [];
+      const orderItems = itemsByOrder[o.id] || [];
 
-        /* ================= STATUS UPDATE (SAFE) ================= */
-        await o.update(
-          {
-            status: OS.PENDING,
-            billing_status: ORDER_BILLING_STATUS.PENDING,
-            updated_by_id: req.user?.id || null,
-          },
-          {
-            transaction: t,
-            validate: false, // ✅ FIX
-          }
-        );
-
-        await OrderItem.update(
-          {
-            status: OS.PENDING,
-            updated_by_id: req.user?.id || null,
-          },
-          {
-            where: { order_id: o.id },
-            transaction: t,
-            validate: false, // ✅ 🔥 CRITICAL FIX
-          }
-        );
-
-        /* ================= BILL ONLY IF ITEMS EXIST ================= */
-        if (orderItems.length) {
-          await billingService.billOrderItems({
-            order: o,
-            user: {
-              ...req.user,
-              organization_id: orgId,
-              facility_id: facilityId,
-            },
-            transaction: t,
-          });
-        } else {
-          console.warn("⚠️ No items found for billing:", o.id);
-        }
-
-        updated.push(o.id);
-
-      } catch (innerErr) {
-        console.error("❌ SUBMIT ERROR FULL:", {
-          id: o.id,
-          message: innerErr.message,
-          errors: innerErr.errors,
-          fields: innerErr?.errors?.map(e => ({
-            field: e.path,
-            message: e.message,
-            value: e.value,
-          })),
-        });
-
-        skipped.push({
-          id: o.id,
-          reason: innerErr.message || "Submit/Billing failed",
-        });
+      /* ================= VALIDATE ITEMS ================= */
+      if (!orderItems.length) {
+        throw new Error(`Order ${o.id}: No items for billing`);
       }
+
+      /* ================= STATUS UPDATE ================= */
+      await o.update(
+        {
+          status: OS.PENDING,
+          billing_status: ORDER_BILLING_STATUS.PENDING,
+          updated_by_id: req.user?.id || null,
+        },
+        {
+          transaction: t,
+          validate: false,
+        }
+      );
+
+      await OrderItem.update(
+        {
+          status: OS.PENDING,
+          updated_by_id: req.user?.id || null,
+        },
+        {
+          where: { order_id: o.id },
+          transaction: t,
+          validate: false,
+        }
+      );
+
+      /* ================= BILLING (HARD REQUIRED) ================= */
+      const result = await billingService.billOrderItems({
+        order: o,
+        user: {
+          ...req.user,
+          organization_id: orgId,
+          facility_id: facilityId,
+        },
+        transaction: t,
+      });
+
+      /* ================= HARD FAIL IF BILLING FAILS ================= */
+      if (!result || !result.billedCount) {
+        throw new Error(`Order ${o.id}: Billing failed`);
+      }
+
+      updated.push(o.id);
     }
 
+    /* ================= COMMIT ================= */
     await t.commit();
 
     const records = await Order.findAll({
@@ -1476,17 +1475,26 @@ export const submitOrders = async (req, res) => {
       user: req.user,
       module_key: MODULE_KEY,
       action: ids.length > 1 ? "bulk_submit" : "submit",
-      details: { updated, skipped },
+      details: { updated },
     });
 
-    return success(res, "Orders submitted (item-level billing)", {
+    return success(res, "Orders submitted successfully", {
       records,
       updated,
-      skipped,
     });
+
   } catch (err) {
     await t.rollback();
+
     debug.error("submitOrders → FAILED", err);
-    return error(res, "Failed to submit orders", err);
+
+    return error(
+      res,
+      "❌ Billing failed. No orders were submitted.",
+      {
+        message: err.message,
+      },
+      400
+    );
   }
 };

@@ -153,7 +153,7 @@ function renderUserName(user) {
 }
 
 /* ============================================================
-   🧩 VALUE RENDER (UPDATED)
+ 🧩 VALUE RENDER (UPDATED)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
@@ -188,6 +188,15 @@ function renderValue(entry, field) {
     case "category":
     case "category_id":
       return entry.category?.name || "—";
+
+    /* 🔥 BOOLEAN → HUMAN READABLE */
+    case "taxable":
+    case "discountable":
+    case "override_allowed":
+    case "is_active":
+      return entry[field] === true
+        ? '<span class="badge bg-success">Yes</span>'
+        : '<span class="badge bg-danger">No</span>';
 
     /* 🔥 FIXED (controller-aligned) */
     case "price":
@@ -268,6 +277,11 @@ export function renderCard(entry, visibleFields, user) {
       ${has("price") ? fieldRow("Price", renderValue(entry, "price")) : ""}
       ${has("category") ? fieldRow("Category", entry.category?.name) : ""}
       ${has("masterItem") ? fieldRow("Master Item", entry.masterItem?.name) : ""}
+
+      ${has("taxable") ? fieldRow("Taxable", renderValue(entry, "taxable")) : ""}
+      ${has("discountable") ? fieldRow("Discountable", renderValue(entry, "discountable")) : ""}
+      ${has("override_allowed") ? fieldRow("Override Allowed", renderValue(entry, "override_allowed")) : ""}
+      ${has("is_active") ? fieldRow("Active", renderValue(entry, "is_active")) : ""}
     </div>
   `;
 

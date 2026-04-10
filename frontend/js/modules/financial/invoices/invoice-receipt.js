@@ -1,9 +1,10 @@
-// 📁 invoice-receipt.js – Enterprise MASTER (FINAL FIXED)
+// 📁 invoice-receipt.js – Enterprise MASTER (FINAL FIXED + INSURANCE SPLIT)
 // ============================================================================
 // ✔ Deposit parity structure
 // ✔ Safe user resolution (exact match)
 // ✔ Currency-safe formatting
 // ✔ Items + totals (invoice-specific)
+// ✔ Insurance split (NEW)
 // ✔ Applied deposits aligned (appliedDeposits)
 // ✔ Multi-tenant safe
 // ✔ Clean enterprise output (NO internal IDs)
@@ -26,7 +27,7 @@ function formatDate(dateStr) {
 }
 
 /* ============================================================
-   👤 Resolve Current User (EXACT DEPOSIT PARITY)
+   👤 Resolve Current User
 ============================================================ */
 function getPrintedBy(invoice) {
   try {
@@ -46,7 +47,7 @@ function getPrintedBy(invoice) {
 }
 
 /* ============================================================
-   💱 MONEY FORMATTER (SAFE)
+   💱 MONEY FORMATTER
 ============================================================ */
 function money(invoice, value) {
   const currency = invoice?.currency || "USD";
@@ -83,9 +84,11 @@ export function buildInvoiceReceiptHTML(invoice) {
           <td>${money(invoice, i.discount_amount)}</td>
           <td>${money(invoice, i.tax_amount)}</td>
           <td>${money(invoice, i.total_price)}</td>
+          <td>${money(invoice, i.insurance_amount)}</td>
+          <td>${money(invoice, i.patient_amount)}</td>
         </tr>`
       )
-      .join("") || `<tr><td colspan="6">No items</td></tr>`;
+      .join("") || `<tr><td colspan="8">No items</td></tr>`;
 
   /* ================= DEPOSITS ================= */
   const appliedDepositsTotal = Array.isArray(invoice.appliedDeposits)
@@ -133,6 +136,10 @@ export function buildInvoiceReceiptHTML(invoice) {
         <div><strong>Currency:</strong> ${safe(
           invoice.currency
         )}</div>
+
+        <div><strong>Claim ID:</strong> ${safe(
+          invoice.insurance_claim_id
+        )}</div>
       </div>
 
     </div>
@@ -149,6 +156,8 @@ export function buildInvoiceReceiptHTML(invoice) {
           <th>Discount</th>
           <th>Tax</th>
           <th>Total</th>
+          <th>Insurance</th>
+          <th>Patient</th>
         </tr>
       </thead>
       <tbody>${itemsHTML}</tbody>
@@ -179,6 +188,11 @@ export function buildInvoiceReceiptHTML(invoice) {
         appliedDepositsTotal
       )}</span></div>
 
+      <div><span>Insurance Coverage:</span><span>${money(
+        invoice,
+        invoice.coverage_amount
+      )}</span></div>
+
       <div><span>Refunded:</span><span>${money(
         invoice,
         invoice.refunded_amount
@@ -205,7 +219,7 @@ export function buildInvoiceReceiptHTML(invoice) {
 }
 
 /* ============================================================
-   🖨️ PRINT (MASTER)
+   🖨️ PRINT
 ============================================================ */
 export function printInvoiceReceipt(invoice) {
   const html = buildInvoiceReceiptHTML(invoice);

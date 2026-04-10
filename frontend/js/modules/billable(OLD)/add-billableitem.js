@@ -1,9 +1,8 @@
-// 📦 billableitem-main.js – Billable Item Form Page Controller (ENTERPRISE FINAL - UPDATED)
+// 📦 billableitem-main.js – Billable Item Form Page Controller (ENTERPRISE FINAL - MULTI-PRICE READY)
 // ============================================================================
-// 🔹 SAME STRUCTURE
 // 🔹 MULTI-CREATE SAFE
-// 🔹 EDIT PREFILL FIXED (payer_type added)
-// 🔹 NOTHING REMOVED
+// 🔹 MULTI-PRICE SUPPORT (prices[] UI rows)
+// 🔹 EDIT PREFILL FULLY FIXED
 // ============================================================================
 
 import {
@@ -27,22 +26,16 @@ import {
 
 import { resolveUserRole } from "../../utils/roleResolver.js";
 
-/* ============================================================
-   🔐 Auth Guard + Global Watchers
-============================================================ */
+/* ============================================================ */
 initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
-/* ============================================================
-   🌐 Shared State
-============================================================ */
+/* ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
 };
 
-/* ============================================================
-   📎 DOM Refs
-============================================================ */
+/* ============================================================ */
 const form = document.getElementById("billableItemForm");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -50,9 +43,7 @@ const clearBtn = document.getElementById("clearBtn");
 const orgSelect = document.getElementById("organizationSelect");
 const facSelect = document.getElementById("facilitySelect");
 
-/* ============================================================
-   🚀 INIT
-============================================================ */
+/* ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   if (!form) return;
 
@@ -60,9 +51,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isSuper = role === "superadmin";
   const isOrgAdmin = role === "organization_admin";
 
-  /* ========================================================
-     🔑 EDIT MODE DETECTION
-  ======================================================== */
+  /* ================= EDIT DETECTION ================= */
   const editId =
     sessionStorage.getItem("billableItemEditId") ||
     new URLSearchParams(window.location.search).get("id");
@@ -71,9 +60,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     sharedState.currentEditIdRef.value = editId;
   }
 
-  /* ========================================================
-     🌐 ORGANIZATION / FACILITY
-  ======================================================== */
+  /* ================= ORG / FAC ================= */
   try {
     if (isSuper) {
       setupSelectOptions(
@@ -119,18 +106,74 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("❌ Org/Facility preload failed:", err);
   }
 
-  /* ========================================================
-     🔗 FORM WIRING
-  ======================================================== */
+  /* ================= FORM ================= */
   setupBillableItemFormSubmission({
     form,
     sharedState,
   });
 
-  /* ========================================================
-     ✏️ EDIT PREFILL (UPDATED)
-  ======================================================== */
+  /* ============================================================
+     ✏️ EDIT PREFILL (🔥 FULL MULTI-PRICE SUPPORT)
+  ============================================================ */
   const rawPayload = sessionStorage.getItem("billableItemEditPayload");
+
+  function createPriceRow(p = {}) {
+    const container = document.getElementById("priceRowsContainer");
+
+    const row = document.createElement("div");
+    row.className = "price-row border p-3 mb-3 rounded";
+
+    row.innerHTML = `
+      <div class="row">
+
+        <div class="col-md-3">
+          <label>Payer Type</label>
+          <select class="form-control payer_type">
+            <option value="cash">Cash</option>
+            <option value="insurance">Insurance</option>
+            <option value="corporate">Corporate</option>
+            <option value="government">Government</option>
+            <option value="charity">Charity</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label>Price</label>
+          <input type="number" class="form-control price" />
+        </div>
+
+        <div class="col-md-3">
+          <label>Currency</label>
+          <select class="form-control currency">
+            <option value="USD">USD</option>
+            <option value="LRD">LRD</option>
+          </select>
+        </div>
+
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input is_default" />
+            <label class="form-check-label">Default</label>
+          </div>
+        </div>
+
+        <div class="col-md-1 d-flex align-items-end">
+          <button type="button" class="btn btn-danger removeRow">X</button>
+        </div>
+
+      </div>
+    `;
+
+    container.appendChild(row);
+
+    // Apply values
+    row.querySelector(".payer_type").value = p.payer_type || "cash";
+    row.querySelector(".price").value = p.price || "";
+    row.querySelector(".currency").value = p.currency || "USD";
+    row.querySelector(".is_default").checked = !!p.is_default;
+
+    row.querySelector(".removeRow").onclick = () => row.remove();
+  }
 
   async function applyPrefill(entry) {
     const { selectedItems, renderItemPills } =
@@ -143,9 +186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       itemName: entry.masterItem?.name || "",
       name: entry.name || "",
       code: entry.code || "",
-      price: entry.price,
-      currency: entry.currency || "USD",
-      payer_type: entry.payer_type || "cash", // 🔥 FIXED
+      prices: entry.prices || [],
       department_id: entry.department_id || null,
       category_id: entry.category_id || null,
       category_name: entry.category?.name || "",
@@ -156,7 +197,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     renderItemPills();
 
-    /* ---------------- UI LABELS ---------------- */
+    // 🔥 CLEAR DEFAULT ROWS
+    const container = document.getElementById("priceRowsContainer");
+    container.innerHTML = "";
+
+    // 🔥 BUILD MULTI PRICE ROWS
+    (entry.prices || []).forEach((p) => createPriceRow(p));
+
+    /* UI LABEL */
     const titleEl = document.querySelector(".card-title");
     if (titleEl) titleEl.textContent = "Edit Billable Item";
 
@@ -166,7 +214,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         `<i class="ri-save-3-line me-1"></i> Update Billable Item`;
     }
 
-    /* ---------------- ORG / FAC ---------------- */
+    /* ORG / FAC */
     if (isSuper && entry.organization_id) {
       orgSelect.value = entry.organization_id;
 
@@ -187,9 +235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* ========================================================
-     📦 LOAD EDIT DATA
-  ======================================================== */
+  /* ================= LOAD EDIT ================= */
   if (editId && rawPayload) {
     try {
       await applyPrefill(JSON.parse(rawPayload));
@@ -208,9 +254,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* ========================================================
-     🔘 BUTTONS
-  ======================================================== */
+  /* ================= BUTTONS ================= */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.removeItem("billableItemEditId");
     sessionStorage.removeItem("billableItemEditPayload");

@@ -270,7 +270,7 @@ function getCurrencySymbol(currency) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER (MASTER UPGRADE)
+   🗂️ CARD RENDERER (MASTER UPGRADE + INSURANCE SPLIT)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -324,6 +324,7 @@ export function renderCard(entry, visibleFields, user) {
       ].includes(f)
   );
 
+  /* ================= ITEMS (UPGRADED) ================= */
   const renderItems = () => {
     if (!Array.isArray(entry.items) || !entry.items.length) return "—";
 
@@ -339,7 +340,11 @@ export function renderCard(entry, visibleFields, user) {
               <li>
                 <strong>${i.description || "Item"}</strong><br/>
                 <small>
-                  Qty: ${qty} | Unit: ${money(unit)} | Total: ${money(total)}
+                  Qty: ${qty} | 
+                  Unit: ${money(unit)} | 
+                  Total: ${money(total)} | 
+                  <span style="color:#0d6efd;">Ins: ${money(i.insurance_amount)}</span> | 
+                  <span style="color:#dc3545;">Pt: ${money(i.patient_amount)}</span>
                 </small>
               </li>
             `;
@@ -367,12 +372,14 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
-      <!-- CORE (MATCH DEPOSIT STYLE) -->
+      <!-- CORE (UPGRADED WITH INSURANCE SPLIT) -->
       <div class="entity-card-body">
         ${row("Invoice #", entry.invoice_number)}
         ${row("Total", money(entry.total))}
-        ${row("Balance", money(entry.balance))}
+        ${row("Insurance", money(entry.coverage_amount))}
+        ${row("Patient", money(entry.balance))}
         ${row("Paid", money(entry.total_paid))}
+        ${row("Balance", money(entry.balance))}
         ${row("Status", status.toUpperCase())}
         ${
           lifecycle
@@ -391,6 +398,7 @@ export function renderCard(entry, visibleFields, user) {
           ${row("Organization", entry.organization?.name)}
           ${row("Facility", entry.facility?.name)}
           ${row("Date", formatDate(entry.created_at))}
+          ${row("Claim ID", entry.insurance_claim_id)}
 
           ${filteredFields
             .map((f) =>
@@ -411,7 +419,7 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
-      <!-- AUDIT (FIXED: DATE + TIME) -->
+      <!-- AUDIT -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
@@ -434,7 +442,6 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
-
 /* ============================================================
    📤 EXPORT FIX (MASTER)
 ============================================================ */

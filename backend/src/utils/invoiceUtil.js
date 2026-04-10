@@ -1,6 +1,6 @@
 // 📁 backend/src/utils/invoiceUtil.js
 // ============================================================================
-// 💰 Invoice Utility – Enterprise Master Pattern (FIXED ENUM SAFE)
+// 💰 Invoice Utility – Enterprise Master Pattern (INSURANCE FIXED)
 // ============================================================================
 
 import db, { sequelize } from "../models/index.js";
@@ -34,6 +34,17 @@ export async function recalcInvoice(invoiceId, t = null) {
          FROM invoice_items i 
         WHERE i.invoice_id = inv.id 
           AND i.status <> 'voided') AS total_items,
+
+      /* 🔥 NEW: INSURANCE + PATIENT SPLIT */
+      (SELECT COALESCE(SUM(i.insurance_amount),0) 
+         FROM invoice_items i 
+        WHERE i.invoice_id = inv.id 
+          AND i.status <> 'voided') AS total_insurance,
+
+      (SELECT COALESCE(SUM(i.patient_amount),0) 
+         FROM invoice_items i 
+        WHERE i.invoice_id = inv.id 
+          AND i.status <> 'voided') AS total_patient,
 
       (
         SELECT COALESCE(SUM(w.applied_total),0)
@@ -72,33 +83,30 @@ export async function recalcInvoice(invoiceId, t = null) {
 
   const t0 = rows[0] || {};
 
-  // 🧮 Convert numeric fields
-  const subtotal      = parseFloat(t0.subtotal)      || 0;
-  const totalTax      = parseFloat(t0.total_tax)     || 0;
-  const totalItems    = parseFloat(t0.total_items)   || 0;
-  const totalWaivers  = parseFloat(t0.total_waivers) || 0;
-  const totalDeposits = parseFloat(t0.total_deposits)|| 0;
-  const totalPaid     = parseFloat(t0.total_paid)    || 0;
-  const totalRefunds  = parseFloat(t0.total_refunds) || 0;
+  const subtotal      = parseFloat(t0.subtotal)        || 0;
+  const totalTax      = parseFloat(t0.total_tax)       || 0;
+  const totalItems    = parseFloat(t0.total_items)     || 0;
+  const totalInsurance= parseFloat(t0.total_insurance) || 0;
+  const totalPatient  = parseFloat(t0.total_patient)   || 0;
+  const totalWaivers  = parseFloat(t0.total_waivers)   || 0;
+  const totalDeposits = parseFloat(t0.total_deposits)  || 0;
+  const totalPaid     = parseFloat(t0.total_paid)      || 0;
+  const totalRefunds  = parseFloat(t0.total_refunds)   || 0;
   const activeItems   = parseInt(t0.active_items_count || 0, 10);
 
-  // 💵 Compute balance
-  let balance = totalItems - totalWaivers - totalDeposits - totalPaid + totalRefunds;
+  /* 🔥 FIXED BALANCE */
+  let balance = totalPatient - totalWaivers - totalDeposits - totalPaid + totalRefunds;
   if (balance < 0) balance = 0;
 
   const invoice = await db.Invoice.findByPk(invoiceId, { transaction: t });
   if (!invoice) throw new Error("❌ Invoice not found");
 
-  // 🚫 Cancelled/voided invoices are locked
   if (
     [INVOICE_STATUS.CANCELLED, INVOICE_STATUS.VOIDED].includes(invoice.status)
   ) {
     balance = 0;
   }
 
-  /* ============================================================
-     🔹 Auto-update STATUS (FIXED ENUM SAFE)
-  ============================================================ */
   let newStatus = invoice.status;
 
   if (
@@ -117,61 +125,36 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
   }
 
-  // 💾 Persist recalculated fields
   await invoice.update(
     {
       subtotal: subtotal.toFixed(2),
       total_tax: totalTax.toFixed(2),
       total: totalItems.toFixed(2),
+
+      /* 🔥 OPTIONAL: STORE INSURANCE */
+      insurance_amount: totalInsurance.toFixed(2),
+
       total_discount: totalWaivers.toFixed(2),
       applied_deposits: totalDeposits.toFixed(2),
       total_paid: totalPaid.toFixed(2),
       refunded_amount: totalRefunds.toFixed(2),
+
+      /* 🔥 FIXED */
       balance: balance.toFixed(2),
+
       status: newStatus,
     },
     { transaction: t }
   );
 
-  // 🧾 Debug trace
-  console.log("[RecalcInvoice]", {
+  console.log("[RecalcInvoice FIXED]", {
     invoiceId,
-    subtotal: subtotal.toFixed(2),
-    tax: totalTax.toFixed(2),
-    total: totalItems.toFixed(2),
-    discount: totalWaivers.toFixed(2),
-    deposits: totalDeposits.toFixed(2),
-    paid: totalPaid.toFixed(2),
-    refunds: totalRefunds.toFixed(2),
-    balance: balance.toFixed(2),
+    total: totalItems,
+    insurance: totalInsurance,
+    patient: totalPatient,
+    balance,
     status: newStatus,
   });
-
-  /* ============================================================
-     🧭 Audit Log
-  ============================================================ */
-  try {
-    await auditService.logAction({
-      module: "invoice",
-      action: "recalc_invoice",
-      entityId: invoice.id,
-      user: { id: invoice.updated_by_id || invoice.created_by_id || null },
-      details: {
-        subtotal: subtotal.toFixed(2),
-        total: totalItems.toFixed(2),
-        discount: totalWaivers.toFixed(2),
-        deposits: totalDeposits.toFixed(2),
-        paid: totalPaid.toFixed(2),
-        refunds: totalRefunds.toFixed(2),
-        balance: balance.toFixed(2),
-        status: newStatus,
-      },
-      entity: invoice,
-      transaction: t,
-    });
-  } catch (err) {
-    console.warn("[RecalcInvoice] ⚠️ Failed to log audit entry:", err.message);
-  }
 
   return invoice;
 }

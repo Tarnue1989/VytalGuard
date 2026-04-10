@@ -43,34 +43,47 @@ async function updateInvoiceStatus(invoiceId, transaction) {
   await invoice.save({ transaction });
 }
 async function resolveInsuranceFromEntity(entity, transaction) {
-  if (!entity?.patient_insurance_id) {
-    return {
-      payer_type: entity?.payer_type || "cash",
-      insurance_provider_id: null,
-      coverage_amount: 0,
-    };
+  /* ================= 1️⃣ FROM REGISTRATION ================= */
+  let registration = null;
+
+  if (entity?.registration_log_id) {
+    registration = await sequelize.models.RegistrationLog.findByPk(
+      entity.registration_log_id,
+      { transaction }
+    );
   }
 
-  const patientInsurance = await sequelize.models.PatientInsurance.findByPk(
-    entity.patient_insurance_id,
-    { transaction }
-  );
-
-  if (!patientInsurance) {
-    return {
-      payer_type: entity?.payer_type || "cash",
-      insurance_provider_id: null,
-      coverage_amount: 0,
-    };
+  // 🔥 fallback: latest registration
+  if (!registration && entity?.patient_id) {
+    registration = await sequelize.models.RegistrationLog.findOne({
+      where: { patient_id: entity.patient_id },
+      order: [["created_at", "DESC"]],
+      transaction,
+    });
   }
 
+  if (registration?.patient_insurance_id) {
+    const pi = await sequelize.models.PatientInsurance.findByPk(
+      registration.patient_insurance_id,
+      { transaction }
+    );
+
+    if (pi) {
+      return {
+        payer_type: "insurance",
+        insurance_provider_id: pi.provider_id,
+        coverage_amount: parseFloat(pi.coverage_limit || 0),
+        coverage_currency: pi.currency || "LRD",
+      };
+    }
+  }
+
+  /* ================= CASH FALLBACK ================= */
   return {
-    payer_type: "insurance",
-    insurance_provider_id: patientInsurance.provider_id,
-    coverage_amount: parseFloat(patientInsurance.coverage_limit || 0),
-
-    // 🔥 ADD THIS (CRITICAL)
-    coverage_currency: patientInsurance.currency || "LRD",
+    payer_type: entity?.payer_type || "cash",
+    insurance_provider_id: null,
+    coverage_amount: 0,
+    coverage_currency: entity?.currency || "LRD",
   };
 }
 /**
@@ -135,6 +148,7 @@ export const billingService = {
 
     if (!rule || !rule.billableItem) return null;
 
+    // ✅ ONLY ONE insuranceData (MASTER)
     const insuranceData = await resolveInsuranceFromEntity(
       entity,
       transaction
@@ -164,15 +178,19 @@ export const billingService = {
       invoice = null;
     }
 
-    /* ================= 🔥 FIX START ================= */
+    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
-      const insuranceData = await resolveInsuranceFromEntity(
-        entity,
-        transaction
-      );
+      let providerName = null;
+      if (insuranceData.insurance_provider_id) {
+        const provider = await sequelize.models.InsuranceProvider.findByPk(
+          insuranceData.insurance_provider_id,
+          { transaction }
+        );
+        providerName = provider?.name || null;
+      }
 
       invoice = await Invoice.create(
         {
@@ -183,10 +201,13 @@ export const billingService = {
           status: INVOICE_STATUS.DRAFT,
           currency: entity.currency || "LRD",
 
-          // 🔥 FIXED
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
+
+          insurance_provider_name: providerName,
+          coverage_amount_initial: insuranceData.coverage_amount,
+          coverage_currency: insuranceData.coverage_currency,
 
           total: 0,
           total_paid: 0,
@@ -206,25 +227,40 @@ export const billingService = {
         });
       }
     }
-    /* ================= 🔥 FIX END ================= */
 
-    const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
-    const taxAmount = price * (taxRate / 100);
-    /* ================= 🔥 FX CONVERSION ================= */
-    if (invoice.insurance_provider_id) {
-      // reuse existing insuranceData (already defined above)
-    if (insuranceData.coverage_currency !== invoice.currency) {
-      invoice.coverage_amount = await fxService.convert({
-        amount: invoice.coverage_amount,
+    /* ================= FX CONVERSION ================= */
+    if (
+      invoice.insurance_provider_id &&
+      insuranceData.coverage_currency &&
+      invoice.currency &&
+      insuranceData.coverage_currency !== invoice.currency
+    ) {
+      const originalAmount = parseFloat(invoice.coverage_amount || 0);
+
+      const convertedAmount = await fxService.convert({
+        amount: originalAmount,
         from_currency: insuranceData.coverage_currency,
         to_currency: invoice.currency,
         orgId,
         facilityId,
         transaction,
       });
-      await invoice.save({ transaction }); 
+
+      invoice.coverage_amount = convertedAmount;
+
+      if (originalAmount > 0) {
+        invoice.fx_rate_used = convertedAmount / originalAmount;
+      }
+
+      invoice.fx_from_currency = insuranceData.coverage_currency;
+      invoice.fx_to_currency = invoice.currency;
+      invoice.fx_timestamp = new Date();
+
+      await invoice.save({ transaction });
     }
-}   
+
+    const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
+    const taxAmount = price * (taxRate / 100);
     const net = price + taxAmount;
 
     let insuranceAmount = 0;
@@ -314,6 +350,12 @@ export const billingService = {
 
     if (!items.length) return null;
 
+    // ✅ ONLY ONE insuranceData
+    const insuranceData = await resolveInsuranceFromEntity(
+      labRequest,
+      transaction
+    );
+
     let invoice = await Invoice.findOne({
       where: {
         patient_id: labRequest.patient_id,
@@ -332,16 +374,19 @@ export const billingService = {
       invoice = null;
     }
 
-    /* ================= 🔥 CLEAN FIX START ================= */
+    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
-      // 🔥 USE HELPER (NO DUPLICATION)
-      const insuranceData = await resolveInsuranceFromEntity(
-        labRequest,
-        transaction
-      );
+      let providerName = null;
+      if (insuranceData.insurance_provider_id) {
+        const provider = await sequelize.models.InsuranceProvider.findByPk(
+          insuranceData.insurance_provider_id,
+          { transaction }
+        );
+        providerName = provider?.name || null;
+      }
 
       invoice = await Invoice.create(
         {
@@ -352,10 +397,13 @@ export const billingService = {
           status: INVOICE_STATUS.DRAFT,
           currency: labRequest.currency || "LRD",
 
-          // 🔥 CLEAN + CONSISTENT
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
+
+          insurance_provider_name: providerName,
+          coverage_amount_initial: insuranceData.coverage_amount,
+          coverage_currency: insuranceData.coverage_currency,
 
           total: 0,
           total_paid: 0,
@@ -367,7 +415,6 @@ export const billingService = {
         { transaction }
       );
 
-      // 🔥 CREATE CLAIM IF INSURANCE EXISTS
       if (invoice.insurance_provider_id) {
         await insuranceService.createClaimFromInvoice({
           invoice_id: invoice.id,
@@ -376,23 +423,38 @@ export const billingService = {
         });
       }
     }
-    /* ================= 🔥 CLEAN FIX END ================= */
-    /* ================= 🔥 FX CONVERSION ================= */
-    if (invoice.insurance_provider_id) {
-      const insuranceData = await resolveInsuranceFromEntity(labRequest, transaction);
 
-      if (insuranceData.coverage_currency !== invoice.currency) {
-        invoice.coverage_amount = await fxService.convert({
-          amount: invoice.coverage_amount,
-          from_currency: insuranceData.coverage_currency,
-          to_currency: invoice.currency,
-          orgId,
-          facilityId,
-          transaction,
-        });
-        await invoice.save({ transaction });
+    /* ================= FX CONVERSION ================= */
+    if (
+      invoice.insurance_provider_id &&
+      insuranceData.coverage_currency &&
+      invoice.currency &&
+      insuranceData.coverage_currency !== invoice.currency
+    ) {
+      const originalAmount = parseFloat(invoice.coverage_amount || 0);
+
+      const convertedAmount = await fxService.convert({
+        amount: originalAmount,
+        from_currency: insuranceData.coverage_currency,
+        to_currency: invoice.currency,
+        orgId,
+        facilityId,
+        transaction,
+      });
+
+      invoice.coverage_amount = convertedAmount;
+
+      if (originalAmount > 0) {
+        invoice.fx_rate_used = convertedAmount / originalAmount;
       }
+
+      invoice.fx_from_currency = insuranceData.coverage_currency;
+      invoice.fx_to_currency = invoice.currency;
+      invoice.fx_timestamp = new Date();
+
+      await invoice.save({ transaction });
     }
+
     let billedCount = 0;
 
     for (const li of items) {
@@ -410,6 +472,7 @@ export const billingService = {
 
       const taxRate = li.labTest.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
+      const net = price + taxAmount;
 
       const existingItem = await InvoiceItem.findOne({
         where: {
@@ -421,9 +484,6 @@ export const billingService = {
       });
 
       if (existingItem) continue;
-
-      /* ================= 🔥 INSURANCE SPLIT ================= */
-      const net = price + taxAmount;
 
       let insuranceAmount = 0;
       let patientAmount = net;
@@ -500,7 +560,6 @@ export const billingService = {
     user,
     transaction,
   }) {
-
     debug.log("voidCharges → START", {
       entityId,
       module_key,
@@ -534,7 +593,7 @@ export const billingService = {
 
       if (!invoice) continue;
 
-      if ((invoice.total_paid || 0) > 0) {
+      if (Number(invoice.total_paid || 0) > 0) {
         throw new Error(
           `Cannot void billing: invoice ${invoice.id} has payment(s)`
         );
@@ -547,7 +606,7 @@ export const billingService = {
         {
           status: "voided",
 
-          // 🔥 CLEAR INSURANCE SPLIT (IMPORTANT)
+          // 🔥 CLEAR INSURANCE SPLIT
           insurance_amount: 0,
           patient_amount: 0,
 
@@ -572,7 +631,6 @@ export const billingService = {
     4️⃣ GET INVOICES BY PATIENT (READ — DEBUG ENABLED)
   ============================================================ */
   async getInvoicesByPatient(patientId, user) {
-
     debug.log("getInvoicesByPatient → START", {
       patientId,
       user_id: user?.id,
@@ -584,7 +642,9 @@ export const billingService = {
       where: {
         patient_id: patientId,
         organization_id: orgId,
-        facility_id: facilityId,
+        ...(facilityId
+          ? { facility_id: facilityId }
+          : { facility_id: { [Op.in]: user.facility_ids || [] } }),
       },
       include: [
         {
@@ -592,14 +652,14 @@ export const billingService = {
           as: "items",
         },
 
-        // 🔥 NEW — SHOW INSURANCE PROVIDER
+        // 🔥 INSURANCE PROVIDER
         {
           model: InsuranceProvider,
           as: "insuranceProvider",
           attributes: ["id", "name"],
         },
 
-        // 🔥 NEW — SHOW CLAIM INFO
+        // 🔥 INSURANCE CLAIM
         {
           model: InsuranceClaim,
           as: "insuranceClaim",
@@ -662,6 +722,12 @@ export const billingService = {
 
     if (!items.length) return null;
 
+    // ✅ ONLY ONE insuranceData
+    const insuranceData = await resolveInsuranceFromEntity(
+      prescription,
+      transaction
+    );
+
     let invoice = await Invoice.findOne({
       where: {
         patient_id: prescription.patient_id,
@@ -680,16 +746,19 @@ export const billingService = {
       invoice = null;
     }
 
-    /* ================= 🔥 CLEAN FIX START ================= */
+    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
-      // 🔥 USE HELPER (NO DUPLICATION)
-      const insuranceData = await resolveInsuranceFromEntity(
-        prescription,
-        transaction
-      );
+      let providerName = null;
+      if (insuranceData.insurance_provider_id) {
+        const provider = await sequelize.models.InsuranceProvider.findByPk(
+          insuranceData.insurance_provider_id,
+          { transaction }
+        );
+        providerName = provider?.name || null;
+      }
 
       invoice = await Invoice.create(
         {
@@ -700,10 +769,13 @@ export const billingService = {
           status: INVOICE_STATUS.DRAFT,
           currency: prescription.currency || "LRD",
 
-          // 🔥 CLEAN + CONSISTENT
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
+
+          insurance_provider_name: providerName,
+          coverage_amount_initial: insuranceData.coverage_amount,
+          coverage_currency: insuranceData.coverage_currency,
 
           total: 0,
           total_paid: 0,
@@ -715,7 +787,6 @@ export const billingService = {
         { transaction }
       );
 
-      // 🔥 CREATE CLAIM IF INSURANCE EXISTS
       if (invoice.insurance_provider_id) {
         await insuranceService.createClaimFromInvoice({
           invoice_id: invoice.id,
@@ -724,23 +795,38 @@ export const billingService = {
         });
       }
     }
-    /* ================= 🔥 CLEAN FIX END ================= */
-    /* ================= 🔥 FX CONVERSION ================= */
-    if (invoice.insurance_provider_id) {
-      const insuranceData = await resolveInsuranceFromEntity(prescription, transaction);
 
-      if (insuranceData.coverage_currency !== invoice.currency) {
-        invoice.coverage_amount = await fxService.convert({
-          amount: invoice.coverage_amount,
-          from_currency: insuranceData.coverage_currency,
-          to_currency: invoice.currency,
-          orgId,
-          facilityId,
-          transaction,
-        });
-        await invoice.save({ transaction }); 
+    /* ================= FX CONVERSION ================= */
+    if (
+      invoice.insurance_provider_id &&
+      insuranceData.coverage_currency &&
+      invoice.currency &&
+      insuranceData.coverage_currency !== invoice.currency
+    ) {
+      const originalAmount = parseFloat(invoice.coverage_amount || 0);
+
+      const convertedAmount = await fxService.convert({
+        amount: originalAmount,
+        from_currency: insuranceData.coverage_currency,
+        to_currency: invoice.currency,
+        orgId,
+        facilityId,
+        transaction,
+      });
+
+      invoice.coverage_amount = convertedAmount;
+
+      if (originalAmount > 0) {
+        invoice.fx_rate_used = convertedAmount / originalAmount;
       }
+
+      invoice.fx_from_currency = insuranceData.coverage_currency;
+      invoice.fx_to_currency = invoice.currency;
+      invoice.fx_timestamp = new Date();
+
+      await invoice.save({ transaction });
     }
+
     let billedCount = 0;
 
     for (const item of items) {
@@ -768,8 +854,6 @@ export const billingService = {
 
       const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
-
-      /* ================= 🔥 INSURANCE SPLIT ================= */
       const net = price * (1 + taxRate / 100);
 
       let insuranceAmount = 0;
@@ -837,6 +921,7 @@ export const billingService = {
 
     return { invoice, billedCount };
   },
+
   /* ============================================================
     6️⃣ BILL ORDER ITEMS (DEBUG ENABLED — MASTER)
   ============================================================ */
@@ -877,6 +962,12 @@ export const billingService = {
 
     if (!items.length) return null;
 
+    // ✅ ONLY ONE insuranceData
+    const insuranceData = await resolveInsuranceFromEntity(
+      order,
+      transaction
+    );
+
     let invoice = await Invoice.findOne({
       where: {
         patient_id: order.patient_id,
@@ -895,16 +986,19 @@ export const billingService = {
       invoice = null;
     }
 
-    /* ================= 🔥 CLEAN FIX START ================= */
+    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
-      // 🔥 USE HELPER (NO DUPLICATION)
-      const insuranceData = await resolveInsuranceFromEntity(
-        order,
-        transaction
-      );
+      let providerName = null;
+      if (insuranceData.insurance_provider_id) {
+        const provider = await sequelize.models.InsuranceProvider.findByPk(
+          insuranceData.insurance_provider_id,
+          { transaction }
+        );
+        providerName = provider?.name || null;
+      }
 
       invoice = await Invoice.create(
         {
@@ -915,10 +1009,13 @@ export const billingService = {
           status: INVOICE_STATUS.DRAFT,
           currency: order.currency || "LRD",
 
-          // 🔥 CLEAN + CONSISTENT
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
+
+          insurance_provider_name: providerName,
+          coverage_amount_initial: insuranceData.coverage_amount,
+          coverage_currency: insuranceData.coverage_currency,
 
           total: 0,
           total_paid: 0,
@@ -930,7 +1027,6 @@ export const billingService = {
         { transaction }
       );
 
-      // 🔥 CREATE CLAIM IF INSURANCE EXISTS
       if (invoice.insurance_provider_id) {
         await insuranceService.createClaimFromInvoice({
           invoice_id: invoice.id,
@@ -939,23 +1035,38 @@ export const billingService = {
         });
       }
     }
-    /* ================= 🔥 CLEAN FIX END ================= */
-    /* ================= 🔥 FX CONVERSION ================= */
-    if (invoice.insurance_provider_id) {
-      const insuranceData = await resolveInsuranceFromEntity(order, transaction);
 
-      if (insuranceData.coverage_currency !== invoice.currency) {
-        invoice.coverage_amount = await fxService.convert({
-          amount: invoice.coverage_amount,
-          from_currency: insuranceData.coverage_currency,
-          to_currency: invoice.currency,
-          orgId,
-          facilityId,
-          transaction,
-        });
-        await invoice.save({ transaction }); 
+    /* ================= FX CONVERSION ================= */
+    if (
+      invoice.insurance_provider_id &&
+      insuranceData.coverage_currency &&
+      invoice.currency &&
+      insuranceData.coverage_currency !== invoice.currency
+    ) {
+      const originalAmount = parseFloat(invoice.coverage_amount || 0);
+
+      const convertedAmount = await fxService.convert({
+        amount: originalAmount,
+        from_currency: insuranceData.coverage_currency,
+        to_currency: invoice.currency,
+        orgId,
+        facilityId,
+        transaction,
+      });
+
+      invoice.coverage_amount = convertedAmount;
+
+      if (originalAmount > 0) {
+        invoice.fx_rate_used = convertedAmount / originalAmount;
       }
+
+      invoice.fx_from_currency = insuranceData.coverage_currency;
+      invoice.fx_to_currency = invoice.currency;
+      invoice.fx_timestamp = new Date();
+
+      await invoice.save({ transaction });
     }
+
     let billedCount = 0;
 
     for (const item of items) {
@@ -983,8 +1094,6 @@ export const billingService = {
 
       const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
       const taxAmount = price * (taxRate / 100);
-
-      /* ================= 🔥 INSURANCE SPLIT ================= */
       const net = price + taxAmount;
 
       let insuranceAmount = 0;

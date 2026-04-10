@@ -209,7 +209,44 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(12, 2),
         defaultValue: 0,
       },
+      /* ================= 📸 SNAPSHOT (ENTERPRISE) ================= */
 
+      // 🔹 Insurance snapshot (freeze at billing time)
+      insurance_provider_name: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+
+      coverage_amount_initial: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      coverage_currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: true,
+      },
+
+      // 🔹 FX snapshot (audit trail)
+      fx_rate_used: {
+        type: DataTypes.DECIMAL(18, 6),
+        allowNull: true,
+      },
+
+      fx_from_currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: true,
+      },
+
+      fx_to_currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: true,
+      },
+
+      fx_timestamp: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       /* ================= NOTES ================= */
       void_reason: { type: DataTypes.TEXT },
       cancel_reason: { type: DataTypes.TEXT },

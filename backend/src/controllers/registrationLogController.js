@@ -582,7 +582,7 @@ export const getAllRegistrationLogsLite = async (req, res) => {
 };
 
 /* ============================================================
-   📌 ACTIVATE REGISTRATION LOG — MASTER
+   📌 ACTIVATE REGISTRATION LOG — MASTER (FIXED)
    pending → active
 ============================================================ */
 export const activateRegistrationLog = async (req, res) => {
@@ -635,10 +635,12 @@ export const activateRegistrationLog = async (req, res) => {
       { transaction: t }
     );
 
+    /* 🔥 FIX: PASS patient_insurance_id */
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
       entity: {
         ...log.toJSON(),
+        patient_insurance_id: log.patient_insurance_id, // ✅ CRITICAL FIX
         billable_item_id: log.registration_type_id,
       },
       user: { ...req.user, organization_id: orgId, facility_id: facilityId },
@@ -664,7 +666,7 @@ export const activateRegistrationLog = async (req, res) => {
 };
 
 /* ============================================================
-   📌 COMPLETE REGISTRATION LOG — MASTER
+   📌 COMPLETE REGISTRATION LOG — MASTER (FIXED)
    active → completed
 ============================================================ */
 export const completeRegistrationLog = async (req, res) => {
@@ -717,10 +719,12 @@ export const completeRegistrationLog = async (req, res) => {
       { transaction: t }
     );
 
+    /* 🔥 FIX: PASS patient_insurance_id */
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
       entity: {
         ...log.toJSON(),
+        patient_insurance_id: log.patient_insurance_id, // ✅ CRITICAL FIX
         billable_item_id: log.registration_type_id,
       },
       user: { ...req.user, organization_id: orgId, facility_id: facilityId },
