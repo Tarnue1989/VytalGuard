@@ -20,7 +20,7 @@ import {
   APPOINTMENT_STATUS, ADMISSION_STATUS, ADMISSION_TYPE,
   ADJUSTMENT_TYPES, STOCK_REQUEST_STATUS, STOCK_REQUEST_ITEM_STATUS,
   CURRENCY_RATE_STATUS, LAB_REQUEST_STATUS, LAB_RESULT_STATUS, LAB_SUPPLY_STATUS,
-  PRESCRIPTION_STATUS, PRESCRIPTION_ITEM_STATUS,
+  PRESCRIPTION_STATUS, PRESCRIPTION_ITEM_STATUS, PATIENT_INSURANCE_STATUS,
 
   // 🔹 ORDER (NEW)
   ORDER_STATUS, ORDER_TYPE, ORDER_PRIORITY,
@@ -766,18 +766,59 @@ export const FIELD_LABELS_SYSTEM_AUDIT_LOG = {
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };
+/* -------------------- Patient Insurance -------------------- */
+export const FIELD_LABELS_PATIENT_INSURANCE = {
+  id: "ID",
+  organization_id: "Organization",
+  facility_id: "Facility",
 
+  patient_id: "Patient",
+  provider_id: "Insurance Provider",
+
+  policy_number: "Policy Number",
+  plan_name: "Plan Name",
+
+  coverage_limit: "Coverage Limit",
+  currency: "Currency",
+
+  valid_from: "Valid From",
+  valid_to: "Valid To",
+
+  is_primary: "Primary Insurance",
+
+  notes: "Notes",
+
+  status: `Status (${joinValues(PATIENT_INSURANCE_STATUS)})`,
+
+  created_at: "Created At",
+  updated_at: "Updated At",
+  deleted_at: "Deleted At",
+
+  created_by_id: "Created By",
+  updated_by_id: "Updated By",
+  deleted_by_id: "Deleted By",
+};
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_LABELS_INSURANCE_CLAIM = {
   id: "ID", organization_id: "Organization", facility_id: "Facility",
   invoice_id: "Invoice", patient_id: "Patient", provider_id: "Provider",
-  claim_number: "Claim Number", amount_claimed: "Amount Claimed", amount_approved: "Amount Approved",
-  claim_date: "Claim Date", response_date: "Response Date", rejection_reason: "Rejection Reason",
+  claim_number: "Claim Number", currency: "Currency",
+  amount_claimed: "Amount Claimed",
+  amount_approved: "Amount Approved",
+  amount_paid: "Amount Paid",
+  payment_reference: "Payment Reference",
+  claim_date: "Claim Date", response_date: "Response Date",
+  reviewed_at: "Reviewed At", approved_at: "Approved At",
+  paid_at: "Paid At",
+  rejection_reason: "Rejection Reason",
+  notes: "Notes",
   status: `Status (${joinValues(INSURANCE_CLAIM_STATUS)})`,
-  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
-  created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+  created_at: "Created At", updated_at: "Updated At",
+  deleted_at: "Deleted At",
+  created_by_id: "Created By",
+  updated_by_id: "Updated By",
+  deleted_by_id: "Deleted By"
 };
-
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_LABELS_NEWBORN_RECORD = {
   id: "ID", organization_id: "Organization", facility_id: "Facility",

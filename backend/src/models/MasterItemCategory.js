@@ -1,6 +1,6 @@
 // 📁 backend/src/models/MasterItemCategory.js
 import { DataTypes, Model } from "sequelize";
-import { MASTER_ITEM_CATEGORY_STATUS } from "../constants/enums.js";
+import { MASTER_ITEM_CATEGORY_STATUS, ORDER_TYPE } from "../constants/enums.js";
 
 export default (sequelize) => {
   class MasterItemCategory extends Model {
@@ -40,12 +40,21 @@ export default (sequelize) => {
 
       // 🔗 Tenant scope
       organization_id: { type: DataTypes.UUID, allowNull: false },
-      facility_id: { type: DataTypes.UUID, allowNull: true }, // ✅ optional facility scope
+      facility_id: { type: DataTypes.UUID, allowNull: true },
 
       // 📑 Identity
       name: { type: DataTypes.STRING(100), allowNull: false },
       code: { type: DataTypes.STRING(50), allowNull: true },
       description: { type: DataTypes.TEXT },
+
+      /* ============================================================
+         🔥 ENTERPRISE FIX: ORDER TYPE (SOURCE OF TRUTH)
+      ============================================================ */
+      order_type: {
+        type: DataTypes.ENUM(...Object.values(ORDER_TYPE)),
+        allowNull: false,
+        defaultValue: ORDER_TYPE.SERVICE,
+      },
 
       // 🔹 Lifecycle
       status: {
@@ -74,7 +83,7 @@ export default (sequelize) => {
         withDeleted: { paranoid: false },
         active: { where: { deleted_at: null } },
         tenant(facilityId) {
-          if (!facilityId) return {}; // safeguard superadmin case
+          if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
         },
       },

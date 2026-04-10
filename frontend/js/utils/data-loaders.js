@@ -540,6 +540,23 @@ export async function fetchBillableItemsByCategory(category, limit = 100) {
   }
 }
 
+export const loadInsuranceProvidersLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/insurance-providers${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
+
+export const loadInsuranceClaimsLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/insurance-claims${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
+
+export const loadPatientInsurancesLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/patient-insurances${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
 export async function fetchBillableItemById(id) {
   try {
     const res = await authFetch(endpointWithBust(`/api/billable-items/${id}`), { cache: "no-store" });

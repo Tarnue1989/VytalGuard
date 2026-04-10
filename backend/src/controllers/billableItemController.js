@@ -137,7 +137,7 @@ function buildBillableItemSchema(user, mode = "create") {
   return schema;
 }
 /* ============================================================
-   📌 CREATE BILLABLE ITEM(S) (FINAL — WITH PRICING FIX)
+   📌 CREATE BILLABLE ITEM(S) (FINAL — MULTI-PRICE FIXED)
 ============================================================ */
 export const createBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -172,6 +172,9 @@ export const createBillableItems = async (req, res) => {
         value,
       });
 
+      /* ========================================================
+         🔹 CREATE MAIN ITEM
+      ======================================================== */
       const item = await BillableItem.create(
         {
           ...value,
@@ -185,20 +188,45 @@ export const createBillableItems = async (req, res) => {
 
       created.push(item);
 
-      // 🔥 ONLY CREATE PRICE (model handles history)
-      await BillableItemPrice.create(
-        {
-          organization_id: orgId,
-          facility_id: facilityId,
-          billable_item_id: item.id,
-          payer_type: PAYER_TYPES.CASH,
-          currency: item.currency,
-          price: item.price,
-          is_default: true,
-          created_by_id: req.user?.id || null,
-        },
-        { transaction: t }
-      );
+      /* ========================================================
+         🔥 MULTI-PRICE SUPPORT (FIXED)
+      ======================================================== */
+      if (value.prices && value.prices.length) {
+        for (const p of value.prices) {
+          await BillableItemPrice.create(
+            {
+              organization_id: orgId,
+              facility_id: facilityId,
+              billable_item_id: item.id,
+
+              payer_type: p.payer_type,
+              currency: p.currency || item.currency,
+              price: p.price,
+              is_default: p.is_default || false,
+
+              created_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
+      } else {
+        /* 🔁 BACKWARD COMPAT (OLD FORM SUPPORT) */
+        await BillableItemPrice.create(
+          {
+            organization_id: orgId,
+            facility_id: facilityId,
+            billable_item_id: item.id,
+
+            payer_type: PAYER_TYPES.CASH,
+            currency: item.currency,
+            price: item.price,
+            is_default: true,
+
+            created_by_id: req.user?.id || null,
+          },
+          { transaction: t }
+        );
+      }
     }
 
     await t.commit();
@@ -221,13 +249,7 @@ export const createBillableItems = async (req, res) => {
 };
 
 /* ============================================================
-   ✏️ UPDATE BILLABLE ITEM (FINAL — ENTERPRISE SAFE)
-   - Enum safe
-   - Role scoped
-   - 🔥 FIXED: currency reuse (no duplicate constraint error)
-   - 🔥 FIXED: detects price + currency change
-   - 🔥 PRICE HISTORY SAFE (temporal)
-   - Transaction atomic
+   ✏️ UPDATE BILLABLE ITEM (FINAL — MULTI-PRICE ENABLED)
 ============================================================ */
 export const updateBillableItem = async (req, res) => {
   const t = await sequelize.transaction();
@@ -305,12 +327,88 @@ export const updateBillableItem = async (req, res) => {
     );
 
     /* ========================================================
-       🔥 PRICE UPSERT (FINAL FIX — NO DUPLICATES EVER)
+       🔥 MULTI-PRICE UPSERT (FINAL)
     ======================================================== */
-    if (value.price !== undefined) {
+    if (value.prices && value.prices.length) {
+      for (const p of value.prices) {
+        const currencyToUse = p.currency || item.currency;
+
+        const existing = await BillableItemPrice.findOne({
+          where: {
+            billable_item_id: item.id,
+            payer_type: p.payer_type,
+            currency: currencyToUse,
+          },
+          transaction: t,
+        });
+
+        const active = await BillableItemPrice.findOne({
+          where: {
+            billable_item_id: item.id,
+            payer_type: p.payer_type,
+            effective_to: null,
+          },
+          transaction: t,
+        });
+
+        if (existing) {
+          const priceChanged =
+            Number(existing.price) !== Number(p.price);
+
+          if (priceChanged || existing.effective_to !== null) {
+            await existing.update(
+              {
+                price: p.price,
+                effective_to: null,
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+          if (active && active.id !== existing.id) {
+            await active.update(
+              {
+                effective_to: new Date(),
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+        } else {
+          if (active) {
+            await active.update(
+              {
+                effective_to: new Date(),
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+          await BillableItemPrice.create(
+            {
+              organization_id: resolvedOrgId,
+              facility_id: resolvedFacilityId,
+              billable_item_id: item.id,
+
+              payer_type: p.payer_type,
+              currency: currencyToUse,
+              price: p.price,
+              is_default: p.is_default || false,
+
+              created_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
+      }
+
+    } else if (value.price !== undefined) {
+      /* 🔁 BACKWARD COMPAT (CASH ONLY) */
       const currencyToUse = value.currency ?? item.currency;
 
-      // 🔍 Find ANY existing row with same currency
       const existingSameCurrency = await BillableItemPrice.findOne({
         where: {
           billable_item_id: item.id,
@@ -320,7 +418,6 @@ export const updateBillableItem = async (req, res) => {
         transaction: t,
       });
 
-      // 🔍 Find CURRENT ACTIVE price
       const activePrice = await BillableItemPrice.findOne({
         where: {
           billable_item_id: item.id,
@@ -334,19 +431,17 @@ export const updateBillableItem = async (req, res) => {
         const priceChanged =
           Number(existingSameCurrency.price) !== Number(value.price);
 
-        // 🔁 If same currency exists → UPDATE it
         if (priceChanged || existingSameCurrency.effective_to !== null) {
           await existingSameCurrency.update(
             {
               price: value.price,
-              effective_to: null, // make active
+              effective_to: null,
               updated_by_id: req.user?.id || null,
             },
             { transaction: t }
           );
         }
 
-        // 🔁 Close previous active if different row
         if (activePrice && activePrice.id !== existingSameCurrency.id) {
           await activePrice.update(
             {
@@ -358,7 +453,6 @@ export const updateBillableItem = async (req, res) => {
         }
 
       } else {
-        // 🔁 Close current active price
         if (activePrice) {
           await activePrice.update(
             {
@@ -369,16 +463,17 @@ export const updateBillableItem = async (req, res) => {
           );
         }
 
-        // ➕ Insert NEW currency
         await BillableItemPrice.create(
           {
             organization_id: resolvedOrgId,
             facility_id: resolvedFacilityId,
             billable_item_id: item.id,
+
             payer_type: PAYER_TYPES.CASH,
             currency: currencyToUse,
             price: value.price,
             is_default: true,
+
             created_by_id: req.user?.id || null,
           },
           { transaction: t }
@@ -889,7 +984,7 @@ export const getAllBillableItemsLite = async (req, res) => {
 };
 
 /* ============================================================
-   📌 BULK UPDATE BILLABLE ITEMS (FIXED)
+   📌 BULK UPDATE BILLABLE ITEMS (FINAL — MULTI-PRICE FIXED)
 ============================================================ */
 export const bulkUpdateBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
@@ -931,6 +1026,7 @@ export const bulkUpdateBillableItems = async (req, res) => {
       }
 
       const where = { id: payload.id };
+
       if (!isSuperAdmin(req.user)) {
         where.organization_id = req.user.organization_id;
         if (isFacilityHead(req.user)) {
@@ -939,13 +1035,11 @@ export const bulkUpdateBillableItems = async (req, res) => {
       }
 
       const item = await BillableItem.findOne({ where, transaction: t });
+
       if (!item) {
         skipped.push({ id: payload.id, reason: "Not found or out of scope" });
         continue;
       }
-
-      const oldPrice = item.price;
-      const oldCurrency = item.currency;
 
       const { orgId, facilityId } = resolveOrgFacility({
         user: req.user,
@@ -953,6 +1047,9 @@ export const bulkUpdateBillableItems = async (req, res) => {
         body: payload,
       });
 
+      /* ========================================================
+         🔄 UPDATE MAIN ITEM
+      ======================================================== */
       await item.update(
         {
           ...value,
@@ -963,23 +1060,159 @@ export const bulkUpdateBillableItems = async (req, res) => {
         { transaction: t }
       );
 
-      if (
-        value.price !== undefined &&
-        (value.price !== oldPrice || value.currency !== oldCurrency)
-      ) {
-        await BillableItemPrice.create(
-          {
-            organization_id: orgId,
-            facility_id: facilityId,
+      /* ========================================================
+         🔥 MULTI-PRICE UPSERT (NEW FIX)
+      ======================================================== */
+      if (value.prices && value.prices.length) {
+        for (const p of value.prices) {
+          const currencyToUse = p.currency || item.currency;
+
+          const existing = await BillableItemPrice.findOne({
+            where: {
+              billable_item_id: item.id,
+              payer_type: p.payer_type,
+              currency: currencyToUse,
+            },
+            transaction: t,
+          });
+
+          const active = await BillableItemPrice.findOne({
+            where: {
+              billable_item_id: item.id,
+              payer_type: p.payer_type,
+              effective_to: null,
+            },
+            transaction: t,
+          });
+
+          if (existing) {
+            const priceChanged =
+              Number(existing.price) !== Number(p.price);
+
+            if (priceChanged || existing.effective_to !== null) {
+              await existing.update(
+                {
+                  price: p.price,
+                  effective_to: null,
+                  updated_by_id: req.user?.id || null,
+                },
+                { transaction: t }
+              );
+            }
+
+            if (active && active.id !== existing.id) {
+              await active.update(
+                {
+                  effective_to: new Date(),
+                  updated_by_id: req.user?.id || null,
+                },
+                { transaction: t }
+              );
+            }
+
+          } else {
+            if (active) {
+              await active.update(
+                {
+                  effective_to: new Date(),
+                  updated_by_id: req.user?.id || null,
+                },
+                { transaction: t }
+              );
+            }
+
+            await BillableItemPrice.create(
+              {
+                organization_id: orgId,
+                facility_id: facilityId,
+                billable_item_id: item.id,
+
+                payer_type: p.payer_type,
+                currency: currencyToUse,
+                price: p.price,
+                is_default: p.is_default || false,
+
+                created_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+        }
+
+      } else if (value.price !== undefined) {
+        /* 🔁 BACKWARD COMPAT (CASH ONLY) */
+        const currencyToUse = value.currency ?? item.currency;
+
+        const existingSameCurrency = await BillableItemPrice.findOne({
+          where: {
             billable_item_id: item.id,
             payer_type: PAYER_TYPES.CASH,
-            currency: value.currency ?? item.currency,
-            price: value.price,
-            is_default: true,
-            created_by_id: req.user?.id || null,
+            currency: currencyToUse,
           },
-          { transaction: t }
-        );
+          transaction: t,
+        });
+
+        const activePrice = await BillableItemPrice.findOne({
+          where: {
+            billable_item_id: item.id,
+            payer_type: PAYER_TYPES.CASH,
+            effective_to: null,
+          },
+          transaction: t,
+        });
+
+        if (existingSameCurrency) {
+          const priceChanged =
+            Number(existingSameCurrency.price) !== Number(value.price);
+
+          if (priceChanged || existingSameCurrency.effective_to !== null) {
+            await existingSameCurrency.update(
+              {
+                price: value.price,
+                effective_to: null,
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+          if (activePrice && activePrice.id !== existingSameCurrency.id) {
+            await activePrice.update(
+              {
+                effective_to: new Date(),
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+        } else {
+          if (activePrice) {
+            await activePrice.update(
+              {
+                effective_to: new Date(),
+                updated_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+          }
+
+          await BillableItemPrice.create(
+            {
+              organization_id: orgId,
+              facility_id: facilityId,
+              billable_item_id: item.id,
+
+              payer_type: PAYER_TYPES.CASH,
+              currency: currencyToUse,
+              price: value.price,
+              is_default: true,
+
+              created_by_id: req.user?.id || null,
+            },
+            { transaction: t }
+          );
+        }
       }
 
       updated.push(item.id);
@@ -1018,13 +1251,13 @@ export const bulkUpdateBillableItems = async (req, res) => {
       records,
       skipped,
     });
+
   } catch (err) {
     await t.rollback();
     debug.error("bulk_update → FAILED", err);
     return error(res, "❌ Failed to bulk update billable items", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE BILLABLE ITEM STATUS (FIXED)
 ============================================================ */

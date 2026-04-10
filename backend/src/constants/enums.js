@@ -268,7 +268,10 @@ export const INVOICE_LINE_EXTENSION_STATUS = {
   VOIDED:'voided'
 };
 
+
 export const INSURANCE_CLAIM_STATUS = {
+  DRAFT: 'draft', // ✅ ADD THIS
+
   SUBMITTED: 'submitted',
   IN_REVIEW: 'in_review',
 
@@ -284,11 +287,64 @@ export const INSURANCE_CLAIM_STATUS = {
   VOIDED: 'voided',
   REVERSED: 'reversed',
 };
+// ============================================================
+// 🔹 Insurance Claim Transitions (OBJECT STYLE)
+// ============================================================
+export const INSURANCE_CLAIM_TRANSITIONS = {
+  [INSURANCE_CLAIM_STATUS.DRAFT]: {
+    [INSURANCE_CLAIM_STATUS.SUBMITTED]: true,
+    [INSURANCE_CLAIM_STATUS.CANCELLED]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.SUBMITTED]: {
+    [INSURANCE_CLAIM_STATUS.IN_REVIEW]: true,
+    [INSURANCE_CLAIM_STATUS.CANCELLED]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.IN_REVIEW]: {
+    [INSURANCE_CLAIM_STATUS.APPROVED]: true,
+    [INSURANCE_CLAIM_STATUS.PARTIALLY_APPROVED]: true,
+    [INSURANCE_CLAIM_STATUS.REJECTED]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.APPROVED]: {
+    [INSURANCE_CLAIM_STATUS.PROCESSING_PAYMENT]: true,
+    [INSURANCE_CLAIM_STATUS.CANCELLED]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.PARTIALLY_APPROVED]: {
+    [INSURANCE_CLAIM_STATUS.PROCESSING_PAYMENT]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.PROCESSING_PAYMENT]: {
+    [INSURANCE_CLAIM_STATUS.PAID]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.PAID]: {
+    [INSURANCE_CLAIM_STATUS.REVERSED]: true,
+  },
+
+  [INSURANCE_CLAIM_STATUS.REJECTED]: {},
+  [INSURANCE_CLAIM_STATUS.CANCELLED]: {},
+  [INSURANCE_CLAIM_STATUS.VOIDED]: {},
+  [INSURANCE_CLAIM_STATUS.REVERSED]: {},
+};
+
+// ============================================================
+// 🔹 Patient Insurance (MISSING → CAUSING CRASH)
+// ============================================================
+export const PATIENT_INSURANCE_STATUS = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  EXPIRED: "expired",
+  CANCELLED: "cancelled",
+};
+
 export const CLAIM_ACTIONS = {
   SUBMITTED: 'submitted',
   REVIEWED: 'reviewed',
   APPROVED: 'approved',
-  PARTIAL_APPROVED: 'partial_approved',
+  PARTIALLY_APPROVED: 'partially_approved',
   REJECTED: 'rejected',
   PAID: 'paid',
   REVERSED: 'reversed'

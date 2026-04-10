@@ -26,7 +26,36 @@ export const STATUS_ACTION_MATRIX = {
     deleted:[]
   },
 
+  /* ======================== 🏥 INSURANCE PROVIDER ======================== */
+  insurance_provider: {
+    active:   ["edit", "toggle-status", "delete"],
+    inactive: ["edit", "toggle-status", "delete"],
+    deleted:  ["restore"]
+  },
+  /* ======================== 🏥 PATIENT INSURANCE ======================== */
+  patient_insurances: {
+    active:   ["edit", "toggle-status", "delete", "print"],
+    inactive: ["edit", "toggle-status", "delete"],
+    deleted:  ["restore"],
+  },
+  /* ======================== INSURANCE CLAIMS ======================== */
+  insurance_claim: {
+    draft: ["edit", "submit", "delete"],
 
+    submitted: ["review", "reject"],
+
+    review: ["approve", "partial-approve", "reject"],
+
+    approved: ["process-payment", "reject"],
+    partially_approved: ["process-payment", "reject"],
+
+    paid: ["reverse-payment", "print"],
+
+    rejected: ["restore", "print"],
+    reversed: ["restore", "print"],
+
+    deleted: ["restore"],
+  },
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
     pending:["edit","clear","cancel","void", "print"],
@@ -589,21 +618,15 @@ export function buildActionButtons({
     if (act === "toggle-status") {
       backend = "toggle_status";
     }
-    /* =========================
-      MODULE-SPECIFIC OVERRIDES
-    ========================= */
-    if (module === "user" && act === "toggle-status") {
-      backend = "edit";
-    }
     if (module === "supplier" && act === "toggle-status") {
-      backend = "update";
+      backend = "toggle_status";
     }
     /* =========================
       INVENTORY LOCK
     ========================= */
-    if (act === "lock" || act === "unlock") {
-      backend = "update";
-    }
+    if (act === "lock") backend = "lock";
+    if (act === "unlock") backend = "unlock";
+    
     const permKey = `${permissionPrefix}:${backend}`;
 
     if (isSuperAdmin || perms.has(permKey)) {

@@ -160,22 +160,38 @@ function renderValue(entry, field) {
     case "facility":
       return entry.facility?.name || "—";
 
+    /* ✅ PATIENT FIX */
+    case "patient":
+      return entry.patient
+        ? `${entry.patient.pat_no || "—"} - ${entry.patient.first_name || ""} ${entry.patient.last_name || ""}`
+        : "—";
+
+    /* ✅ INSURANCE FIX */
     case "patientInsurance":
-      return entry.patientInsurance?.provider?.name || "—";
+      if (entry.payer_type === "insurance" && !entry.patientInsurance) {
+        return `<span class="text-danger">⚠ Missing Insurance</span>`;
+      }
+      return entry.patientInsurance
+        ? `${entry.patientInsurance.policy_number} - ${entry.patientInsurance.plan_name || ""} (${entry.patientInsurance.provider?.name || ""})`
+        : "—";
+
     case "registrar":
       return renderUserName(entry.registrar);
 
     case "registration_type":
       return entry.registrationType?.name || "—";
 
+    /* ✅ INVOICE FIX */
     case "invoice":
       return entry.invoice
-        ? `${entry.invoice.invoice_number} (${entry.invoice.status})`
+        ? `${entry.invoice.invoice_number} - ${entry.invoice.total || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
         : "—";
 
-    // ✅ FIX ADDED
+    /* ✅ PAYER TYPE FIX */
     case "payer_type":
-      return entry.payer_type === "insurance" ? "Insurance" : "Cash";
+      return entry.payer_type
+        ? entry.payer_type.replace("_", " ").toUpperCase()
+        : "—";
 
     case "createdBy":
     case "updatedBy":
@@ -220,7 +236,11 @@ export function renderCard(entry, visibleFields, user) {
           ${safe(entry.registration_method)}
         </div>
         <div class="entity-primary">
-          ${safe(entry.patient?.first_name)} ${safe(entry.patient?.last_name)}
+          ${
+            entry.patient
+              ? `${safe(entry.patient.pat_no)} - ${safe(entry.patient.first_name)} ${safe(entry.patient.last_name)}`
+              : "—"
+          }
         </div>
       </div>
       ${
@@ -273,15 +293,47 @@ export function renderCard(entry, visibleFields, user) {
           : ""}
 
         ${has("payer_type")
-          ? fieldRow("Payer Type", entry.payer_type === "insurance" ? "Insurance" : "Cash")
+          ? fieldRow(
+              "Payer Type",
+              entry.payer_type
+                ? entry.payer_type.replace("_", " ").toUpperCase()
+                : "—"
+            )
           : ""}
 
         ${has("patientInsurance")
           ? fieldRow(
               "Insurance",
-              entry.patientInsurance
-                ? entry.patientInsurance?.provider?.name || "—"
-                : "—"
+              (() => {
+                // ⚠ expected but missing
+                if (entry.payer_type === "insurance" && !entry.patientInsurance) {
+                  return `<span class="text-danger">⚠ Missing Insurance</span>`;
+                }
+
+                // ❌ no insurance at all
+                if (!entry.patientInsurance) return "—";
+
+                const pi = entry.patientInsurance;
+
+                const policy = pi.policy_number || "";
+                const plan = pi.plan_name || "";
+                const provider = pi.provider?.name || "";
+
+                // ✅ smart formatting
+                if (policy && plan && provider) {
+                  return `${policy} - ${plan} (${provider})`;
+                }
+
+                if (plan && provider) {
+                  return `${plan} (${provider})`;
+                }
+
+                if (provider) {
+                  return provider;
+                }
+
+                return "—";
+              })()
             )
           : ""}
 
@@ -292,7 +344,9 @@ export function renderCard(entry, visibleFields, user) {
         ${has("invoice")
           ? fieldRow(
               "Invoice",
-              entry.invoice ? `${entry.invoice.invoice_number}` : "—"
+              entry.invoice
+                ? `${entry.invoice.invoice_number} - ${entry.invoice.total_amount || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
+                : "—"
             )
           : ""}
       </div>
@@ -350,25 +404,34 @@ export function renderCard(entry, visibleFields, user) {
 }
 
 /* ============================================================ */
-export function renderList({ entries, visibleFields, viewMode, user }) {
+export function renderList({ entries = [], visibleFields = [], viewMode, user }) {
   const tableBody = document.getElementById("registrationLogTableBody");
   const cardContainer = document.getElementById("registrationLogList");
   const tableContainer = document.querySelector(".table-container");
+
   if (!tableBody || !cardContainer || !tableContainer) return;
 
+  /* ================= RESET ================= */
   tableBody.innerHTML = "";
   cardContainer.innerHTML = "";
 
+  const safeFields = Array.isArray(visibleFields) ? visibleFields : [];
+  const safeEntries = Array.isArray(entries) ? entries : [];
+
+  /* ============================================================ */
+  /* ========================= TABLE ============================ */
+  /* ============================================================ */
   if (viewMode === "table") {
     cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
 
-    renderDynamicTableHead(visibleFields);
+    renderDynamicTableHead(safeFields);
 
-    if (!entries.length) {
+    /* ================= EMPTY ================= */
+    if (!safeEntries.length) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="${visibleFields.length}" class="text-muted text-center">
+          <td colspan="${safeFields.length || 1}" class="text-muted text-center">
             No registration logs found.
           </td>
         </tr>`;
@@ -376,35 +439,87 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       return;
     }
 
-    entries.forEach((entry) => {
+    /* ================= ROWS ================= */
+    const fragment = document.createDocumentFragment();
+
+    safeEntries.forEach((entry) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = visibleFields
-        .map((field) =>
-          field === "actions"
-            ? `<td class="actions-cell text-center export-ignore">
-                 ${getRegistrationLogActionButtons(entry, user)}
-               </td>`
-            : `<td>${renderValue(entry, field)}</td>`
-        )
+
+      tr.innerHTML = safeFields
+        .map((field) => {
+          if (field === "actions") {
+            return `
+              <td class="actions-cell text-center export-ignore">
+                ${getRegistrationLogActionButtons(entry, user)}
+              </td>`;
+          }
+
+          try {
+            const value = renderValue(entry, field);
+            return `<td>${value ?? "—"}</td>`;
+          } catch (err) {
+            console.error("Render error:", field, err);
+            return `<td>—</td>`;
+          }
+        })
         .join("");
-      tableBody.appendChild(tr);
+
+      fragment.appendChild(tr);
     });
 
+    tableBody.appendChild(fragment);
+
     initTooltips(tableBody);
-  } else {
+  }
+
+  /* ============================================================ */
+  /* ========================== CARD ============================ */
+  /* ============================================================ */
+  else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
 
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center">No registration logs found.</p>`;
+    /* ================= EMPTY ================= */
+    if (!safeEntries.length) {
+      cardContainer.innerHTML = `
+        <div class="text-muted text-center py-4">
+          No registration logs found.
+        </div>`;
+      initTooltips(cardContainer);
+      return;
+    }
+
+    /* ================= CARDS ================= */
+    const fragment = document.createDocumentFragment();
+
+    safeEntries.forEach((entry) => {
+      try {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = renderCard(entry, safeFields, user);
+        fragment.appendChild(wrapper.firstElementChild);
+      } catch (err) {
+        console.error("Card render error:", err);
+
+        const errorCard = document.createElement("div");
+        errorCard.className = "entity-card error-card";
+        errorCard.innerHTML = `<div class="text-danger">Error rendering entry</div>`;
+        fragment.appendChild(errorCard);
+      }
+    });
+
+    cardContainer.appendChild(fragment);
 
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
-}
+  /* ============================================================ */
+  /* ========================= EXPORT =========================== */
+  /* ============================================================ */
 
+  const exportSafeData = safeEntries.map((e) => ({ ...e }));
+
+  setupExportHandlers(exportSafeData);
+}
 /* ============================================================ */
 let exportHandlersBound = false;
 

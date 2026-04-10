@@ -83,6 +83,9 @@ import autoBillingRuleRoutes from "./autoBillingRuleRoutes.js";
 import billingTriggerRoutes from "./billingTriggerRoutes.js";
 
 import orderRoutes from "./orderRoutes.js";
+import insuranceProviderRoutes from "./insuranceProviderRoutes.js";
+import insuranceClaimRoutes from "./insuranceClaimRoutes.js";
+import patientInsuranceRoutes from "./patientInsuranceRoutes.js";
 
 /* ============================================================
    ⚡ Lite Routes (Autocomplete / Dropdown APIs)
@@ -188,6 +191,10 @@ router.use("/auto-billing-rules", autoBillingRuleRoutes);
 router.use("/billing-triggers", billingTriggerRoutes);
 
 router.use("/orders", orderRoutes);
+router.use("/insurance-providers", insuranceProviderRoutes);
+router.use("/insurance-claims", insuranceClaimRoutes);
+router.use("/patient-insurances", patientInsuranceRoutes);
+
 
 /* ============================================================
    ⚡ Lite Routes

@@ -698,17 +698,53 @@ export const FIELD_DEFAULTS_SYSTEM_AUDIT_LOG = {
   ],
   staff: ["user_id", "action", "target_table", "status"]
 };
+/* -------------------- Patient Insurance -------------------- */
+export const FIELD_DEFAULTS_PATIENT_INSURANCE = {
+  admin: [
+    "organization_id", "facility_id",
+    "patient_id", "provider_id",
+    "policy_number", "plan_name",
+    "coverage_limit", "currency",
+    "valid_from", "valid_to",
+    "is_primary", "notes",
+    "status",
+    "created_at", "updated_at",
+    "created_by_id", "updated_by_id"
+  ],
 
+  manager: [
+    "patient_id", "provider_id",
+    "policy_number", "plan_name",
+    "coverage_limit", "currency",
+    "valid_from", "valid_to",
+    "is_primary",
+    "status"
+  ],
+
+  staff: [
+    "patient_id", "provider_id",
+    "policy_number",
+    "status"
+  ]
+};
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
   admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
-    "organization_id", "facility_id",
-    "invoice_id", "patient_id", "provider_id",
-    "claim_number", "amount_claimed", "amount_approved",
-    "claim_date", "response_date", "rejection_reason", "status"
+    "organization_id","facility_id",
+    "invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","amount_approved","amount_paid",
+    "payment_reference",
+    "claim_date","response_date",
+    "reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","status"
   ],
-  staff: ["invoice_id", "patient_id", "provider_id", "claim_number", "amount_claimed", "status"]
+  staff: [
+    "invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","status"
+  ]
 };
 
 /* -------------------- Newborn Record -------------------- */

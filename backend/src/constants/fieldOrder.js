@@ -637,16 +637,32 @@ export const FIELD_ORDER_SYSTEM_AUDIT_LOG = [
   "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
-
+/* -------------------- Patient Insurance -------------------- */
+export const FIELD_ORDER_PATIENT_INSURANCE = [
+  "id","organization_id","facility_id",
+  "patient_id","provider_id",
+  "policy_number","plan_name",
+  "coverage_limit","currency",
+  "valid_from","valid_to",
+  "is_primary",
+  "notes",
+  "status",
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
+];
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_ORDER_INSURANCE_CLAIM = [
-  "id", "organization_id", "facility_id",
-  "invoice_id", "patient_id", "provider_id",
-  "claim_number", "amount_claimed", "amount_approved",
-  "claim_date", "response_date", "rejection_reason",
+  "id","organization_id","facility_id",
+  "invoice_id","patient_id","provider_id",
+  "claim_number","currency",
+  "amount_claimed","amount_approved","amount_paid",
+  "payment_reference",
+  "claim_date","response_date",
+  "reviewed_at","approved_at","paid_at",
+  "rejection_reason","notes",
   "status",
-  "created_at", "updated_at", "deleted_at",
-  "created_by_id", "updated_by_id", "deleted_by_id"
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
 ];
 
 /* -------------------- Newborn Record -------------------- */

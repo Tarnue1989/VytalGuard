@@ -1,9 +1,8 @@
-// 📦 billableitem-form.js – Pill-based Billable Item Form (ENTERPRISE FINAL - MULTI CREATE)
+// 📦 billableitem-form.js – Pill-based Billable Item Form (ENTERPRISE FINAL - MULTI PRICE READY)
 // ============================================================================
-// 🔹 SAME STRUCTURE
-// 🔹 MULTI-CREATE ENABLED (POST = array)
-// 🔹 EDIT SAFE (PUT = single)
-// 🔹 NOTHING REMOVED
+// 🔹 MULTI-CREATE ENABLED (pills)
+// 🔹 MULTI-PRICE READY (price rows)
+// 🔹 EDIT SAFE
 // ============================================================================
 
 import {
@@ -38,7 +37,7 @@ import {
 import { BILLABLE_ITEM_FORM_RULES } from "./billableitem.form.rules.js";
 
 /* ============================================================
-   🧩 Helpers
+   🧩 HELPERS
 ============================================================ */
 const getQueryParam = (k) =>
   new URLSearchParams(window.location.search).get(k);
@@ -47,7 +46,7 @@ const normalizeUUID = (v) =>
   typeof v === "string" && v.trim() !== "" ? v : null;
 
 /* ============================================================
-   🧠 RULE VALIDATION
+   🧠 RULE VALIDATION (UNCHANGED)
 ============================================================ */
 function validateUsingRules(form) {
   const errors = [];
@@ -70,8 +69,7 @@ function validateUsingRules(form) {
     if (
       value === null ||
       value === undefined ||
-      value === "" ||
-      value === false
+      value === ""
     ) {
       errors.push({ field: rule.id, message: rule.message });
     }
@@ -81,7 +79,7 @@ function validateUsingRules(form) {
 }
 
 /* ============================================================
-   🌐 PILL STATE
+   🌐 STATE
 ============================================================ */
 let selectedItems = [];
 let pillsContainer = null;
@@ -95,7 +93,7 @@ export function getBillableItemFormState() {
 }
 
 /* ============================================================
-   🧱 PILL RENDER
+   🧱 PILL RENDER (UPDATED DISPLAY)
 ============================================================ */
 function renderItemPills() {
   if (!pillsContainer) return;
@@ -108,10 +106,15 @@ function renderItemPills() {
   }
 
   selectedItems.forEach((item, idx) => {
+    // 🔥 SHOW FIRST PRICE + COUNT
+    const priceDisplay = item.prices?.length
+      ? `${Number(item.prices[0].price).toFixed(2)} ${item.prices[0].currency} (${item.prices.length} price${item.prices.length > 1 ? "s" : ""})`
+      : "0.00";
+
     const pill = document.createElement("div");
     pill.className = "pill";
     pill.innerHTML = `
-      ${item.name} – ${Number(item.price).toFixed(2)} ${item.currency}
+      ${item.name} – ${priceDisplay}
       ${item.category_name ? `(${item.category_name})` : ""}
       <button type="button" class="btn btn-link pill-edit" data-idx="${idx}">
         <i class="ri-pencil-line"></i>
@@ -123,6 +126,7 @@ function renderItemPills() {
     pillsContainer.appendChild(pill);
   });
 
+  /* ================= EDIT ================= */
   pillsContainer.querySelectorAll(".pill-edit").forEach((btn) => {
     btn.onclick = () => {
       const idx = Number(btn.dataset.idx);
@@ -139,8 +143,7 @@ function renderItemPills() {
 
       nameInput.value = item.name;
       codeInput.value = item.code || "";
-      priceInput.value = item.price;
-      currencyInput.value = item.currency || "USD";
+
       deptSelect.value = item.department_id || "";
       categoryIdInput.value = item.category_id || "";
       categoryNameInput.value = item.category_name || "";
@@ -149,11 +152,15 @@ function renderItemPills() {
       discountableInput.checked = !!item.discountable;
       overrideInput.checked = !!item.override_allowed;
 
+      // 🔥 PRICE ROWS RESET (handled in main.js prefill)
+      document.getElementById("priceRowsContainer").innerHTML = "";
+
       document.getElementById("addItemBtn").innerHTML =
         `<i class="ri-save-3-line"></i> Update`;
     };
   });
 
+  /* ================= REMOVE ================= */
   pillsContainer.querySelectorAll(".pill-remove").forEach((btn) => {
     btn.onclick = () => {
       selectedItems.splice(Number(btn.dataset.idx), 1);
@@ -161,9 +168,8 @@ function renderItemPills() {
     };
   });
 }
-
 /* ============================================================
-   🚀 MAIN FORM
+   🚀 MAIN FORM (FINAL MULTI-PRICE COMPLETE)
 ============================================================ */
 export async function setupBillableItemFormSubmission({
   form,
@@ -187,8 +193,6 @@ export async function setupBillableItemFormSubmission({
 
   window.nameInput = document.getElementById("name");
   window.codeInput = document.getElementById("code");
-  window.priceInput = document.getElementById("price");
-  window.currencyInput = document.getElementById("currency");
 
   window.categoryIdInput = document.getElementById("category_id");
   window.categoryNameInput = document.getElementById("categoryName");
@@ -202,6 +206,7 @@ export async function setupBillableItemFormSubmission({
 
   const role = resolveUserRole();
 
+  /* ================= LOAD DEPARTMENTS ================= */
   setupSelectOptions(
     deptSelect,
     await loadDepartmentsLite({}, true),
@@ -210,6 +215,7 @@ export async function setupBillableItemFormSubmission({
     "-- Select Department --"
   );
 
+  /* ================= MASTER ITEM SEARCH ================= */
   setupSuggestionInputDynamic(
     masterItemSearch,
     masterItemSuggestions,
@@ -221,6 +227,7 @@ export async function setupBillableItemFormSubmission({
       document.getElementById("master_item_id").value = s.id;
 
       masterItemSearch.value = s.name;
+
       nameInput.value = s.name || "";
       codeInput.value =
         s.code ||
@@ -228,19 +235,110 @@ export async function setupBillableItemFormSubmission({
           .toLowerCase()
           .replace(/\s+/g, "-")
           .replace(/[^a-z0-9\-]/g, "");
+
+      /* 🔥 FIXED CATEGORY */
+      categoryIdInput.value = s.category_id || "";
+      categoryNameInput.value = s.category?.name || "";
     },
     "name"
   );
+  // 🔥 CLEAR MASTER ITEM IF USER TYPES
+  masterItemSearch.addEventListener("input", () => {
+    masterItemSearch.dataset.value = "";
+    document.getElementById("master_item_id").value = "";
+  });
+  /* ============================================================
+     ➕ ADD PRICE ROW BUTTON
+  ============================================================ */
+  document.getElementById("addPriceRowBtn").onclick = () => {
+    const container = document.getElementById("priceRowsContainer");
+
+    const row = document.createElement("div");
+    row.className = "price-row border p-3 mb-3 rounded";
+
+    row.innerHTML = `
+      <div class="row">
+
+        <div class="col-md-3">
+          <label>Payer Type</label>
+          <select class="form-control payer_type">
+            <option value="cash">Cash</option>
+            <option value="insurance">Insurance</option>
+            <option value="corporate">Corporate</option>
+            <option value="government">Government</option>
+            <option value="charity">Charity</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label>Price</label>
+          <input type="number" class="form-control price" />
+        </div>
+
+        <div class="col-md-3">
+          <label>Currency</label>
+          <select class="form-control currency">
+            <option value="USD">USD</option>
+            <option value="LRD">LRD</option>
+          </select>
+        </div>
+
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input is_default" />
+            <label class="form-check-label">Default</label>
+          </div>
+        </div>
+
+        <div class="col-md-1 d-flex align-items-end">
+          <button type="button" class="btn btn-danger removeRow">X</button>
+        </div>
+
+      </div>
+    `;
+
+    container.appendChild(row);
+
+    row.querySelector(".removeRow").onclick = () => row.remove();
+  };
 
   /* ============================================================
-     ➕ ADD
+     ➕ ADD ITEM (MULTI-PRICE)
   ============================================================ */
   document.getElementById("addItemBtn").onclick = () => {
     clearFormErrors(form);
-
+    // 🔥 MASTER ITEM MUST BE SELECTED
+    if (!document.getElementById("master_item_id").value) {
+      showToast("⚠️ Please select a Master Item from the dropdown");
+      return;
+    }
     const ruleErrors = validateUsingRules(form);
     if (ruleErrors.length) {
       applyServerErrors(form, ruleErrors);
+      return;
+    }
+
+    const priceRows = document.querySelectorAll(".price-row");
+    const prices = [];
+
+    priceRows.forEach((row) => {
+      const payer = row.querySelector(".payer_type")?.value;
+      const price = Number(row.querySelector(".price")?.value);
+      const currency = row.querySelector(".currency")?.value || "USD";
+      const isDefault = row.querySelector(".is_default")?.checked;
+
+      if (payer && price) {
+        prices.push({
+          payer_type: payer,
+          price,
+          currency,
+          is_default: !!isDefault,
+        });
+      }
+    });
+
+    if (!prices.length) {
+      showToast("⚠️ At least one price is required");
       return;
     }
 
@@ -249,8 +347,7 @@ export async function setupBillableItemFormSubmission({
       itemName: masterItemSearch.value,
       name: nameInput.value.trim(),
       code: codeInput.value.trim(),
-      price: Number(priceInput.value),
-      currency: currencyInput.value || "USD",
+      prices,
       department_id: normalizeUUID(deptSelect.value),
       category_id: normalizeUUID(categoryIdInput.value),
       category_name: categoryNameInput.value || "",
@@ -268,11 +365,16 @@ export async function setupBillableItemFormSubmission({
     if (orgSelect) orgSelect.value = orgVal;
     if (facSelect) facSelect.value = facVal;
 
+    /* RESET PRICE ROWS */
+    const container = document.getElementById("priceRowsContainer");
+    container.innerHTML = "";
+    document.getElementById("addPriceRowBtn").click();
+
     renderItemPills();
   };
 
   /* ============================================================
-    🛡️ SUBMIT (🔥 MULTI CREATE + EDIT REDIRECT FIX)
+     🛡️ SUBMIT
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -294,7 +396,7 @@ export async function setupBillableItemFormSubmission({
       let method = "POST";
 
       if (isEdit) {
-        payload = { ...selectedItems[0] }; // single update
+        payload = { ...selectedItems[0] };
         url = `/api/billable-items/${itemId}`;
         method = "PUT";
 
@@ -334,20 +436,6 @@ export async function setupBillableItemFormSubmission({
 
       showToast(isEdit ? "✅ Billable item updated" : "✅ Billable items added");
 
-      /* ========================================================
-        🔥 EDIT MODE → REDIRECT TO LIST
-      ======================================================== */
-      if (isEdit) {
-        sessionStorage.removeItem("billableItemEditId");
-        sessionStorage.removeItem("billableItemEditPayload");
-
-        window.location.href = "/billableitems-list.html";
-        return;
-      }
-
-      /* ========================================================
-        🔥 CREATE MODE → RESET FORM (KEEP USER HERE)
-      ======================================================== */
       form.reset();
       selectedItems.length = 0;
       renderItemPills();
@@ -368,5 +456,6 @@ export async function setupBillableItemFormSubmission({
       hideLoading();
     }
   };
+
   renderItemPills();
 }

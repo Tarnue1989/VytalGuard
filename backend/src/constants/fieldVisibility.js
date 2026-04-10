@@ -20,7 +20,7 @@ import {
   FIELD_ORDER_TRIAGE_RECORD,  FIELD_ORDER_EKG_RECORD, FIELD_ORDER_DEPARTMENT_STOCK, 
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
   FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
-  FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE,
+  FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE, FIELD_ORDER_PATIENT_INSURANCE,
 } from "./fieldOrder.js";
 
 
@@ -758,17 +758,39 @@ export const FIELD_VISIBILITY_SYSTEM_AUDIT_LOG = {
   manager: ["id", "table_name", "record_id", "action", "changes", "status"],
   staff: ["id", "table_name", "action", "status"]
 };
-
+/* -------------------- Patient Insurance -------------------- */
+export const FIELD_VISIBILITY_PATIENT_INSURANCE = {
+  superadmin: FIELD_ORDER_PATIENT_INSURANCE,
+  organization_admin: FIELD_ORDER_PATIENT_INSURANCE,
+  manager: [
+    "id","patient_id","provider_id",
+    "policy_number","plan_name",
+    "coverage_limit","currency",
+    "valid_from","valid_to",
+    "is_primary","status"
+  ],
+  staff: [
+    "id","patient_id","provider_id",
+    "policy_number","status"
+  ]
+};
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_VISIBILITY_INSURANCE_CLAIM = {
-    superadmin: FIELD_ORDER_INSURANCE_CLAIM,
+  superadmin: FIELD_ORDER_INSURANCE_CLAIM,
   organization_admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
-    "id", "invoice_id", "patient_id", "provider_id", "claim_number",
-    "amount_claimed", "amount_approved", "claim_date", "response_date",
-    "rejection_reason", "status"
+    "id","invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","amount_approved","amount_paid",
+    "claim_date","response_date",
+    "reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","status"
   ],
-  staff: ["id", "invoice_id", "patient_id", "provider_id", "claim_number", "amount_claimed", "status"]
+  staff: [
+    "id","invoice_id","patient_id","provider_id",
+    "claim_number","currency",
+    "amount_claimed","status"
+  ]
 };
 
 /* -------------------- Newborn Record -------------------- */

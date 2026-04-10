@@ -79,6 +79,9 @@ import { getAllWaiversLite } from "../controllers/discountWaiverController.js";
 import { getAllDiscountsLite } from "../controllers/discountController.js";
 import { getAllAutoBillingRulesLite } from "../controllers/autoBillingRuleController.js";
 import { getAllBillingTriggersLite } from "../controllers/billingTriggerController.js";
+import { getAllInsuranceProvidersLite } from "../controllers/insuranceProviderController.js";
+import { getAllInsuranceClaimsLite } from "../controllers/insuranceClaimController.js";
+import { getAllPatientInsurancesLite } from "../controllers/patientInsuranceController.js";
 
 import {
   getAllOrdersLite,
@@ -200,7 +203,8 @@ router.get("/discount-waivers", verifyAuth, getAllWaiversLite);
 router.get("/discounts", verifyAuth, getAllDiscountsLite);
 router.get("/auto-billing-rules", verifyAuth, getAllAutoBillingRulesLite);
 router.get("/billing-triggers", verifyAuth, getAllBillingTriggersLite); // ✅ ADD
-
+router.get("/insurance-claims", verifyAuth, getAllInsuranceClaimsLite);
+router.get("/patient-insurances", verifyAuth, getAllPatientInsurancesLite);
 router.get("/orders", verifyAuth, getAllOrdersLite);
 router.get("/order-items", verifyAuth, getAllOrderItemsLite);
 // -------------------------------
@@ -234,6 +238,8 @@ router.get("/prescriptions", verifyAuth, getAllPrescriptionsLite);
 router.get("/prescription-items", verifyAuth, getAllPrescriptionItemsLite);
 router.get("/pharmacy-transactions", verifyAuth, getAllPharmacyTransactionsLite);
 router.get("/pharmacy-transaction-items", verifyAuth, getAllPharmacyTransactionItemsLite);
+router.get("/insurance-providers", verifyAuth, getAllInsuranceProvidersLite);
+
 
 // -------------------------------
 // 🔹 Diagnostics
