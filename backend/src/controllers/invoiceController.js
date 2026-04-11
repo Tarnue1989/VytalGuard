@@ -13,6 +13,7 @@ import {
   Refund,
   Deposit,
   DiscountWaiver,
+  InsuranceClaim,
 } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
@@ -57,6 +58,7 @@ const INVOICE_INCLUDES = [
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+  {  model: InsuranceClaim, as: "insuranceClaim", attributes: [ "id", "claim_number", "amount_claimed", "amount_approved", "status", ],},
 ];
 
 /* ============================================================

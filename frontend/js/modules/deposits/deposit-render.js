@@ -11,7 +11,7 @@
 // ============================================================================
 
 import { FIELD_LABELS_DEPOSIT } from "./deposit-constants.js";
-
+import { getCurrencySymbol } from "../../utils/currency-utils.js";
 import { formatDateTime, formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";

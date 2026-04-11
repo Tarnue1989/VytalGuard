@@ -1,16 +1,14 @@
 // 📁 frontend/js/modules/refunds/refund-receipt.js
 // ============================================================================
-// 🧾 Refund Receipt (INVOICE-STYLE PARITY — FINAL)
-// 🔹 SAME pattern as payment-receipt.js
-// 🔹 Uses getCurrencySymbol (NO HARDCODED $)
+// 🧾 Refund Receipt (INVOICE-STYLE PARITY — CLEAN CURRENCY)
+// 🔹 Currency shown ONCE only
 // 🔹 SAME printedBy logic
 // 🔹 Multi-tenant safe
 // 🔹 Clean enterprise output
-// 🔹 ADDED refund_number (NO UUID)
+// 🔹 refund_number only (NO UUID)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
-import { getCurrencySymbol } from "../../utils/currency-utils.js"; // ✅ ADDED
 
 /* ============================================================
    📅 Date Formatter
@@ -47,15 +45,18 @@ function getPrintedBy(refund) {
 }
 
 /* ============================================================
+   💱 MONEY FORMATTER (NO CURRENCY)
+============================================================ */
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+/* ============================================================
    🧾 BUILD RECEIPT HTML
 ============================================================ */
 function buildRefundReceiptHTML(refund) {
   const printedBy = getPrintedBy(refund);
   const printedAt = new Date().toLocaleString();
-
-  // ✅ MATCH PAYMENT MASTER
-  const money = (v) =>
-    `${getCurrencySymbol(refund.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const refundRef = refund.refund_number || "—";
 
@@ -98,6 +99,10 @@ function buildRefundReceiptHTML(refund) {
         )}</div>
 
         <div><strong>Status:</strong> ${refund.status || "—"}</div>
+
+        <div><strong>Currency:</strong> ${
+          refund.currency || "—"
+        }</div>
       </div>
 
     </div>

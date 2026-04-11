@@ -1,14 +1,13 @@
 // 📁 frontend/js/modules/payments/payment-receipt.js
 // ============================================================================
-// 💳 Payment Receipt (INVOICE-STYLE PARITY)
-// 🔹 FIXED: currency support (USD / LRD)
+// 💳 Payment Receipt (INVOICE-STYLE PARITY — CLEAN CURRENCY)
+// 🔹 Currency shown ONCE only
 // 🔹 Clean grid + totals layout
 // 🔹 Uses unified printTemplate (logo + branding + watermark)
 // 🔹 UUID REMOVED (ONLY uses payment_number)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
-import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    📅 Date Formatter
@@ -45,14 +44,18 @@ function getPrintedBy(payment) {
 }
 
 /* ============================================================
+   💱 MONEY FORMATTER (NO CURRENCY)
+============================================================ */
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+/* ============================================================
    🧾 BUILD RECEIPT HTML (INVOICE STYLE)
 ============================================================ */
 function buildPaymentReceiptHTML(payment) {
   const printedBy = getPrintedBy(payment);
   const printedAt = new Date().toLocaleString();
-
-  const money = (v) =>
-    `${getCurrencySymbol(payment.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const invoiceLabel = payment.invoice
     ? `${payment.invoice.invoice_number || "—"}`
@@ -93,6 +96,10 @@ function buildPaymentReceiptHTML(payment) {
         )}</div>
 
         <div><strong>Status:</strong> ${payment.status || ""}</div>
+
+        <div><strong>Currency:</strong> ${
+          payment.currency || "—"
+        }</div>
       </div>
 
     </div>
@@ -131,7 +138,7 @@ function buildPaymentReceiptHTML(payment) {
       </tbody>
     </table>
 
-    <!-- 💵 TOTALS (MATCH INVOICE STYLE) -->
+    <!-- 💵 TOTALS -->
     <div class="totals">
 
       <div><span>Payment Amount:</span><span>${money(

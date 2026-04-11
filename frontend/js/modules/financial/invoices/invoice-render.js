@@ -143,13 +143,14 @@ function renderPatient(entry) {
 }
 
 /* ============================================================
-   🧩 VALUE RENDER (SAFE FIXED)
+   🧩 VALUE RENDER (ENTERPRISE FINAL FIXED)
 ============================================================ */
 function renderValue(entry, field) {
   switch (field) {
     case "status": {
       const raw = (entry.status || "").toLowerCase();
       const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+
       const colorMap = {
         draft: "bg-info",
         issued: "bg-warning text-dark",
@@ -159,6 +160,7 @@ function renderValue(entry, field) {
         cancelled: "bg-dark text-light",
         voided: "bg-secondary",
       };
+
       return raw
         ? `<span class="badge ${colorMap[raw] || "bg-primary"}">${label}</span>`
         : "—";
@@ -173,41 +175,60 @@ function renderValue(entry, field) {
     case "patient":
       return renderPatient(entry);
 
+    /* ============================================================
+       💰 FINANCIAL FIELDS (COMMA FIX + CONSISTENT)
+    ============================================================ */
     case "subtotal":
     case "total":
     case "total_discount":
     case "total_tax":
     case "total_paid":
     case "refunded_amount":
-    case "balance": {
+    case "balance":
+    case "coverage_amount": {
       const currency = entry.currency || "USD";
+
       return entry[field] != null
-        ? `${currency} ${Number(entry[field]).toFixed(2)}`
+        ? `${currency} ${Number(entry[field]).toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`
         : "—";
     }
 
+    /* ============================================================
+       👤 USERS
+    ============================================================ */
     case "createdBy":
     case "updatedBy":
     case "deletedBy":
       return renderUserName(entry[field]);
 
+    /* ============================================================
+       📅 DATES
+    ============================================================ */
     case "created_at":
     case "updated_at":
     case "deleted_at":
     case "due_date":
       return entry[field] ? formatDate(entry[field]) : "—";
 
+    /* ============================================================
+       🔐 DEFAULT SAFE
+    ============================================================ */
     default: {
       const v = entry[field];
+
       if (v === null || v === undefined || v === "") return "—";
       if (typeof v === "object") return "—";
+
       return v;
     }
   }
 }
 
 /* ============================================================
-   📋 LIST RENDER (STRUCTURE UPGRADED)
+   📋 LIST RENDER (ENTERPRISE FIXED)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("invoiceTableBody");
@@ -232,15 +253,34 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     entries.forEach((e) => {
       const tr = document.createElement("tr");
+
+      const patientPortion =
+        Number(e.total || 0) - Number(e.coverage_amount || 0);
+
       tr.innerHTML = visibleFields
-        .map((f) =>
-          f === "actions"
-            ? `<td class="actions-cell export-ignore">${getInvoiceActionButtons(
-                e,
-                user
-              )}</td>`
-            : `<td>${renderValue(e, f)}</td>`
-        )
+        .map((f) => {
+          if (f === "actions") {
+            return `<td class="actions-cell export-ignore">${getInvoiceActionButtons(e, user)}</td>`;
+          }
+
+          // 🔥 CUSTOM FINANCIAL DISPLAY
+          if (f === "total")
+            return `<td>${money(e.total, e.currency)}</td>`;
+
+          if (f === "coverage_amount")
+            return `<td>${money(e.coverage_amount, e.currency)}</td>`;
+
+          if (f === "patient_amount")
+            return `<td>${money(patientPortion, e.currency)}</td>`;
+
+          if (f === "total_paid")
+            return `<td>${money(e.total_paid, e.currency)}</td>`;
+
+          if (f === "balance")
+            return `<td>${money(e.balance, e.currency)}</td>`;
+
+          return `<td>${renderValue(e, f)}</td>`;
+        })
         .join("");
 
       tableBody.appendChild(tr);
@@ -262,15 +302,20 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   💱 CURRENCY HELPER (MASTER)
+   💱 MONEY FORMATTER (COMMA FIX)
 ============================================================ */
-function getCurrencySymbol(currency) {
-  if (!currency) return "";
-  return currency === "USD" ? "$" : currency === "LRD" ? "L$" : currency;
+function money(value, currency) {
+  const symbol =
+    currency === "USD" ? "$" : currency === "LRD" ? "L$" : currency || "";
+
+  return `${symbol} ${Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER (MASTER UPGRADE + INSURANCE SPLIT)
+   🗂️ CARD RENDERER (FULL FIXED)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -279,15 +324,15 @@ export function renderCard(entry, visibleFields, user) {
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const money = (v) =>
-    `${getCurrencySymbol(entry.currency)} ${Number(v || 0).toFixed(2)}`;
+  const patientPortion =
+    Number(entry.total || 0) - Number(entry.coverage_amount || 0);
 
   const row = (label, value) => {
-    if (value === undefined || value === null || value === "") return "";
+    if (!value && value !== 0) return "";
     return `
       <div class="entity-field">
         <span class="entity-label">${label}</span>
-        <span class="entity-value">${safe(value)}</span>
+        <span class="entity-value">${value}</span>
       </div>
     `;
   };
@@ -297,62 +342,7 @@ export function renderCard(entry, visibleFields, user) {
       ? "Paid"
       : status === "partial"
       ? "Partially Paid"
-      : status === "voided"
-      ? "Voided"
       : "";
-
-  const AUDIT_FIELDS = [
-    "createdBy",
-    "updatedBy",
-    "deletedBy",
-    "created_at",
-    "updated_at",
-    "deleted_at",
-  ];
-
-  const filteredFields = visibleFields.filter(
-    (f) =>
-      ![
-        "actions",
-        "status",
-        "invoice_number",
-        "total",
-        "balance",
-        "total_paid",
-        "items",
-        ...AUDIT_FIELDS,
-      ].includes(f)
-  );
-
-  /* ================= ITEMS (UPGRADED) ================= */
-  const renderItems = () => {
-    if (!Array.isArray(entry.items) || !entry.items.length) return "—";
-
-    return `
-      <ul class="mb-0 ps-3">
-        ${entry.items
-          .map((i) => {
-            const qty = Number(i.quantity || 1);
-            const unit = Number(i.unit_price || 0);
-            const total = qty * unit;
-
-            return `
-              <li>
-                <strong>${i.description || "Item"}</strong><br/>
-                <small>
-                  Qty: ${qty} | 
-                  Unit: ${money(unit)} | 
-                  Total: ${money(total)} | 
-                  <span style="color:#0d6efd;">Ins: ${money(i.insurance_amount)}</span> | 
-                  <span style="color:#dc3545;">Pt: ${money(i.patient_amount)}</span>
-                </small>
-              </li>
-            `;
-          })
-          .join("")}
-      </ul>
-    `;
-  };
 
   return `
     <div class="entity-card invoice-card">
@@ -361,8 +351,9 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">${money(entry.total)}</div>
+          <div class="entity-primary">${money(entry.total, entry.currency)}</div>
         </div>
+
         ${
           has("status")
             ? `<span class="entity-status ${status}">
@@ -372,15 +363,23 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
-      <!-- CORE (UPGRADED WITH INSURANCE SPLIT) -->
+      <!-- CORE (FIXED BREAKDOWN) -->
       <div class="entity-card-body">
+
         ${row("Invoice #", entry.invoice_number)}
-        ${row("Total", money(entry.total))}
-        ${row("Insurance", money(entry.coverage_amount))}
-        ${row("Patient", money(entry.balance))}
-        ${row("Paid", money(entry.total_paid))}
-        ${row("Balance", money(entry.balance))}
+
+        ${row("Total", money(entry.total, entry.currency))}
+
+        ${row("Insurance", money(entry.coverage_amount, entry.currency))}
+
+        ${row("Patient Portion", money(patientPortion, entry.currency))}
+
+        ${row("Paid", money(entry.total_paid, entry.currency))}
+
+        ${row("Balance", money(entry.balance, entry.currency))}
+
         ${row("Status", status.toUpperCase())}
+
         ${
           lifecycle
             ? row(
@@ -389,44 +388,34 @@ export function renderCard(entry, visibleFields, user) {
               )
             : ""
         }
+
       </div>
-
-      <!-- DETAILS -->
-      <details class="entity-section">
-        <summary><strong>Details</strong></summary>
-        <div class="entity-card-body">
-          ${row("Organization", entry.organization?.name)}
-          ${row("Facility", entry.facility?.name)}
-          ${row("Date", formatDate(entry.created_at))}
-          ${row("Claim ID", entry.insurance_claim_id)}
-
-          ${filteredFields
-            .map((f) =>
-              row(
-                FIELD_LABELS_INVOICE[f] || f,
-                renderValue(entry, f)
-              )
-            )
-            .join("")}
-        </div>
-      </details>
 
       <!-- ITEMS -->
       <details class="entity-section">
         <summary><strong>Items</strong></summary>
         <div class="entity-card-body">
-          ${renderItems()}
-        </div>
-      </details>
-
-      <!-- AUDIT -->
-      <details class="entity-section">
-        <summary><strong>Audit</strong></summary>
-        <div class="entity-card-body">
-          ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", formatDateTime(entry.created_at))}
-          ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", formatDateTime(entry.updated_at))}
+          ${
+            entry.items?.length
+              ? `
+            <ul class="mb-0 ps-3">
+              ${entry.items
+                .map(
+                  (i) => `
+                <li>
+                  <strong>${i.description}</strong><br/>
+                  <small>
+                    Qty: ${i.quantity} |
+                    Total: ${money(i.total_price, entry.currency)} |
+                    <span style="color:#0d6efd;">Ins: ${money(i.insurance_amount, entry.currency)}</span> |
+                    <span style="color:#dc3545;">Pt: ${money(i.patient_amount, entry.currency)}</span>
+                  </small>
+                </li>`
+                )
+                .join("")}
+            </ul>`
+              : "—"
+          }
         </div>
       </details>
 

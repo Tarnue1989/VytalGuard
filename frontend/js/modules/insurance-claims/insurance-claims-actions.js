@@ -17,7 +17,7 @@ import {
 
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./insurance-claims-render.js";
-import { printInsuranceClaimReceipt } from "./insurance-claim-receipt.js";
+import { printInsuranceClaimReceipt } from "./insurance-claims-receipt.js";
 
 /* ============================================================
    🛡️ EVENT GUARD
