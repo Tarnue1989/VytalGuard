@@ -236,7 +236,7 @@ export const billingService = {
           coverage_amount_initial: insuranceData.coverage_amount,
           coverage_currency: insuranceData.coverage_currency,
           insurance_amount: 0,
-
+          
           total: 0,
           total_paid: 0,
           balance: 0,
@@ -339,6 +339,10 @@ export const billingService = {
       insuranceAmount = Math.min(net, remainingCoverage);
       patientAmount = net - insuranceAmount;
 
+      invoice.coverage_amount = Math.max(
+        0,
+        remainingCoverage - insuranceAmount
+      );
     }
 
     const item = await InvoiceItem.create(
@@ -401,6 +405,7 @@ export const billingService = {
       facility_id: facilityId || user.facility_ids?.[0],
     });
 
+    /* ================= DEBUG: STEP 2 ================= */
     debug.log("ORDER STEP 2: BILLING TRIGGER", {
       allowed,
       status: order.status,
@@ -421,6 +426,7 @@ export const billingService = {
       transaction
     );
 
+    /* ================= DEBUG: STEP 1 ================= */
     debug.log("ORDER STEP 1: INSURANCE DATA", {
       payer_type: insuranceData.payer_type,
       insurance_provider_id: insuranceData.insurance_provider_id,
@@ -439,6 +445,7 @@ export const billingService = {
       transaction,
     });
 
+    /* ================= DEBUG: STEP 3 ================= */
     debug.log("ORDER STEP 3: FOUND INVOICE", {
       invoice_id: invoice?.id,
       invoice_insurance_provider_id: invoice?.insurance_provider_id,
@@ -448,6 +455,7 @@ export const billingService = {
       invoice = null;
     }
 
+    /* ================= DEBUG: STEP 3B ================= */
     debug.log("ORDER STEP 3B: CREATE NEW?", {
       will_create: !invoice,
     });
@@ -469,7 +477,6 @@ export const billingService = {
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ ensure initialized
 
           total: 0,
           total_paid: 0,
@@ -478,6 +485,11 @@ export const billingService = {
         },
         { transaction }
       );
+
+      debug.log("ORDER STEP 4: CLAIM (NEW)", {
+        invoice_id: invoice.id,
+        provider: invoice.insurance_provider_id,
+      });
 
       if (invoice.insurance_provider_id) {
         await insuranceService.createClaimFromInvoice({
@@ -488,12 +500,16 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ================= 🔥 FIX: APPLY INSURANCE ================= */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
       insuranceData.insurance_provider_id
     ) {
+      debug.log("🔥 FIX: APPLY INSURANCE TO EXISTING INVOICE", {
+        invoice_id: invoice.id,
+      });
+
       invoice.insurance_provider_id = insuranceData.insurance_provider_id;
       invoice.payer_type = "insurance";
       invoice.coverage_amount = insuranceData.coverage_amount;
@@ -506,6 +522,11 @@ export const billingService = {
         transaction,
       });
     }
+
+    debug.log("ORDER STEP 4: FINAL CLAIM CHECK", {
+      invoice_id: invoice.id,
+      provider: invoice.insurance_provider_id,
+    });
 
     let billedCount = 0;
 
@@ -538,10 +559,15 @@ export const billingService = {
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+        let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
 
         insuranceAmount = Math.min(net, remainingCoverage);
         patientAmount = net - insuranceAmount;
+
+        invoice.coverage_amount = Math.max(
+          0,
+          remainingCoverage - insuranceAmount
+        );
       }
 
       const invItem = await InvoiceItem.create(
@@ -576,20 +602,18 @@ export const billingService = {
       billedCount++;
     }
 
-    /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
-    ============================================================ */
+    if (billedCount > 0) {
+      await order.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
 
-    await order.update(
-      {
-        billed: true,
-        invoice_id: invoice.id,
-      },
-      { transaction }
-    );
-
-    await recalcInvoice(invoice.id, transaction);
-    await updateInvoiceStatus(invoice.id, transaction);
+      await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
+    }
 
     return { invoice, billedCount };
   },
@@ -683,7 +707,6 @@ export const billingService = {
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ INIT FIX
         },
         { transaction }
       );
@@ -697,12 +720,16 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ================= 🔥 FIX ================= */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
       insuranceData.insurance_provider_id
     ) {
+      debug.log("🔥 FIX LAB: APPLY INSURANCE", {
+        invoice_id: invoice.id,
+      });
+
       invoice.insurance_provider_id = insuranceData.insurance_provider_id;
       invoice.payer_type = "insurance";
       invoice.coverage_amount = insuranceData.coverage_amount;
@@ -715,6 +742,11 @@ export const billingService = {
         transaction,
       });
     }
+
+    debug.log("LAB STEP 4 FINAL", {
+      invoice_id: invoice.id,
+      provider: invoice.insurance_provider_id,
+    });
 
     let billedCount = 0;
 
@@ -736,9 +768,10 @@ export const billingService = {
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remaining = parseFloat(invoice.coverage_amount || 0);
+        let remaining = parseFloat(invoice.coverage_amount || 0);
         insuranceAmount = Math.min(net, remaining);
         patientAmount = net - insuranceAmount;
+        invoice.coverage_amount = Math.max(0, remaining - insuranceAmount);
       }
 
       const invItem = await InvoiceItem.create(
@@ -766,26 +799,24 @@ export const billingService = {
       billedCount++;
     }
 
-    /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
-    ============================================================ */
+    if (billedCount > 0) {
+      await labRequest.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
 
-    await labRequest.update(
-      {
-        billed: true,
-        invoice_id: invoice.id,
-      },
-      { transaction }
-    );
-
-    await recalcInvoice(invoice.id, transaction);
-    await updateInvoiceStatus(invoice.id, transaction);
+      await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
+    }
 
     return { invoice, billedCount };
   },
 
   /* ============================================================
-    4️⃣ BILL PRESCRIPTION ITEMS (DEBUG ENABLED — MASTER)
+   4️⃣  BILL PRESCRIPTION ITEMS (DEBUG ENABLED — MASTER)
   ============================================================ */
   async billPrescriptionItems({
     prescription,
@@ -856,7 +887,6 @@ export const billingService = {
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ INIT FIX
         },
         { transaction }
       );
@@ -870,7 +900,7 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ================= 🔥 FIX ================= */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
@@ -924,9 +954,10 @@ export const billingService = {
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remaining = parseFloat(invoice.coverage_amount || 0);
+        let remaining = parseFloat(invoice.coverage_amount || 0);
         insuranceAmount = Math.min(net, remaining);
         patientAmount = net - insuranceAmount;
+        invoice.coverage_amount = Math.max(0, remaining - insuranceAmount);
       }
 
       const invItem = await InvoiceItem.create(
@@ -954,20 +985,18 @@ export const billingService = {
       billedCount++;
     }
 
-    /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
-    ============================================================ */
+    if (billedCount > 0) {
+      await prescription.update(
+        {
+          billed: true,
+          invoice_id: invoice.id,
+        },
+        { transaction }
+      );
 
-    await prescription.update(
-      {
-        billed: true,
-        invoice_id: invoice.id,
-      },
-      { transaction }
-    );
-
-    await recalcInvoice(invoice.id, transaction);
-    await updateInvoiceStatus(invoice.id, transaction);
+      await recalcInvoice(invoice.id, transaction);
+      await updateInvoiceStatus(invoice.id, transaction);
+    }
 
     return { invoice, billedCount };
   },

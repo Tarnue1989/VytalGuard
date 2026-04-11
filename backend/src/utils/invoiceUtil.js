@@ -1,6 +1,6 @@
 /* ============================================================
    📁 backend/src/utils/invoiceUtil.js
-   💰 ENTERPRISE MASTER ENGINE (FINAL – DEPOSIT FIXED)
+   💰 ENTERPRISE MASTER ENGINE (FINAL – INSURANCE + DEPOSIT SAFE)
 ============================================================ */
 
 import db, { sequelize } from "../models/index.js";
@@ -54,7 +54,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     if (!invoice) throw new Error("❌ Invoice not found");
 
     /* ============================================================
-       🏥 INSURANCE LIMIT LOGIC
+       🏥 INSURANCE LIMIT LOGIC (KEEP SAME)
     ============================================================ */
     const items = await db.InvoiceItem.findAll({
       where: { invoice_id: invoiceId, status: "applied" },
@@ -99,7 +99,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💰 FINANCIAL AGGREGATION (FINAL FIXED)
+       💰 FINANCIAL AGGREGATION
     ============================================================ */
 
     // ✅ PAYMENTS
@@ -112,12 +112,12 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // 🔥 ✅ DEPOSITS (FINAL FIX)
+    // ✅ DEPOSITS
     const totalDeposits =
       (await db.Deposit.sum("applied_amount", {
         where: {
           applied_invoice_id: invoiceId,
-          applied_amount: { [Op.gt]: 0 }, // 🔥 ONLY COUNT USED AMOUNT
+          applied_amount: { [Op.gt]: 0 },
         },
         transaction: t,
       })) || 0;
@@ -132,7 +132,7 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ WAIVERS
+    // ✅ WAIVERS (CORRECT)
     const totalWaivers =
       (await db.DiscountWaiver.sum("applied_total", {
         where: {
@@ -152,12 +152,23 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
+    // 🔥 ✅ INSURANCE (NEW FIX)
+    const totalInsurance =
+      (await db.InvoiceItem.sum("insurance_amount", {
+        where: {
+          invoice_id: invoiceId,
+          status: "applied",
+        },
+        transaction: t,
+      })) || 0;
+
     debug.log("financials", {
       totalPaid,
       totalDeposits,
       totalRefunds,
       totalWaivers,
       totalDiscounts,
+      totalInsurance,
     });
 
     /* ============================================================
@@ -167,8 +178,14 @@ export async function recalcInvoice(invoiceId, t = null) {
     const [rows] = await sequelize.query(
       `
       SELECT
-        (SELECT COALESCE(SUM(i.net_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_items,
-        (SELECT COALESCE(SUM(i.tax_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_tax
+        (SELECT COALESCE(SUM(i.net_amount),0)
+         FROM invoice_items i
+         WHERE i.invoice_id = inv.id) AS total_items,
+
+        (SELECT COALESCE(SUM(i.tax_amount),0)
+         FROM invoice_items i
+         WHERE i.invoice_id = inv.id) AS total_tax
+
       FROM invoices inv
       WHERE inv.id = :invoiceId
       `,
@@ -209,18 +226,22 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💾 UPDATE INVOICE
+       💾 UPDATE INVOICE (MODEL SAFE)
     ============================================================ */
 
     await invoice.update(
       {
         subtotal: subtotal.toFixed(2),
         total_tax: tax.toFixed(2),
+
         total_discount: Number(totalDiscounts).toFixed(2),
+
+        coverage_amount: Number(totalWaivers).toFixed(2), // ✅ waiver ONLY
+        insurance_amount: Number(totalInsurance).toFixed(2), // 🔥 NEW
+
         total_paid: Number(totalPaid).toFixed(2),
         applied_deposits: Number(totalDeposits).toFixed(2),
         refunded_amount: Number(totalRefunds).toFixed(2),
-        coverage_amount: Number(totalWaivers).toFixed(2),
 
         total: total.toFixed(2),
         balance: balance.toFixed(2),
