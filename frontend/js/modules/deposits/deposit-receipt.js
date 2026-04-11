@@ -1,6 +1,7 @@
 // 📁 frontend/js/modules/deposits/deposit-receipt.js
 // ============================================================================
-// 🧾 Deposit Receipt (INVOICE-STYLE PARITY — FINAL FIXED)
+// 🧾 Deposit Receipt (INVOICE-STYLE PARITY — CLEAN CURRENCY)
+// 🔹 Currency shown ONCE only
 // 🔹 FIXED printedBy (uses userSession correctly)
 // 🔹 Multi-tenant safe
 // 🔹 Audit-safe fallback chain
@@ -45,13 +46,18 @@ function getPrintedBy(deposit) {
 }
 
 /* ============================================================
+   💱 MONEY FORMATTER (NO CURRENCY)
+============================================================ */
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+/* ============================================================
    🧾 BUILD RECEIPT HTML
 ============================================================ */
 function buildDepositReceiptHTML(deposit) {
   const printedBy = getPrintedBy(deposit);
   const printedAt = new Date().toLocaleString();
-
-  const money = (v) => `${deposit.currency || "$"}${Number(v || 0).toFixed(2)}`;
 
   const appliedInvoice = deposit.appliedInvoice
     ? `${deposit.appliedInvoice.invoice_number}`

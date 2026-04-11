@@ -1,8 +1,14 @@
 // 📁 backend/src/services/paymentService.js
+// ============================================================================
+// 💳 Payment Service – FINAL (MASTER RECALC FIXED)
+// ============================================================================
 
 import { sequelize, Payment, Invoice } from "../models/index.js";
 import { lifecycleUtil } from "../utils/lifecycleUtil.js";
 import { PAYMENT_STATUS } from "../constants/enums.js";
+
+// 🔥 ADD THIS
+import { recalcInvoice } from "../utils/invoiceUtil.js";
 
 export const paymentService = {
   /* ============================================================
@@ -69,7 +75,7 @@ export const paymentService = {
           facility_id: invoice.facility_id,
           patient_id: invoice.patient_id,
 
-          currency, // 🔥 CRITICAL
+          currency,
 
           amount: numericAmount,
           method,
@@ -81,34 +87,17 @@ export const paymentService = {
         { transaction: t, user }
       );
 
-      /* ============================
-         🔁 RECALCULATE INVOICE
-      ============================ */
-      const totalPaid = await Payment.sum("amount", {
-        where: {
-          invoice_id,
-          status: PAYMENT_STATUS.COMPLETED,
-        },
-        transaction: t,
-      });
+      /* ============================================================
+         🔁 MASTER RECALC (🔥 THIS FIXES YOUR ISSUE)
+      ============================================================ */
+      await recalcInvoice(invoice.id, t);
 
-      invoice.total_paid = totalPaid || 0;
-      invoice.balance = parseFloat(invoice.total || 0) - invoice.total_paid;
-
-      // 🔥 AUTO LOCK IF PAID
-      if (invoice.balance <= 0) {
-        invoice.is_locked = true;
-        invoice.status = "paid";
-      }
-
-      await invoice.save({ transaction: t, user });
-
-      return { payment, invoice };
+      return { payment };
     });
   },
 
   /* ============================================================
-     🚫 VOID PAYMENT (SAFE + RECALC + UNLOCK SUPPORT)
+     🚫 VOID PAYMENT (SAFE + MASTER RECALC)
   ============================================================ */
   async voidPayment({ payment_id, user, reason }) {
     return sequelize.transaction(async (t) => {
@@ -139,7 +128,7 @@ export const paymentService = {
       });
 
       /* ============================
-         🔁 RECALCULATE INVOICE
+         🔒 LOAD INVOICE
       ============================ */
       const invoice = await Invoice.findByPk(payment.invoice_id, {
         transaction: t,
@@ -148,26 +137,12 @@ export const paymentService = {
 
       if (!invoice) throw new Error("❌ Linked invoice not found");
 
-      const totalPaid = await Payment.sum("amount", {
-        where: {
-          invoice_id: invoice.id,
-          status: PAYMENT_STATUS.COMPLETED,
-        },
-        transaction: t,
-      });
+      /* ============================================================
+         🔁 MASTER RECALC (🔥 FIX)
+      ============================================================ */
+      await recalcInvoice(invoice.id, t);
 
-      invoice.total_paid = totalPaid || 0;
-      invoice.balance = parseFloat(invoice.total || 0) - invoice.total_paid;
-
-      // 🔥 UNLOCK IF PAYMENT REMOVED
-      if (invoice.balance > 0) {
-        invoice.is_locked = false;
-        invoice.status = "pending";
-      }
-
-      await invoice.save({ transaction: t, user });
-
-      return { payment, invoice };
+      return { payment };
     });
   },
 };

@@ -10,7 +10,6 @@ import {
 export const insuranceService = {
   /* ============================================================
      🔢 GENERATE CLAIM NUMBER (SAFE + ENTERPRISE)
-     Example: CLM-VYTG-000001
   ============================================================ */
   async generateClaimNumber({ organization_id, transaction }) {
     const org = await Organization.findByPk(organization_id, {
@@ -20,7 +19,6 @@ export const insuranceService = {
 
     const orgCode = org?.code || "ORG";
 
-    /* ================= SAFE LAST RECORD ================= */
     const lastClaim = await InsuranceClaim.findOne({
       where: { organization_id },
       order: [["created_at", "DESC"]],
@@ -42,14 +40,14 @@ export const insuranceService = {
   },
 
   /* ============================================================
-     🏥 CREATE CLAIM FROM INVOICE (ENTERPRISE FINAL)
+     🏥 CREATE / UPDATE CLAIM FROM INVOICE (FINAL FIXED)
   ============================================================ */
   async createClaimFromInvoice({ invoice_id, user, transaction }) {
     const t = transaction || (await sequelize.transaction());
 
     try {
       /* ============================
-         🔒 LOAD INVOICE
+         🔒 LOAD INVOICE + ITEMS
       ============================ */
       const invoice = await Invoice.findByPk(invoice_id, {
         transaction: t,
@@ -62,20 +60,38 @@ export const insuranceService = {
         throw new Error("❌ No insurance provider on invoice");
       }
 
+      const items = await invoice.getItems({ transaction: t });
+
       /* ============================
-         🚫 PREVENT DUPLICATE CLAIM
+         💰 FINAL CLAIM AMOUNT (FROM ITEMS)
+      ============================ */
+      const claimAmount = (items || []).reduce(
+        (sum, i) => sum + Number(i.insurance_amount || 0),
+        0
+      );
+
+      /* ============================
+         🔍 CHECK EXISTING CLAIM
       ============================ */
       const existing = await InsuranceClaim.findOne({
         where: { invoice_id },
         transaction: t,
       });
 
-      if (existing) return existing;
-
       /* ============================
-         💰 CALCULATE CLAIM AMOUNT (FIXED)
+         🔁 UPDATE EXISTING CLAIM
       ============================ */
-      const claimAmount = Number(invoice.coverage_amount || 0);
+      if (existing) {
+        await existing.update(
+          {
+            amount_claimed: claimAmount,
+          },
+          { transaction: t }
+        );
+
+        if (!transaction) await t.commit();
+        return existing;
+      }
 
       /* ============================
          🔢 GENERATE CLAIM NUMBER
@@ -100,12 +116,12 @@ export const insuranceService = {
           claim_number: claimNumber,
 
           currency: invoice.currency,
-          amount_claimed: claimAmount,
+          amount_claimed: claimAmount, // ✅ FINAL VALUE
 
           amount_approved: 0,
           amount_paid: 0,
 
-          status: "submitted", // ✅ FIXED ENUM
+          status: "submitted",
 
           claim_date: new Date(),
 
@@ -124,9 +140,6 @@ export const insuranceService = {
         { transaction: t }
       );
 
-      /* ============================
-         ✅ COMMIT
-      ============================ */
       if (!transaction) await t.commit();
 
       return claim;

@@ -1,15 +1,14 @@
 // 📁 frontend/js/modules/refundDeposits/refundDeposit-receipt.js
 // ============================================================================
-// 🧾 Deposit Refund Receipt (ENTERPRISE MASTER PARITY — FINAL FIXED)
-// 🔹 FULL parity with refund-receipt.js + payment-receipt.js
-// 🔹 Currency-safe (NO HARDCODED $)
+// 🧾 Deposit Refund Receipt (ENTERPRISE MASTER PARITY — CLEAN CURRENCY)
+// 🔹 Currency shown ONCE only
+// 🔹 FULL parity with refund/payment/invoice
 // 🔹 Audit-first printedBy
 // 🔹 Clean + deterministic output
-// 🔹 ADDED refund_deposit_number (NO UUID)
+// 🔹 refund_deposit_number only (NO UUID)
 // ============================================================================
 
 import { printDocument } from "../../templates/printTemplate.js";
-import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
 /* ============================================================
    📅 Date Formatter (MASTER)
@@ -50,14 +49,18 @@ function getPrintedBy(refund) {
 }
 
 /* ============================================================
-   🧾 BUILD RECEIPT HTML (CURRENCY SAFE)
+   💱 MONEY FORMATTER (NO CURRENCY)
+============================================================ */
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+/* ============================================================
+   🧾 BUILD RECEIPT HTML
 ============================================================ */
 function buildRefundDepositReceiptHTML(refund) {
   const printedBy = getPrintedBy(refund);
   const printedAt = new Date().toLocaleString();
-
-  const money = (v) =>
-    `${getCurrencySymbol(refund.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const refundRef = refund.refund_deposit_number || "—";
 
@@ -103,6 +106,10 @@ function buildRefundDepositReceiptHTML(refund) {
         )}</div>
 
         <div><strong>Status:</strong> ${refund.status || "—"}</div>
+
+        <div><strong>Currency:</strong> ${
+          refund.currency || "—"
+        }</div>
       </div>
 
     </div>
@@ -161,7 +168,7 @@ function buildRefundDepositReceiptHTML(refund) {
 }
 
 /* ============================================================
-   🖨️ PRINT (MASTER EXACT)
+   🖨️ PRINT
 ============================================================ */
 export function printRefundDepositReceipt(refund) {
   const html = buildRefundDepositReceiptHTML(refund);
