@@ -11,9 +11,9 @@ set LOCAL_DB=vytalguard
 set LOCAL_USER=vytal
 set LOCAL_PASSWORD=Divine@2016
 
-REM ---------- REMOTE ----------
-set REMOTE_HOST=102.68.84.245
-set REMOTE_PORT=5432
+REM ---------- REMOTE (USE EXISTING SSH TUNNEL) ----------
+set REMOTE_HOST=localhost
+set REMOTE_PORT=5433
 set REMOTE_DB=vytalguard
 set REMOTE_USER=vytal
 set REMOTE_PASSWORD=Divine@2016
@@ -21,6 +21,10 @@ set REMOTE_PASSWORD=Divine@2016
 set DUMP_FILE=C:\VytalGuard\vytalguard_full.sql
 
 echo.
+echo ⚠️ Make sure SSH tunnel is already running!
+echo.
+
+REM ===============================
 echo [1/4] Dumping FULL local database...
 
 set PGPASSWORD=%LOCAL_PASSWORD%
@@ -44,7 +48,8 @@ IF %ERRORLEVEL% NEQ 0 (
 echo ✔ Dump successful
 echo.
 
-echo [2/4] BACKUP remote database (safety)...
+REM ===============================
+echo [2/4] BACKUP remote database...
 
 set PGPASSWORD=%REMOTE_PASSWORD%
 
@@ -64,6 +69,7 @@ IF %ERRORLEVEL% NEQ 0 (
 echo ✔ Remote backup saved
 echo.
 
+REM ===============================
 echo [3/4] Resetting public schema...
 
 echo DROP SCHEMA public CASCADE; CREATE SCHEMA public; > reset.sql
@@ -84,6 +90,7 @@ IF %ERRORLEVEL% NEQ 0 (
 echo ✔ Database cleaned
 echo.
 
+REM ===============================
 echo [4/4] Restoring FULL database to server...
 
 "%PG_BIN%\psql.exe" ^
@@ -103,10 +110,6 @@ IF %ERRORLEVEL% NEQ 0 (
 echo.
 echo ==========================================
 echo ✔ SYNC COMPLETE 🚀
-echo ✔ Server = EXACT copy of local DB
-echo ✔ Login issues should be FIXED
-echo ✔ Backup saved: C:\VytalGuard\backup_remote.sql
-echo ✔ Log saved: restore_full.log
 echo ==========================================
 
 pause
