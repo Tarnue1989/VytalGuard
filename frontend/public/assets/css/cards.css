@@ -573,11 +573,42 @@
   line-height: 1.4;
 }
 
+/* ============================================================
+   PATIENT INSURANCE STATUS
+   ============================================================ */
+.patient-insurance-card .entity-status.active{background:#198754;color:#fff}
+.patient-insurance-card .entity-status.inactive{background:#6c757d;color:#fff}
+.patient-insurance-card .entity-status.expired{background:#f59e0b;color:#111}
+.patient-insurance-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.patient-insurance-card .entity-status.deleted{background:#dc3545;color:#fff}
 
+/* ============================================================
+   PATIENT INSURANCE BODY TUNING
+   ============================================================ */
+.patient-insurance-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
 
-
-
-
+/* ============================================================
+   🧾 INSURANCE CLAIM STATUS (ENTERPRISE)
+   ============================================================ */
+.insurance-claim-card .entity-status.draft{background:#f59e0b;color:#111}
+.insurance-claim-card .entity-status.submitted{background:#facc15;color:#111}
+.insurance-claim-card .entity-status.in_review{background:#0dcaf0;color:#111}
+.insurance-claim-card .entity-status.approved{background:#198754;color:#fff}
+.insurance-claim-card .entity-status.partially_approved{background:#20c997;color:#111}
+.insurance-claim-card .entity-status.rejected{background:#dc3545;color:#fff}
+.insurance-claim-card .entity-status.processing_payment{background:#0d6efd;color:#fff}
+.insurance-claim-card .entity-status.paid{background:#118827;color:#fff}
+.insurance-claim-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.insurance-claim-card .entity-status.voided{background:#dc3545;color:#fff}
+.insurance-claim-card .entity-status.reversed{background:#111827;color:#fff}
+/* ============================================================
+   🧾 INSURANCE CLAIM BODY TUNING
+   ============================================================ */
+.insurance-claim-card .entity-field{background:#f9fafb;padding:6px 8px;border-radius:8px}
 
 
 

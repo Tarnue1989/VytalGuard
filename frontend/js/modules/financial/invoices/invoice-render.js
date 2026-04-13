@@ -228,7 +228,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   📋 LIST RENDER (ENTERPRISE FIXED)
+   📋 LIST RENDER (ENTERPRISE FINAL — INSURANCE FIXED)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("invoiceTableBody");
@@ -254,8 +254,12 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     entries.forEach((e) => {
       const tr = document.createElement("tr");
 
+      /* ============================================================
+         🔥 FIXED FINANCIAL LOGIC
+      ============================================================ */
+      const insurance = Number(e.insurance_amount || 0);
       const patientPortion =
-        Number(e.total || 0) - Number(e.coverage_amount || 0);
+        Number(e.total || 0) - insurance;
 
       tr.innerHTML = visibleFields
         .map((f) => {
@@ -263,12 +267,14 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
             return `<td class="actions-cell export-ignore">${getInvoiceActionButtons(e, user)}</td>`;
           }
 
-          // 🔥 CUSTOM FINANCIAL DISPLAY
+          /* ============================================================
+             💰 CUSTOM FINANCIAL DISPLAY (FIXED)
+          ============================================================ */
           if (f === "total")
             return `<td>${money(e.total, e.currency)}</td>`;
 
-          if (f === "coverage_amount")
-            return `<td>${money(e.coverage_amount, e.currency)}</td>`;
+          if (f === "coverage_amount") // keep field key for compatibility
+            return `<td>${money(e.insurance_amount, e.currency)}</td>`;
 
           if (f === "patient_amount")
             return `<td>${money(patientPortion, e.currency)}</td>`;
@@ -315,7 +321,7 @@ function money(value, currency) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER (FULL FIXED)
+   🗂️ CARD RENDERER (ENTERPRISE FINAL — INSURANCE FIXED)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -324,8 +330,12 @@ export function renderCard(entry, visibleFields, user) {
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
 
+  /* ============================================================
+     🔥 FIXED FINANCIAL LOGIC
+  ============================================================ */
+  const insurance = Number(entry.insurance_amount || 0);
   const patientPortion =
-    Number(entry.total || 0) - Number(entry.coverage_amount || 0);
+    Number(entry.total || 0) - insurance;
 
   const row = (label, value) => {
     if (!value && value !== 0) return "";
@@ -363,14 +373,15 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
-      <!-- CORE (FIXED BREAKDOWN) -->
+      <!-- CORE -->
       <div class="entity-card-body">
 
         ${row("Invoice #", entry.invoice_number)}
 
         ${row("Total", money(entry.total, entry.currency))}
 
-        ${row("Insurance", money(entry.coverage_amount, entry.currency))}
+        <!-- 🔥 FIXED -->
+        ${row("Insurance", money(entry.insurance_amount, entry.currency))}
 
         ${row("Patient Portion", money(patientPortion, entry.currency))}
 

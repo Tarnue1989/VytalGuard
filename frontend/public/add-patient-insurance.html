@@ -76,16 +76,15 @@
                         </div>
                       </div>
 
-                      <!-- Provider -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
+                        <!-- Provider -->
+                        <div class="col-xxl-4 col-lg-6 col-sm-12">
                         <div class="field-wrapper">
-                          <label class="form-label">Insurance Provider <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control suggestion-input" id="providerInput"
-                            placeholder="Search provider..." autocomplete="off" />
-                          <input type="hidden" id="providerId" name="provider_id" />
-                          <div id="providerSuggestions" class="suggestions"></div>
+                            <label class="form-label">Insurance Provider <span class="text-danger">*</span></label>
+                            <select class="form-select" id="providerSelect" name="provider_id" required>
+                            <option value="">-- Select Provider --</option>
+                            </select>
                         </div>
-                      </div>
+                        </div>
 
                       <!-- Policy Number -->
                       <div class="col-xxl-4 col-lg-6 col-sm-12">

@@ -466,8 +466,11 @@ export const getInsuranceProviderById = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 GET LITE (AUTOCOMPLETE)
+   📌 GET LITE (AUTOCOMPLETE / DROPDOWN)
+   🔹 FIXED: Facility filter no longer blocks results
+   🔹 Enterprise-safe tenant filtering
 ============================================================ */
 export const getAllInsuranceProvidersLite = async (req, res) => {
   try {
@@ -481,38 +484,34 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
 
     const { q, organization_id, facility_id } = req.query;
 
+    /* ================= BASE WHERE ================= */
     const where = {
       status: INSURANCE_PROVIDER_STATUS.ACTIVE,
-      [Op.and]: [],
     };
 
-    /* ================= TENANT ================= */
+    /* ================= TENANT (ORG) ================= */
     if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
       where.organization_id = organization_id;
     } else if (!isSuperAdmin(req.user)) {
       where.organization_id = req.user.organization_id;
     }
 
-    if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        [Op.or]: [
-          { facility_id: null },
-          ...(facility_id && /^[0-9a-f-]{36}$/i.test(facility_id)
-            ? [{ facility_id }]
-            : []),
-        ],
-      });
+    /* ================= TENANT (FACILITY) ================= */
+    // ✅ FIXED: Only apply facility filter IF explicitly provided
+    if (
+      facility_id &&
+      /^[0-9a-f-]{36}$/i.test(facility_id)
+    ) {
+      where.facility_id = facility_id;
     }
 
     /* ================= SEARCH ================= */
     if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { name: { [Op.iLike]: `%${q}%` } },
-          { email: { [Op.iLike]: `%${q}%` } },
-          { phone: { [Op.iLike]: `%${q}%` } },
-        ],
-      });
+      where[Op.or] = [
+        { name: { [Op.iLike]: `%${q}%` } },
+        { email: { [Op.iLike]: `%${q}%` } },
+        { phone: { [Op.iLike]: `%${q}%` } },
+      ];
     }
 
     /* ================= QUERY ================= */
@@ -523,10 +522,10 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       limit: 50,
     });
 
-    /* ================= FIXED SHAPE ================= */
+    /* ================= FORMAT ================= */
     const result = providers.map((p) => ({
       id: p.id,
-      label: p.name, // ⭐ REQUIRED FOR FRONTEND
+      label: p.name, // ⭐ required for dropdown
     }));
 
     /* ================= AUDIT ================= */
@@ -543,12 +542,16 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
     });
 
     /* ================= RESPONSE ================= */
-    return success(res, "✅ Providers loaded (lite)", { records: result });
+    return success(res, "✅ Providers loaded (lite)", {
+      records: result,
+    });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load providers (lite)", err);
   }
 };
+
 /* ============================================================
    📌 TOGGLE INSURANCE PROVIDER STATUS
 ============================================================ */

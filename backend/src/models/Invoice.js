@@ -209,6 +209,10 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(12, 2),
         defaultValue: 0,
       },
+      insurance_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
       /* ================= 📸 SNAPSHOT (ENTERPRISE) ================= */
 
       // 🔹 Insurance snapshot (freeze at billing time)

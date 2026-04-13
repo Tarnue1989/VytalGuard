@@ -83,6 +83,9 @@ import { getAllInsuranceProvidersLite } from "../controllers/insuranceProviderCo
 import { getAllInsuranceClaimsLite } from "../controllers/insuranceClaimController.js";
 import { getAllPatientInsurancesLite } from "../controllers/patientInsuranceController.js";
 
+import { getAllAccountsLite } from "../controllers/accountController.js";
+import { getAllExpensesLite } from "../controllers/expenseController.js";
+
 import {
   getAllOrdersLite,
   getAllOrderItemsLite,
@@ -207,6 +210,10 @@ router.get("/insurance-claims", verifyAuth, getAllInsuranceClaimsLite);
 router.get("/patient-insurances", verifyAuth, getAllPatientInsurancesLite);
 router.get("/orders", verifyAuth, getAllOrdersLite);
 router.get("/order-items", verifyAuth, getAllOrderItemsLite);
+
+
+router.get("/accounts", verifyAuth, getAllAccountsLite);
+router.get("/expenses", verifyAuth, getAllExpensesLite);
 // -------------------------------
 // 🔹 Consultations & Appointments
 // -------------------------------

@@ -7,7 +7,9 @@ import {
   DISCOUNT_WAIVER_STATUS,
   LEDGER_STATUS,
   INVOICE_STATUS,
-  DISCOUNT_STATUS
+  DISCOUNT_STATUS,
+  LEDGER_TYPES,
+  LEDGER_DIRECTIONS
 } from "../constants/enums.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
@@ -84,13 +86,14 @@ const DSC = {
 };
 
 /* ============================================================
-   🔹 Helper: Write to FinancialLedger
+   🔹 Helper: Write to FinancialLedger (ENTERPRISE MASTER FINAL)
 ============================================================ */
 async function logLedger({
-  type, // "payment" | "refund" | "deposit" | "waiver" | "discount" | "reversal"
+  type, // "payment" | "refund" | "deposit" | "waiver" | "discount" | "expense" | "transfer" | "reversal"
   entity,
   organization_id,
   facility_id,
+  account_id,
   patient_id,
   invoice_id,
   amount,
@@ -99,50 +102,91 @@ async function logLedger({
   user,
   t,
 }) {
+  if (!t) {
+    throw new Error("❌ Transaction (t) is required for ledger logging");
+  }
+
+  if (!organization_id) {
+    throw new Error("❌ organization_id is required for ledger");
+  }
+
+  if (!facility_id) {
+    throw new Error("❌ facility_id is required for ledger");
+  }
+
+  if (amount === undefined || amount === null) {
+    throw new Error("❌ amount is required for ledger");
+  }
+
   const ledgerData = {
     organization_id,
     facility_id,
     patient_id: patient_id || null,
     invoice_id: invoice_id || null,
-    amount,
+    amount: parseFloat(amount),
     method: method || null,
-    status: LEDGER_STATUS.PENDING, // pending
-    note,
-    created_by_id: user?.id,
+    status: LEDGER_STATUS.PENDING,
+    note: note || null,
+    created_by_id: user?.id || null,
   };
 
   switch (type) {
+    /* ================= CREDIT ================= */
     case "payment":
       ledgerData.transaction_type = "credit";
-      ledgerData.payment_id = entity.id;
+      ledgerData.payment_id = entity?.id || null;
       break;
+
     case "deposit":
       ledgerData.transaction_type = "credit";
-      ledgerData.deposit_id = entity.id;
+      ledgerData.deposit_id = entity?.id || null;
       break;
+
+    /* ================= DEBIT ================= */
     case "refund":
       ledgerData.transaction_type = "debit";
-      ledgerData.refund_id = entity.id;
+      ledgerData.refund_id = entity?.id || null;
       break;
+
     case "waiver":
       ledgerData.transaction_type = "debit";
-      ledgerData.discount_waiver_id = entity.id;
+      ledgerData.discount_waiver_id = entity?.id || null;
       break;
+
     case "discount":
       ledgerData.transaction_type = "debit";
-      ledgerData.discount_id = entity.id;   // 👈 link to discount model
+      ledgerData.discount_id = entity?.id || null;
       break;
+
+    case "expense":
+      ledgerData.transaction_type = "debit";
+      ledgerData.expense_id = entity?.id || null;
+      break;
+
+    /* ================= TRANSFER ================= */
+    case "transfer":
+      ledgerData.transaction_type =
+        parseFloat(amount) >= 0 ? "credit" : "debit";
+      ledgerData.note = note || "Transfer entry";
+      break;
+
+    /* ================= REVERSAL ================= */
     case "reversal":
-      ledgerData.transaction_type = amount >= 0 ? "credit" : "debit";
-      ledgerData.note = `Reversal entry - ${note}`;
+      ledgerData.transaction_type =
+        parseFloat(amount) >= 0 ? "credit" : "debit";
+      ledgerData.note = `Reversal entry${note ? ` · ${note}` : ""}`;
       break;
+
+    /* ================= FAIL SAFE ================= */
     default:
-      throw new Error("❌ Unsupported ledger type");
+      throw new Error(`❌ Unsupported ledger type: ${type}`);
   }
 
-  return await db.FinancialLedger.create(ledgerData, { transaction: t, user });
+  return await db.FinancialLedger.create(ledgerData, {
+    transaction: t,
+    user,
+  });
 }
-
 
 /* ============================================================
    💰 Financial Service
@@ -1752,6 +1796,152 @@ async applyPayment({
         return discount;
       });
     },
+  /* ============================================================
+    💸 EXPENSES (ENTERPRISE MASTER – FINAL)
+  ============================================================ */
+
+  /* ----------------- Create Expense ----------------- */
+  async createExpense({
+    date,
+    amount,
+    currency,
+    category,
+    account_id,
+    description,
+    organization_id,
+    facility_id,
+    user,
+  }) {
+    return await sequelize.transaction(async (t) => {
+
+      /* ================= GLOBAL SAFETY ================= */
+      if (!user?.organization_id) {
+        throw new Error("❌ User organization context missing");
+      }
+
+      if (!date || !amount || !currency || !category || !account_id) {
+        throw new Error("❌ Missing required expense fields");
+      }
+
+      if (parseFloat(amount) <= 0) {
+        throw new Error("❌ Expense amount must be greater than 0");
+      }
+
+      /* ================= CREATE ================= */
+      const expense = await db.Expense.create(
+        {
+          date,
+          amount,
+          currency,
+          category,
+          account_id,
+          description,
+          organization_id,
+          facility_id,
+          created_by_id: user?.id,
+        },
+        { transaction: t, user }
+      );
+
+      /* ================= LEDGER (CRITICAL) ================= */
+      await logLedger({
+        type: "expense",
+        entity: expense,
+        organization_id,
+        facility_id,
+        account_id, // 🔥 FIXED
+        amount,
+        method: null,
+        note: `Expense: ${category}${description ? ` · ${description}` : ""}`,
+        user,
+        t,
+      });
+
+      return expense;
+    });
+  },
+
+  /* ============================================================
+    🔁 TRANSFERS (ENTERPRISE MASTER – FINAL)
+  ============================================================ */
+  async applyTransfer({
+    from_account_id,
+    to_account_id,
+    amount,
+    user,
+    organization_id,
+    facility_id,
+    t,
+  }) {
+    if (!t) throw new Error("❌ Transaction (t) is required");
+
+    if (!user?.organization_id) {
+      throw new Error("❌ User organization context missing");
+    }
+
+    if (parseFloat(amount) <= 0) {
+      throw new Error("❌ Amount must be > 0");
+    }
+
+    if (!from_account_id || !to_account_id) {
+      throw new Error("❌ Both source and destination accounts are required");
+    }
+
+    const currency = user?.currency || "USD";
+
+    /* ================= OUT (DEBIT) ================= */
+    await logLedger({
+      type: "transfer", // ✅ FIXED
+      entity: { id: null },
+      organization_id,
+      facility_id,
+      account_id: from_account_id, // 🔥 CRITICAL
+      amount: -Math.abs(amount),
+      note: `Transfer OUT → account ${from_account_id}`,
+      user,
+      t,
+    });
+
+    /* ================= IN (CREDIT) ================= */
+    await logLedger({
+      type: "transfer", // ✅ FIXED
+      entity: { id: null },
+      organization_id,
+      facility_id,
+      account_id: to_account_id, // 🔥 CRITICAL
+      amount: Math.abs(amount),
+      note: `Transfer IN → account ${to_account_id}`,
+      user,
+      t,
+    });
+
+    /* ================= CASH LEDGER (OPTIONAL VIEW) ================= */
+    await db.CashLedger.create({
+      date: new Date(),
+      type: LEDGER_TYPES.TRANSFER,
+      direction: LEDGER_DIRECTIONS.OUT,
+      account_id: from_account_id,
+      amount,
+      currency,
+      organization_id,
+      facility_id,
+      created_by_id: user?.id,
+    }, { transaction: t });
+
+    await db.CashLedger.create({
+      date: new Date(),
+      type: LEDGER_TYPES.TRANSFER,
+      direction: LEDGER_DIRECTIONS.IN,
+      account_id: to_account_id,
+      amount,
+      currency,
+      organization_id,
+      facility_id,
+      created_by_id: user?.id,
+    }, { transaction: t });
+
+    return { success: true };
+  },
 
     /* ============================================================
     ♻️ Restore Discount – (Fixed v2.5 Enterprise Aligned)

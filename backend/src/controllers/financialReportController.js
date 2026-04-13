@@ -18,7 +18,7 @@ function normalizeDate(input) {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  // Fallback (last resort)
+  // Fallback
   const d = new Date(input);
   if (!isNaN(d.getTime())) {
     return d.toISOString().slice(0, 10);
@@ -28,7 +28,7 @@ function normalizeDate(input) {
 }
 
 /* ============================================================
-   🧠 Helper — normalize & validate date range (HARDENED)
+   🧠 Helper — normalize & validate date range
 ============================================================ */
 function resolveDateRange(query) {
   let { from, to } = query;
@@ -36,17 +36,16 @@ function resolveDateRange(query) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 🔥 NORMALIZE FIRST (THIS FIXES THE MOMENT WARNING)
   from = normalizeDate(from);
-  to   = normalizeDate(to);
+  to = normalizeDate(to);
 
-  // 🔹 Default "from" → first day of current month
+  // Default: first day of month
   if (!from) {
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     from = firstDay.toISOString().slice(0, 10);
   }
 
-  // 🔹 Default "to" → today
+  // Default: today
   if (!to) {
     to = today.toISOString().slice(0, 10);
   }
@@ -54,7 +53,6 @@ function resolveDateRange(query) {
   const fromDate = new Date(from);
   const toDate = new Date(to);
 
-  // 🔥 Validation
   if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
     const err = new Error("Invalid date format. Use YYYY-MM-DD.");
     err.status = 400;
@@ -71,17 +69,20 @@ function resolveDateRange(query) {
 }
 
 /* ============================================================
-   📊 FINANCIAL REPORT CONTROLLER (READ-ONLY)
+   📊 FINANCIAL REPORT CONTROLLER (FINAL)
 ============================================================ */
 export const financialReportController = {
 
   /* ============================================================
-     🔹 OVERALL FINANCIAL SUMMARY (REVENUE VIEW)
+     🔹 SUMMARY
   ============================================================ */
   async summary(req, res, next) {
     try {
       const { from, to } = resolveDateRange(req.query);
-      const { organization_id, facility_id } = req.user;
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
 
       const data = await financialReportService.getSummary({
         from,
@@ -97,12 +98,15 @@ export const financialReportController = {
   },
 
   /* ============================================================
-     🔹 REVENUE BREAKDOWN BY SERVICE / MODULE
+     🔹 SERVICE BREAKDOWN
   ============================================================ */
   async services(req, res, next) {
     try {
       const { from, to } = resolveDateRange(req.query);
-      const { organization_id, facility_id } = req.user;
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
 
       const data = await financialReportService.getServiceBreakdown({
         from,
@@ -118,12 +122,15 @@ export const financialReportController = {
   },
 
   /* ============================================================
-     🔹 PAYMENTS BY METHOD (CASH INFLOW)
+     🔹 PAYMENTS
   ============================================================ */
   async payments(req, res, next) {
     try {
       const { from, to } = resolveDateRange(req.query);
-      const { organization_id, facility_id } = req.user;
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
 
       const data = await financialReportService.getPaymentsByMethod({
         from,
@@ -139,16 +146,15 @@ export const financialReportController = {
   },
 
   /* ============================================================
-     🔹 PAYMENT REFUNDS (REVENUE REVERSALS ONLY)
-     ------------------------------------------------------------
-     IMPORTANT:
-       - PAYMENT refunds only
-       - Deposit refunds are NOT included
+     🔹 PAYMENT REFUNDS
   ============================================================ */
   async paymentRefunds(req, res, next) {
     try {
       const { from, to } = resolveDateRange(req.query);
-      const { organization_id, facility_id } = req.user;
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
 
       const data = await financialReportService.getPaymentRefunds({
         from,
@@ -170,12 +176,15 @@ export const financialReportController = {
   },
 
   /* ============================================================
-     🔹 DEPOSIT OVERVIEW (LIABILITY VIEW)
+     🔹 DEPOSITS
   ============================================================ */
   async deposits(req, res, next) {
     try {
       const { from, to } = resolveDateRange(req.query);
-      const { organization_id, facility_id } = req.user;
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
 
       const data = await financialReportService.getDeposits({
         from,

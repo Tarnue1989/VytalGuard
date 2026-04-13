@@ -100,9 +100,7 @@ export async function setupPatientInsuranceFormSubmission({ form }) {
   const patientHidden = document.getElementById("patientId");
   const patientSuggestions = document.getElementById("patientSuggestions");
 
-  const providerInput = document.getElementById("providerInput");
-  const providerHidden = document.getElementById("providerId");
-  const providerSuggestions = document.getElementById("providerSuggestions");
+  const providerSelect = document.getElementById("providerSelect");
 
   const policyNumberInput = document.getElementById("policyNumber");
   const planNameInput = document.getElementById("planName");
@@ -165,16 +163,16 @@ export async function setupPatientInsuranceFormSubmission({ form }) {
     );
 
     /* ================= PROVIDER ================= */
-    setupSuggestionInputDynamic(
-      providerInput,
-      providerSuggestions,
-      "/api/lite/insurance-providers",
-      (selected) => {
-        providerHidden.value = selected?.id || "";
-        providerInput.value = selected?.label || "";
-      },
-      "label"
-    );
+      const providers = await loadInsuranceProvidersLite({}, true);
+      console.log("🔥 Providers:", providers);
+
+      setupSelectOptions(
+        providerSelect,
+        providers,
+        "id",
+        "label",
+        "-- Select Provider --"
+      );
 
     /* ================= CLEAR ================= */
     patientInput.oninput = () => {
@@ -183,11 +181,6 @@ export async function setupPatientInsuranceFormSubmission({ form }) {
       }
     };
 
-    providerInput.oninput = () => {
-      if (!providerInput.value) {
-        providerHidden.value = "";
-      }
-    };
 
   } catch {
     showToast("❌ Failed to load reference data");
@@ -214,8 +207,7 @@ export async function setupPatientInsuranceFormSubmission({ form }) {
         entry.patient?.last_name,
       ].filter(Boolean).join(" ");
 
-      providerHidden.value = entry.provider_id || "";
-      providerInput.value = entry.provider?.name || "";
+      providerSelect.value = entry.provider_id || "";
 
       policyNumberInput.value = entry.policy_number || "";
       planNameInput.value = entry.plan_name || "";
@@ -292,7 +284,7 @@ export async function setupPatientInsuranceFormSubmission({ form }) {
 
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
-      provider_id: normalizeUUID(providerHidden.value),
+      provider_id: normalizeUUID(providerSelect.value),
       policy_number: policyNumberInput.value || null,
       plan_name: planNameInput.value || null,
       coverage_limit: normalizeNumber(coverageLimitInput.value),

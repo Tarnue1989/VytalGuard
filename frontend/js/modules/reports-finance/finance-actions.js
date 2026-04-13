@@ -1,6 +1,8 @@
-import { printFinanceReport } from "./finance-print.js";
+import { printFinanceSummary } from "./finance-print.js";
 
 export function setupFinanceActions() {
   document.getElementById("financePrintBtn")
-    ?.addEventListener("click", () => printFinanceReport());
+    ?.addEventListener("click", () => {
+      printFinanceSummary(window.financeSummaryData);
+    });
 }

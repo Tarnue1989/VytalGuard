@@ -44,6 +44,11 @@ import RefundTransactionModel from "./RefundTransaction.js";
 import RefundDepositTransactionModel from "./RefundDepositTransaction.js";   // ✅ NEW
 import RefundDepositModel from "./RefundDeposit.js";
 import BillableItemPriceModel from "./BillableItemPrice.js";
+// 🔹 Finance (NEW)
+import AccountModel from "./Account.js";
+import CashLedgerModel from "./CashLedger.js";
+import ExpenseModel from "./Expense.js";
+import CashClosingModel from "./CashClosing.js";
 
 // 📦 Orders (NEW)
 import OrderModel from "./Order.js";
@@ -159,6 +164,12 @@ const models = {
   RefundDepositTransaction: RefundDepositTransactionModel(sequelize),
   PatientInsurance: PatientInsuranceModel(sequelize),
 
+  // 🔹 Finance (NEW)
+  Account: AccountModel(sequelize),
+  CashLedger: CashLedgerModel(sequelize),
+  Expense: ExpenseModel(sequelize),
+  CashClosing: CashClosingModel(sequelize),
+
   // 🔹 Orders (NEW)
   Order: OrderModel(sequelize),
   OrderItem: OrderItemModel(sequelize),
@@ -239,6 +250,7 @@ export const {
   FinancialLedger, BillableItemPrice,
   Order,
   OrderItem,
+  Account, CashLedger, Expense, CashClosing,
   // Inventory
   MasterItem, MasterItemCategory, CentralStock, DepartmentStock,
   StockRequest, StockRequestItem, Supplier, StockLedger,

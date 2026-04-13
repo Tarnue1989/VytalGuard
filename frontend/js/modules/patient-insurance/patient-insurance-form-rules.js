@@ -3,6 +3,7 @@
 // 🔹 Converted from: insurance-claim-form-rules.js
 // 🔹 Aligned with patientInsuranceController
 // 🔹 Pattern: Payment / Deposit / Claim → adapted for Policy logic
+// 🔹 FIXED: providerInput → providerSelect (SELECT dropdown support)
 // ============================================================================
 
 export const PATIENT_INSURANCE_FORM_RULES = [
@@ -12,7 +13,7 @@ export const PATIENT_INSURANCE_FORM_RULES = [
     message: "Patient is required",
   },
   {
-    id: "providerInput",
+    id: "providerSelect", // ✅ FIXED (was providerInput)
     message: "Insurance provider is required",
   },
   {

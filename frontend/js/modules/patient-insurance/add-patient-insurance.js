@@ -53,11 +53,15 @@ function resetForm() {
   // Clear cached edit state
   sessionStorage.removeItem("patientInsuranceEditId");
 
-  // Clear hidden IDs
-  ["patientId", "providerId"].forEach((id) => {
+  // Clear hidden IDs (ONLY patient now)
+  ["patientId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+
+  // Reset provider select (NEW)
+  const providerSelect = document.getElementById("providerSelect");
+  if (providerSelect) providerSelect.value = "";
 
   // Clear selects
   ["organizationSelect", "facilitySelect"].forEach((id) => {
@@ -71,7 +75,7 @@ function resetForm() {
 
   const submitBtn = form.querySelector("button[type=submit]");
   if (submitBtn)
-    submitBtn.innerHTML = `<i class="ri-add-line me-1"></i> Add Patient Insurance`;
+    submitBtn.innerHTML = '<i class="ri-add-line me-1"></i> Add Patient Insurance';
 }
 
 /* ============================================================

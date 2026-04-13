@@ -7,7 +7,7 @@ import {
 } from "../constants/enums.js";
 
 /* ============================================================
-   🔖 Local enum map (OBJECT SAFE)
+   🔖 Local enum map
 ============================================================ */
 const WS = {
   PENDING: DISCOUNT_WAIVER_STATUS.PENDING,
@@ -38,7 +38,6 @@ export default (sequelize) => {
         foreignKey: "facility_id",
       });
 
-      // 🔹 Audit
       DiscountWaiver.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       DiscountWaiver.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       DiscountWaiver.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -64,7 +63,6 @@ export default (sequelize) => {
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
-      // 💱 🔥 REQUIRED (MATCH INVOICE)
       currency: {
         type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
@@ -86,7 +84,6 @@ export default (sequelize) => {
       percentage: { type: DataTypes.DECIMAL(5, 2) },
       amount: { type: DataTypes.DECIMAL(12, 2) },
 
-      // 💰 Computed
       applied_total: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -99,7 +96,6 @@ export default (sequelize) => {
         defaultValue: 0,
       },
 
-      // 🔹 Approval
       approved_by_employee_id: { type: DataTypes.UUID },
       approved_by_id: { type: DataTypes.UUID },
       approved_at: { type: DataTypes.DATE },
@@ -128,15 +124,11 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
-
-      defaultScope: {
-        attributes: { exclude: ["deleted_at", "deleted_by_id"] },
-      },
     }
   );
 
   /* ============================================================
-     🔁 BEFORE VALIDATE (CALCULATE TOTAL)
+     🔁 BEFORE VALIDATE
   ============================================================ */
   DiscountWaiver.beforeValidate(async (waiver) => {
     const { Invoice } = await import("../models/index.js");
@@ -144,7 +136,6 @@ export default (sequelize) => {
     const invoice = await Invoice.findByPk(waiver.invoice_id);
     if (!invoice) throw new Error("Invalid invoice_id");
 
-    // 🔥 enforce currency
     waiver.currency = invoice.currency;
 
     const total = parseFloat(invoice.total || 0);
@@ -163,25 +154,6 @@ export default (sequelize) => {
 
     waiver.applied_total = intendedAmount;
     waiver.remaining_balance = total - intendedAmount;
-  });
-
-  /* ============================================================
-     🔁 APPLY WAIVER
-  ============================================================ */
-  DiscountWaiver.afterUpdate(async (waiver, options) => {
-    try {
-      // 🔥 ONLY APPLY FINANCIAL IMPACT WHEN ACTUALLY APPLIED
-      if (waiver.status !== WS.APPLIED) return;
-
-      const { financialService } = await import("../services/financialService.js");
-
-      await financialService.recalcInvoice(
-        waiver.invoice_id,
-        options?.transaction
-      );
-    } catch (err) {
-      console.error("❌ Waiver recalc failed:", err.message);
-    }
   });
 
   return DiscountWaiver;

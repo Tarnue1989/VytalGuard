@@ -1,3 +1,46 @@
+/* -------------------- Account -------------------- */
+export const FIELD_ORDER_ACCOUNT = [
+  "id","name","type","currency","balance","is_active",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
+];
+
+/* -------------------- Cash Ledger -------------------- */
+export const FIELD_ORDER_CASH_LEDGER = [
+  "id","date","type","direction",
+  "account_id","from_account_id","to_account_id",
+  "amount","currency",
+  "reference_type","reference_id","reversal_of_id",
+  "description",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by_id"
+];
+
+/* -------------------- Expense -------------------- */
+export const FIELD_ORDER_EXPENSE = [
+  "id","date","amount","currency","category",
+  "account_id","ledger_id",
+  "description",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by_id"
+];
+
+/* -------------------- Cash Closing -------------------- */
+export const FIELD_ORDER_CASH_CLOSING = [
+  "id","date","account_id",
+  "opening_balance","closing_balance",
+  "total_in","total_out",
+  "is_locked",
+  "organization_id","facility_id",
+  "closed_by_id","closed_at",
+  "created_at","updated_at","deleted_at"
+];
+
+
+
 /* -------------------- Organization -------------------- */
 export const FIELD_ORDER_ORGANIZATION = [
   "id", "name", "code", "status",

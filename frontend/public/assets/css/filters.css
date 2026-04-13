@@ -174,3 +174,95 @@
   border-bottom: 1px solid #ccc;
   padding-bottom: 0.3rem;
 }
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   🚀 FINAL MOBILE + INPUT FIX (OVERRIDE ALL CONFLICTS)
+   ADD THIS AT THE VERY BOTTOM OF filters.css
+========================================================= */
+
+@media (max-width: 768px) {
+
+  /* 🔥 FORCE FLEX (OVERRIDE GRID) */
+  .filter-grid.compact {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+
+  /* 🔥 FULL WIDTH FIELDS */
+  .filter-grid.compact > div {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 🔥 FIX INPUT GROUP BREAK (MAIN ISSUE) */
+  .filter-body .input-group {
+    display: flex !important;
+    flex-wrap: nowrap !important; /* 🔥 KEY FIX */
+    width: 100%;
+  }
+
+  /* 🔥 ICON STYLE */
+  .filter-body .input-group-text {
+    flex: 0 0 34px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: #eef2f7;
+    border-right: 0;
+  }
+
+  /* 🔥 INPUT + SELECT */
+  .filter-body .form-control,
+  .filter-body .form-select {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 32px !important;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-left: 0;
+    min-width: 0; /* prevents overflow */
+  }
+
+  /* 🔥 FIX SELECT DROPDOWN WIDTH */
+  .filter-body .form-select {
+    appearance: auto;
+  }
+
+  /* 🔥 LABEL COMPACT */
+  .filter-body .form-label {
+    font-size: 0.7rem;
+    margin-bottom: 2px;
+  }
+
+  /* 🔥 REDUCE CARD PADDING */
+  .filter-body {
+    padding: 0.6rem !important;
+  }
+
+  /* 🔥 BUTTON AREA */
+  .filter-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .filter-actions button {
+    flex: 1;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+
+}
+
+

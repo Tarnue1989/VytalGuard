@@ -21,7 +21,7 @@ import {
   isOrgOwner,
   isFacilityHead,
 } from "../utils/role-utils.js";
-
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
@@ -147,23 +147,12 @@ export const createPatientInsurance = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ================= SCOPE ================= */
-    let orgId = null;
-    let facilityId = null;
-
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id ?? null;
-      facilityId = value.facility_id ?? null;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id ?? null;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id ?? null;
-    }
+    /* ================= SCOPE (PAYMENT PARITY) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     if (!orgId) {
       await t.rollback();
@@ -174,7 +163,7 @@ export const createPatientInsurance = async (req, res) => {
     const exists = await PatientInsurance.findOne({
       where: {
         organization_id: orgId,
-        facility_id: facilityId ?? null,
+        facility_id: facilityId || null,
         policy_number: value.policy_number,
         provider_id: value.provider_id,
       },
@@ -206,7 +195,7 @@ export const createPatientInsurance = async (req, res) => {
       {
         ...value,
         organization_id: orgId,
-        facility_id: facilityId,
+        facility_id: facilityId || null,
         created_by_id: req.user?.id || null,
       },
       { transaction: t }
@@ -272,21 +261,16 @@ export const updatePatientInsurance = async (req, res) => {
       return error(res, "❌ Record not found", null, 404);
     }
 
-    let orgId = record.organization_id;
-    let facilityId = record.facility_id;
+    /* ================= SCOPE (PAYMENT PARITY) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
-    if (isSuperAdmin(req.user)) {
-      if ("organization_id" in value) orgId = value.organization_id;
-      if ("facility_id" in value) facilityId = value.facility_id;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      if ("facility_id" in value) facilityId = value.facility_id;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id ?? record.facility_id;
+    if (!orgId) {
+      await t.rollback();
+      return error(res, "Missing organization assignment", null, 400);
     }
 
     /* ================= PRIMARY LOGIC ================= */
@@ -307,7 +291,7 @@ export const updatePatientInsurance = async (req, res) => {
       {
         ...value,
         organization_id: orgId,
-        facility_id: facilityId,
+        facility_id: facilityId || null,
         updated_by_id: req.user?.id || null,
       },
       { transaction: t }
