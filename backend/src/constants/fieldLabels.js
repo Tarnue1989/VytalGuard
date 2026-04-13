@@ -36,11 +36,58 @@ import {
   // 🔥 NEW (BILLING)
   BILLING_MODE, PRICE_CHANGE_TYPE,
 
+
 } from "./enums.js";
 // 🧠 Safe join helper for enums (handles both arrays & objects)
 const joinValues = (e) =>
   Array.isArray(e) ? e.join(", ") : Object.values(e).join(", ");
 
+/* -------------------- Account -------------------- */
+export const FIELD_LABELS_ACCOUNT = {
+  id: "ID", name: "Account Name",
+  type: "Account Type", currency: "Currency",
+  balance: "Balance", is_active: "Active",
+  organization_id: "Organization", facility_id: "Facility",
+  created_at: "Created At", updated_at: "Updated At"
+};
+
+/* -------------------- Cash Ledger -------------------- */
+export const FIELD_LABELS_CASH_LEDGER = {
+  id: "ID", date: "Date",
+  type: "Ledger Type", direction: "Direction",
+  account_id: "Account",
+  from_account_id: "From Account", to_account_id: "To Account",
+  amount: "Amount", currency: "Currency",
+  reference_type: "Reference Type", reference_id: "Reference",
+  reversal_of_id: "Reversal Of",
+  description: "Description",
+  created_at: "Created At"
+};
+
+/* -------------------- Expense -------------------- */
+export const FIELD_LABELS_EXPENSE = {
+  id: "ID", date: "Date",
+  amount: "Amount", currency: "Currency",
+  category: "Category",
+  account_id: "Account",
+  ledger_id: "Ledger Entry",
+  description: "Description",
+  created_at: "Created At"
+};
+
+/* -------------------- Cash Closing -------------------- */
+export const FIELD_LABELS_CASH_CLOSING = {
+  id: "ID", date: "Date",
+  account_id: "Account",
+  opening_balance: "Opening Balance",
+  closing_balance: "Closing Balance",
+  total_in: "Total In",
+  total_out: "Total Out",
+  is_locked: "Locked",
+  closed_by_id: "Closed By",
+  closed_at: "Closed At",
+  created_at: "Created At"
+};
 /* -------------------- Organization -------------------- */
 export const FIELD_LABELS_ORGANIZATION = {
   id: "ID", name: "Organization Name", code: "Code",

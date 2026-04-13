@@ -87,6 +87,11 @@ import insuranceProviderRoutes from "./insuranceProviderRoutes.js";
 import insuranceClaimRoutes from "./insuranceClaimRoutes.js";
 import patientInsuranceRoutes from "./patientInsuranceRoutes.js";
 
+import accountRoutes from "./accountRoutes.js";
+import expenseRoutes from "./expenseRoutes.js";
+import cashLedgerRoutes from "./cashLedgerRoutes.js";
+import cashClosingRoutes from "./cashClosingRoutes.js";
+
 /* ============================================================
    ⚡ Lite Routes (Autocomplete / Dropdown APIs)
 ============================================================ */
@@ -195,7 +200,10 @@ router.use("/insurance-providers", insuranceProviderRoutes);
 router.use("/insurance-claims", insuranceClaimRoutes);
 router.use("/patient-insurances", patientInsuranceRoutes);
 
-
+router.use("/accounts", accountRoutes);
+router.use("/expenses", expenseRoutes);
+router.use("/cash-ledger", cashLedgerRoutes);
+router.use("/cash-closing", cashClosingRoutes);
 /* ============================================================
    ⚡ Lite Routes
 ============================================================ */

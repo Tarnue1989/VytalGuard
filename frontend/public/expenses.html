@@ -1,0 +1,300 @@
+<!-- 📄 expenses.html – ENTERPRISE MASTER -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VytalGuard - Expenses</title>
+
+  <!-- Meta -->
+  <meta name="description" content="VytalGuard HMS - Invoices List">
+  <link rel="shortcut icon" href="assets/images/favicon.svg">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css">
+  <link rel="stylesheet" href="assets/css/main.min.css">
+  <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
+  <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css" />
+  <link rel="stylesheet" href="assets/css/filter-page.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
+  <link rel="stylesheet" href="assets/css/summary.css">
+</head>
+
+
+<body>
+
+<div class="page-wrapper">
+<div class="app-container">
+
+  <!-- HEADER -->
+  <div class="app-header d-flex align-items-center"></div>
+
+  <!-- HERO -->
+  <div class="app-hero-header d-flex align-items-center">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
+      </li>
+      <li class="breadcrumb-item">Financial</li>
+      <li class="breadcrumb-item text-primary">Expenses</li>
+    </ol>
+  </div>
+
+  <!-- BODY -->
+  <div class="app-body">
+    <div class="card">
+
+      <!-- HEADER -->
+      <div class="card-header d-flex justify-content-between">
+        <h5>Expenses</h5>
+
+        <!-- ➕ ADD -->
+        <button id="addExpenseBtn" class="btn btn-primary btn-sm">
+          <i class="fas fa-plus"></i> Add Expense
+        </button>
+      </div>
+
+      <div class="card-body">
+
+        <!-- FILTERS -->
+        <div class="card panel-card mb-3">
+
+          <div class="card-header d-flex justify-content-between">
+
+            <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+              <i class="fas fa-filter"></i> Filter
+              <i id="filterChevron" class="fas fa-chevron-down"></i>
+            </button>
+
+            <div class="d-flex gap-2">
+              <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
+              <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
+              <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
+            </div>
+
+          </div>
+
+          <div id="filterCollapse" class="card-body hidden">
+
+            <div class="row g-2">
+
+              <!-- SEARCH -->
+              <div class="col-md-3">
+                <label>Search</label>
+                <input id="filterSearch" class="form-control" placeholder="Search expenses...">
+              </div>
+
+              <!-- CATEGORY -->
+              <div class="col-md-3">
+                <label>Category</label>
+                <select id="filterCategory" class="form-select"></select>
+              </div>
+
+              <!-- ACCOUNT -->
+              <div class="col-md-3">
+                <label>Account</label>
+                <select id="filterAccount" class="form-select"></select>
+              </div>
+
+              <!-- CURRENCY -->
+              <div class="col-md-3">
+                <label>Currency</label>
+                <select id="filterCurrency" class="form-select">
+                  <option value="">All</option>
+                  <option value="USD">USD</option>
+                  <option value="LRD">LRD</option>
+                </select>
+              </div>
+
+              <!-- DATE RANGE -->
+              <div class="col-md-3">
+                <label>Date Range</label>
+                <input id="dateRange" class="form-control custom-daterange">
+              </div>
+
+              <!-- ORG -->
+              <div class="col-md-3">
+                <label>Organization</label>
+                <select id="filterOrganizationSelect" class="form-select"></select>
+              </div>
+
+              <!-- FACILITY -->
+              <div class="col-md-3">
+                <label>Facility</label>
+                <select id="filterFacilitySelect" class="form-select"></select>
+              </div>
+
+              <div class="col-12">
+                <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                  Clear
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+                <!-- ============================================================ -->
+                <!-- VIEW CONTROLS -->
+                <!-- ============================================================ -->
+                <div class="d-flex mb-2 gap-2 flex-wrap">
+
+                  <div class="dropdown">
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                      Select Fields
+                    </button>
+                    <div id="fieldSelectorDropdown" class="dropdown-menu p-2"></div>
+                  </div>
+
+                  <div class="btn-group">
+                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm">Card</button>
+                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm active">Table</button>
+                  </div>
+
+                  <select id="recordsPerPage" class="form-select form-select-sm" style="width:80px;">
+                    <option>10</option>
+                    <option selected>25</option>
+                    <option>50</option>
+                    <option>100</option>
+                  </select>
+
+                </div>
+
+                <!-- SUMMARY -->
+                <hr />
+                <div class="module-summary">
+                  <div id="moduleSummary"></div>
+                </div>
+                <hr />
+
+
+        <!-- TABLE -->
+        <div class="table-responsive expense-table-container active">
+          <table class="table">
+            <thead id="expenseTableHead"></thead>
+            <tbody id="expenseTableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- CARDS -->
+        <div id="expenseList" class="card-list"></div>
+
+        <!-- PAGINATION -->
+        <div id="paginationButtons" class="text-center mt-3"></div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- LOADING -->
+<div id="loadingOverlay" class="hidden">
+  <div class="spinner-box">
+    <i class="fas fa-spinner fa-spin"></i> Loading...
+  </div>
+</div>
+
+<!-- VIEW MODAL -->
+<div id="viewModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="viewModalTitle">Expense Details</h2>
+      <button class="close-btn" data-close="viewModal">&times;</button>
+    </div>
+    <div id="viewModalBody"></div>
+  </div>
+</div>
+
+<!-- CREATE / EDIT MODAL -->
+<div id="expenseFormModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="expenseFormTitle">Create Expense</h2>
+      <button class="close-btn" data-close="expenseFormModal">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <form id="expenseForm">
+
+        <input type="hidden" id="expenseId">
+
+        <div class="mb-2">
+          <label>Date</label>
+          <input id="expenseDate" type="date" class="form-control" required>
+        </div>
+
+        <div class="mb-2">
+          <label>Amount</label>
+          <input id="expenseAmount" type="number" class="form-control" required>
+        </div>
+
+        <div class="mb-2">
+          <label>Currency</label>
+          <select id="expenseCurrency" class="form-select">
+            <option value="USD">USD</option>
+            <option value="LRD">LRD</option>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label>Category</label>
+          <select id="expenseCategory" class="form-select"></select>
+        </div>
+
+        <div class="mb-2">
+          <label>Account</label>
+          <select id="expenseAccount" class="form-select"></select>
+        </div>
+
+        <div class="mb-2">
+          <label>Description</label>
+          <textarea id="expenseDescription" class="form-control"></textarea>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-outline-secondary" data-close="expenseFormModal">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary">
+            Save
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+  <!-- JS -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
+  <script src="assets/vendor/daterange/daterange.js"></script>
+  <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <script type="module" src="/js/logout.js"></script>
+  <script type="module" src="/js/authSession.js"></script>
+<!-- ENTRY -->
+<script type="module" src="/js/modules/financial/expenses/expenses.js"></script>
+
+<script type="module" src="/js/utils/navigation.js"></script>
+
+</body>
+</html>

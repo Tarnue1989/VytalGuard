@@ -1024,3 +1024,90 @@ export const PHARMACY_TRANSACTION_TYPE = {
   RETURN: "return",
   ADJUSTMENT: "adjustment",
 };
+
+
+// ============================================================
+// 🔹 Finance Transaction (FINAL ENTERPRISE)
+// ============================================================
+
+export const ACCOUNT_TYPES = {
+  CASH: "cash",
+  BANK: "bank",
+  MOBILE_MONEY: "mobile_money",
+  OTHER: "other",
+};
+
+// ------------------------------------------------------------
+// 🔹 Ledger Core Types
+// ------------------------------------------------------------
+export const LEDGER_TYPES = {
+  COLLECTION: "collection",   // payments, deposits
+  EXPENSE: "expense",         // expenses
+  TRANSFER: "transfer",       // account → account
+  ADJUSTMENT: "adjustment",   // reversal, correction, void
+};
+
+// ------------------------------------------------------------
+// 🔹 Ledger Direction
+// ------------------------------------------------------------
+export const LEDGER_DIRECTIONS = {
+  IN: "in",   // money coming in
+  OUT: "out", // money going out
+};
+
+// ------------------------------------------------------------
+// 🔹 Ledger Reference (🔥 REQUIRED FOR ENGINE)
+// ------------------------------------------------------------
+export const LEDGER_REFERENCE_TYPES = {
+  PAYMENT: "payment",
+  DEPOSIT: "deposit",
+  EXPENSE: "expense",
+  REFUND: "refund",
+  REFUND_DEPOSIT: "refund_deposit",
+  TRANSFER: "transfer",
+  ADJUSTMENT: "adjustment",
+};
+
+// ------------------------------------------------------------
+// 🔹 Ledger Status (🔥 ENTERPRISE CONTROL)
+// ------------------------------------------------------------
+export const LEDGER_ENTRY_STATUS = {
+  PENDING: "pending",
+  POSTED: "posted",
+  VOIDED: "voided",
+  REVERSED: "reversed",
+};
+
+// ------------------------------------------------------------
+// 🔹 Expense Categories
+// ------------------------------------------------------------
+export const EXPENSE_CATEGORIES = {
+  DRUGS: "drugs",
+  SUPPLIES: "supplies",
+  FUEL: "fuel",
+  UTILITIES: "utilities",
+  SALARY: "salary",
+  MAINTENANCE: "maintenance",
+  RENT: "rent",
+  TRANSPORT: "transport",
+  OTHER: "other",
+};
+
+// ------------------------------------------------------------
+// 🔹 Expense Status (OPTIONAL BUT RECOMMENDED)
+// ------------------------------------------------------------
+export const EXPENSE_STATUS = {
+  DRAFT: "draft",
+  APPROVED: "approved",
+  POSTED: "posted",
+  VOIDED: "voided",
+};
+
+// ------------------------------------------------------------
+// 🔹 Transfer Types (OPTIONAL FUTURE SAFE)
+// ------------------------------------------------------------
+export const TRANSFER_TYPES = {
+  CASH_TO_BANK: "cash_to_bank",
+  BANK_TO_CASH: "bank_to_cash",
+  ACCOUNT_TO_ACCOUNT: "account_to_account",
+};

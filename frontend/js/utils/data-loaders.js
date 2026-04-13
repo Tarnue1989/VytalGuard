@@ -404,7 +404,18 @@ export async function loadInvoiceItemsLite(invoiceId, params = {}, force = true)
   }
 }
 
-
+// 📦 Accounts lite loader
+export const loadAccountsLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/accounts${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
+// 📦 Expenses lite loader
+export const loadExpensesLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/expenses${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
 // 📦 Payments lite loader
 // Supports optional filters: 
 // { patient_id, invoice_id, facility_id, organization_id, status, is_deposit, q }

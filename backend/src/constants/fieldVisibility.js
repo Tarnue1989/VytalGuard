@@ -21,8 +21,69 @@ import {
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
   FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
   FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE, FIELD_ORDER_PATIENT_INSURANCE,
+  FIELD_ORDER_ACCOUNT,
+  FIELD_ORDER_CASH_LEDGER,
+  FIELD_ORDER_EXPENSE,
+  FIELD_ORDER_CASH_CLOSING,
+
 } from "./fieldOrder.js";
 
+/* -------------------- Account -------------------- */
+export const FIELD_VISIBILITY_ACCOUNT = {
+  superadmin: FIELD_ORDER_ACCOUNT,
+  organization_admin: FIELD_ORDER_ACCOUNT,
+  manager: [
+    "id","name","type","currency","balance","is_active"
+  ],
+  staff: [
+    "id","name","type","currency","balance"
+  ]
+};
+
+/* -------------------- Cash Ledger -------------------- */
+export const FIELD_VISIBILITY_CASH_LEDGER = {
+  superadmin: FIELD_ORDER_CASH_LEDGER,
+  organization_admin: FIELD_ORDER_CASH_LEDGER,
+  manager: [
+    "id","date","type","direction",
+    "account_id",
+    "amount","currency",
+    "reference_type","reference_id",
+    "description"
+  ],
+  staff: [
+    "id","date","type","direction",
+    "amount","currency"
+  ]
+};
+
+/* -------------------- Expense -------------------- */
+export const FIELD_VISIBILITY_EXPENSE = {
+  superadmin: FIELD_ORDER_EXPENSE,
+  organization_admin: FIELD_ORDER_EXPENSE,
+  manager: [
+    "id","date","amount","currency","category",
+    "account_id","description"
+  ],
+  staff: [
+    "id","date","amount","category"
+  ]
+};
+
+/* -------------------- Cash Closing -------------------- */
+export const FIELD_VISIBILITY_CASH_CLOSING = {
+  superadmin: FIELD_ORDER_CASH_CLOSING,
+  organization_admin: FIELD_ORDER_CASH_CLOSING,
+  manager: [
+    "id","date","account_id",
+    "opening_balance","closing_balance",
+    "total_in","total_out",
+    "is_locked"
+  ],
+  staff: [
+    "id","date","closing_balance","is_locked"
+  ]
+};
 
 /* -------------------- Organization -------------------- */
 export const FIELD_VISIBILITY_ORGANIZATION = {
