@@ -36,25 +36,22 @@ export const STATUS_ACTION_MATRIX = {
   patient_insurances: {
     active:   ["edit", "toggle-status", "delete", "print"],
     inactive: ["edit", "toggle-status", "delete"],
+    cancelled:["restore"],                   // ✅ OPTIONAL (recommended)
     deleted:  ["restore"],
   },
   /* ======================== INSURANCE CLAIMS ======================== */
-  insurance_claim: {
-    draft: ["edit", "submit", "delete"],
-
-    submitted: ["review", "reject"],
-
-    review: ["approve", "partial-approve", "reject"],
-
-    approved: ["process-payment", "reject"],
-    partially_approved: ["process-payment", "reject"],
-
-    paid: ["reverse-payment", "print"],
-
-    rejected: ["restore", "print"],
-    reversed: ["restore", "print"],
-
-    deleted: ["restore"],
+  insurance_claim:{
+  draft:["edit","submit","delete"],
+  submitted:["review"],
+  in_review:["approve","partial-approve","reject"],
+  approved:["process-payment"],
+  partially_approved:["process-payment"],
+  processing_payment:["mark-paid"],
+  paid:["reverse-payment"],
+  rejected:[],
+  cancelled:[],
+  voided:[],
+  reversed:[]
   },
   /* ======================== 💰 DEPOSIT ======================== */
   deposit:{
@@ -626,7 +623,7 @@ export function buildActionButtons({
     ========================= */
     if (act === "lock") backend = "lock";
     if (act === "unlock") backend = "unlock";
-    
+
     const permKey = `${permissionPrefix}:${backend}`;
 
     if (isSuperAdmin || perms.has(permKey)) {

@@ -1,6 +1,6 @@
 /* ============================================================
    📁 backend/src/utils/invoiceUtil.js
-   💰 ENTERPRISE MASTER ENGINE (FINAL – INSURANCE + DEPOSIT SAFE)
+   💰 ENTERPRISE MASTER ENGINE (FINAL – SAFE + MULTI-TENANT FIXED)
 ============================================================ */
 
 import db, { sequelize } from "../models/index.js";
@@ -40,12 +40,15 @@ const VALID_DISCOUNT_STATUS = DISCOUNT_STATUS.FINALIZED;
    🔁 RECALC ENGINE
 ============================================================ */
 export async function recalcInvoice(invoiceId, t = null) {
-  if (global.__recalcRunning) {
-    debug.warn("BLOCKED: recalc already running");
+  global.__recalcLocks = global.__recalcLocks || {};
+
+  // ✅ FIX: per-invoice lock (NOT global)
+  if (global.__recalcLocks[invoiceId]) {
+    debug.warn("BLOCKED: recalc already running for this invoice", { invoiceId });
     return;
   }
 
-  global.__recalcRunning = true;
+  global.__recalcLocks[invoiceId] = true;
 
   try {
     debug.log("START recalcInvoice", { invoiceId });
@@ -54,7 +57,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     if (!invoice) throw new Error("❌ Invoice not found");
 
     /* ============================================================
-       🏥 INSURANCE LIMIT LOGIC (KEEP SAME)
+       🏥 INSURANCE LIMIT LOGIC (MULTI-TENANT SAFE)
     ============================================================ */
     const items = await db.InvoiceItem.findAll({
       where: { invoice_id: invoiceId, status: "applied" },
@@ -66,6 +69,8 @@ export async function recalcInvoice(invoiceId, t = null) {
       where: {
         patient_id: invoice.patient_id,
         status: "active",
+        organization_id: invoice.organization_id,
+        ...(invoice.facility_id && { facility_id: invoice.facility_id }),
       },
       order: [["created_at", "DESC"]],
       transaction: t,
@@ -112,7 +117,7 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ DEPOSITS
+    // ✅ DEPOSITS (ONLY APPLIED)
     const totalDeposits =
       (await db.Deposit.sum("applied_amount", {
         where: {
@@ -132,7 +137,7 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ WAIVERS (CORRECT)
+    // ✅ WAIVERS
     const totalWaivers =
       (await db.DiscountWaiver.sum("applied_total", {
         where: {
@@ -152,23 +157,12 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // 🔥 ✅ INSURANCE (NEW FIX)
-    const totalInsurance =
-      (await db.InvoiceItem.sum("insurance_amount", {
-        where: {
-          invoice_id: invoiceId,
-          status: "applied",
-        },
-        transaction: t,
-      })) || 0;
-
     debug.log("financials", {
       totalPaid,
       totalDeposits,
       totalRefunds,
       totalWaivers,
       totalDiscounts,
-      totalInsurance,
     });
 
     /* ============================================================
@@ -178,14 +172,8 @@ export async function recalcInvoice(invoiceId, t = null) {
     const [rows] = await sequelize.query(
       `
       SELECT
-        (SELECT COALESCE(SUM(i.net_amount),0)
-         FROM invoice_items i
-         WHERE i.invoice_id = inv.id) AS total_items,
-
-        (SELECT COALESCE(SUM(i.tax_amount),0)
-         FROM invoice_items i
-         WHERE i.invoice_id = inv.id) AS total_tax
-
+        (SELECT COALESCE(SUM(i.net_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_items,
+        (SELECT COALESCE(SUM(i.tax_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_tax
       FROM invoices inv
       WHERE inv.id = :invoiceId
       `,
@@ -208,13 +196,15 @@ export async function recalcInvoice(invoiceId, t = null) {
       Number(totalWaivers);
 
     const effectivePaid =
-      Number(totalPaid) + Number(totalDeposits) - Number(totalRefunds);
+      Number(totalPaid) +
+      Number(totalDeposits) -
+      Number(totalRefunds);
 
     let balance = total - effectivePaid;
     if (balance < 0) balance = 0;
 
     /* ============================================================
-       📊 STATUS
+       📊 STATUS LOGIC
     ============================================================ */
 
     let newStatus = INVOICE_STATUS.UNPAID;
@@ -226,22 +216,20 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💾 UPDATE INVOICE (MODEL SAFE)
+       💾 UPDATE INVOICE
     ============================================================ */
 
     await invoice.update(
       {
         subtotal: subtotal.toFixed(2),
         total_tax: tax.toFixed(2),
-
         total_discount: Number(totalDiscounts).toFixed(2),
-
-        coverage_amount: Number(totalWaivers).toFixed(2), // ✅ waiver ONLY
-        insurance_amount: Number(totalInsurance).toFixed(2), // 🔥 NEW
 
         total_paid: Number(totalPaid).toFixed(2),
         applied_deposits: Number(totalDeposits).toFixed(2),
         refunded_amount: Number(totalRefunds).toFixed(2),
+
+        coverage_amount: Number(totalWaivers).toFixed(2),
 
         total: total.toFixed(2),
         balance: balance.toFixed(2),
@@ -257,7 +245,9 @@ export async function recalcInvoice(invoiceId, t = null) {
     });
 
     return invoice;
+
   } finally {
-    global.__recalcRunning = false;
+    // ✅ FIX: release only this invoice lock
+    delete global.__recalcLocks[invoiceId];
   }
 }

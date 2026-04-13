@@ -1,8 +1,4 @@
-// 📦 finance-filter-main.js – FINAL PRO (Enterprise synced)
-// ============================================================
-// 🔹 Fully synced with advanced finance report (discounts, waivers)
-// 🔹 Safe API handling + UX improvements
-// 🔹 Supports future analytics (daily, charts, etc.)
+// 📦 finance-filter-main.js – FINAL (UI + PRINT FULL FIXED)
 // ============================================================
 
 import {
@@ -22,15 +18,11 @@ import {
   renderDepositSummary,
 } from "./finance-render.js";
 
-/* ============================================================
-   🔐 Auth + Session
-============================================================ */
+/* ============================================================ */
 initPageGuard(autoPagePermissionKey(["reports:view"]));
 initLogoutWatcher();
 
-/* ============================================================
-   🚀 Init
-============================================================ */
+/* ============================================================ */
 export async function initFinanceReportModule() {
   const applyBtn = document.getElementById("financeApplyBtn");
 
@@ -39,9 +31,7 @@ export async function initFinanceReportModule() {
   await loadReports();
 }
 
-/* ============================================================
-   📊 Load Reports (FULL SYNC)
-============================================================ */
+/* ============================================================ */
 async function loadReports() {
   const applyBtn = document.getElementById("financeApplyBtn");
 
@@ -52,14 +42,10 @@ async function loadReports() {
     const params = new URLSearchParams();
     const input = document.getElementById("financeDateRange");
 
-    /* ========================================================
-       📅 DATE RANGE (ISO SAFE)
-    ======================================================== */
     let from, to;
 
     if (input && $(input).data("daterangepicker")) {
       const picker = $(input).data("daterangepicker");
-
       from = picker.startDate.format("YYYY-MM-DD");
       to   = picker.endDate.format("YYYY-MM-DD");
     } else {
@@ -73,9 +59,6 @@ async function loadReports() {
 
     const query = params.toString();
 
-    /* ========================================================
-       🚀 PARALLEL API CALLS
-    ======================================================== */
     const [
       summaryRes,
       servicesRes,
@@ -88,29 +71,45 @@ async function loadReports() {
       authFetch(`/api/reports/finance/deposits?${query}`),
     ]);
 
-    /* ========================================================
-       🛡 SAFE RESPONSE HANDLING
-    ======================================================== */
     const summaryJson  = summaryRes.ok  ? await summaryRes.json()  : {};
     const servicesJson = servicesRes.ok ? await servicesRes.json() : {};
     const paymentsJson = paymentsRes.ok ? await paymentsRes.json() : {};
     const depositsJson = depositsRes.ok ? await depositsRes.json() : {};
 
-    /* ========================================================
-       🔍 DEBUG (DEV ONLY)
-    ======================================================== */
     console.log("Finance Summary:", summaryJson);
-    console.log("Services:", servicesJson);
-    console.log("Payments:", paymentsJson);
     console.log("Deposits:", depositsJson);
 
     /* ========================================================
-       🎨 RENDER ALL SECTIONS
+       🔥 MERGE DEPOSITS INTO SUMMARY (KEY FIX)
     ======================================================== */
-    renderFinanceSummary(summaryJson?.data || {});
+    const summaryData = summaryJson?.data || {};
+    const depositData = depositsJson?.data || {};
+
+    const mergedSummary = {
+      ...summaryData,
+
+      // 🔥 FIXED MAPPING
+      deposit_collected: depositData.collected || 0,
+      applied_deposits: depositData.applied || 0,
+      deposit_refunded: depositData.deposit_refunded || 0,
+      deposit_balance: depositData.remaining || 0,
+    };
+
+    /* ========================================================
+       🎨 RENDER (NOW CORRECT)
+    ======================================================== */
+    renderFinanceSummary(mergedSummary);
+
     renderServiceTable(servicesJson?.data || []);
     renderPaymentsTable(paymentsJson?.data || []);
-    renderDepositSummary(depositsJson?.data || {});
+    renderDepositSummary(); // intentionally empty (as per design)
+
+    /* ========================================================
+       🖨️ STORE FOR PRINT
+    ======================================================== */
+    window.financeSummaryData = mergedSummary;
+    window.financeServicesData = servicesJson?.data || [];
+    window.financePaymentsData = paymentsJson?.data || [];
 
   } catch (err) {
     console.error("❌ Finance report load failed", err);

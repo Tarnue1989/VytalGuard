@@ -58,10 +58,9 @@ function resetForm() {
   // Clear cached edit state
   sessionStorage.removeItem("patientInsuranceEditId");
 
-  // Clear text inputs
+  // Clear text inputs (REMOVED providerInput)
   [
     "patientInput",
-    "providerInput",
     "policyNumber",
     "planName",
     "coverageLimit",
@@ -79,8 +78,12 @@ function resetForm() {
     if (el) el.value = "";
   });
 
-  // Clear hidden IDs
-  ["patientId", "providerId"].forEach((id) => {
+  // Reset provider select (NEW FIX)
+  const providerSelect = document.getElementById("providerSelect");
+  if (providerSelect) providerSelect.value = "";
+
+  // Clear hidden IDs (REMOVED providerId)
+  ["patientId"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });

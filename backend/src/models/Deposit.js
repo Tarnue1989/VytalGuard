@@ -1,8 +1,4 @@
 // 📁 backend/src/models/Deposit.js
-// ============================================================================
-// 💰 Deposit Model – ENTERPRISE (WITH RECALC INTEGRATION)
-// ============================================================================
-
 import { DataTypes, Model } from "sequelize";
 import { DEPOSIT_STATUS, PAYMENT_METHODS, CURRENCY } from "../constants/enums.js";
 
@@ -195,29 +191,6 @@ export default (sequelize) => {
 
       const year = new Date().getFullYear();
       deposit.deposit_number = `DEP-${year}-${String(seq).padStart(5, "0")}`;
-    }
-  });
-
-  /* ============================================================
-     🔁 RECALC HOOK (🔥 CRITICAL ENTERPRISE FIX)
-  ============================================================ */
-  Deposit.afterUpdate(async (deposit, options) => {
-    try {
-      // ✅ Only recalc if linked to invoice
-      if (!deposit.applied_invoice_id) return;
-
-      // ✅ Only recalc when financial fields or status changes
-      if (
-        deposit.changed("applied_amount") ||
-        deposit.changed("status") ||
-        deposit.changed("refund_amount")
-      ) {
-        const { recalcInvoice } = await import("../utils/invoiceUtil.js");
-
-        await recalcInvoice(deposit.applied_invoice_id, options?.transaction);
-      }
-    } catch (err) {
-      console.error("❌ Deposit recalc error:", err.message);
     }
   });
 

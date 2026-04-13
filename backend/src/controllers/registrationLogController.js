@@ -123,7 +123,7 @@ function buildRegistrationLogSchema(mode = "create") {
 }
 
 /* ============================================================
-   📌 CREATE REGISTRATION LOG — MASTER PARITY (FIXED)
+   📌 CREATE REGISTRATION LOG — MASTER PARITY (FINAL FIXED)
 ============================================================ */
 export const createRegistrationLog = async (req, res) => {
   const t = await sequelize.transaction();
@@ -172,7 +172,12 @@ export const createRegistrationLog = async (req, res) => {
 
       if (!insurance) {
         await t.rollback();
-        return error(res, "Selected insurance does not belong to patient", null, 400);
+        return error(
+          res,
+          "Selected insurance does not belong to patient",
+          null,
+          400
+        );
       }
     }
 
@@ -182,6 +187,32 @@ export const createRegistrationLog = async (req, res) => {
       value,
       body: req.body,
     });
+
+    /* ================= PREVENT MULTIPLE ACTIVE/PENDING ================= */
+    const existing = await RegistrationLog.findOne({
+      where: {
+        patient_id: value.patient_id,
+        organization_id: orgId,
+        ...(facilityId && { facility_id: facilityId }),
+        log_status: {
+          [Op.in]: [
+            REGISTRATION_LOG_STATUS.PENDING,
+            REGISTRATION_LOG_STATUS.ACTIVE,
+          ],
+        },
+      },
+      transaction: t,
+    });
+
+    if (existing) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Patient already has an active or pending registration",
+        null,
+        400
+      );
+    }
 
     /* ================= REGISTRAR AUTO-LINK ================= */
     let registrarId = value.registrar_id || null;

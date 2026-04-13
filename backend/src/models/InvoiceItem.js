@@ -257,7 +257,6 @@ export default (sequelize) => {
     item.total_price = subtotal;
     item.net_amount = net;
 
-    // 🔥 Insurance split (will be updated later in billingService)
     item.insurance_amount ||= 0;
     item.patient_amount ||= net;
   });
@@ -284,22 +283,6 @@ export default (sequelize) => {
     if (options.user) {
       item.deleted_by_id = options.user.id;
     }
-  });
-
-  // 🔁 Recalculate invoice
-  InvoiceItem.afterCreate(async (item, options) => {
-    const { Invoice } = await import("../models/index.js");
-    return Invoice.recalculate(item.invoice_id, options?.transaction);
-  });
-
-  InvoiceItem.afterUpdate(async (item, options) => {
-    const { Invoice } = await import("../models/index.js");
-    return Invoice.recalculate(item.invoice_id, options?.transaction);
-  });
-
-  InvoiceItem.afterDestroy(async (item, options) => {
-    const { Invoice } = await import("../models/index.js");
-    return Invoice.recalculate(item.invoice_id, options?.transaction);
   });
 
   return InvoiceItem;

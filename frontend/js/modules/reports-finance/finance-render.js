@@ -1,12 +1,13 @@
-// 📊 finance-render.js – FINAL PRO (Enterprise Financial Reporting)
+// 📊 finance-render.js – ENTERPRISE UPGRADE (Grouped + Pro Tables)
 // ============================================================
-// 🔹 Correct sign handling (no fake negatives)
-// 🔹 Smart color logic (only negative = red)
-// 🔹 Clean financial formatting
+// 🔥 Grouped Summary Cards (Revenue / Cash / Deposits / Outstanding)
+// 🔥 Payments table upgraded with %
+// 🔥 Deposit summary merged into cards (no duplicate section)
+// 🔥 Clean enterprise UX (decision-first design)
 // ============================================================
 
 /* ============================================================
-   📊 FINANCE SUMMARY
+   📊 FINANCE SUMMARY (GROUPED CARDS)
 ============================================================ */
 export function renderFinanceSummary(data = {}) {
   const container = document.getElementById("financeSummary");
@@ -16,23 +17,50 @@ export function renderFinanceSummary(data = {}) {
   const discount = Number(data.discounts || 0);
   const waivers = Number(data.waivers || 0);
   const net = Number(data.gross_total || 0);
+
   const paid = Number(data.paid || 0);
-  const deposits = Number(data.applied_deposits || 0);
+  const refunded = Number(data.payment_refunded || 0);
+  const netCash = Number(data.net_cash || 0);
+
+  const depositCollected = Number(data.deposit_collected || 0);
+  const depositUsed = Number(data.applied_deposits || 0);
+  const depositRefunded = Number(data.deposit_refunded || 0);
+  const depositBalance = Number(data.deposit_balance || 0);
+
   const outstanding = Number(data.outstanding || 0);
 
   container.innerHTML = `
-    ${card("Gross Revenue", gross)}
-    ${card("Discounts", discount)}
-    ${card("Waivers", waivers)}
-    ${card("Net Revenue", net)}
-    ${card("Cash Paid", paid, "text-success")}
-    ${card("Deposits Used", deposits, "text-info")}
-    ${card("Outstanding", outstanding, "text-warning")}
+    ${groupCard("📊 Revenue", [
+      row("Gross", gross),
+      row("Discount", discount, "text-danger"),
+      row("Waivers", waivers, "text-warning"),
+      divider(),
+      row("Net", net, "fw-bold text-primary")
+    ])}
+
+    ${groupCard("💰 Cash Flow", [
+      row("Collected", paid, "text-success"),
+      row("Refunded", refunded, "text-danger"),
+      divider(),
+      row("Net Cash", netCash, "fw-bold text-primary")
+    ])}
+
+    ${groupCard("🏦 Deposits", [
+      row("Collected", depositCollected),
+      row("Used", depositUsed, "text-info"),
+      row("Refunded", depositRefunded, "text-danger"),
+      divider(),
+      row("Balance", depositBalance, "fw-bold text-warning")
+    ])}
+
+    ${groupCard("⚠️ Outstanding", [
+      bigValue(outstanding, "text-warning")
+    ])}
   `;
 }
 
 /* ============================================================
-   📦 REVENUE BY SERVICE
+   📦 REVENUE BY SERVICE (ENHANCED)
 ============================================================ */
 export function renderServiceTable(rows = []) {
   const body = document.getElementById("financeServiceTable");
@@ -41,7 +69,7 @@ export function renderServiceTable(rows = []) {
   if (!rows.length) {
     body.innerHTML = `
       <tr>
-        <td colspan="5" class="text-center text-muted small">
+        <td colspan="6" class="text-center text-muted small">
           No service data available
         </td>
       </tr>
@@ -73,7 +101,7 @@ export function renderServiceTable(rows = []) {
         <td class="${discount < 0 ? "text-danger" : ""}">
           ${formatMoney(discount)}
         </td>
-        <td>${formatMoney(net)}</td>
+        <td class="fw-semibold">${formatMoney(net)}</td>
       </tr>
     `;
   }).join("");
@@ -86,7 +114,7 @@ export function renderServiceTable(rows = []) {
       <td class="${totalDiscount < 0 ? "text-danger" : ""}">
         ${formatMoney(totalDiscount)}
       </td>
-      <td>${formatMoney(totalNet)}</td>
+      <td class="text-primary">${formatMoney(totalNet)}</td>
     </tr>
   `;
 
@@ -94,7 +122,7 @@ export function renderServiceTable(rows = []) {
 }
 
 /* ============================================================
-   💳 PAYMENTS BY METHOD
+   💳 PAYMENTS BY METHOD (UPGRADED)
 ============================================================ */
 export function renderPaymentsTable(rows = []) {
   const body = document.getElementById("financePaymentsTable");
@@ -103,7 +131,7 @@ export function renderPaymentsTable(rows = []) {
   if (!rows.length) {
     body.innerHTML = `
       <tr>
-        <td colspan="2" class="text-center text-muted small">
+        <td colspan="3" class="text-center text-muted small">
           No payment data available
         </td>
       </tr>
@@ -111,57 +139,50 @@ export function renderPaymentsTable(rows = []) {
     return;
   }
 
-  body.innerHTML = rows.map(r => `
-    <tr>
-      <td>${safe(r.method)}</td>
-      <td>${formatMoney(r.amount)}</td>
+  const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+
+  const rowsHtml = rows.map(r => {
+    const amount = Number(r.amount || 0);
+    const percent = total > 0 ? ((amount / total) * 100).toFixed(1) : 0;
+
+    return `
+      <tr>
+        <td>${safe(r.method)}</td>
+        <td>${formatMoney(amount)}</td>
+        <td class="text-muted">${percent}%</td>
+      </tr>
+    `;
+  }).join("");
+
+  const totalRow = `
+    <tr class="fw-bold border-top bg-light">
+      <td>TOTAL</td>
+      <td>${formatMoney(total)}</td>
+      <td>100%</td>
     </tr>
-  `).join("");
+  `;
+
+  body.innerHTML = rowsHtml + totalRow;
 }
 
 /* ============================================================
-   💰 DEPOSIT SUMMARY
+   ❌ DEPOSIT SUMMARY REMOVED (MERGED INTO CARDS)
 ============================================================ */
-export function renderDepositSummary(data = {}) {
+export function renderDepositSummary() {
   const container = document.getElementById("financeDepositSummary");
-  if (!container) return;
-
-  container.innerHTML = `
-    <div class="row g-3">
-      <div class="col-md-3">
-        <div class="text-muted small">Collected</div>
-        <div class="fw-semibold">${formatMoney(data.collected)}</div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">Applied</div>
-        <div class="fw-semibold text-success">${formatMoney(data.applied)}</div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">Refunded</div>
-        <div class="fw-semibold ${data.deposit_refunded < 0 ? "text-danger" : ""}">
-          ${formatMoney(data.deposit_refunded)}
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">Remaining</div>
-        <div class="fw-semibold text-warning">${formatMoney(data.remaining)}</div>
-      </div>
-    </div>
-  `;
+  if (container) container.innerHTML = "";
 }
 
 /* ============================================================
-   🧩 CARD HELPER
+   🧩 GROUP CARD
 ============================================================ */
-function card(label, value, extraClass = "") {
+function groupCard(title, contentRows = []) {
   return `
-    <div class="col-xl-2 col-sm-6">
-      <div class="card border-0 shadow-sm">
+    <div class="col-xl-3 col-md-6">
+      <div class="card border-0 shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">${label}</div>
-          <h6 class="${value < 0 ? "text-danger" : extraClass}">
-            ${formatMoney(value)}
-          </h6>
+          <div class="fw-semibold mb-2">${title}</div>
+          ${contentRows.join("")}
         </div>
       </div>
     </div>
@@ -169,7 +190,31 @@ function card(label, value, extraClass = "") {
 }
 
 /* ============================================================
-   💰 MONEY FORMAT (CORE FIX)
+   🧩 ROW
+============================================================ */
+function row(label, value, extraClass = "") {
+  return `
+    <div class="d-flex justify-content-between small mb-1">
+      <span class="text-muted">${label}</span>
+      <span class="${extraClass}">${formatMoney(value)}</span>
+    </div>
+  `;
+}
+
+function bigValue(val, cls = "") {
+  return `
+    <div class="text-center mt-2">
+      <h5 class="${cls}">${formatMoney(val)}</h5>
+    </div>
+  `;
+}
+
+function divider() {
+  return `<hr class="my-1"/>`;
+}
+
+/* ============================================================
+   💰 MONEY FORMAT
 ============================================================ */
 function formatMoney(val) {
   const num = Number(val || 0);
@@ -183,6 +228,7 @@ function formatMoney(val) {
     ? `-L$${formatted}`
     : `L$${formatted}`;
 }
+
 /* ============================================================
    🔧 HELPERS
 ============================================================ */
