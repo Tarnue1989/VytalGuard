@@ -374,15 +374,6 @@ export const AUTO_BILLING_CHARGE_MODE = {
   TIERED:'tiered'
 };
 
-export const PAYMENT_METHODS = {
-  CASH:'cash',
-  CARD:'card',
-  MOBILE_MONEY:'mobile_money',
-  BANK_TRANSFER:'bank_transfer',
-  CHEQUE:'cheque',
-  INSURANCE:'insurance',
-  OTHER:'other'
-};
 
 export const TAX_TYPE = { PERCENTAGE:'percentage', FIXED:'fixed' };
 export const TAX_STATUS = { ACTIVE:'active', INACTIVE:'inactive' };
@@ -912,19 +903,6 @@ export const FEATURE_MODULE_VISIBILITY = {
 };
 
 // ============================================================
-// 🔹 Financial Ledger Method (NOT IN CURRENT FILE)
-// ============================================================
-export const LEDGER_METHOD = {
-  CASH: 'cash',
-  CARD: 'card',
-  MOBILE_MONEY: 'mobile_money',
-  BANK_TRANSFER: 'bank_transfer',
-  CHEQUE: 'cheque',
-  INSURANCE: 'insurance',
-  OTHER: 'other',
-};
-
-// ============================================================
 // 🔹 Messaging (NOT IN CURRENT FILE)
 // ============================================================
 export const MESSAGE_TYPE = {
@@ -1030,35 +1008,34 @@ export const PHARMACY_TRANSACTION_TYPE = {
 // 🔹 Finance Transaction (FINAL ENTERPRISE)
 // ============================================================
 
-export const ACCOUNT_TYPES = {
+export const ACCOUNT_TYPES = Object.freeze({
   CASH: "cash",
   BANK: "bank",
   MOBILE_MONEY: "mobile_money",
   OTHER: "other",
-};
-
+});
 // ------------------------------------------------------------
 // 🔹 Ledger Core Types
 // ------------------------------------------------------------
-export const LEDGER_TYPES = {
+export const LEDGER_TYPES = Object.freeze({
   COLLECTION: "collection",   // payments, deposits
   EXPENSE: "expense",         // expenses
   TRANSFER: "transfer",       // account → account
   ADJUSTMENT: "adjustment",   // reversal, correction, void
-};
+});
 
 // ------------------------------------------------------------
 // 🔹 Ledger Direction
 // ------------------------------------------------------------
-export const LEDGER_DIRECTIONS = {
+export const LEDGER_DIRECTIONS = Object.freeze({
   IN: "in",   // money coming in
   OUT: "out", // money going out
-};
+});
 
 // ------------------------------------------------------------
 // 🔹 Ledger Reference (🔥 REQUIRED FOR ENGINE)
 // ------------------------------------------------------------
-export const LEDGER_REFERENCE_TYPES = {
+export const LEDGER_REFERENCE_TYPES = Object.freeze({
   PAYMENT: "payment",
   DEPOSIT: "deposit",
   EXPENSE: "expense",
@@ -1066,22 +1043,12 @@ export const LEDGER_REFERENCE_TYPES = {
   REFUND_DEPOSIT: "refund_deposit",
   TRANSFER: "transfer",
   ADJUSTMENT: "adjustment",
-};
-
-// ------------------------------------------------------------
-// 🔹 Ledger Status (🔥 ENTERPRISE CONTROL)
-// ------------------------------------------------------------
-export const LEDGER_ENTRY_STATUS = {
-  PENDING: "pending",
-  POSTED: "posted",
-  VOIDED: "voided",
-  REVERSED: "reversed",
-};
+});
 
 // ------------------------------------------------------------
 // 🔹 Expense Categories
 // ------------------------------------------------------------
-export const EXPENSE_CATEGORIES = {
+export const EXPENSE_CATEGORIES = Object.freeze({
   DRUGS: "drugs",
   SUPPLIES: "supplies",
   FUEL: "fuel",
@@ -1091,23 +1058,62 @@ export const EXPENSE_CATEGORIES = {
   RENT: "rent",
   TRANSPORT: "transport",
   OTHER: "other",
-};
+});
+// ------------------------------------------------------------
+// 🔹 Ledger Status (🔥 ENTERPRISE CONTROL)
+// ------------------------------------------------------------
+export const LEDGER_ENTRY_STATUS = Object.freeze({
+  PENDING: "pending",
+  POSTED: "posted",
+  VOIDED: "voided",
+  REVERSED: "reversed",
+});
+
 
 // ------------------------------------------------------------
 // 🔹 Expense Status (OPTIONAL BUT RECOMMENDED)
 // ------------------------------------------------------------
-export const EXPENSE_STATUS = {
+// ------------------------------------------------------------
+// 🔹 Transfer Types (OPTIONAL FUTURE SAFE)
+// ------------------------------------------------------------
+export const TRANSFER_TYPES = Object.freeze({
+  CASH_TO_BANK: "cash_to_bank",
+  BANK_TO_CASH: "bank_to_cash",
+  ACCOUNT_TO_ACCOUNT: "account_to_account",
+});
+
+// 🔹 Payment Methods (SINGLE SOURCE)
+export const PAYMENT_METHODS = Object.freeze({
+  CASH:'cash',
+  CARD:'card',
+  MOBILE_MONEY:'mobile_money',
+  BANK_TRANSFER:'bank_transfer',
+  CHEQUE:'cheque',
+  INSURANCE:'insurance',
+  OTHER:'other'
+});
+
+// 🔹 Expense Status (FINAL)
+export const EXPENSE_STATUS = Object.freeze({
   DRAFT: "draft",
   APPROVED: "approved",
   POSTED: "posted",
   VOIDED: "voided",
-};
+});
 
-// ------------------------------------------------------------
-// 🔹 Transfer Types (OPTIONAL FUTURE SAFE)
-// ------------------------------------------------------------
-export const TRANSFER_TYPES = {
-  CASH_TO_BANK: "cash_to_bank",
-  BANK_TO_CASH: "bank_to_cash",
-  ACCOUNT_TO_ACCOUNT: "account_to_account",
+export const PAYROLL_STATUS = Object.freeze({
+  DRAFT: "draft",
+  APPROVED: "approved",
+  PAID: "paid",
+  VOIDED: "voided",
+});
+
+/* ============================================================
+   🔖 STATUS MAP (ENUM SAFE)
+============================================================ */
+const ES = {
+  DRAFT: EXPENSE_STATUS.DRAFT,
+  APPROVED: EXPENSE_STATUS.APPROVED,
+  POSTED: EXPENSE_STATUS.POSTED,
+  VOIDED: EXPENSE_STATUS.VOIDED,
 };

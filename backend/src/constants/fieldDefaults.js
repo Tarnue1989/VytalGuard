@@ -25,6 +25,7 @@ import {
   FIELD_ORDER_CASH_LEDGER,
   FIELD_ORDER_EXPENSE,
   FIELD_ORDER_CASH_CLOSING,
+  FIELD_ORDER_PAYROLL
 } from "./fieldOrder.js";
 
 
@@ -32,10 +33,10 @@ import {
 export const FIELD_DEFAULTS_ACCOUNT = {
   admin: FIELD_ORDER_ACCOUNT,
   manager: [
-    "name","type","currency","balance","is_active",
+    "account_number","name","type","currency","balance","is_active",
     "organization_id","facility_id"
   ],
-  staff: ["name","type","currency","balance"]
+  staff: ["account_number","name","type","currency","balance"]
 };
 
 /* -------------------- Cash Ledger -------------------- */
@@ -52,16 +53,28 @@ export const FIELD_DEFAULTS_CASH_LEDGER = {
     "amount","currency"
   ]
 };
-
 /* -------------------- Expense -------------------- */
 export const FIELD_DEFAULTS_EXPENSE = {
   admin: FIELD_ORDER_EXPENSE,
   manager: [
     "date","amount","currency","category",
-    "account_id","description"
+    "payment_method","account_id","description","status"
   ],
   staff: [
-    "date","amount","category"
+    "date","amount","category","description"
+  ]
+};
+
+/* -------------------- Payroll -------------------- */
+export const FIELD_DEFAULTS_PAYROLL = {
+  admin: FIELD_ORDER_PAYROLL,
+  manager: [
+    "employee_id","period","currency",
+    "basic_salary","allowances","deductions",
+    "net_salary","status"
+  ],
+  staff: [
+    "employee_id","period","net_salary"
   ]
 };
 

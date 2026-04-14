@@ -57,6 +57,8 @@ import {
 } from "../controllers/stockRequestController.js";
 import { getAllBillableItemsLite } from "../controllers/billableItemController.js";
 
+import { getAllPayrollsLite } from "../controllers/payrollController.js";
+
 // -------------------------------
 // 🔹 Patients & Registration
 // -------------------------------
@@ -214,6 +216,7 @@ router.get("/order-items", verifyAuth, getAllOrderItemsLite);
 
 router.get("/accounts", verifyAuth, getAllAccountsLite);
 router.get("/expenses", verifyAuth, getAllExpensesLite);
+router.get("/payrolls", verifyAuth, getAllPayrollsLite);
 // -------------------------------
 // 🔹 Consultations & Appointments
 // -------------------------------

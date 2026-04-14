@@ -91,6 +91,7 @@ import accountRoutes from "./accountRoutes.js";
 import expenseRoutes from "./expenseRoutes.js";
 import cashLedgerRoutes from "./cashLedgerRoutes.js";
 import cashClosingRoutes from "./cashClosingRoutes.js";
+import payrollRoutes from "./payrollRoutes.js";
 
 /* ============================================================
    ⚡ Lite Routes (Autocomplete / Dropdown APIs)
@@ -204,6 +205,9 @@ router.use("/accounts", accountRoutes);
 router.use("/expenses", expenseRoutes);
 router.use("/cash-ledger", cashLedgerRoutes);
 router.use("/cash-closing", cashClosingRoutes);
+router.use("/payrolls", payrollRoutes);
+
+
 /* ============================================================
    ⚡ Lite Routes
 ============================================================ */

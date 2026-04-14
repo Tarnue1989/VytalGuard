@@ -12,7 +12,11 @@ export default (sequelize) => {
       Account.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       Account.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
 
-      Account.hasMany(models.CashLedger, { as: "ledgerEntries", foreignKey: "account_id" });
+      // 🔥 Ledger = SOURCE OF TRUTH
+      Account.hasMany(models.CashLedger, {
+        as: "ledgerEntries",
+        foreignKey: "account_id",
+      });
     }
   }
 
@@ -24,7 +28,20 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      name: { type: DataTypes.STRING, allowNull: false },
+      /* ============================================================
+         🔹 CORE
+      ============================================================ */
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+
+      // 🔥 NEW: ACCOUNT NUMBER (VERY IMPORTANT)
+      account_number: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
 
       type: {
         type: DataTypes.ENUM(...Object.values(ACCOUNT_TYPES)),
@@ -36,6 +53,11 @@ export default (sequelize) => {
         allowNull: false,
       },
 
+      /* ============================================================
+         🔹 FINANCIAL
+      ============================================================ */
+
+      // ⚠️ Cached only (real balance = ledger sum)
       balance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
@@ -46,9 +68,21 @@ export default (sequelize) => {
         defaultValue: true,
       },
 
-      organization_id: { type: DataTypes.UUID, allowNull: false },
-      facility_id: { type: DataTypes.UUID },
+      /* ============================================================
+         🔹 TENANT
+      ============================================================ */
+      organization_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
+      facility_id: {
+        type: DataTypes.UUID,
+      },
+
+      /* ============================================================
+         🔹 AUDIT
+      ============================================================ */
       created_by_id: DataTypes.UUID,
       updated_by_id: DataTypes.UUID,
       deleted_by_id: DataTypes.UUID,
@@ -60,6 +94,22 @@ export default (sequelize) => {
       underscored: true,
       paranoid: true,
       timestamps: true,
+
+      /* ============================================================
+         🔥 INDEXES (ENTERPRISE)
+      ============================================================ */
+      indexes: [
+        {
+          unique: true,
+          fields: ["account_number"],
+        },
+        {
+          fields: ["organization_id"],
+        },
+        {
+          fields: ["facility_id"],
+        },
+      ],
     }
   );
 

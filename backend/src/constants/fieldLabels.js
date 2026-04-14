@@ -44,7 +44,7 @@ const joinValues = (e) =>
 
 /* -------------------- Account -------------------- */
 export const FIELD_LABELS_ACCOUNT = {
-  id: "ID", name: "Account Name",
+  id: "ID", account_number: "Account Number", name: "Account Name",
   type: "Account Type", currency: "Currency",
   balance: "Balance", is_active: "Active",
   organization_id: "Organization", facility_id: "Facility",
@@ -66,13 +66,40 @@ export const FIELD_LABELS_CASH_LEDGER = {
 
 /* -------------------- Expense -------------------- */
 export const FIELD_LABELS_EXPENSE = {
-  id: "ID", date: "Date",
-  amount: "Amount", currency: "Currency",
+  id: "ID",
+  expense_number: "Expense #",
+  date: "Date",
+  amount: "Amount",
+  currency: "Currency",
   category: "Category",
+  payment_method: "Payment Method",
   account_id: "Account",
+  employee_id: "Employee",
   ledger_id: "Ledger Entry",
+  status: "Status",
   description: "Description",
-  created_at: "Created At"
+  created_at: "Created At",
+  approved_by_id: "Approved By",
+  approved_at: "Approved At"
+};
+
+/* -------------------- Payroll -------------------- */
+export const FIELD_LABELS_PAYROLL = {
+  id: "ID",
+  payroll_number: "Payroll #",
+  employee_id: "Employee",
+  period: "Period",
+  currency: "Currency",
+  basic_salary: "Basic Salary",
+  allowances: "Allowances",
+  deductions: "Deductions",
+  net_salary: "Net Salary",
+  expense_id: "Expense",
+  paid_at: "Paid At",
+  status: "Status",
+  created_at: "Created At",
+  approved_by_id: "Approved By",
+  approved_at: "Approved At"
 };
 
 /* -------------------- Cash Closing -------------------- */
