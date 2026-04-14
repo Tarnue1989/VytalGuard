@@ -49,6 +49,7 @@ import AccountModel from "./Account.js";
 import CashLedgerModel from "./CashLedger.js";
 import ExpenseModel from "./Expense.js";
 import CashClosingModel from "./CashClosing.js";
+import PayrollModel from "./Payroll.js";
 
 // 📦 Orders (NEW)
 import OrderModel from "./Order.js";
@@ -169,6 +170,7 @@ const models = {
   CashLedger: CashLedgerModel(sequelize),
   Expense: ExpenseModel(sequelize),
   CashClosing: CashClosingModel(sequelize),
+  Payroll: PayrollModel(sequelize),
 
   // 🔹 Orders (NEW)
   Order: OrderModel(sequelize),
@@ -250,7 +252,7 @@ export const {
   FinancialLedger, BillableItemPrice,
   Order,
   OrderItem,
-  Account, CashLedger, Expense, CashClosing,
+  Account, CashLedger, Expense, CashClosing, Payroll,
   // Inventory
   MasterItem, MasterItemCategory, CentralStock, DepartmentStock,
   StockRequest, StockRequestItem, Supplier, StockLedger,

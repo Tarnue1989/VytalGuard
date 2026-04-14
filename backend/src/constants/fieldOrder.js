@@ -1,6 +1,6 @@
 /* -------------------- Account -------------------- */
 export const FIELD_ORDER_ACCOUNT = [
-  "id","name","type","currency","balance","is_active",
+  "id","account_number","name","type","currency","balance","is_active",
   "organization_id","facility_id",
   "created_at","updated_at","deleted_at",
   "created_by_id","updated_by_id","deleted_by_id"
@@ -20,10 +20,22 @@ export const FIELD_ORDER_CASH_LEDGER = [
 
 /* -------------------- Expense -------------------- */
 export const FIELD_ORDER_EXPENSE = [
-  "id","date","amount","currency","category",
-  "account_id","ledger_id",
-  "description",
+  "id","expense_number","date","amount","currency","category",
+  "payment_method","account_id","employee_id","ledger_id",
+  "status","description",
   "organization_id","facility_id",
+  "approved_by_id","approved_at",
+  "created_at","updated_at","deleted_at",
+  "created_by_id"
+];
+
+/* -------------------- Payroll -------------------- */
+export const FIELD_ORDER_PAYROLL = [
+  "id","payroll_number","employee_id","period","currency",
+  "basic_salary","allowances","deductions","net_salary",
+  "expense_id","paid_at","status",
+  "organization_id","facility_id",
+  "approved_by_id","approved_at",
   "created_at","updated_at","deleted_at",
   "created_by_id"
 ];

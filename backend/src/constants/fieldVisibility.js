@@ -21,10 +21,7 @@ import {
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
   FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
   FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE, FIELD_ORDER_PATIENT_INSURANCE,
-  FIELD_ORDER_ACCOUNT,
-  FIELD_ORDER_CASH_LEDGER,
-  FIELD_ORDER_EXPENSE,
-  FIELD_ORDER_CASH_CLOSING,
+  FIELD_ORDER_ACCOUNT,  FIELD_ORDER_CASH_LEDGER,  FIELD_ORDER_EXPENSE,  FIELD_ORDER_CASH_CLOSING,  FIELD_ORDER_PAYROLL
 
 } from "./fieldOrder.js";
 
@@ -33,10 +30,10 @@ export const FIELD_VISIBILITY_ACCOUNT = {
   superadmin: FIELD_ORDER_ACCOUNT,
   organization_admin: FIELD_ORDER_ACCOUNT,
   manager: [
-    "id","name","type","currency","balance","is_active"
+    "id","account_number","name","type","currency","balance","is_active"
   ],
   staff: [
-    "id","name","type","currency","balance"
+    "id","account_number","name","type","currency","balance"
   ]
 };
 
@@ -62,11 +59,24 @@ export const FIELD_VISIBILITY_EXPENSE = {
   superadmin: FIELD_ORDER_EXPENSE,
   organization_admin: FIELD_ORDER_EXPENSE,
   manager: [
-    "id","date","amount","currency","category",
-    "account_id","description"
+    "id","expense_number","date","amount","currency","category",
+    "payment_method","account_id","description","status"
   ],
   staff: [
-    "id","date","amount","category"
+    "id","date","amount","category","description"
+  ]
+};
+
+/* -------------------- Payroll -------------------- */
+export const FIELD_VISIBILITY_PAYROLL = {
+  superadmin: FIELD_ORDER_PAYROLL,
+  organization_admin: FIELD_ORDER_PAYROLL,
+  manager: [
+    "id","payroll_number","employee_id","period","currency",
+    "basic_salary","allowances","deductions","net_salary","status"
+  ],
+  staff: [
+    "id","employee_id","period","net_salary"
   ]
 };
 

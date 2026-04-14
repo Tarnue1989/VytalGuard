@@ -43,6 +43,10 @@ const ACCOUNT_INCLUDES = [
 function buildSchema(mode = "create") {
   const base = {
     name: Joi.string().required(),
+
+    // 🔥 NEW
+    account_number: Joi.string().required(),
+
     type: Joi.string().valid(...Object.values(ACCOUNT_TYPES)).required(),
     currency: Joi.string().valid("USD", "LRD").required(),
     is_active: Joi.boolean().optional(),
@@ -132,6 +136,9 @@ export const getAllAccounts = async (req, res) => {
     const options = buildQueryOptions(req, "created_at", "DESC", visibleFields);
     options.where = { [Op.and]: [] };
 
+    /* ============================================================
+       🔐 TENANT FILTER
+    ============================================================ */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -144,6 +151,38 @@ export const getAllAccounts = async (req, res) => {
       }
     }
 
+    /* ============================================================
+    🔎 GLOBAL SEARCH (FIXED FOR ENUM)
+    ============================================================ */
+    if (req.query.search) {
+    const term = `%${req.query.search}%`;
+
+    options.where[Op.and].push({
+        [Op.or]: [
+        { name: { [Op.iLike]: term } },
+        { account_number: { [Op.iLike]: term } },
+
+        // 🔥 FIXED ENUM CAST
+        sequelize.where(
+            sequelize.cast(sequelize.col("Account.type"), "TEXT"),
+            { [Op.iLike]: term }
+        ),
+
+        sequelize.where(
+            sequelize.cast(sequelize.col("Account.currency"), "TEXT"),
+            { [Op.iLike]: term }
+        ),
+
+        // 🔥 RELATIONS
+        { "$organization.name$": { [Op.iLike]: term } },
+        { "$facility.name$": { [Op.iLike]: term } },
+        ],
+    });
+    }
+
+    /* ============================================================
+       🎯 FILTERS
+    ============================================================ */
     if (req.query.type) {
       options.where[Op.and].push({ type: req.query.type });
     }
@@ -152,12 +191,16 @@ export const getAllAccounts = async (req, res) => {
       options.where[Op.and].push({ is_active: req.query.is_active });
     }
 
+    /* ============================================================
+       📦 QUERY
+    ============================================================ */
     const { count, rows } = await Account.findAndCountAll({
       where: options.where,
       include: ACCOUNT_INCLUDES,
       order: options.order,
       offset,
       limit,
+      distinct: true, // 🔥 important for joins
     });
 
     return success(res, "✅ Accounts loaded", {
@@ -173,13 +216,13 @@ export const getAllAccounts = async (req, res) => {
     return error(res, "❌ Failed to load accounts", err);
   }
 };
-
 /* ============================================================ */
 /* GET ALL (LITE) */
 export const getAllAccountsLite = async (req, res) => {
   try {
     const records = await Account.findAll({
-      attributes: ["id", "name", "type"],
+      // 🔥 UPDATED
+      attributes: ["id", "account_number", "name", "type"],
       where: {
         ...(req.user?.organization_id && {
           organization_id: req.user.organization_id,
