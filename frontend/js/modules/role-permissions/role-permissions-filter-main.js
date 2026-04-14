@@ -198,8 +198,13 @@ async function loadEntries(page = 1) {
       user,
     });
 
+    const paginationBox = document.getElementById("paginationButtons");
+
+    // 🔥 CRITICAL FIX (ONLY THIS LINE NEEDED)
+    paginationBox.innerHTML = "";
+
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      paginationBox,
       currentPage,
       totalPages,
       loadEntries

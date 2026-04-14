@@ -29,6 +29,7 @@ import {
   loadFacilitiesLite,
   loadOrganizationsLite,
   setupSelectOptions,
+  loadPermissionsLite 
 } from "../../utils/data-loaders.js";
 
 import { authFetch } from "../../authSession.js";
@@ -46,6 +47,231 @@ function normalizeMessage(result, fallback) {
     return fallback;
   }
 }
+async function loadModulePermissions(mod) {
+  const permsRaw = await loadPermissionsLite({ module: mod.key }, true);
+  return permsRaw || [];
+}
+function renderModuleCards() {
+  const container = document.getElementById("moduleCardsContainer");
+  container.innerHTML = "";
+
+  allModulesCache.forEach((mod) => {
+    moduleState[mod.id] = {
+      selected: false,
+      expanded: false,
+      permissions: []
+    };
+
+    const col = document.createElement("div");
+
+    // 🔥 4 per row desktop
+    col.className = "col-12 col-sm-6 col-lg-3";
+
+    col.innerHTML = `
+      <div class="card h-100 shadow-sm border module-card">
+
+        <!-- HEADER -->
+        <div class="card-header d-flex justify-content-between align-items-center">
+
+          <div class="d-flex align-items-center gap-2">
+            <input
+              type="checkbox"
+              class="form-check-input module-checkbox"
+              data-id="${mod.id}"
+            >
+
+            <div class="lh-sm">
+              <div class="fw-semibold small mb-0">${mod.name}</div>
+              <small class="text-muted">${mod.key}</small>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-xs btn-light expand-btn"
+            data-id="${mod.id}"
+          >
+            ▶
+          </button>
+
+        </div>
+
+        <!-- BODY -->
+        <div class="card-body d-none" id="perm_${mod.id}">
+          <small class="text-muted">Select module to load permissions</small>
+        </div>
+
+      </div>
+    `;
+
+    container.appendChild(col);
+  });
+}
+function attachModuleEvents() {
+
+  /* =========================
+     ✅ MODULE CHECKBOX
+  ========================= */
+  document.querySelectorAll(".module-checkbox").forEach(cb => {
+    cb.addEventListener("change", async (e) => {
+      const id = e.target.dataset.id;
+      const state = moduleState[id];
+      const box = document.getElementById(`perm_${id}`);
+      const mod = allModulesCache.find(m => m.id === id);
+
+      state.selected = e.target.checked;
+
+      // ❌ UNCHECK → RESET
+      if (!state.selected) {
+        state.permissions = [];
+        state.expanded = false;
+
+        box.classList.add("d-none");
+        box.innerHTML = `<small>Select module first</small>`;
+
+        // reset arrow
+        const btn = document.querySelector(`.expand-btn[data-id="${id}"]`);
+        if (btn) btn.textContent = "▶";
+
+        return;
+      }
+
+      try {
+        // 🔥 LOAD ONLY IF EMPTY (avoid reload spam)
+        if (!state.permissions.length) {
+          const perms = await loadModulePermissions(mod);
+
+          state.permissions = perms.map(p => ({
+            key: p.key,
+            checked: true
+          }));
+        }
+
+        renderPermissions(id);
+
+        // 🔥 AUTO OPEN
+        box.classList.remove("d-none");
+        state.expanded = true;
+
+        // update arrow
+        const btn = document.querySelector(`.expand-btn[data-id="${id}"]`);
+        if (btn) btn.textContent = "▼";
+
+      } catch (err) {
+        console.error(err);
+        box.innerHTML = `<small class="text-danger">Failed to load permissions</small>`;
+      }
+    });
+  });
+
+
+  /* =========================
+     ✅ EXPAND / COLLAPSE
+  ========================= */
+  document.querySelectorAll(".expand-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const state = moduleState[id];
+      const box = document.getElementById(`perm_${id}`);
+      const mod = allModulesCache.find(m => m.id === id);
+
+      // ❌ block if module not selected
+      if (!state.selected) return;
+
+      try {
+        // 🔥 ensure permissions exist
+        if (!state.permissions.length) {
+          const perms = await loadModulePermissions(mod);
+
+          state.permissions = perms.map(p => ({
+            key: p.key,
+            checked: true
+          }));
+
+          renderPermissions(id);
+        }
+
+        // 🔁 toggle
+        state.expanded = !state.expanded;
+
+        if (state.expanded) {
+          box.classList.remove("d-none");
+          btn.textContent = "▼";
+        } else {
+          box.classList.add("d-none");
+          btn.textContent = "▶";
+        }
+
+      } catch (err) {
+        console.error(err);
+        box.innerHTML = `<small class="text-danger">Error loading permissions</small>`;
+      }
+    });
+  });
+}
+function renderPermissions(moduleId) {
+  const state = moduleState[moduleId];
+  const box = document.getElementById(`perm_${moduleId}`);
+
+  box.innerHTML = `
+    <div class="mb-2 d-flex justify-content-between align-items-center">
+      <strong class="small">Permissions</strong>
+
+      <div>
+        <button type="button" class="btn btn-xs btn-light select-all" data-id="${moduleId}">
+          All
+        </button>
+        <button type="button" class="btn btn-xs btn-light deselect-all" data-id="${moduleId}">
+          None
+        </button>
+      </div>
+    </div>
+
+    <div class="permission-list">
+      ${state.permissions.map(p => `
+        <label class="permission-row">
+
+          <input
+            type="checkbox"
+            class="form-check-input"
+            data-key="${p.key}"
+            ${p.checked ? "checked" : ""}
+          >
+
+          <span class="permission-text" title="${p.key}">
+            ${p.key}
+          </span>
+
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  // 🔁 Sync checkbox state
+  box.querySelectorAll("input").forEach(cb => {
+    cb.addEventListener("change", (e) => {
+      const key = e.target.dataset.key;
+      const perm = state.permissions.find(p => p.key === key);
+      if (perm) perm.checked = e.target.checked;
+    });
+  });
+
+  // 🔥 Select all
+  box.querySelector(".select-all")?.addEventListener("click", () => {
+    state.permissions.forEach(p => p.checked = true);
+    box.querySelectorAll("input[type='checkbox']").forEach(cb => {
+      cb.checked = true;
+    });
+  });
+
+  // 🔥 Deselect all
+  box.querySelector(".deselect-all")?.addEventListener("click", () => {
+    state.permissions.forEach(p => p.checked = false);
+    box.querySelectorAll("input[type='checkbox']").forEach(cb => {
+      cb.checked = false;
+    });
+  });
+}
 
 /* ============================================================
    📋 FORM RULES (mirrors module pattern)
@@ -55,9 +281,9 @@ const FEATURE_ACCESS_FORM_RULES = [
   { id: "role_id", message: "Role is required" },
 
   {
-    id: "module_id",
-    message: "Module is required",
-    when: () => !window.__featureAccessBulkMode,
+    id: "role_id",
+    message: "At least one module must be selected",
+    when: () => false,
   },
 
   {
@@ -70,9 +296,8 @@ const FEATURE_ACCESS_FORM_RULES = [
 /* ============================================================
    🧠 Bulk State
 ============================================================ */
-let bulkMode = false;
-let selectedModuleIds = new Set();
 let allModulesCache = [];
+const moduleState = {};
 
 window.__featureAccessBulkMode = false;
 
@@ -87,6 +312,8 @@ async function populateBaseDropdowns() {
   ]);
 
   allModulesCache = modules || [];
+  renderModuleCards();
+  attachModuleEvents();
 
   setupSelectOptions(
     document.getElementById("organization_id"),
@@ -96,13 +323,6 @@ async function populateBaseDropdowns() {
     "-- Select Organization --"
   );
 
-  setupSelectOptions(
-    document.getElementById("module_id"),
-    modules,
-    "id",
-    "name",
-    "-- Select Module --"
-  );
 
   setupSelectOptions(
     document.getElementById("facility_id"),
@@ -163,70 +383,6 @@ async function loadRolesForOrganization(orgId) {
 }
 
 /* ============================================================
-   🔄 Reset Bulk State
-============================================================ */
-function resetBulkState() {
-  bulkMode = false;
-  window.__featureAccessBulkMode = false;
-  selectedModuleIds.clear();
-
-  const list = document.getElementById("modulePreviewList");
-  const container = document.getElementById("modulePreviewContainer");
-  const moduleSelect = document.getElementById("module_id");
-  const addAllBtn = document.getElementById("addAllModulesBtn");
-  const fullAccessBtn = document.getElementById("grantFullAccessBtn");
-
-  if (list) list.innerHTML = "";
-  if (container) container.classList.add("d-none");
-  if (moduleSelect) moduleSelect.disabled = false;
-  if (addAllBtn) addAllBtn.disabled = false;
-  if (fullAccessBtn) fullAccessBtn.disabled = false;
-}
-
-/* ============================================================
-   📋 Preview Renderer (mirrors module card logic)
-============================================================ */
-function renderPreview() {
-  const container = document.getElementById("modulePreviewContainer");
-  const list = document.getElementById("modulePreviewList");
-
-  list.innerHTML = "";
-
-  if (!selectedModuleIds.size) {
-    list.innerHTML = `<p class="text-muted mb-0">No modules selected</p>`;
-    container.classList.remove("d-none");
-    return;
-  }
-
-  for (const id of selectedModuleIds) {
-    const mod = allModulesCache.find((m) => m.id === id);
-    if (!mod) continue;
-
-    const item = document.createElement("div");
-    item.className = "form-check symptom-check";
-
-    item.innerHTML = `
-      <input class="form-check-input" type="checkbox" id="module_${id}" checked />
-      <label class="form-check-label" for="module_${id}">
-        <div class="fw-semibold">${mod.name}</div>
-        <small class="text-muted">${mod.key}</small>
-      </label>
-    `;
-
-    const checkbox = item.querySelector("input");
-    checkbox.addEventListener("change", () => {
-      checkbox.checked
-        ? selectedModuleIds.add(id)
-        : selectedModuleIds.delete(id);
-    });
-
-    list.appendChild(item);
-  }
-
-  container.classList.remove("d-none");
-}
-
-/* ============================================================
    🚀 Main Setup (MASTER-ALIGNED)
 ============================================================ */
 export async function setupFeatureAccessFormSubmission({ form }) {
@@ -240,47 +396,93 @@ export async function setupFeatureAccessFormSubmission({ form }) {
   const roleSelect = document.getElementById("role_id");
   const addAllBtn = document.getElementById("addAllModulesBtn");
   const fullAccessBtn = document.getElementById("grantFullAccessBtn");
-  const moduleSelect = document.getElementById("module_id");
 
   /* ================= ORG → ROLE CHAIN ================= */
-
   orgSelect.addEventListener("change", async () => {
     roleSelect.value = "";
     await loadRolesForOrganization(orgSelect.value);
   });
 
-  /* ================= BULK ACTIONS ================= */
+  /* ============================================================
+     🔥 SELECT ALL MODULES (FAST + CLEAN)
+  ============================================================ */
+  addAllBtn?.addEventListener("click", async () => {
 
-  function enterBulkMode() {
-    resetBulkState();
-    bulkMode = true;
-    window.__featureAccessBulkMode = true;
+    await Promise.all(allModulesCache.map(async (mod) => {
+      const id = mod.id;
 
-    allModulesCache.forEach((m) => selectedModuleIds.add(m.id));
-    moduleSelect.disabled = true;
-    addAllBtn.disabled = true;
-    fullAccessBtn.disabled = true;
+      moduleState[id].selected = true;
 
-    renderPreview();
-  }
+      const checkbox = document.querySelector(
+        `.module-checkbox[data-id="${id}"]`
+      );
+      if (checkbox) checkbox.checked = true;
 
-  addAllBtn?.addEventListener("click", enterBulkMode);
-  fullAccessBtn?.addEventListener("click", enterBulkMode);
+      // 🔥 load only if needed
+      if (!moduleState[id].permissions.length) {
+        const perms = await loadModulePermissions(mod);
 
-  document.getElementById("selectAllPreview")?.addEventListener("click", () => {
-    allModulesCache.forEach((m) => selectedModuleIds.add(m.id));
-    renderPreview();
+        moduleState[id].permissions = perms.map(p => ({
+          key: p.key,
+          checked: true
+        }));
+      }
+
+      renderPermissions(id);
+
+      const box = document.getElementById(`perm_${id}`);
+      if (box) box.classList.remove("d-none");
+
+      const btn = document.querySelector(`.expand-btn[data-id="${id}"]`);
+      if (btn) btn.textContent = "▼";
+    }));
+
   });
 
-  document
-    .getElementById("deselectAllPreview")
-    ?.addEventListener("click", () => {
-      selectedModuleIds.clear();
-      renderPreview();
-    });
 
-  /* ================= SUBMIT (RULE-DRIVEN) ================= */
+  /* ============================================================
+     🔥 FULL ACCESS (NO RELOAD IF EXISTS)
+  ============================================================ */
+  fullAccessBtn?.addEventListener("click", async () => {
 
+    await Promise.all(allModulesCache.map(async (mod) => {
+      const id = mod.id;
+
+      moduleState[id].selected = true;
+
+      const checkbox = document.querySelector(
+        `.module-checkbox[data-id="${id}"]`
+      );
+      if (checkbox) checkbox.checked = true;
+
+      // 🔥 FIX: avoid reloading every time
+      if (!moduleState[id].permissions.length) {
+        const perms = await loadModulePermissions(mod);
+
+        moduleState[id].permissions = perms.map(p => ({
+          key: p.key,
+          checked: true
+        }));
+      } else {
+        // reuse existing
+        moduleState[id].permissions.forEach(p => p.checked = true);
+      }
+
+      renderPermissions(id);
+
+      const box = document.getElementById(`perm_${id}`);
+      if (box) box.classList.remove("d-none");
+
+      const btn = document.querySelector(`.expand-btn[data-id="${id}"]`);
+      if (btn) btn.textContent = "▼";
+    }));
+
+  });
+
+
+  /* ============================================================
+     📤 SUBMIT
+  ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
     clearFormErrors(form);
@@ -311,56 +513,65 @@ export async function setupFeatureAccessFormSubmission({ form }) {
     const status =
       form.querySelector("input[name='status']:checked")?.value || "active";
 
+    /* ========================================================
+       🔥 BUILD PAYLOAD
+    ======================================================== */
+    const module_ids = [];
+    const permission_keys = [];
+
+    Object.entries(moduleState).forEach(([id, state]) => {
+      if (!state.selected) return;
+
+      module_ids.push(id);
+
+      state.permissions.forEach((p) => {
+        if (p.checked) {
+          permission_keys.push(p.key);
+        }
+      });
+    });
+
+    /* ========================================================
+       🚨 VALIDATION
+    ======================================================== */
+    if (!module_ids.length) {
+      showToast("❌ Select at least one module");
+      return;
+    }
+
+    if (!permission_keys.length) {
+      showToast("❌ Select at least one permission");
+      return;
+    }
+
     try {
       showLoading();
 
-      if (bulkMode) {
-        if (!selectedModuleIds.size)
-          throw new Error("❌ No modules selected");
-
-        const res = await authFetch(
-          `/api/features/feature-access/by-role/${roleId}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              organization_id: orgId,
-              facility_id: facilityId,
-              module_ids: Array.from(selectedModuleIds),
-              status,
-            }),
-          }
-        );
-
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok)
-          throw new Error(
-            normalizeMessage(result, "Bulk replace failed")
-          );
-
-        showToast("✅ Feature access replaced successfully");
-      } else {
-        const res = await authFetch(`/api/features/feature-access`, {
-          method: "POST",
+      const res = await authFetch(
+        `/api/features/feature-access/by-role/${roleId}`,
+        {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             organization_id: orgId,
             role_id: roleId,
-            module_id: form.module_id.value,
             facility_id: facilityId,
+            module_ids,
+            permission_keys,
             status,
           }),
-        });
+        }
+      );
 
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok)
-          throw new Error(normalizeMessage(result, "Grant failed"));
-
-        showToast("✅ Feature access granted");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(normalizeMessage(result, "Failed to save access"));
       }
 
-      resetBulkState();
-      window.location.href = "/feature-access-list.html";
+      showToast("✅ Role access saved successfully");
+      // 🔥 stay on page + reset form cleanly
+      form.reset();
+      form.dispatchEvent(new Event("reset"));
     } catch (err) {
       console.error(err);
       showToast(err.message || "❌ Submission failed");
@@ -369,10 +580,49 @@ export async function setupFeatureAccessFormSubmission({ form }) {
     }
   };
 
-  /* ================= CANCEL / RESET ================= */
-
+  /* ================= RESET ================= */
   form.addEventListener("reset", () => {
     clearFormErrors(form);
-    resetBulkState();
+
+    /* =========================
+      🔥 RESET MODULE STATE
+    ========================= */
+    Object.keys(moduleState).forEach(id => {
+      const state = moduleState[id];
+
+      // reset state
+      state.selected = false;
+      state.expanded = false;
+      state.permissions = [];
+
+      // reset module checkbox
+      const checkbox = document.querySelector(`.module-checkbox[data-id="${id}"]`);
+      if (checkbox) checkbox.checked = false;
+
+      // reset permission box
+      const box = document.getElementById(`perm_${id}`);
+      if (box) {
+        box.classList.add("d-none");
+        box.innerHTML = `<small>Select module first</small>`;
+      }
+
+      // reset expand arrow
+      const btn = document.querySelector(`.expand-btn[data-id="${id}"]`);
+      if (btn) btn.textContent = "▶";
+    });
+
+    /* =========================
+      🔥 RESET ROLE DROPDOWN
+    ========================= */
+    const roleSelect = document.getElementById("role_id");
+    if (roleSelect) {
+      roleSelect.innerHTML = `<option value="">-- Select Organization First --</option>`;
+    }
+
+    /* 🔥 ADD THIS */
+    const orgSelect = document.getElementById("organization_id");
+    if (orgSelect) {
+      orgSelect.value = "";
+    }
   });
 }
