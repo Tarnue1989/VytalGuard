@@ -1,11 +1,4 @@
-// 📁 add-feature-access.js – Secure Add/Edit Page Controller for Feature Access
-// ============================================================================
-// 🧭 Mirrors add-feature-module.js architecture EXACTLY
-// 🔹 Unified guard, edit-prefill, reset, cancel, clear
-// 🔹 Session + URL edit resolution
-// 🔹 Edit-mode lockdown for bulk actions
-// 🔹 100% ID retention for linked HTML
-// ============================================================================
+// 📁 add-feature-access.js – FINAL (CARD + PERMISSION READY)
 
 import { setupFeatureAccessFormSubmission } from "./feature-access-form.js";
 import {
@@ -17,11 +10,12 @@ import {
   autoPagePermissionKey
 } from "../../utils/index.js";
 import { authFetch } from "../../authSession.js";
+import { loadPermissionsLite } from "../../utils/data-loaders.js";
 
 /* ============================================================
    🔐 Auth Guard + Shared State
 ============================================================ */
-const token = initPageGuard(autoPagePermissionKey());
+initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const sharedState = {
@@ -29,25 +23,30 @@ const sharedState = {
 };
 
 /* ============================================================
-   🧹 Reset Form Helper (ADD MODE ONLY)
+   🧹 Reset Form (ADD ONLY) — FIXED
 ============================================================ */
 function resetForm() {
   const form = document.getElementById("featureAccessForm");
   if (!form) return;
 
+  // 🔥 RESET FORM
   form.reset();
+
+  // 🔥 VERY IMPORTANT → trigger FULL UI reset (modules + permissions)
+  form.dispatchEvent(new Event("reset"));
+
   sharedState.currentEditIdRef.value = null;
 
-  // Explicit dropdown clears
-  ["organization_id", "role_id", "module_id", "facility_id"].forEach((id) => {
+  // reset selects
+  ["organization_id", "role_id", "facility_id"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Default radio
+  // reset status
   document.getElementById("status_active")?.click();
 
-  // Reset title + button
+  // reset UI text
   const titleEl = document.querySelector(".card-title");
   if (titleEl) titleEl.textContent = "Add Feature Access";
 
@@ -59,15 +58,12 @@ function resetForm() {
 }
 
 /* ============================================================
-   🚀 Init
+   🚀 INIT
 ============================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("featureAccessForm");
   if (!form) return;
 
-  /* ----------------------------------------------------------
-     ✏️ Detect Edit Mode (Session → URL)
-  ----------------------------------------------------------- */
   const editId =
     sessionStorage.getItem("featureAccessEditId") ||
     new URLSearchParams(window.location.search).get("id");
@@ -79,9 +75,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     sharedState.currentEditIdRef.value = editId;
   }
 
-  /* ----------------------------------------------------------
-     📦 Init Form Logic (dropdowns + submit)
-  ----------------------------------------------------------- */
+  /* ================= INIT FORM ================= */
   await setupFeatureAccessFormSubmission({
     form,
     sharedState,
@@ -89,27 +83,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadEntries: null,
   });
 
-  /* ----------------------------------------------------------
-     🔒 EDIT MODE LOCKDOWN
-  ----------------------------------------------------------- */
+  /* ================= EDIT LOCK ================= */
   if (isEdit) {
-    // Disable bulk buttons
     document.getElementById("addAllModulesBtn")?.setAttribute("disabled", true);
-    document
-      .getElementById("grantFullAccessBtn")
-      ?.setAttribute("disabled", true);
+    document.getElementById("grantFullAccessBtn")?.setAttribute("disabled", true);
 
-    // Hide bulk preview controls
-    document
-      .getElementById("modulePreviewContainer")
-      ?.classList.add("d-none");
+    document.getElementById("modulePreviewContainer")?.classList.add("d-none");
     document.getElementById("selectAllPreview")?.classList.add("d-none");
     document.getElementById("deselectAllPreview")?.classList.add("d-none");
   }
 
-  /* ----------------------------------------------------------
-     ✏️ Prefill Helper (EDIT MODE)
-  ----------------------------------------------------------- */
+  /* ============================================================
+     ✏️ PREFILL (EDIT MODE)
+  ============================================================ */
   async function applyPrefill(entry) {
     const set = (id, val) => {
       const el = document.getElementById(id);
@@ -118,12 +104,54 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     set("organization_id", entry.organization_id);
     set("role_id", entry.role_id);
-    set("module_id", entry.module_id);
     set("facility_id", entry.facility_id || "");
 
     document
       .getElementById(`status_${entry.status || "active"}`)
       ?.click();
+
+    // 🔥 MODULE + PERMISSION PREFILL
+    if (entry.modules && entry.permissions) {
+      for (const mod of entry.modules) {
+        const checkbox = document.querySelector(
+          `.module-checkbox[data-id="${mod.id}"]`
+        );
+
+        if (checkbox) checkbox.checked = true;
+
+        // trigger load
+        checkbox?.dispatchEvent(new Event("change"));
+
+        // wait small delay
+        await new Promise((r) => setTimeout(r, 50));
+
+        const perms = await loadPermissionsLite({ module: mod.key }, true);
+
+        const state = window.moduleState?.[mod.id];
+        if (!state) continue;
+
+        state.permissions = perms.map((p) => ({
+          key: p.key,
+          checked: entry.permissions.includes(p.key),
+        }));
+
+        const box = document.getElementById(`perm_${mod.id}`);
+        if (box) {
+          box.classList.remove("d-none");
+
+          box.innerHTML = state.permissions.map(p => `
+            <div class="form-check">
+              <input type="checkbox"
+                class="form-check-input"
+                data-key="${p.key}"
+                ${p.checked ? "checked" : ""}
+              >
+              <label class="form-check-label">${p.key}</label>
+            </div>
+          `).join("");
+        }
+      }
+    }
 
     // UI
     const titleEl = document.querySelector(".card-title");
@@ -136,9 +164,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* ----------------------------------------------------------
-     📦 Load Edit Data (Session → API)
-  ----------------------------------------------------------- */
+  /* ============================================================
+     📦 LOAD EDIT DATA
+  ============================================================ */
   if (isEdit) {
     try {
       let entry = null;
@@ -163,25 +191,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       await applyPrefill(entry);
     } catch (err) {
-      console.error("❌ Feature access edit load failed:", err);
-      showToast(err.message || "❌ Failed to load feature access");
+      console.error(err);
+      showToast(err.message || "❌ Failed to load");
     } finally {
       hideLoading();
     }
   }
 
-  /* ----------------------------------------------------------
-     🚪 Cancel
-  ----------------------------------------------------------- */
+  /* ============================================================
+     🚪 CANCEL
+  ============================================================ */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("featureAccessEditId");
     sessionStorage.removeItem("featureAccessEditPayload");
     window.location.href = "/feature-access-list.html";
   });
 
-  /* ----------------------------------------------------------
-     🧹 Clear (ADD MODE ONLY)
-  ----------------------------------------------------------- */
+  /* ============================================================
+     🧹 CLEAR (ADD ONLY)
+  ============================================================ */
   document.getElementById("clearBtn")?.addEventListener("click", () => {
     if (isEdit) return;
     resetForm();

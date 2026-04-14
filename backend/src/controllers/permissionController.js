@@ -169,11 +169,16 @@ export const getLitePermissions = async (req, res) => {
   try {
     const where = {};
 
+    // ✅ STRICT MODULE FILTER
+    if (req.query.module) {
+      where.module = req.query.module;
+    }
+
+    // 🔎 SEARCH (OPTIONAL)
     if (req.query.q) {
       where[Op.or] = [
         { key: { [Op.iLike]: `%${req.query.q}%` } },
         { name: { [Op.iLike]: `%${req.query.q}%` } },
-        { module: { [Op.iLike]: `%${req.query.q}%` } },
       ];
     }
 
@@ -189,7 +194,6 @@ export const getLitePermissions = async (req, res) => {
     return error(res, "❌ Failed to load lite permissions", err);
   }
 };
-
 /* ============================================================
    📌 CREATE PERMISSION
 ============================================================ */

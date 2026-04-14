@@ -16,6 +16,123 @@
   <link rel="stylesheet" href="assets/css/main.min.css">
   <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
   <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
+
+<style>
+/* ===============================
+   🔥 CARD COMPACT
+================================= */
+/* ===============================
+   🔥 MODULE CARD (COMPACT)
+================================= */
+.module-card {
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.module-card .card-header {
+  padding: 6px 10px !important;
+  min-height: 42px;
+}
+
+.module-card .card-body {
+  padding: 6px !important;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* ===============================
+   🔥 PERMISSION GRID (FIXED)
+   ⚠️ DO NOT break bootstrap grid
+================================= */
+.module-card .row {
+  margin: 0;
+}
+
+.module-card .row > div {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* ===============================
+   🔥 PERMISSION ITEM (CLEAN)
+================================= */
+.module-card .form-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* checkbox */
+.module-card .form-check-input {
+  transform: scale(0.9);
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+/* label */
+.module-card .form-check-label {
+  font-size: 12px;
+
+  /* 🔥 FIX TEXT CUT ISSUE */
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+/* ===============================
+   🔥 PERMISSION GROUP TITLE
+================================= */
+.module-card .fw-semibold {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+/* ===============================
+   🔥 ACTION BUTTONS (SMALL)
+================================= */
+.btn-xs {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+/* ===============================
+   🔥 EXPAND BUTTON (ARROW)
+================================= */
+.expand-btn {
+  font-size: 11px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+/* ===============================
+   🔥 MODULE GRID (RESPONSIVE)
+================================= */
+.module-cards-grid .col-12 {
+  display: flex;
+}
+
+.module-cards-grid .card {
+  width: 100%;
+}
+
+/* ===============================
+   🔥 SCROLLBAR (OPTIONAL CLEAN)
+================================= */
+.module-card .card-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.module-card .card-body::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.module-card .card-body::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+</style>
 </head>
 
 <body>
@@ -32,7 +149,7 @@
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
           <li class="breadcrumb-item">Feature Access</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">Add Access</li>
+          <li class="breadcrumb-item text-primary">Add Access</li>
         </ol>
       </div>
 
@@ -41,178 +158,102 @@
         <div class="row gx-4">
           <div class="col-sm-12">
             <div class="card">
+
               <div class="card-header">
                 <h5 class="card-title">Add Feature Access</h5>
               </div>
 
               <div class="card-body">
-                <div id="formContainer">
-                  <form id="featureAccessForm" novalidate>
-                    <div class="row gx-4">
+                <form id="featureAccessForm" novalidate>
+                  <div class="row gx-4">
 
-                      <!-- ================= Scope ================= -->
-                      <div class="col-12">
-                        <h6 class="mt-3">Scope</h6>
-                        <hr />
-                      </div>
-
-                      <!-- Organization -->
-                      <div class="col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="organization_id">
-                            Organization <span class="text-danger">*</span>
-                          </label>
-                          <select
-                            class="form-select"
-                            id="organization_id"
-                            name="organization_id"
-                            data-required="true"
-                          >
-                            <option value="">-- Select Organization --</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- Role -->
-                      <div class="col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="role_id">
-                            Role <span class="text-danger">*</span>
-                          </label>
-                          <select
-                            class="form-select"
-                            id="role_id"
-                            name="role_id"
-                            data-required="true"
-                          >
-                            <option value="">-- Select Role --</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- Module (single mode) -->
-                      <div class="col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="module_id">
-                            Module <span class="text-danger">*</span>
-                          </label>
-                          <select
-                            class="form-select"
-                            id="module_id"
-                            name="module_id"
-                            data-required="true"
-                          >
-                            <option value="">-- Select Module --</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- ================= Bulk Actions ================= -->
-                      <div class="col-12 d-flex gap-2 mb-3">
-                        <button
-                          type="button"
-                          id="addAllModulesBtn"
-                          class="btn btn-sm btn-outline-primary"
-                        >
-                          <i class="ri-folder-add-line me-1"></i>
-                          Select all modules
-                        </button>
-
-                        <button
-                          type="button"
-                          id="grantFullAccessBtn"
-                          class="btn btn-sm btn-outline-danger"
-                        >
-                          <i class="ri-shield-check-line me-1"></i>
-                          Replace access (all modules)
-                        </button>
-                      </div>
-
-                      <!-- ================= Bulk Preview ================= -->
-                      <div class="col-12 d-none" id="modulePreviewContainer">
-                        <label class="form-label">
-                          Modules to be granted
-                          <small class="text-muted">(bulk replace)</small>
-                        </label>
-
-                        <div class="d-flex gap-2 mb-2">
-                          <button type="button" class="btn btn-xs btn-light" id="selectAllPreview">
-                            Select all
-                          </button>
-                          <button type="button" class="btn btn-xs btn-light" id="deselectAllPreview">
-                            Deselect all
-                          </button>
-                        </div>
-
-                        <div
-                          id="modulePreviewList"
-                          class="border rounded p-2 module-grid"
-                          style="max-height:240px; overflow:auto"
-                        >
-                          <!-- dynamically rendered -->
-                        </div>
-                      </div>
-
-                      <!-- ================= Facility ================= -->
-                      <div class="col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label" for="facility_id">
-                            Facility <small class="text-muted">(optional, org-wide if empty)</small>
-                          </label>
-                          <select class="form-select" id="facility_id" name="facility_id">
-                            <option value="">-- All Facilities (Org-wide) --</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- ================= Status ================= -->
-                      <div class="col-lg-4 col-sm-6">
-                        <div class="mb-3">
-                          <label class="form-label">
-                            Status <span class="text-danger">*</span>
-                          </label>
-                          <div>
-                            <div class="form-check form-check-inline">
-                              <input
-                                class="form-check-input"
-                                type="radio"
-                                name="status"
-                                value="active"
-                                checked
-                              >
-                              <label class="form-check-label">Active</label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                              <input
-                                class="form-check-input"
-                                type="radio"
-                                name="status"
-                                value="inactive"
-                              >
-                              <label class="form-check-label">Inactive</label>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- ================= Actions ================= -->
-                      <div class="col-12">
-                        <div class="d-flex gap-2 justify-content-end">
-                          <button type="button" id="cancelBtn" class="btn btn-outline-secondary">
-                            Back
-                          </button>
-                          <button type="reset" id="clearBtn" class="btn btn-warning">
-                            Reset Form
-                          </button>
-                          <button type="submit" class="btn btn-primary">
-                            Save
-                          </button>
-                        </div>
-                      </div>
-
+                    <!-- Scope -->
+                    <div class="col-12">
+                      <h6 class="mt-3">Scope</h6>
+                      <hr />
                     </div>
-                  </form>
-                </div>
+
+                    <!-- Organization -->
+                    <div class="col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Organization *</label>
+                        <select class="form-select" id="organization_id" name="organization_id">
+                          <option value="">-- Select Organization --</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Role -->
+                    <div class="col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Role *</label>
+                        <select class="form-select" id="role_id" name="role_id">
+                          <option value="">-- Select Role --</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Modules -->
+                    <div class="col-12 mt-3">
+                      <h6>Select Modules & Permissions</h6>
+                      <hr />
+                      <div id="moduleCardsContainer" class="row g-2 module-cards-grid"></div>
+                    </div>
+
+                    <!-- Bulk Actions -->
+                    <div class="col-12 d-flex flex-wrap gap-2 mb-3">
+                      <button type="button" id="addAllModulesBtn" class="btn btn-sm btn-outline-primary">
+                        <i class="ri-folder-add-line me-1"></i>
+                        Select all modules
+                      </button>
+
+                      <button type="button" id="grantFullAccessBtn" class="btn btn-sm btn-outline-danger">
+                        <i class="ri-shield-check-line me-1"></i>
+                        Replace access
+                      </button>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Facility</label>
+                        <select class="form-select" id="facility_id">
+                          <option value="">-- All Facilities --</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-lg-4 col-sm-6">
+                      <div class="mb-3">
+                        <label class="form-label">Status *</label>
+                        <div>
+                          <label class="me-2">
+                            <input type="radio" name="status" value="active" checked> Active
+                          </label>
+                          <label>
+                            <input type="radio" name="status" value="inactive"> Inactive
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                  <!-- Actions -->
+                  <div class="col-12">
+                    <div class="d-flex gap-2 justify-content-end">
+                      <button 
+                        type="button" 
+                        class="btn btn-outline-secondary"
+                        onclick="window.location.href='/feature-access-list.html'"
+                      >
+                        Back
+                      </button>
+                      <button type="reset" class="btn btn-warning">Reset</button>
+                      <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                  </div>
+                  </div>
+                </form>
               </div>
 
             </div>
@@ -232,17 +273,13 @@
   <script src="assets/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/moment.min.js"></script>
   <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
-  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
   <script src="assets/vendor/daterange/daterange.js"></script>
-  <script src="assets/vendor/daterange/custom-daterange.js"></script>
   <script src="assets/js/custom.js"></script>
 
   <!-- Module JS -->
   <script type="module" src="js/modules/feature-access/add-feature-access.js"></script>
- 
-  
 
-  <!-- AUTH -->
+  <!-- Auth -->
   <script type="module" src="/js/authSession.js"></script>
 
 </body>

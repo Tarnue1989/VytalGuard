@@ -95,7 +95,7 @@ async function resolveInsuranceFromEntity(entity, transaction) {
  */
 export const billingService = {
   /* ============================================================
-    1️⃣ TRIGGER AUTO BILLING (FK-DRIVEN — DEBUG ENABLED)
+    1️⃣ TRIGGER AUTO BILLING (FINAL — ENTERPRISE SAFE)
   ============================================================ */
   async triggerAutoBilling({
     feature_module_id,
@@ -123,7 +123,6 @@ export const billingService = {
       facility_id: facilityId,
     });
 
-    /* ================= DEBUG: STEP 2 — BILLING TRIGGER ================= */
     debug.log("STEP 2: BILLING TRIGGER", {
       allowed,
       status: entity.log_status || entity.status,
@@ -161,13 +160,7 @@ export const billingService = {
       transaction
     );
 
-    /* ================= DEBUG: STEP 1 — INSURANCE DATA ================= */
-    debug.log("STEP 1: INSURANCE DATA", {
-      payer_type: insuranceData.payer_type,
-      insurance_provider_id: insuranceData.insurance_provider_id,
-      coverage_amount: insuranceData.coverage_amount,
-      coverage_currency: insuranceData.coverage_currency,
-    });
+    debug.log("STEP 1: INSURANCE DATA", insuranceData);
 
     const { price } = await getBillableItemPrice({
       billable_item_id: rule.billableItem.id,
@@ -178,34 +171,33 @@ export const billingService = {
       transaction,
     });
 
+    /* ============================================================
+      🔍 FIND SAFE INVOICE (FIXED)
+    ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
         patient_id: entity.patient_id,
         organization_id: orgId,
         facility_id: facilityId,
         is_locked: false,
+        payer_type: insuranceData.payer_type,
+        insurance_provider_id: insuranceData.insurance_provider_id,
       },
       order: [["created_at", "DESC"]],
       transaction,
-    });
-
-    /* ================= DEBUG: STEP 3 — FOUND INVOICE ================= */
-    debug.log("STEP 3: FOUND INVOICE", {
-      invoice_id: invoice?.id,
-      invoice_insurance_provider_id: invoice?.insurance_provider_id,
-      payer_type: invoice?.payer_type,
     });
 
     if (invoice && invoice.currency !== (entity.currency || "LRD")) {
       invoice = null;
     }
 
-    /* ================= DEBUG: STEP 3B — CREATE NEW? ================= */
-    debug.log("STEP 3B: CREATE NEW INVOICE?", {
-      will_create: !invoice,
+    debug.log("STEP 3: INVOICE FOUND", {
+      invoice_id: invoice?.id,
     });
 
-    /* ================= CREATE INVOICE ================= */
+    /* ============================================================
+      🧾 CREATE INVOICE
+    ============================================================ */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
@@ -235,8 +227,8 @@ export const billingService = {
           insurance_provider_name: providerName,
           coverage_amount_initial: insuranceData.coverage_amount,
           coverage_currency: insuranceData.coverage_currency,
-          insurance_amount: 0,
 
+          insurance_amount: 0,
           total: 0,
           total_paid: 0,
           balance: 0,
@@ -247,12 +239,6 @@ export const billingService = {
         { transaction }
       );
 
-      /* ================= DEBUG: STEP 4 — CLAIM CHECK (NEW INVOICE) ================= */
-      debug.log("STEP 4: CLAIM CHECK (NEW INVOICE)", {
-        invoice_id: invoice.id,
-        invoice_insurance_provider_id: invoice.insurance_provider_id,
-      });
-
       if (invoice.insurance_provider_id) {
         await insuranceService.createClaimFromInvoice({
           invoice_id: invoice.id,
@@ -262,96 +248,72 @@ export const billingService = {
       }
     }
 
-    /* ================= FIX: APPLY INSURANCE TO EXISTING INVOICE ================= */
-    if (
-      invoice &&
-      !invoice.insurance_provider_id &&
-      insuranceData.insurance_provider_id
-    ) {
-      debug.log("FIX: APPLYING INSURANCE TO EXISTING INVOICE", {
-        invoice_id: invoice.id,
-        old_provider: invoice.insurance_provider_id,
-        new_provider: insuranceData.insurance_provider_id,
-      });
-
-      invoice.insurance_provider_id = insuranceData.insurance_provider_id;
-      invoice.payer_type = "insurance";
-      invoice.coverage_amount = insuranceData.coverage_amount;
-
-      await invoice.save({ transaction });
-
-      await insuranceService.createClaimFromInvoice({
-        invoice_id: invoice.id,
-        user,
-        transaction,
-      });
-    }
-
-    /* ================= DEBUG: STEP 4 — CLAIM CHECK (FINAL) ================= */
-    if (invoice) {
-      debug.log("STEP 4: CLAIM CHECK (FINAL)", {
-        invoice_id: invoice.id,
-        invoice_insurance_provider_id: invoice.insurance_provider_id,
-      });
-    }
-
-    /* ================= FX CONVERSION ================= */
+    /* ============================================================
+      🔄 FX CONVERSION (FIXED PARAMS)
+    ============================================================ */
     if (
       invoice.insurance_provider_id &&
       insuranceData.coverage_currency &&
       invoice.currency &&
       insuranceData.coverage_currency !== invoice.currency
     ) {
-      const originalAmount = parseFloat(invoice.coverage_amount || 0);
+      const originalAmount = Number(invoice.coverage_amount || 0);
 
       const convertedAmount = await fxService.convert({
         amount: originalAmount,
         from_currency: insuranceData.coverage_currency,
         to_currency: invoice.currency,
-        orgId,
-        facilityId,
+        organization_id: orgId,
+        facility_id: facilityId,
         transaction,
       });
 
-      invoice.coverage_amount = convertedAmount;
-
-      if (originalAmount > 0) {
-        invoice.fx_rate_used = convertedAmount / originalAmount;
-      }
-
-      invoice.fx_from_currency = insuranceData.coverage_currency;
-      invoice.fx_to_currency = invoice.currency;
-      invoice.fx_timestamp = new Date();
-
+      invoice.coverage_amount = Number(convertedAmount || 0);
       await invoice.save({ transaction });
     }
 
+    /* ============================================================
+      💰 CALCULATIONS (FIXED)
+    ============================================================ */
+    const round = (v) => Number(parseFloat(v).toFixed(2));
+
+    const quantity = 1;
+    const total = round(price * quantity);
+
     const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
-    const taxAmount = price * (taxRate / 100);
-    const net = price + taxAmount;
+    const taxAmount = round(total * (taxRate / 100));
+    const net = round(total + taxAmount);
 
     let insuranceAmount = 0;
     let patientAmount = net;
 
     if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-      let remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+      const remaining = round(invoice.coverage_amount);
 
-      insuranceAmount = Math.min(net, remainingCoverage);
-      patientAmount = net - insuranceAmount;
+      insuranceAmount = round(Math.min(net, remaining));
+      patientAmount = round(net - insuranceAmount);
 
+      /* 🔥 CRITICAL FIX: REDUCE COVERAGE */
+      invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
+      await invoice.save({ transaction });
     }
 
+    /* ============================================================
+      🧾 CREATE ITEM (FIXED TOTALS)
+    ============================================================ */
     const item = await InvoiceItem.create(
       {
         invoice_id: invoice.id,
         billable_item_id: rule.billableItem.id,
         organization_id: orgId,
         facility_id: facilityId,
+
         description: rule.billableItem.name,
         unit_price: price,
-        quantity: 1,
+        quantity,
+
         tax_amount: taxAmount,
-        total_price: price,
+        total_price: total,
         net_amount: net,
 
         insurance_amount: insuranceAmount,
@@ -372,7 +334,7 @@ export const billingService = {
   },
 
   /* ============================================================
-    2️⃣ BILL ORDER ITEMS (DEBUG ENABLED — MASTER)
+    2️⃣ BILL ORDER ITEMS (FINAL — ENTERPRISE SAFE)
   ============================================================ */
   async billOrderItems({
     order,
@@ -401,11 +363,6 @@ export const billingService = {
       facility_id: facilityId || user.facility_ids?.[0],
     });
 
-    debug.log("ORDER STEP 2: BILLING TRIGGER", {
-      allowed,
-      status: order.status,
-    });
-
     if (!allowed) return null;
 
     const items = await sequelize.models.OrderItem.findAll({
@@ -421,11 +378,9 @@ export const billingService = {
       transaction
     );
 
-    debug.log("ORDER STEP 1: INSURANCE DATA", {
-      payer_type: insuranceData.payer_type,
-      insurance_provider_id: insuranceData.insurance_provider_id,
-    });
-
+    /* ============================================================
+      🔍 SAFE INVOICE FIND (FIXED)
+    ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
         patient_id: order.patient_id,
@@ -434,25 +389,20 @@ export const billingService = {
           ? { facility_id: facilityId }
           : { facility_id: { [Op.in]: user.facility_ids || [] } }),
         is_locked: false,
+        payer_type: insuranceData.payer_type,
+        insurance_provider_id: insuranceData.insurance_provider_id,
       },
       order: [["created_at", "DESC"]],
       transaction,
-    });
-
-    debug.log("ORDER STEP 3: FOUND INVOICE", {
-      invoice_id: invoice?.id,
-      invoice_insurance_provider_id: invoice?.insurance_provider_id,
     });
 
     if (invoice && invoice.currency !== (order.currency || "LRD")) {
       invoice = null;
     }
 
-    debug.log("ORDER STEP 3B: CREATE NEW?", {
-      will_create: !invoice,
-    });
-
-    /* ================= CREATE INVOICE ================= */
+    /* ============================================================
+      🧾 CREATE INVOICE
+    ============================================================ */
     if (!invoice) {
       const today = new Date();
       today.setDate(today.getDate() + 30);
@@ -469,8 +419,8 @@ export const billingService = {
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ ensure initialized
 
+          insurance_amount: 0,
           total: 0,
           total_paid: 0,
           balance: 0,
@@ -488,7 +438,9 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ============================================================
+      🔄 APPLY INSURANCE IF MISSING
+    ============================================================ */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
@@ -506,6 +458,8 @@ export const billingService = {
         transaction,
       });
     }
+
+    const round = (v) => Number(parseFloat(v).toFixed(2));
 
     let billedCount = 0;
 
@@ -532,16 +486,28 @@ export const billingService = {
         transaction,
       });
 
-      const net = price;
+      /* ============================================================
+        💰 CALCULATION (FIXED)
+      ============================================================ */
+      const quantity = item.quantity || 1;
+      const total = round(price * quantity);
+
+      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+      const taxAmount = round(total * (taxRate / 100));
+      const net = round(total + taxAmount);
 
       let insuranceAmount = 0;
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remainingCoverage = parseFloat(invoice.coverage_amount || 0);
+        const remaining = round(invoice.coverage_amount);
 
-        insuranceAmount = Math.min(net, remainingCoverage);
-        patientAmount = net - insuranceAmount;
+        insuranceAmount = round(Math.min(net, remaining));
+        patientAmount = round(net - insuranceAmount);
+
+        /* 🔥 CRITICAL FIX */
+        invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
+        await invoice.save({ transaction });
       }
 
       const invItem = await InvoiceItem.create(
@@ -550,9 +516,13 @@ export const billingService = {
           billable_item_id: item.billableItem.id,
           organization_id: orgId,
           facility_id: facilityId,
+
           description: item.billableItem.name,
           unit_price: price,
-          quantity: item.quantity || 1,
+          quantity,
+
+          tax_amount: taxAmount,
+          total_price: total,
           net_amount: net,
 
           insurance_amount: insuranceAmount,
@@ -577,9 +547,8 @@ export const billingService = {
     }
 
     /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
+      🔥 FINALIZE
     ============================================================ */
-
     await order.update(
       {
         billed: true,
@@ -595,7 +564,7 @@ export const billingService = {
   },
 
   /* ============================================================
-    3️⃣ BILL LAB REQUEST ITEMS (DEBUG ENABLED — MASTER)
+    3️⃣ BILL LAB REQUEST ITEMS (FINAL — ENTERPRISE SAFE)
   ============================================================ */
   async billLabRequestItems({
     feature_module_id,
@@ -626,8 +595,6 @@ export const billingService = {
       facility_id: facilityId,
     });
 
-    debug.log("LAB STEP 2", { allowed });
-
     if (!allowed) return null;
 
     const items = await LabRequestItem.findAll({
@@ -643,10 +610,9 @@ export const billingService = {
       transaction
     );
 
-    debug.log("LAB STEP 1", {
-      insurance_provider_id: insuranceData.insurance_provider_id,
-    });
-
+    /* ============================================================
+      🔍 SAFE INVOICE FIND (FIXED)
+    ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
         patient_id: labRequest.patient_id,
@@ -655,35 +621,38 @@ export const billingService = {
           ? { facility_id: facilityId }
           : { facility_id: { [Op.in]: user.facility_ids || [] } }),
         is_locked: false,
+        payer_type: insuranceData.payer_type,
+        insurance_provider_id: insuranceData.insurance_provider_id,
       },
       order: [["created_at", "DESC"]],
       transaction,
-    });
-
-    debug.log("LAB STEP 3", {
-      invoice_id: invoice?.id,
-      provider: invoice?.insurance_provider_id,
     });
 
     if (invoice && invoice.currency !== (labRequest.currency || "LRD")) {
       invoice = null;
     }
 
-    debug.log("LAB STEP 3B", { will_create: !invoice });
-
-    /* ================= CREATE ================= */
+    /* ============================================================
+      🧾 CREATE INVOICE
+    ============================================================ */
     if (!invoice) {
       invoice = await Invoice.create(
         {
           patient_id: labRequest.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
+
           status: INVOICE_STATUS.DRAFT,
           currency: labRequest.currency || "LRD",
+
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ INIT FIX
+
+          insurance_amount: 0,
+          total: 0,
+          total_paid: 0,
+          balance: 0,
         },
         { transaction }
       );
@@ -697,7 +666,9 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ============================================================
+      🔄 APPLY INSURANCE IF MISSING
+    ============================================================ */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
@@ -716,6 +687,8 @@ export const billingService = {
       });
     }
 
+    const round = (v) => Number(parseFloat(v).toFixed(2));
+
     let billedCount = 0;
 
     for (const li of items) {
@@ -730,24 +703,45 @@ export const billingService = {
         transaction,
       });
 
-      const net = price;
+      /* ============================================================
+        💰 CALCULATION (FIXED)
+      ============================================================ */
+      const quantity = li.quantity || 1;
+      const total = round(price * quantity);
+
+      const taxRate = li.labTest.taxable ? getTaxRate("GST") : 0;
+      const taxAmount = round(total * (taxRate / 100));
+      const net = round(total + taxAmount);
 
       let insuranceAmount = 0;
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remaining = parseFloat(invoice.coverage_amount || 0);
-        insuranceAmount = Math.min(net, remaining);
-        patientAmount = net - insuranceAmount;
+        const remaining = round(invoice.coverage_amount);
+
+        insuranceAmount = round(Math.min(net, remaining));
+        patientAmount = round(net - insuranceAmount);
+
+        /* 🔥 CRITICAL FIX */
+        invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
+        await invoice.save({ transaction });
       }
 
       const invItem = await InvoiceItem.create(
         {
           invoice_id: invoice.id,
           billable_item_id: li.labTest.id,
+
+          quantity,
+          unit_price: price,
+
+          tax_amount: taxAmount,
+          total_price: total,
           net_amount: net,
+
           insurance_amount: insuranceAmount,
           patient_amount: patientAmount,
+
           feature_module_id,
           entity_id: li.id,
           status: "applied",
@@ -767,9 +761,8 @@ export const billingService = {
     }
 
     /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
+      🔥 FINALIZE
     ============================================================ */
-
     await labRequest.update(
       {
         billed: true,
@@ -785,7 +778,7 @@ export const billingService = {
   },
 
   /* ============================================================
-    4️⃣ BILL PRESCRIPTION ITEMS (DEBUG ENABLED — MASTER)
+    4️⃣ BILL PRESCRIPTION ITEMS (FINAL — ENTERPRISE SAFE)
   ============================================================ */
   async billPrescriptionItems({
     prescription,
@@ -827,6 +820,9 @@ export const billingService = {
       transaction
     );
 
+    /* ============================================================
+      🔍 SAFE INVOICE FIND (FIXED)
+    ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
         patient_id: prescription.patient_id,
@@ -835,6 +831,8 @@ export const billingService = {
           ? { facility_id: facilityId }
           : { facility_id: { [Op.in]: user.facility_ids || [] } }),
         is_locked: false,
+        payer_type: insuranceData.payer_type,
+        insurance_provider_id: insuranceData.insurance_provider_id,
       },
       order: [["created_at", "DESC"]],
       transaction,
@@ -844,19 +842,27 @@ export const billingService = {
       invoice = null;
     }
 
-    /* ================= CREATE ================= */
+    /* ============================================================
+      🧾 CREATE INVOICE
+    ============================================================ */
     if (!invoice) {
       invoice = await Invoice.create(
         {
           patient_id: prescription.patient_id,
           organization_id: orgId,
           facility_id: facilityId,
+
           status: INVOICE_STATUS.DRAFT,
           currency: prescription.currency || "LRD",
+
           payer_type: insuranceData.payer_type,
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-          insurance_amount: 0, // ✅ INIT FIX
+
+          insurance_amount: 0,
+          total: 0,
+          total_paid: 0,
+          balance: 0,
         },
         { transaction }
       );
@@ -870,16 +876,14 @@ export const billingService = {
       }
     }
 
-    /* ================= APPLY INSURANCE IF MISSING ================= */
+    /* ============================================================
+      🔄 APPLY INSURANCE IF MISSING
+    ============================================================ */
     if (
       invoice &&
       !invoice.insurance_provider_id &&
       insuranceData.insurance_provider_id
     ) {
-      debug.log("🔥 FIX RX: APPLY INSURANCE", {
-        invoice_id: invoice.id,
-      });
-
       invoice.insurance_provider_id = insuranceData.insurance_provider_id;
       invoice.payer_type = "insurance";
       invoice.coverage_amount = insuranceData.coverage_amount;
@@ -892,6 +896,8 @@ export const billingService = {
         transaction,
       });
     }
+
+    const round = (v) => Number(parseFloat(v).toFixed(2));
 
     let billedCount = 0;
 
@@ -918,24 +924,45 @@ export const billingService = {
         transaction,
       });
 
-      const net = price;
+      /* ============================================================
+        💰 CALCULATION (FIXED)
+      ============================================================ */
+      const quantity = item.quantity || 1;
+      const total = round(price * quantity);
+
+      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+      const taxAmount = round(total * (taxRate / 100));
+      const net = round(total + taxAmount);
 
       let insuranceAmount = 0;
       let patientAmount = net;
 
       if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remaining = parseFloat(invoice.coverage_amount || 0);
-        insuranceAmount = Math.min(net, remaining);
-        patientAmount = net - insuranceAmount;
+        const remaining = round(invoice.coverage_amount);
+
+        insuranceAmount = round(Math.min(net, remaining));
+        patientAmount = round(net - insuranceAmount);
+
+        /* 🔥 CRITICAL FIX */
+        invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
+        await invoice.save({ transaction });
       }
 
       const invItem = await InvoiceItem.create(
         {
           invoice_id: invoice.id,
           billable_item_id: item.billableItem.id,
+
+          quantity,
+          unit_price: price,
+
+          tax_amount: taxAmount,
+          total_price: total,
           net_amount: net,
+
           insurance_amount: insuranceAmount,
           patient_amount: patientAmount,
+
           feature_module_id,
           entity_id: item.id,
           status: "applied",
@@ -955,9 +982,8 @@ export const billingService = {
     }
 
     /* ============================================================
-      🔥 FINAL FIX — ALWAYS RECALC (NO CONDITION)
+      🔥 FINALIZE
     ============================================================ */
-
     await prescription.update(
       {
         billed: true,

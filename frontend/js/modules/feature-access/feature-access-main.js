@@ -1,11 +1,4 @@
-// 📦 feature-access-main.js – Form-only loader for Feature Access
-// ============================================================================
-// 🧭 Mirrors feature-module-main.js EXACTLY (structure + lifecycle)
-// 🔹 Auth guard + logout watcher
-// 🔹 Unified form visibility and reset logic
-// 🔹 Session-safe edit caching
-// 🔹 Preserves all existing DOM IDs and form logic
-// ============================================================================
+// 📦 feature-access-main.js – FINAL (CARD SYSTEM READY)
 
 import { initPageGuard, initLogoutWatcher } from "../../utils/index.js";
 import { setupFeatureAccessFormSubmission } from "./feature-access-form.js";
@@ -19,7 +12,7 @@ import { setupFieldSelector } from "../../utils/ui-utils.js";
 /* ============================================================
    🔐 Auth Guard + Shared State
 ============================================================ */
-const token = initPageGuard("feature_accesses");
+initPageGuard("feature_accesses");
 initLogoutWatcher();
 
 const sharedState = {
@@ -46,16 +39,16 @@ function resetForm() {
   sessionStorage.removeItem("featureAccessEditId");
   sessionStorage.removeItem("featureAccessEditPayload");
 
-  // Explicitly clear selects
-  ["organization_id", "role_id", "module_id", "facility_id"].forEach((id) => {
+  // ❌ removed module_id
+  ["organization_id", "role_id", "facility_id"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  // Reset status radios (default: active)
+  // ✅ Correct status reset
   document
     .querySelector('input[name="status"][value="active"]')
-    ?.setAttribute("checked", true);
+    ?.click();
 }
 
 /* ============================================================
@@ -74,12 +67,12 @@ function hideForm() {
   localStorage.setItem("featureAccessFormVisible", "false");
 }
 
-// 🔗 Expose globally (parity with Feature Module)
+// expose globally (kept for parity)
 window.showForm = showForm;
 window.resetForm = resetForm;
 
 /* ============================================================
-   ⚙️ Wire Button Actions
+   ⚙️ Wire Buttons
 ============================================================ */
 if (cancelBtn) {
   cancelBtn.onclick = () => {
@@ -100,21 +93,20 @@ if (desktopAddBtn) {
 }
 
 /* ============================================================
-   📦 Loader Placeholder
+   📦 Loader Stub
 ============================================================ */
 async function loadEntries() {
-  return; // handled by list page
+  return;
 }
 
 /* ============================================================
-   🚀 Init Entrypoint
+   🚀 INIT
 ============================================================ */
 export async function initFeatureAccess() {
-  showForm(); // form-only page opens by default
+  showForm();
 
   setupFeatureAccessFormSubmission({
     form,
-    token,
     sharedState,
     resetForm,
     loadEntries,
@@ -122,7 +114,7 @@ export async function initFeatureAccess() {
 
   localStorage.setItem("featureAccessPanelVisible", "false");
 
-  // 🧩 Normalize role (EXACT same logic as module & patient)
+  /* ================= ROLE NORMALIZATION ================= */
   let roleRaw = localStorage.getItem("userRole") || "staff";
   let role = roleRaw.trim().toLowerCase();
 
@@ -146,5 +138,5 @@ export async function initFeatureAccess() {
    (Optional) State Sync Stub
 ============================================================ */
 export function syncRefsToState() {
-  // no-op placeholder for consistency
+  // no-op
 }

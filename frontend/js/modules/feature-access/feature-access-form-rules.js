@@ -1,11 +1,10 @@
 // =============================================
-// Feature Access Form Rules (HTML + Controller aligned)
+// Feature Access Form Rules (FINAL – CARD SYSTEM)
 // =============================================
-// 🧭 Mirrors FEATURE_MODULE_FORM_RULES exactly
-// 🔹 Conditional validation via when()
-// 🔹 Superadmin organization rules enforced
-// 🔹 Supports single + bulk (replace) flows
-// 🔹 Safe for add & edit forms
+// ✔ Works with module cards (no module_id)
+// ✔ Supports bulk preview
+// ✔ Safe for add + edit
+// ✔ Matches backend + UI
 // =============================================
 
 export const FEATURE_ACCESS_FORM_RULES = [
@@ -26,26 +25,7 @@ export const FEATURE_ACCESS_FORM_RULES = [
   },
 
   /* ============================================================
-     🧩 Single Module Mode
-     (Ignored when bulk preview is active)
-  ============================================================ */
-
-  {
-    id: "module_id",
-    message: "Module is required",
-    when: () => {
-      const previewVisible =
-        document.getElementById("modulePreviewContainer") &&
-        !document
-          .getElementById("modulePreviewContainer")
-          .classList.contains("d-none");
-
-      return previewVisible === false;
-    },
-  },
-
-  /* ============================================================
-     🧱 Bulk Mode (Replace / Grant All)
+     🧱 Bulk Mode Validation
   ============================================================ */
 
   {
@@ -53,6 +33,8 @@ export const FEATURE_ACCESS_FORM_RULES = [
     message: "At least one module must be selected",
     when: () => {
       const container = document.getElementById("modulePreviewContainer");
+
+      // only validate when bulk preview is visible
       if (!container || container.classList.contains("d-none")) return false;
 
       return container.querySelectorAll(
@@ -62,7 +44,7 @@ export const FEATURE_ACCESS_FORM_RULES = [
   },
 
   /* ============================================================
-     🏥 Facility Scope
+     🏥 Facility Scope (no strict validation)
   ============================================================ */
 
   {
@@ -82,7 +64,7 @@ export const FEATURE_ACCESS_FORM_RULES = [
   },
 
   /* ============================================================
-     🔒 Superadmin-only Rules
+     🔒 Superadmin Rule
   ============================================================ */
 
   {

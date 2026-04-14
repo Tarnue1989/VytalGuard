@@ -10,7 +10,7 @@ import {
   User,
   Facility,
 } from "../models/index.js";
-
+import { upsertRoleAccess } from "../services/roleAccessService.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import {
@@ -1560,6 +1560,9 @@ export const updateFeatureAccess = async (req, res) => {
 /* ============================================================
    📌 REPLACE FEATURE ACCESS BY ROLE
 ============================================================ */
+/* ============================================================
+   📌 REPLACE FEATURE ACCESS BY ROLE (UPGRADED – FULL)
+============================================================ */
 export const replaceFeatureAccessByRole = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1582,6 +1585,7 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     const schema = Joi.object({
       role_id: Joi.string().uuid().required(),
       module_ids: Joi.array().items(Joi.string().uuid()).min(1).required(),
+      permission_keys: Joi.array().items(Joi.string()).default([]), // 🔥 NEW
       organization_id: Joi.string().uuid().optional(),
       facility_id: Joi.string().uuid().allow(null),
       status: Joi.string()
@@ -1639,11 +1643,11 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     }
 
     /* ========================================================
-       🔒 MODULE SAFETY CHECKS (CRITICAL)
+       🔒 MODULE SAFETY CHECKS
     ======================================================== */
     const modules = await FeatureModule.findAll({
       where: { id: { [Op.in]: value.module_ids } },
-      attributes: ["id", "tenant_scope", "visibility"],
+      attributes: ["id", "key", "tenant_scope", "visibility"],
       transaction: t,
     });
 
@@ -1680,36 +1684,21 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     }
 
     /* ========================================================
-      🧹 DELETE EXISTING ACCESS (ROLE + ORG + FACILITY)
-      🔥 MUST BE HARD DELETE
+       🚀 MAIN LOGIC (SERVICE – FEATURE + PERMISSION UPSERT)
     ======================================================== */
-    await FeatureAccess.destroy({
-      where: {
-        organization_id: finalOrgId,
-        role_id: value.role_id,
-        facility_id: finalFacilityId,
-      },
-      force: true,      // 🔥 REQUIRED
+    const result = await upsertRoleAccess({
+      role_id: value.role_id,
+      module_ids: value.module_ids,
+      permission_keys: value.permission_keys || [],
+      organization_id: finalOrgId,
+      facility_id: finalFacilityId,
+      user: req.user,
       transaction: t,
     });
 
     /* ========================================================
-       ➕ INSERT NEW ACCESS RECORDS
+       ✅ COMMIT
     ======================================================== */
-    const payload = value.module_ids.map(module_id => ({
-      organization_id: finalOrgId,
-      role_id: value.role_id,
-      module_id,
-      facility_id: finalFacilityId,
-      status: value.status,
-      created_by_id: req.user?.id || null,
-    }));
-
-    const created = await FeatureAccess.bulkCreate(payload, {
-      returning: true,
-      transaction: t,
-    });
-
     await t.commit();
 
     /* ========================================================
@@ -1724,7 +1713,7 @@ export const replaceFeatureAccessByRole = async (req, res) => {
         organization_id: finalOrgId,
         facility_id: finalFacilityId,
         modules: value.module_ids,
-        created: created.length,
+        ...result, // 🔥 includes permissions_added/removed
       },
     });
 
@@ -1733,9 +1722,10 @@ export const replaceFeatureAccessByRole = async (req, res) => {
     ======================================================== */
     return success(
       res,
-      `✅ Replaced with ${created.length} module(s)`,
-      { records: created }
+      "✅ Role access updated successfully",
+      { summary: result }
     );
+
   } catch (err) {
     await t.rollback();
     debug.error("access-replace → FAILED", err);
