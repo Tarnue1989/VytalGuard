@@ -547,7 +547,7 @@ export const getRoleById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ROLES LITE (AUTOCOMPLETE)
+   📌 GET ROLES LITE (AUTOCOMPLETE) — FIXED (ORG + OPTIONAL FAC)
 ============================================================ */
 export const getAllRolesLite = async (req, res) => {
   try {
@@ -559,34 +559,48 @@ export const getAllRolesLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, organization_id, facility_id } = req.query;
+    const { q, organization_id } = req.query;
 
     const where = {
       status: ROLE_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
-    if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
-      where.organization_id = organization_id;
-    } else if (!isSuperAdmin(req.user)) {
+    /* ========================================================
+       🔐 ORG SCOPE (ALWAYS)
+    ======================================================== */
+    if (isSuperAdmin(req.user)) {
+      // superadmin can optionally filter
+      if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
+        where.organization_id = organization_id;
+      }
+    } else {
+      // normal users ALWAYS locked to their org
       where.organization_id = req.user.organization_id;
     }
 
-    if (!isSuperAdmin(req.user)) {
+    /* ========================================================
+       🏥 FACILITY SCOPE (OPTIONAL — USER BASED ONLY)
+    ======================================================== */
+    if (!isSuperAdmin(req.user) && req.user.facility_id) {
       where[Op.and].push({
         [Op.or]: [
-          { facility_id: null },
-          ...(facility_id && /^[0-9a-f-]{36}$/i.test(facility_id)
-            ? [{ facility_id }]
-            : []),
+          { facility_id: null }, // shared roles
+          { facility_id: req.user.facility_id }, // user's facility
         ],
       });
     }
 
+    /* ========================================================
+       🔒 SYSTEM ROLE PROTECTION
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where.role_type = { [Op.ne]: "system" };
     }
 
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
@@ -597,6 +611,9 @@ export const getAllRolesLite = async (req, res) => {
       });
     }
 
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const roles = await Role.findAll({
       where,
       attributes: ["id", "name", "code", "description", "role_type"],
@@ -604,7 +621,10 @@ export const getAllRolesLite = async (req, res) => {
       limit: 50,
     });
 
-    const result = roles.map(r => ({
+    /* ========================================================
+       🔄 FORMAT
+    ======================================================== */
+    const result = roles.map((r) => ({
       id: r.id,
       name: r.name,
       code: r.code || "",
@@ -612,6 +632,9 @@ export const getAllRolesLite = async (req, res) => {
       is_system: r.role_type === "system",
     }));
 
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -620,17 +643,20 @@ export const getAllRolesLite = async (req, res) => {
         count: result.length,
         q: q || null,
         organization_id: where.organization_id || null,
-        facility_id: facility_id || null,
+        facility_id: req.user.facility_id || null,
       },
     });
 
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Roles loaded (lite)", { records: result });
+
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load roles (lite)", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE ROLE STATUS
 ============================================================ */

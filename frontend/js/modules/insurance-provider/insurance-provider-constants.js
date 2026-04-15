@@ -82,14 +82,14 @@ export const STATUS_STYLES_INSURANCE_PROVIDER = {
 };
 
 /* ============================================================
-   🔐 PERMISSIONS (MASTER PATTERN)
+   🔐 PERMISSIONS (ENTERPRISE CONSISTENT STANDARD)
 ============================================================ */
 export const PERMISSIONS_INSURANCE_PROVIDER = {
-  view: "insurance_providers:read",
+  view: "insurance_providers:view",
   create: "insurance_providers:create",
   update: "insurance_providers:update",
   delete: "insurance_providers:delete",
-  toggle: "insurance_providers:update",
+  toggle: "insurance_providers:toggle_status",
 };
 
 /* ============================================================

@@ -83,7 +83,7 @@ function buildRegistrationLogSchema(mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
     registrar_id: Joi.string().uuid().allow(null, ""),
-    registration_type_id: Joi.string().uuid().allow(null, ""),
+    registration_type_id: Joi.string().uuid().required(),
     invoice_id: Joi.string().uuid().allow(null),
 
     registration_method: Joi.string()
@@ -622,7 +622,7 @@ export const activateRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "activate",
       res,
     });
     if (!allowed) return;
@@ -706,7 +706,7 @@ export const completeRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "complete",
       res,
     });
     if (!allowed) return;
@@ -790,7 +790,7 @@ export const cancelRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "cancel",
       res,
     });
     if (!allowed) return;
@@ -878,7 +878,7 @@ export const voidRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "void",
       res,
     });
     if (!allowed) return;
@@ -944,7 +944,7 @@ export const submitRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "submit",
       res,
     });
     if (!allowed) return;

@@ -321,7 +321,7 @@ export const updatePatientInsurance = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ALL PATIENT INSURANCES (MASTER PARITY + SUMMARY)
+   📌 GET ALL PATIENT INSURANCES (REG STYLE)
 ============================================================ */
 export const getAllPatientInsurances = async (req, res) => {
   try {
@@ -352,29 +352,15 @@ export const getAllPatientInsurances = async (req, res) => {
       });
     }
 
-    /* ================= TENANT ================= */
+    /* ================= TENANT (REG STYLE) ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgOwner(req.user)) {
+      if (isFacilityHead(req.user)) {
         options.where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },
-            { facility_id: req.user.facility_id },
-          ],
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        options.where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
-        options.where[Op.and].push({
-          facility_id: req.query.facility_id,
+          facility_id: req.user.facility_id,
         });
       }
     }
@@ -402,7 +388,6 @@ export const getAllPatientInsurances = async (req, res) => {
       });
     }
 
-    /* 🔥 ADD THIS (CURRENCY FILTER) */
     if (req.query.currency) {
       options.where[Op.and].push({
         currency: req.query.currency,
@@ -454,17 +439,6 @@ export const getAllPatientInsurances = async (req, res) => {
       cancelled: rows.filter(r => r.status === CANCELLED).length,
     };
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list",
-      details: {
-        returned: count,
-        query: req.query,
-        dateRange: dateRange || null,
-      },
-    });
-
     return success(res, "✅ Patient insurances loaded", {
       records: rows,
       summary,
@@ -480,8 +454,9 @@ export const getAllPatientInsurances = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 GET BY ID
+   📌 GET BY ID (REG STYLE)
 ============================================================ */
 export const getPatientInsuranceById = async (req, res) => {
   try {
@@ -494,19 +469,14 @@ export const getPatientInsuranceById = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const where = { id };
 
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    const where = {
+      id,
+      organization_id: req.user.organization_id,
+    };
 
-      if (isFacilityHead(req.user)) {
-        where.facility_id = req.user.facility_id;
-      }
-    } else {
-      if (req.query.organization_id)
-        where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        where.facility_id = req.query.facility_id;
+    if (isFacilityHead(req.user)) {
+      where.facility_id = req.user.facility_id;
     }
 
     const found = await PatientInsurance.findOne({
@@ -516,14 +486,6 @@ export const getPatientInsuranceById = async (req, res) => {
 
     if (!found) return error(res, "❌ Record not found", null, 404);
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "view",
-      entityId: id,
-      entity: found,
-    });
-
     return success(res, "✅ Patient insurance loaded", found);
   } catch (err) {
     debug.error("view → FAILED", err);
@@ -531,8 +493,9 @@ export const getPatientInsuranceById = async (req, res) => {
   }
 };
 
+
 /* ============================================================
-   📌 GET LITE (AUTOCOMPLETE) — ENTERPRISE MASTER FINAL
+   📌 GET LITE (REG STYLE)
 ============================================================ */
 export const getAllPatientInsurancesLite = async (req, res) => {
   try {
@@ -548,15 +511,13 @@ export const getAllPatientInsurancesLite = async (req, res) => {
 
     const where = {
       status: PATIENT_INSURANCE_STATUS.ACTIVE,
-      [Op.and]: [],
+      organization_id: req.user.organization_id,
     };
 
-    /* ================= TENANT ================= */
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    if (isFacilityHead(req.user)) {
+      where.facility_id = req.user.facility_id;
     }
 
-    /* ================= FILTERS ================= */
     if (patient_id) {
       where.patient_id = patient_id;
     }
@@ -565,17 +526,13 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       where.provider_id = provider_id;
     }
 
-    /* ================= SEARCH ================= */
     if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { policy_number: { [Op.iLike]: `%${q}%` } },
-          { plan_name: { [Op.iLike]: `%${q}%` } },
-        ],
-      });
+      where[Op.or] = [
+        { policy_number: { [Op.iLike]: `%${q}%` } },
+        { plan_name: { [Op.iLike]: `%${q}%` } },
+      ];
     }
 
-    /* ================= QUERY ================= */
     const records = await PatientInsurance.findAll({
       where,
       attributes: ["id", "policy_number", "plan_name"],
@@ -590,41 +547,21 @@ export const getAllPatientInsurancesLite = async (req, res) => {
       limit: 50,
     });
 
-    /* ================= TRANSFORM (MASTER KEY) ================= */
     const result = records.map(r => ({
       id: r.id,
-
-      // ⭐ ENTERPRISE LABEL (USED BY ALL DROPDOWNS)
       label: `${r.policy_number}${
         r.plan_name ? " - " + r.plan_name : ""
       }${
         r.provider?.name ? " (" + r.provider.name + ")" : ""
       }`,
-
-      // 🔹 RAW DATA (optional but useful)
       policy_number: r.policy_number,
       plan_name: r.plan_name || "",
       provider_name: r.provider?.name || "",
     }));
 
-    /* ================= AUDIT ================= */
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: {
-        count: result.length,
-        q: q || null,
-        patient_id: patient_id || null,
-        provider_id: provider_id || null,
-      },
-    });
-
-    /* ================= RESPONSE ================= */
     return success(res, "✅ Patient insurances loaded (lite)", {
       records: result,
     });
-
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load patient insurances (lite)", err);

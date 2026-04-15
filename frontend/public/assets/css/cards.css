@@ -7,6 +7,21 @@
    - Future-proof action zone
 ============================================================= */
 
+/* ================= MASTER STATUS SYSTEM ================= */
+.entity-status.draft{background:#0d6efd;color:#fff}
+.entity-status.pending{background:#f59e0b;color:#111}
+.entity-status.active{background:#198754;color:#fff}
+.entity-status.completed{background:#198754;color:#fff}
+.entity-status.verified{background:#0dcaf0;color:#111}
+.entity-status.finalized{background:#111827;color:#fff}
+.entity-status.cancelled{background:#6b7280;color:#fff}
+.entity-status.voided{background:#dc3545;color:#fff}
+.entity-status.deleted{background:#dc3545;color:#fff}
+.entity-status.reversed{background:#6f42c1;color:#fff}
+.entity-status.review{background:#f59e0b;color:#111}
+.entity-status.processing_payment{background:#0d6efd;color:#fff}
+.entity-status.partially_approved{background:#20c997;color:#111}
+
 /* ================= ROOT CARD ================= */
 .entity-card{
   background:#fff;
@@ -324,10 +339,12 @@
 }
 
 /* ================= REGISTRATION LOG STATUS ================= */
+.registration-log-card .entity-status.draft{background:#0d6efd;color:#fff}
 .registration-log-card .entity-status.pending{background:#f59e0b;color:#111}
-.registration-log-card .entity-status.completed{background:#198754;color:#fff}
+.registration-log-card .entity-status.active{background:#198754;color:#fff}
+.registration-log-card .entity-status.completed{background:#20c997;color:#111}
 .registration-log-card .entity-status.cancelled{background:#6b7280;color:#fff}
-.registration-log-card .entity-status.voided,
+.registration-log-card .entity-status.voided{background:#dc3545;color:#fff}
 .registration-log-card .entity-status.deleted{background:#dc3545;color:#fff}
 
 /* ================= REGISTRATION LOG BODY TUNING ================= */

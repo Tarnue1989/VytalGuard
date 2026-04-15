@@ -1,9 +1,10 @@
 // 📁 backend/src/models/Refund.js
 import { DataTypes, Model } from "sequelize";
 import { REFUND_STATUS, CURRENCY } from "../constants/enums.js";
+import { recalcInvoice } from "../utils/invoiceUtil.js";
 
 /* ============================================================
-   🔖 Local enum map
+   🔖 Local enum map (OBJECT SAFE)
 ============================================================ */
 const RS = {
   PENDING: REFUND_STATUS.PENDING,
@@ -50,12 +51,14 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
+      // 🔢 Number
       refund_number: {
         type: DataTypes.STRING,
         allowNull: true,
         unique: true,
       },
 
+      // 🔗 Links
       payment_id: { type: DataTypes.UUID, allowNull: false },
       invoice_id: { type: DataTypes.UUID, allowNull: false },
       patient_id: { type: DataTypes.UUID, allowNull: false },
@@ -63,11 +66,13 @@ export default (sequelize) => {
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
+      // 💱 🔥 REQUIRED (MATCH PAYMENT)
       currency: {
         type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
       },
 
+      // 💵 Refund
       amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -87,6 +92,7 @@ export default (sequelize) => {
         defaultValue: REFUND_STATUS.PENDING,
       },
 
+      // 🔹 Lifecycle
       approved_by_id: { type: DataTypes.UUID },
       approved_at: { type: DataTypes.DATE },
 
@@ -113,6 +119,33 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
+      defaultScope: {
+        attributes: { exclude: ["deleted_at", "deleted_by_id"] },
+      },
+
+      scopes: {
+        withDeleted: { paranoid: false },
+        pending:   { where: { status: RS.PENDING, deleted_at: null } },
+        approved:  { where: { status: RS.APPROVED, deleted_at: null } },
+        rejected:  { where: { status: RS.REJECTED, deleted_at: null } },
+        processed: { where: { status: RS.PROCESSED, deleted_at: null } },
+        cancelled: { where: { status: RS.CANCELLED, deleted_at: null } },
+        tenant(facilityId) {
+          return facilityId ? { where: { facility_id: facilityId } } : {};
+        },
+      },
+
+      indexes: [
+        { fields: ["organization_id"] },
+        { fields: ["facility_id"] },
+        { fields: ["payment_id"] },
+        { fields: ["invoice_id"] },
+        { fields: ["patient_id"] },
+        { fields: ["status"] },
+        { fields: ["method"] },
+        { fields: ["refund_number"], unique: true },
+      ],
     }
   );
 
@@ -120,6 +153,7 @@ export default (sequelize) => {
      🔁 Hooks
   ============================================================ */
 
+  // 🔥 Sync payment + enforce currency
   Refund.beforeValidate(async (refund) => {
     const { Payment } = await import("../models/index.js");
 
@@ -131,9 +165,12 @@ export default (sequelize) => {
     refund.invoice_id = payment.invoice_id;
     refund.patient_id = payment.patient_id;
     refund.method = payment.method;
+
+    // 🔥 enforce currency match
     refund.currency = payment.currency;
   });
 
+  // 🔥 Generate number
   Refund.beforeCreate(async (refund) => {
     if (!refund.refund_number) {
       const last = await Refund.findOne({
@@ -156,7 +193,7 @@ export default (sequelize) => {
     }
   });
 
-  // 🔥 Lifecycle ONLY (NO RECALC HERE)
+  // 🔥 Lifecycle + recalc
   Refund.afterUpdate(async (refund, options) => {
     const userId = options?.user?.id || null;
     const now = new Date();
@@ -190,6 +227,10 @@ export default (sequelize) => {
           hooks: false,
         });
       }
+    }
+
+    if ([RS.APPROVED, RS.PROCESSED].includes(refund.status)) {
+      await recalcInvoice(refund.invoice_id, options?.transaction);
     }
   });
 

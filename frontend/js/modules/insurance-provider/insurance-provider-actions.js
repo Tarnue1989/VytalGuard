@@ -1,9 +1,8 @@
-// 📁 insurance-provider-actions.js – ENTERPRISE MASTER FINAL
+// 📁 insurance-provider-actions.js – ENTERPRISE MASTER FINAL (FIXED)
 // ============================================================================
-// 🔹 Granular permissions (insurance_providers:*)
-// 🔹 Event guard (prevents duplicate handlers)
-// 🔹 Fully aligned with status-action-matrix
-// 🔹 Safe fallback fetch preserved
+// 🔹 Fully consistent permission keys (view/create/update/delete/toggle_status)
+// 🔹 No mismatches
+// 🔹 Enterprise clean
 // ============================================================================
 
 import {
@@ -110,7 +109,7 @@ export function setupActionHandlers({
     }
 
     if (action === "edit") {
-      if (!hasPerm("insurance_providers:edit"))
+      if (!hasPerm("insurance_providers:update")) // ✅ FIXED
         return showToast("⛔ No permission to edit providers");
       return handleEdit(entry);
     }
@@ -235,7 +234,7 @@ export function setupActionHandlers({
   };
 
   window.editEntry = (id) => {
-    if (!hasPerm("insurance_providers:edit"))
+    if (!hasPerm("insurance_providers:update")) // ✅ FIXED
       return showToast("⛔ No permission to edit providers");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);

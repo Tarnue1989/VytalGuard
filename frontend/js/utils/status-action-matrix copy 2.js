@@ -135,7 +135,7 @@ export const STATUS_ACTION_MATRIX = {
     draft:["edit","submit","delete","void"],
     pending:["edit","activate","cancel","void"], // ✅ added verify
     active:["complete","cancel","void"],
-    completed:["void"],
+    completed:["verify","void"],
     verified:["void"],
     cancelled:["void"],
     voided:["restore"]

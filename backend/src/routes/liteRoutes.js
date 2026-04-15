@@ -171,7 +171,10 @@ router.get("/employees/email", verifyAuth, getAllEmployeesLiteWithEmail);
 router.get("/employee-positions", verifyAuth, (req, res) =>
   res.json({
     success: true,
-    data: EMPLOYEE_POSITIONS.map((p) => ({ id: p, name: p })),
+    data: Object.values(EMPLOYEE_POSITIONS).map((p) => ({
+      id: p,
+      name: p,
+    })),
   })
 );
 

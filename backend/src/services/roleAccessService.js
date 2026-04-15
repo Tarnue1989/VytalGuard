@@ -1,13 +1,4 @@
 // 📁 backend/src/services/roleAccessService.js
-// ============================================================================
-// 🔐 Role Access Service – Enterprise (FeatureAccess + RolePermission UPSERT)
-// ----------------------------------------------------------------------------
-// ✔ Handles module assignment (FeatureAccess)
-// ✔ Handles permission UPSERT (add/remove diff only)
-// ✔ Enforces module ↔ permission integrity
-// ✔ Multi-tenant safe (org + facility)
-// ✔ Transaction-safe (REQUIRED)
-// ============================================================================
 
 import { Op } from "sequelize";
 import {
@@ -19,9 +10,7 @@ import {
 
 import { FEATURE_ACCESS_STATUS } from "../constants/enums.js";
 
-/* ============================================================================
-   🧠 MAIN SERVICE
-============================================================================ */
+/* ============================================================================ */
 export async function upsertRoleAccess({
   role_id,
   module_ids = [],
@@ -34,9 +23,7 @@ export async function upsertRoleAccess({
   if (!role_id) throw new Error("Missing role_id");
   if (!organization_id) throw new Error("Missing organization_id");
 
-  /* ============================================================
-     🔍 LOAD MODULES
-  ============================================================ */
+  /* ============================================================ */
   const modules = await FeatureModule.findAll({
     where: { id: { [Op.in]: module_ids } },
     attributes: ["id", "key", "tenant_scope", "visibility"],
@@ -49,24 +36,16 @@ export async function upsertRoleAccess({
 
   const moduleKeys = modules.map(m => m.key);
 
-  /* ============================================================
-     🔒 VALIDATE MODULES
-  ============================================================ */
+  /* ============================================================ */
   for (const m of modules) {
     if (m.visibility === "hidden") {
       throw new Error("Cannot assign hidden module");
     }
   }
 
-  /* ============================================================
-     🧹 REPLACE FEATURE ACCESS (MODULES)
-  ============================================================ */
+  /* ============================================================ */
   await FeatureAccess.destroy({
-    where: {
-      role_id,
-      organization_id,
-      facility_id,
-    },
+    where: { role_id, organization_id, facility_id },
     force: true,
     transaction,
   });
@@ -82,35 +61,38 @@ export async function upsertRoleAccess({
 
   await FeatureAccess.bulkCreate(featurePayload, { transaction });
 
-  /* ============================================================
-     🔍 LOAD PERMISSIONS (BY KEYS)
-  ============================================================ */
+  /* ============================================================ */
   const incomingPerms = await Permission.findAll({
     where: { key: { [Op.in]: permission_keys } },
-    attributes: ["id", "module"],
+    attributes: ["id", "key"],
     transaction,
   });
 
-  /* ============================================================
-     🔒 VALIDATE PERMISSION ↔ MODULE
-  ============================================================ */
+  /* ============================================================ */
   for (const p of incomingPerms) {
-    if (!moduleKeys.includes(p.module)) {
+    let permissionModule = p.key.split(":")[0];
+
+    // 🔥 HANDLE LEGACY BUGS (normalize once)
+    const MODULE_KEY_MAP = {
+      registration_log: "registration_logs",
+      finance: "finance_reports",
+      finances: "finance_reports",
+      insurance_provider: "insurance_providers",
+      organization_brandings: "organization_branding",
+    };
+
+    permissionModule = MODULE_KEY_MAP[permissionModule] || permissionModule;
+
+    if (!moduleKeys.includes(permissionModule)) {
       throw new Error(
-        `Permission '${p.module}' not allowed (module not selected)`
+        `Permission '${permissionModule}' not allowed (module not selected)`
       );
     }
   }
 
-  /* ============================================================
-     📦 EXISTING ROLE PERMISSIONS
-  ============================================================ */
+  /* ============================================================ */
   const existing = await RolePermission.findAll({
-    where: {
-      role_id,
-      organization_id,
-      facility_id,
-    },
+    where: { role_id, organization_id, facility_id },
     attributes: ["permission_id"],
     transaction,
   });
@@ -118,9 +100,7 @@ export async function upsertRoleAccess({
   const existingIds = new Set(existing.map(e => e.permission_id));
   const incomingIds = new Set(incomingPerms.map(p => p.id));
 
-  /* ============================================================
-     🔄 DIFF LOGIC
-  ============================================================ */
+  /* ============================================================ */
   const toAdd = [];
   const toRemove = [];
 
@@ -132,9 +112,7 @@ export async function upsertRoleAccess({
     if (!incomingIds.has(id)) toRemove.push(id);
   }
 
-  /* ============================================================
-     🧹 REMOVE ONLY UNCHECKED
-  ============================================================ */
+  /* ============================================================ */
   if (toRemove.length) {
     await RolePermission.destroy({
       where: {
@@ -147,9 +125,7 @@ export async function upsertRoleAccess({
     });
   }
 
-  /* ============================================================
-     ➕ ADD ONLY NEW
-  ============================================================ */
+  /* ============================================================ */
   if (toAdd.length) {
     const payload = toAdd.map(permission_id => ({
       role_id,
@@ -159,12 +135,13 @@ export async function upsertRoleAccess({
       created_by_id: user?.id || null,
     }));
 
-    await RolePermission.bulkCreate(payload, { transaction });
+    await RolePermission.bulkCreate(payload, {
+      transaction,
+      ignoreDuplicates: true, // 🔥 FINAL FIX (CRITICAL)
+    });
   }
 
-  /* ============================================================
-     ✅ RETURN SUMMARY
-  ============================================================ */
+  /* ============================================================ */
   return {
     modules_assigned: module_ids.length,
     permissions_added: toAdd.length,

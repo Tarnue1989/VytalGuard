@@ -321,7 +321,7 @@ function money(value, currency) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER (ENTERPRISE FINAL — INSURANCE FIXED)
+   🗂️ CARD RENDERER (ENTERPRISE FINAL — FIXED CORRECTLY)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -331,11 +331,12 @@ export function renderCard(entry, visibleFields, user) {
     v !== null && v !== undefined && v !== "" ? v : "—";
 
   /* ============================================================
-     🔥 FIXED FINANCIAL LOGIC
+     🔥 CORRECT FINANCIAL LOGIC
   ============================================================ */
   const insurance = Number(entry.insurance_amount || 0);
-  const patientPortion =
-    Number(entry.total || 0) - insurance;
+
+  // ✅ FIX: DO NOT subtract again
+  const patientPortion = Number(entry.total || 0);
 
   const row = (label, value) => {
     if (!value && value !== 0) return "";
@@ -380,9 +381,9 @@ export function renderCard(entry, visibleFields, user) {
 
         ${row("Total", money(entry.total, entry.currency))}
 
-        <!-- 🔥 FIXED -->
         ${row("Insurance", money(entry.insurance_amount, entry.currency))}
 
+        <!-- ✅ FIXED -->
         ${row("Patient Portion", money(patientPortion, entry.currency))}
 
         ${row("Paid", money(entry.total_paid, entry.currency))}

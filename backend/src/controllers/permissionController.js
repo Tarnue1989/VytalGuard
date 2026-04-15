@@ -169,17 +169,32 @@ export const getLitePermissions = async (req, res) => {
   try {
     const where = {};
 
-    // ✅ STRICT MODULE FILTER
+    // ✅ MODULE FILTER (SAFE)
     if (req.query.module) {
-      where.module = req.query.module;
+      where[Op.and] = where[Op.and] || [];
+
+      where[Op.and].push({
+        [Op.or]: [
+          { module: req.query.module },
+          {
+            key: {
+              [Op.iLike]: `${req.query.module}:%`
+            }
+          }
+        ]
+      });
     }
 
-    // 🔎 SEARCH (OPTIONAL)
+    // ✅ SEARCH FILTER (SAFE)
     if (req.query.q) {
-      where[Op.or] = [
-        { key: { [Op.iLike]: `%${req.query.q}%` } },
-        { name: { [Op.iLike]: `%${req.query.q}%` } },
-      ];
+      where[Op.and] = where[Op.and] || [];
+
+      where[Op.and].push({
+        [Op.or]: [
+          { key: { [Op.iLike]: `%${req.query.q}%` } },
+          { name: { [Op.iLike]: `%${req.query.q}%` } },
+        ]
+      });
     }
 
     const records = await Permission.findAll({

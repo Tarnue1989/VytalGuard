@@ -63,8 +63,8 @@ function normalizeUUID(val) {
    🚀 Main Setup
 ============================================================ */
 export async function setupRegistrationLogFormSubmission({ form }) {
-  initPageGuard(
-    autoPagePermissionKey(["registration_logs:create", "registration_logs:edit"])
+ initPageGuard(
+    autoPagePermissionKey(["registration_logs:create", "registration_logs:update"])
   );
   initLogoutWatcher();
   enableLiveValidation(form);
@@ -357,6 +357,13 @@ export async function setupRegistrationLogFormSubmission({ form }) {
       errors.push({ field: rule.id, message: rule.message });
     }
   }
+    // 🔥 HARD CHECK (REQUIRED FOR BILLING)
+    if (!typeSelect?.value) {
+      errors.push({
+        field: "registrationTypeSelect",
+        message: "Registration type is required",
+      });
+    }
     if (!patientHidden.value) {
       errors.push({ field: "patientInput", message: "Patient is required" });
     }
