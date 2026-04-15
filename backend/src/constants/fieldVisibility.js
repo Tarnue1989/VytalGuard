@@ -121,15 +121,10 @@ export const FIELD_VISIBILITY_ROLE = {
 
 /* -------------------- User -------------------- */
 export const FIELD_VISIBILITY_USER = {
-    superadmin: FIELD_ORDER_USER,
+  superadmin: FIELD_ORDER_USER,
   organization_admin: FIELD_ORDER_USER,
-  manager: [
-    "id", "username", "email", "status",
-    "last_login_at", "login_attempts", "locked_until"
-  ],
-  staff: [
-    "id", "username", "email", "status"
-  ]
+  manager: FIELD_ORDER_USER,
+  staff: FIELD_ORDER_USER
 };
 /* -------------------- Permission -------------------- */
 export const FIELD_VISIBILITY_PERMISSION = {
