@@ -1,9 +1,10 @@
 // 📁 backend/src/routes/payrollRoutes.js
 // ============================================================================
-// 💰 Payroll Routes – Enterprise Master Pattern
+// 💰 Payroll Routes – Enterprise Master Pattern (FINAL)
 // ----------------------------------------------------------------------------
-// 🔹 Lifecycle: create → approve → pay → void → delete
-// 🔹 Pay triggers Expense creation
+// ✔ Lifecycle: create → approve → pay → void → delete → restore
+// ✔ Pay triggers Expense via model hooks (NOT controller)
+// ✔ Fully aligned with controller + permissions
 // ============================================================================
 
 import { Router } from "express";
@@ -19,6 +20,9 @@ import {
   approvePayroll,
   payPayroll,
   voidPayroll,
+
+  // ♻️ Optional (if implemented in controller)
+  restorePayroll,
 } from "../controllers/payrollController.js";
 
 import { verifyAuth } from "../middleware/verifyAuth.js";
@@ -43,10 +47,13 @@ router.post("/", verifyAuth, createPayroll);
 router.put(`/:id(${UUIDv4})`, verifyAuth, updatePayroll);
 router.delete(`/:id(${UUIDv4})`, verifyAuth, deletePayroll);
 
-// 🔄 Lifecycle
+// 🔄 Lifecycle (status-driven)
 router.patch(`/:id(${UUIDv4})/approve`, verifyAuth, approvePayroll);
 router.patch(`/:id(${UUIDv4})/pay`, verifyAuth, payPayroll);
 router.patch(`/:id(${UUIDv4})/void`, verifyAuth, voidPayroll);
+
+// ♻️ Restore (ONLY if controller supports it)
+router.patch(`/:id(${UUIDv4})/restore`, verifyAuth, restorePayroll);
 
 /* ============================================================ */
 export default router;

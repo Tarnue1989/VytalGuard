@@ -37,7 +37,11 @@ export const STATUS_ACTION_MATRIX = {
     applied:["apply","reverse","verify","void","print"],
     verified:["print"],cancelled:["restore"],reversed:["restore"],voided:["restore"],deleted:["restore"]
   },
-
+  /* 💰 CASH CLOSING */
+  cash_closing:{
+    locked:["view","print","reopen"],
+    open:["view","print"]
+  },
   payment:{
     pending:["edit","complete","cancel","void","delete"],
     completed:["verify","void","print"],
@@ -134,6 +138,13 @@ export const STATUS_ACTION_MATRIX = {
     voided:["restore"],
     reversed:["restore"]
   },
+    /* 💰 PAYROLL */
+  payroll:{
+    draft:["edit","approve","delete","void"],
+    approved:["pay","void"],
+    paid:["void"],
+    voided:["restore"]
+  },
   /* 📊 PATIENT CHART */
   patientcharts:{active:["summary","revalidate","print","void"],stale:["summary","revalidate","print","void"],invalid:["summary","revalidate","print","restore"],voided:["restore"]},
   patientchart_cache:{active:["summary","revalidate","print"],stale:["summary","revalidate","print"],invalid:["summary","revalidate","print","restore"],voided:["restore"],deleted:["restore"]},
@@ -217,6 +228,7 @@ const ICONS = {
   approve:"fa-circle-check",reject:"fa-circle-xmark",cancel:"fa-ban",
   void:"fa-xmark-circle",restore:"fa-arrow-rotate-right",delete:"fa-trash",
   print:"fa-print",
+  pay:"fa-money-bill-wave", reopen:"fa-rotate-right",
 
   // ✅ ONLY THIS PART CHANGED
   "toggle-status":"fa-toggle-on",
@@ -237,7 +249,7 @@ const COLORS = {
   approve:"success",reject:"danger",cancel:"warning",
   void:"danger",restore:"primary",delete:"danger",
   print:"info","toggle-status":"secondary",
-  lock:"secondary",unlock:"warning",
+  lock:"secondary",unlock:"warning", pay:"success",  reopen:"warning",
   "reset-password":"warning","generate-token":"info","revoke-sessions":"danger"
 };
 
@@ -321,9 +333,6 @@ export function buildActionButtons({module,status,entry,entryId,user,permissionP
 
   /* ===== BUILD ===== */
   let html="";
-
-  if(perms.has(`${permissionPrefix}:view`)||isSuperAdmin)
-    html+=buildButton("view","View",ICONS.view,COLORS.view,entryId);
 
   for(const act of allowed){
     let backend=act

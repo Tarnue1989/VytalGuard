@@ -96,18 +96,41 @@ export const FIELD_LABELS_PAYROLL = {
   employee_id: "Employee",
   period: "Period",
   currency: "Currency",
+
   basic_salary: "Basic Salary",
   allowances: "Allowances",
   deductions: "Deductions",
   net_salary: "Net Salary",
-  expense_id: "Expense",
-  paid_at: "Paid At",
-  status: "Status",
-  created_at: "Created At",
-  approved_by_id: "Approved By",
-  approved_at: "Approved At"
-};
 
+  /* 🔥 PAYMENT CONFIG (ADDED) */
+  account_id: "Account",
+  category: "Category",
+  payment_method: "Payment Method",
+
+  /* 🔥 LINKS */
+  expense_id: "Expense",
+
+  /* 🔥 STATUS */
+  status: "Status",
+
+  /* 🔥 LIFECYCLE */
+  paid_at: "Paid At",
+
+  /* 🔥 AUDIT (FULL) */
+  created_by_id: "Created By",
+  created_at: "Created At",
+
+  updated_by_id: "Updated By",
+  updated_at: "Updated At",
+
+  approved_by_id: "Approved By",
+  approved_at: "Approved At",
+
+  paid_by_id: "Paid By",
+
+  voided_by_id: "Voided By",
+  voided_at: "Voided At",
+};
 /* -------------------- Cash Closing -------------------- */
 export const FIELD_LABELS_CASH_CLOSING = {
   id: "ID", date: "Date",

@@ -13,7 +13,7 @@ import {
   User,
   Account,
 } from "../models/index.js";
-
+import { CashClosing } from "../models/index.js";
 import { success, error } from "../utils/response.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { validatePaginationStrict } from "../utils/query-utils.js";
@@ -162,6 +162,23 @@ export const createExpense = async (req, res) => {
       body: req.body,
     });
 
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: value.account_id,
+        date: value.date,
+        organization_id: orgId,
+        is_locked: true,
+      },
+    });
+
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot create — day already closed", null, 400);
+    }
+
     const record = await Expense.create(
       {
         ...value,
@@ -246,6 +263,23 @@ export const updateExpense = async (req, res) => {
       value,
       body: req.body,
     });
+
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: value.account_id || record.account_id,
+        date: value.date || record.date,
+        organization_id: record.organization_id,
+        is_locked: true,
+      },
+    });
+
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot update — day already closed", null, 400);
+    }
 
     await record.update(
       {
@@ -579,7 +613,8 @@ export const approveExpense = async (req, res) => {
 };
 
 /* ============================================================ */
-/* POST */
+/* POST (FINAL — LEDGER-DRIVEN, NO DIRECT BALANCE UPDATE) */
+/* ============================================================ */
 export const postExpense = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -610,6 +645,23 @@ export const postExpense = async (req, res) => {
       return error(res, "❌ Account not found", null, 400);
     }
 
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED — CRITICAL)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: record.account_id,
+        date: record.date,
+        organization_id: record.organization_id,
+        is_locked: true,
+      },
+    });
+
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot post — day already closed", null, 400);
+    }
+
     const currentBalance = Number(acc.balance || 0);
     const expenseAmount = Number(record.amount || 0);
 
@@ -623,8 +675,24 @@ export const postExpense = async (req, res) => {
       return error(res, "❌ Insufficient account balance", null, 400);
     }
 
-    acc.balance = currentBalance - expenseAmount;
-    await acc.save({ transaction: t });
+    const { CashLedger } = await import("../models/index.js");
+
+    await CashLedger.create(
+      {
+        date: record.date,
+        type: "expense",
+        direction: "out",
+        account_id: record.account_id,
+        amount: record.amount,
+        currency: record.currency,
+        reference_type: "expense",
+        reference_id: record.id,
+        organization_id: record.organization_id,
+        facility_id: record.facility_id,
+        created_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
     await record.update(
       { status: ES.POSTED },
@@ -649,7 +717,7 @@ export const postExpense = async (req, res) => {
 };
 
 /* ============================================================ */
-/* REVERSE */
+/* REVERSE (FINAL — LEDGER-DRIVEN) */
 export const reverseExpense = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -670,15 +738,41 @@ export const reverseExpense = async (req, res) => {
 
     validateTransition(record.status, ES.REVERSED);
 
-    const acc = await Account.findByPk(record.account_id, {
-      transaction: t,
-      lock: t.LOCK.UPDATE,
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: record.account_id,
+        date: record.date,
+        organization_id: record.organization_id,
+        is_locked: true,
+      },
     });
 
-    if (acc) {
-      acc.balance = Number(acc.balance || 0) + Number(record.amount || 0);
-      await acc.save({ transaction: t });
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot reverse — day already closed", null, 400);
     }
+
+    const { CashLedger } = await import("../models/index.js");
+
+    await CashLedger.create(
+      {
+        date: record.date, // 🔥 FIXED (NOT new Date())
+        type: "expense_reverse",
+        direction: "in",
+        account_id: record.account_id,
+        amount: record.amount,
+        currency: record.currency,
+        reference_type: "expense",
+        reference_id: record.id,
+        organization_id: record.organization_id,
+        facility_id: record.facility_id,
+        created_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
     await record.update(
       { status: ES.REVERSED },
@@ -701,7 +795,6 @@ export const reverseExpense = async (req, res) => {
     return error(res, "❌ Failed to reverse expense", err);
   }
 };
-
 /* ============================================================ */
 /* VOID */
 export const voidExpense = async (req, res) => {
@@ -720,6 +813,23 @@ export const voidExpense = async (req, res) => {
     if (!record) {
       await t.rollback();
       return error(res, "❌ Not found", null, 404);
+    }
+
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: record.account_id,
+        date: record.date,
+        organization_id: record.organization_id,
+        is_locked: true,
+      },
+    });
+
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot void — day already closed", null, 400);
     }
 
     validateTransition(record.status, ES.VOIDED);
@@ -812,6 +922,23 @@ export const deleteExpense = async (req, res) => {
     if (record.status !== ES.DRAFT) {
       await t.rollback();
       return error(res, "❌ Only draft can be deleted", null, 400);
+    }
+
+    /* ============================================================
+       🔒 CASH CLOSING CHECK (ADDED)
+    ============================================================ */
+    const closing = await CashClosing.findOne({
+      where: {
+        account_id: record.account_id,
+        date: record.date,
+        organization_id: record.organization_id,
+        is_locked: true,
+      },
+    });
+
+    if (closing) {
+      await t.rollback();
+      return error(res, "❌ Cannot delete — day already closed", null, 400);
     }
 
     await record.update(

@@ -41,11 +41,16 @@ export const FIELD_ORDER_EXPENSE = [
 export const FIELD_ORDER_PAYROLL = [
   "id","payroll_number","employee_id","period","currency",
   "basic_salary","allowances","deductions","net_salary",
-  "expense_id","paid_at","status",
+  "account_id","category","payment_method",
+
+  "expense_id","status","paid_at",
+
   "organization_id","facility_id",
+
   "approved_by_id","approved_at",
+
   "created_at","updated_at","deleted_at",
-  "created_by_id"
+  "created_by_id","updated_by_id","paid_by_id","voided_by_id","voided_at"
 ];
 
 /* -------------------- Cash Closing -------------------- */

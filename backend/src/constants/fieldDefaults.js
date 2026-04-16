@@ -79,16 +79,31 @@ export const FIELD_DEFAULTS_EXPENSE = {
 /* -------------------- Payroll -------------------- */
 export const FIELD_DEFAULTS_PAYROLL = {
   admin: FIELD_ORDER_PAYROLL,
+
   manager: [
     "employee_id","period","currency",
     "basic_salary","allowances","deductions",
-    "net_salary","status"
+    "net_salary",
+
+    /* 🔥 PAYMENT CONFIG */
+    "account_id","category","payment_method",
+
+    /* 🔥 STATUS */
+    "status",
+
+    /* 🔥 AUDIT */
+    "approved_by_id","approved_at",
+    "paid_by_id","paid_at"
   ],
+
   staff: [
-    "employee_id","period","net_salary"
+    "employee_id","period","net_salary",
+
+    /* 🔥 BASIC VISIBILITY */
+    "status",
+    "paid_at"
   ]
 };
-
 /* -------------------- Cash Closing -------------------- */
 export const FIELD_DEFAULTS_CASH_CLOSING = {
   admin: FIELD_ORDER_CASH_CLOSING,

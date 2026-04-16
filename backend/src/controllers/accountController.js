@@ -395,7 +395,11 @@ export const getAllAccountsLite = async (req, res) => {
       currency: r.currency,
     }));
 
-    return success(res, "✅ Accounts (lite) loaded", lite);
+    /* ================= RESPONSE (FIXED) ================= */
+    return success(res, "✅ Accounts (lite) loaded", {
+      records: lite,
+    });
+
   } catch (err) {
     return error(res, "❌ Failed to load accounts (lite)", err);
   }

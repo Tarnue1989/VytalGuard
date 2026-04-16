@@ -1137,10 +1137,32 @@ export const EXPENSE_TRANSITIONS = {
 
 export const PAYROLL_STATUS = Object.freeze({
   DRAFT: "draft",
+  PENDING: "pending",   // 🔥 ADD
   APPROVED: "approved",
   PAID: "paid",
+  CANCELLED: "cancelled", // 🔥 ADD
   VOIDED: "voided",
 });
+
+export const PAYROLL_TRANSITIONS = {
+  draft: {
+    approved: true,
+    voided: true,
+  },
+
+  approved: {
+    paid: true,
+    voided: true,
+  },
+
+  paid: {
+    voided: true,
+  },
+
+  voided: {
+    draft: true, // optional restore
+  },
+};
 
 /* ============================================================
    🔖 STATUS MAP (ENUM SAFE)

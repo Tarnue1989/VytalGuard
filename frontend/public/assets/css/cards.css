@@ -337,6 +337,18 @@
   padding:6px 8px;
   border-radius:8px;
 }
+
+/* ================= CASH CLOSING ================= */
+.cash-closing-card .entity-status.locked{background:#dc3545;color:#fff}
+.cash-closing-card .entity-status.open{background:#198754;color:#fff}
+
+/* ================= CASH CLOSING BODY TUNING ================= */
+.cash-closing-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
+
 /* ================= EXPENSE STATUS ================= */
 .expense-card .entity-status.draft{background:#0d6efd;color:#fff}
 .expense-card .entity-status.pending{background:#f59e0b;color:#111}

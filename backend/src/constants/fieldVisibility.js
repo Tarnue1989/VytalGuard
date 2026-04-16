@@ -75,10 +75,15 @@ export const FIELD_VISIBILITY_PAYROLL = {
   organization_admin: FIELD_ORDER_PAYROLL,
   manager: [
     "id","payroll_number","employee_id","period","currency",
-    "basic_salary","allowances","deductions","net_salary","status"
+    "basic_salary","allowances","deductions","net_salary",
+    "account_id","category","payment_method",
+    "status","paid_at",
+    "approved_by_id","approved_at",
+    "paid_by_id"
   ],
   staff: [
-    "id","employee_id","period","net_salary"
+    "id","employee_id","period","net_salary",
+    "status"
   ]
 };
 
