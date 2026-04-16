@@ -1096,10 +1096,44 @@ export const PAYMENT_METHODS = Object.freeze({
 // 🔹 Expense Status (FINAL)
 export const EXPENSE_STATUS = Object.freeze({
   DRAFT: "draft",
+
+  // workflow
+  PENDING: "pending",
   APPROVED: "approved",
+  REJECTED: "rejected",
+
+  // financial
   POSTED: "posted",
+
+  // end states
+  CANCELLED: "cancelled",
   VOIDED: "voided",
+
+  // accounting safety
+  REVERSED: "reversed",
 });
+export const EXPENSE_TRANSITIONS = {
+  draft: {
+    pending: true,
+    cancelled: true,
+  },
+  pending: {
+    approved: true,
+    rejected: true,
+    cancelled: true,
+  },
+  approved: {
+    posted: true,
+    voided: true,
+  },
+  posted: {
+    reversed: true,
+  },
+  rejected: {},
+  cancelled: {},
+  voided: {},
+  reversed: {},
+};
 
 export const PAYROLL_STATUS = Object.freeze({
   DRAFT: "draft",
@@ -1113,7 +1147,11 @@ export const PAYROLL_STATUS = Object.freeze({
 ============================================================ */
 const ES = {
   DRAFT: EXPENSE_STATUS.DRAFT,
+  PENDING: EXPENSE_STATUS.PENDING,
   APPROVED: EXPENSE_STATUS.APPROVED,
+  REJECTED: EXPENSE_STATUS.REJECTED,
   POSTED: EXPENSE_STATUS.POSTED,
+  CANCELLED: EXPENSE_STATUS.CANCELLED,
   VOIDED: EXPENSE_STATUS.VOIDED,
+  REVERSED: EXPENSE_STATUS.REVERSED,
 };

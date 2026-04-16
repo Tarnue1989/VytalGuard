@@ -29,12 +29,8 @@ import {
 export const FIELD_VISIBILITY_ACCOUNT = {
   superadmin: FIELD_ORDER_ACCOUNT,
   organization_admin: FIELD_ORDER_ACCOUNT,
-  manager: [
-    "id","account_number","name","type","currency","balance","is_active"
-  ],
-  staff: [
-    "id","account_number","name","type","currency","balance"
-  ]
+  manager: FIELD_ORDER_ACCOUNT,
+  staff: FIELD_ORDER_ACCOUNT
 };
 
 /* -------------------- Cash Ledger -------------------- */
@@ -58,10 +54,16 @@ export const FIELD_VISIBILITY_CASH_LEDGER = {
 export const FIELD_VISIBILITY_EXPENSE = {
   superadmin: FIELD_ORDER_EXPENSE,
   organization_admin: FIELD_ORDER_EXPENSE,
+
   manager: [
     "id","expense_number","date","amount","currency","category",
-    "payment_method","account_id","description","status"
+    "payment_method","account_id","description","status",
+
+    // 🔥 key lifecycle visibility
+    "approved_by_id","approved_at",
+    "posted_by_id","posted_at"
   ],
+
   staff: [
     "id","date","amount","category","description"
   ]

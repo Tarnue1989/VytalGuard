@@ -124,7 +124,16 @@ export const STATUS_ACTION_MATRIX = {
     finalized:["verify","void"],
     verified:["void"],cancelled:["void"],voided:["restore"]
   },
-
+  /* 💸 EXPENSE (FINAL ENTERPRISE) */
+  expense:{
+    draft:["edit","submit","delete","void"],
+    pending:["edit","approve","cancel","void"],
+    approved:["post","void"],
+    posted:["reverse"],
+    cancelled:["restore"],
+    voided:["restore"],
+    reversed:["restore"]
+  },
   /* 📊 PATIENT CHART */
   patientcharts:{active:["summary","revalidate","print","void"],stale:["summary","revalidate","print","void"],invalid:["summary","revalidate","print","restore"],voided:["restore"]},
   patientchart_cache:{active:["summary","revalidate","print"],stale:["summary","revalidate","print"],invalid:["summary","revalidate","print","restore"],voided:["restore"],deleted:["restore"]},
@@ -210,8 +219,8 @@ const ICONS = {
   print:"fa-print",
 
   // ✅ ONLY THIS PART CHANGED
-  "toggle-status": status === "active" ? "fa-toggle-off" : "fa-toggle-on",
-  toggle: status === "active" ? "fa-toggle-off" : "fa-toggle-on",
+  "toggle-status":"fa-toggle-on",
+  toggle:"fa-toggle-on",
 
   lock:"fa-lock",unlock:"fa-lock-open",
   "reset-password":"fa-key","generate-token":"fa-ticket","revoke-sessions":"fa-right-from-bracket",

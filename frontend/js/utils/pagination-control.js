@@ -10,24 +10,29 @@ import { getSafePaginationParams } from "./pagination-utils.js";
  */
 export function initPaginationControl(moduleKey, reloadFn, defaultLimit = 25) {
   const select = document.getElementById("recordsPerPage");
-  if (!select) return;
 
   const storageKey = `${moduleKey}PerPage`;
 
   // Restore previous value
   const saved = localStorage.getItem(storageKey);
-  if (saved) select.value = saved;
+  if (saved && select) select.value = saved;
 
   // Handle user change
-  select.addEventListener("change", async (e) => {
-    const newLimit = parseInt(e.target.value, 10);
-    localStorage.setItem(storageKey, newLimit);
-    if (typeof reloadFn === "function") await reloadFn(1);
-  });
+  if (select) {
+    select.addEventListener("change", async (e) => {
+      const newLimit = parseInt(e.target.value, 10);
+      localStorage.setItem(storageKey, newLimit);
+      if (typeof reloadFn === "function") await reloadFn(1);
+    });
+  }
 
-  // Provide getter for current safe pagination
+  // ✅ ALWAYS return function (critical)
   return (page = 1) => {
-    const perPage = parseInt(localStorage.getItem(storageKey) || `${defaultLimit}`, 10);
+    const perPage = parseInt(
+      localStorage.getItem(storageKey) || `${defaultLimit}`,
+      10
+    );
+
     return getSafePaginationParams(page, perPage);
   };
 }

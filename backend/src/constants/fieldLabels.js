@@ -78,11 +78,17 @@ export const FIELD_LABELS_EXPENSE = {
   ledger_id: "Ledger Entry",
   status: "Status",
   description: "Description",
+
   created_at: "Created At",
   approved_by_id: "Approved By",
-  approved_at: "Approved At"
+  approved_at: "Approved At",
+  posted_by_id: "Posted By",
+  posted_at: "Posted At",
+  reversed_by_id: "Reversed By",
+  reversed_at: "Reversed At",
+  voided_by_id: "Voided By",
+  voided_at: "Voided At"
 };
-
 /* -------------------- Payroll -------------------- */
 export const FIELD_LABELS_PAYROLL = {
   id: "ID",

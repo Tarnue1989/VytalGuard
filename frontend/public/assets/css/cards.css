@@ -337,7 +337,23 @@
   padding:6px 8px;
   border-radius:8px;
 }
+/* ================= EXPENSE STATUS ================= */
+.expense-card .entity-status.draft{background:#0d6efd;color:#fff}
+.expense-card .entity-status.pending{background:#f59e0b;color:#111}
+.expense-card .entity-status.approved{background:#0dcaf0;color:#111}
+.expense-card .entity-status.rejected{background:#dc3545;color:#fff}
+.expense-card .entity-status.posted{background:#198754;color:#fff}
+.expense-card .entity-status.cancelled{background:#6b7280;color:#fff}
+.expense-card .entity-status.voided{background:#dc3545;color:#fff}
+.expense-card .entity-status.reversed{background:#111827;color:#fff}
+.expense-card .entity-status.deleted{background:#dc3545;color:#fff}
 
+/* ================= EXPENSE BODY TUNING ================= */
+.expense-card .entity-field{
+  background:#f9fafb;
+  padding:6px 8px;
+  border-radius:8px;
+}
 /* ================= REGISTRATION LOG STATUS ================= */
 .registration-log-card .entity-status.draft{background:#0d6efd;color:#fff}
 .registration-log-card .entity-status.pending{background:#f59e0b;color:#111}

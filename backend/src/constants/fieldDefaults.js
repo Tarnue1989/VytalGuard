@@ -56,10 +56,21 @@ export const FIELD_DEFAULTS_CASH_LEDGER = {
 /* -------------------- Expense -------------------- */
 export const FIELD_DEFAULTS_EXPENSE = {
   admin: FIELD_ORDER_EXPENSE,
+
   manager: [
     "date","amount","currency","category",
-    "payment_method","account_id","description","status"
+    "payment_method","account_id","description",
+
+    // 🔥 lifecycle
+    "status",
+
+    // 🔥 audit (important)
+    "approved_by_id","approved_at",
+    "posted_by_id","posted_at",
+    "reversed_by_id","reversed_at",
+    "voided_by_id","voided_at"
   ],
+
   staff: [
     "date","amount","category","description"
   ]

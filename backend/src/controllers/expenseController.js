@@ -38,7 +38,13 @@ import { FIELD_VISIBILITY_EXPENSE } from "../constants/fieldVisibility.js";
 
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
+import { EXPENSE_TRANSITIONS } from "../constants/enums.js";
 
+function validateTransition(current, next) {
+  if (!EXPENSE_TRANSITIONS[current]?.[next]) {
+    throw new Error(`Invalid transition: ${current} → ${next}`);
+  }
+}
 /* ============================================================ */
 const MODULE_KEY = "expenses";
 
@@ -49,9 +55,13 @@ const debug = makeModuleLogger("expenseController", DEBUG_OVERRIDE);
 /* ============================================================ */
 const ES = {
   DRAFT: EXPENSE_STATUS.DRAFT,
+  PENDING: EXPENSE_STATUS.PENDING,
   APPROVED: EXPENSE_STATUS.APPROVED,
+  REJECTED: EXPENSE_STATUS.REJECTED,
   POSTED: EXPENSE_STATUS.POSTED,
+  CANCELLED: EXPENSE_STATUS.CANCELLED,
   VOIDED: EXPENSE_STATUS.VOIDED,
+  REVERSED: EXPENSE_STATUS.REVERSED,
 };
 
 /* ============================================================ */
@@ -59,22 +69,46 @@ const EXPENSE_INCLUDES = [
   { model: Account, as: "account", attributes: ["id", "name"] },
   { model: Organization, as: "organization", attributes: ["id", "name"] },
   { model: Facility, as: "facility", attributes: ["id", "name"] },
+
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
+
+  { model: User, as: "approvedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "postedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "reversedBy", attributes: ["id", "first_name", "last_name"] },
+  { model: User, as: "voidedBy", attributes: ["id", "first_name", "last_name"] }, // 🔥 THIS WAS MISSING
 ];
 
-/* ============================================================ */
+/* ============================================================
+   🔐 SCHEMA (FINAL – AUTO-GENERATED EXPENSE NUMBER)
+   ✔ expense_number REMOVED from input
+   ✔ Backend generates it
+   ✔ Controller-aligned
+============================================================ */
 function buildSchema(role, mode = "create") {
   const base = {
-    expense_number: Joi.string().required(),
+    expense_number: Joi.forbidden(), // 🔥 MUST NOT be sent from frontend
+
     date: Joi.date().required(),
     amount: Joi.number().positive().required(),
-    currency: Joi.string().valid(...Object.values(CURRENCY)).required(),
-    category: Joi.string().valid(...Object.values(EXPENSE_CATEGORIES)).required(),
-    payment_method: Joi.string().valid(...Object.values(PAYMENT_METHODS)).required(),
+
+    currency: Joi.string()
+      .valid(...Object.values(CURRENCY))
+      .required(),
+
+    category: Joi.string()
+      .valid(...Object.values(EXPENSE_CATEGORIES))
+      .required(),
+
+    payment_method: Joi.string()
+      .valid(...Object.values(PAYMENT_METHODS))
+      .required(),
+
     account_id: Joi.string().required(),
+
     description: Joi.string().allow("", null),
+
     status: Joi.forbidden(),
   };
 
@@ -90,8 +124,9 @@ function buildSchema(role, mode = "create") {
   return Joi.object(base);
 }
 
-/* ============================================================ */
-/* CREATE */
+/* ============================================================
+   ➕ CREATE (FINAL)
+============================================================ */
 export const createExpense = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -105,7 +140,11 @@ export const createExpense = async (req, res) => {
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
-    const { value, errors } = validate(buildSchema(role, "create"), req.body);
+    const { value, errors } = validate(
+      buildSchema(role, "create"),
+      req.body
+    );
+
     if (errors) {
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
@@ -157,8 +196,9 @@ export const createExpense = async (req, res) => {
   }
 };
 
-/* ============================================================ */
-/* UPDATE */
+/* ============================================================
+   ✏️ UPDATE (FINAL)
+============================================================ */
 export const updateExpense = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -170,7 +210,9 @@ export const updateExpense = async (req, res) => {
     });
     if (!allowed) return;
 
-    const record = await Expense.findByPk(req.params.id, { transaction: t });
+    const record = await Expense.findByPk(req.params.id, {
+      transaction: t,
+    });
 
     if (!record) {
       await t.rollback();
@@ -179,12 +221,21 @@ export const updateExpense = async (req, res) => {
 
     if ([ES.POSTED, ES.VOIDED].includes(record.status)) {
       await t.rollback();
-      return error(res, "❌ Cannot modify posted/voided expense", null, 400);
+      return error(
+        res,
+        "❌ Cannot modify posted/voided expense",
+        null,
+        400
+      );
     }
 
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
 
-    const { value, errors } = validate(buildSchema(role, "update"), req.body);
+    const { value, errors } = validate(
+      buildSchema(role, "update"),
+      req.body
+    );
+
     if (errors) {
       await t.rollback();
       return error(res, "Validation failed", errors, 400);
@@ -224,6 +275,7 @@ export const updateExpense = async (req, res) => {
     return success(res, "✅ Expense updated", full);
   } catch (err) {
     await t.rollback();
+    debug.error("updateExpense → FAILED", err);
     return error(res, "❌ Failed", err);
   }
 };
@@ -350,7 +402,7 @@ export const getAllExpenses = async (req, res) => {
 };
 
 /* ============================================================ */
-/* LITE */
+/* LITE (FINAL FIXED) */
 export const getAllExpensesLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -361,11 +413,17 @@ export const getAllExpensesLite = async (req, res) => {
     });
     if (!allowed) return;
 
+    const where = {
+      organization_id: req.user.organization_id,
+    };
+
+    if (isFacilityHead(req.user)) {
+      where.facility_id = req.user.facility_id;
+    }
+
     const records = await Expense.findAll({
       attributes: ["id", "expense_number", "amount", "date"],
-      where: {
-        organization_id: req.user.organization_id,
-      },
+      where,
       order: [["date", "DESC"]],
       limit: 50,
     });
@@ -429,6 +487,50 @@ export const getExpenseById = async (req, res) => {
 };
 
 /* ============================================================ */
+/* SUBMIT */
+export const submitExpense = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "submit",
+      res,
+    });
+    if (!allowed) return;
+
+    const record = await Expense.findByPk(req.params.id, { transaction: t });
+
+    if (!record || record.status !== ES.DRAFT) {
+      await t.rollback();
+      return error(res, "❌ Only draft can be submitted", null, 400);
+    }
+
+    validateTransition(record.status, ES.PENDING);
+
+    await record.update(
+      { status: ES.PENDING },
+      { transaction: t, user: req.user }
+    );
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "submit",
+      entityId: record.id,
+      entity: record,
+    });
+
+    return success(res, "✅ Expense submitted", record);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to submit expense", err);
+  }
+};
+
+/* ============================================================ */
 /* APPROVE */
 export const approveExpense = async (req, res) => {
   const t = await sequelize.transaction();
@@ -443,18 +545,20 @@ export const approveExpense = async (req, res) => {
 
     const record = await Expense.findByPk(req.params.id, { transaction: t });
 
-    if (!record || record.status !== ES.DRAFT) {
+    if (!record || record.status !== ES.PENDING) {
       await t.rollback();
-      return error(res, "❌ Only draft can be approved", null, 400);
+      return error(res, "❌ Only pending can be approved", null, 400);
     }
+
+    validateTransition(record.status, ES.APPROVED);
 
     await record.update(
       {
         status: ES.APPROVED,
-        approved_by_id: req.user?.id,
+        approved_by_id: req.user?.id || null,
         approved_at: new Date(),
       },
-      { transaction: t }
+      { transaction: t, user: req.user }
     );
 
     await t.commit();
@@ -494,11 +598,37 @@ export const postExpense = async (req, res) => {
       return error(res, "❌ Only approved can be posted", null, 400);
     }
 
+    validateTransition(record.status, ES.POSTED);
+
+    const acc = await Account.findByPk(record.account_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!acc) {
+      await t.rollback();
+      return error(res, "❌ Account not found", null, 400);
+    }
+
+    const currentBalance = Number(acc.balance || 0);
+    const expenseAmount = Number(record.amount || 0);
+
+    if (expenseAmount <= 0) {
+      await t.rollback();
+      return error(res, "❌ Invalid expense amount", null, 400);
+    }
+
+    if (currentBalance < expenseAmount) {
+      await t.rollback();
+      return error(res, "❌ Insufficient account balance", null, 400);
+    }
+
+    acc.balance = currentBalance - expenseAmount;
+    await acc.save({ transaction: t });
+
     await record.update(
-      {
-        status: ES.POSTED,
-      },
-      { transaction: t }
+      { status: ES.POSTED },
+      { transaction: t, user: req.user }
     );
 
     await t.commit();
@@ -514,7 +644,61 @@ export const postExpense = async (req, res) => {
     return success(res, "✅ Expense posted", record);
   } catch (err) {
     await t.rollback();
-    return error(res, "❌ Failed", err);
+    return error(res, "❌ Failed to post expense", err);
+  }
+};
+
+/* ============================================================ */
+/* REVERSE */
+export const reverseExpense = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "reverse",
+      res,
+    });
+    if (!allowed) return;
+
+    const record = await Expense.findByPk(req.params.id, { transaction: t });
+
+    if (!record || record.status !== ES.POSTED) {
+      await t.rollback();
+      return error(res, "❌ Only posted expense can be reversed", null, 400);
+    }
+
+    validateTransition(record.status, ES.REVERSED);
+
+    const acc = await Account.findByPk(record.account_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (acc) {
+      acc.balance = Number(acc.balance || 0) + Number(record.amount || 0);
+      await acc.save({ transaction: t });
+    }
+
+    await record.update(
+      { status: ES.REVERSED },
+      { transaction: t, user: req.user }
+    );
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "reverse",
+      entityId: record.id,
+      entity: record,
+    });
+
+    return success(res, "✅ Expense reversed", record);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to reverse expense", err);
   }
 };
 
@@ -538,11 +722,11 @@ export const voidExpense = async (req, res) => {
       return error(res, "❌ Not found", null, 404);
     }
 
+    validateTransition(record.status, ES.VOIDED);
+
     await record.update(
-      {
-        status: ES.VOIDED,
-      },
-      { transaction: t }
+      { status: ES.VOIDED },
+      { transaction: t, user: req.user }
     );
 
     await t.commit();
@@ -559,6 +743,50 @@ export const voidExpense = async (req, res) => {
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed", err);
+  }
+};
+
+/* ============================================================ */
+/* CANCEL */
+export const cancelExpense = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "cancel",
+      res,
+    });
+    if (!allowed) return;
+
+    const record = await Expense.findByPk(req.params.id, { transaction: t });
+
+    if (!record || record.status !== ES.DRAFT) {
+      await t.rollback();
+      return error(res, "❌ Only draft expense can be cancelled", null, 400);
+    }
+
+    validateTransition(record.status, ES.CANCELLED);
+
+    await record.update(
+      { status: ES.CANCELLED },
+      { transaction: t, user: req.user }
+    );
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "cancel",
+      entityId: record.id,
+      entity: record,
+    });
+
+    return success(res, "✅ Expense cancelled", record);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to cancel expense", err);
   }
 };
 /* ============================================================ */
@@ -607,5 +835,54 @@ export const deleteExpense = async (req, res) => {
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed", err);
+  }
+};
+
+/* ============================================================ */
+/* RESTORE */
+export const restoreExpense = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "restore",
+      res,
+    });
+    if (!allowed) return;
+
+    const record = await Expense.findByPk(req.params.id, {
+      paranoid: false,
+      transaction: t,
+    });
+
+    if (!record) {
+      await t.rollback();
+      return error(res, "❌ Not found", null, 404);
+    }
+
+    await record.restore({ transaction: t });
+
+    await record.update(
+      {
+        deleted_by_id: null,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "restore",
+      entityId: record.id,
+      entity: record,
+    });
+
+    return success(res, "✅ Expense restored", record);
+  } catch (err) {
+    await t.rollback();
+    return error(res, "❌ Failed to restore expense", err);
   }
 };

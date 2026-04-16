@@ -1,5 +1,8 @@
 // 📦 accounts-constants.js – Enterprise MASTER (LIGHT VERSION)
 
+/* ============================================================
+   🏷️ LABELS
+============================================================ */
 export const FIELD_LABELS_ACCOUNT = {
   account_number: "Account Number",
   name: "Account Name",
@@ -7,15 +10,21 @@ export const FIELD_LABELS_ACCOUNT = {
   currency: "Currency",
   balance: "Balance",
   is_active: "Status",
+
   organization: "Organization",
   facility: "Facility",
+
   createdBy: "Created By",
-  created_at: "Created At",
+  createdAt: "Created At",     // ✅ FIXED
   updatedBy: "Updated By",
-  updated_at: "Updated At",
+  updatedAt: "Updated At",     // ✅ FIXED
+
   actions: "Actions",
 };
 
+/* ============================================================
+   📊 ORDER
+============================================================ */
 export const FIELD_ORDER_ACCOUNT = [
   "account_number",
   "name",
@@ -23,15 +32,21 @@ export const FIELD_ORDER_ACCOUNT = [
   "currency",
   "balance",
   "is_active",
+
   "organization",
   "facility",
+
   "createdBy",
-  "created_at",
+  "createdAt",   // ✅ FIXED
   "updatedBy",
-  "updated_at",
+  "updatedAt",   // ✅ FIXED
+
   "actions",
 ];
 
+/* ============================================================
+   🎯 DEFAULT VISIBILITY
+============================================================ */
 export const FIELD_DEFAULTS_ACCOUNT = {
   superadmin: [
     "account_number",
@@ -40,12 +55,15 @@ export const FIELD_DEFAULTS_ACCOUNT = {
     "currency",
     "balance",
     "is_active",
+
     "organization",
     "facility",
+
     "createdBy",
-    "created_at",
+    "createdAt",
     "updatedBy",
-    "updated_at",
+    "updatedAt",
+
     "actions",
   ],
 
@@ -56,11 +74,14 @@ export const FIELD_DEFAULTS_ACCOUNT = {
     "currency",
     "balance",
     "is_active",
+
     "facility",
+
     "createdBy",
-    "created_at",
+    "createdAt",
     "updatedBy",
-    "updated_at",
+    "updatedAt",
+
     "actions",
   ],
 
@@ -71,8 +92,11 @@ export const FIELD_DEFAULTS_ACCOUNT = {
     "currency",
     "balance",
     "is_active",
+
     "facility",
-    "created_at",
+
+    "createdAt",
+
     "actions",
   ],
 
@@ -83,13 +107,20 @@ export const FIELD_DEFAULTS_ACCOUNT = {
     "currency",
     "balance",
     "is_active",
+
     "actions",
   ],
 };
 
+/* ============================================================
+   🔑 MODULE
+============================================================ */
 export const MODULE_KEY_ACCOUNT = "accounts";
 export const MODULE_LABEL_ACCOUNT = "Account";
 
+/* ============================================================
+   📤 EXPORT
+============================================================ */
 export default {
   FIELD_LABELS_ACCOUNT,
   FIELD_ORDER_ACCOUNT,

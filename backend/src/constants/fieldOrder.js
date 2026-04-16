@@ -23,10 +23,18 @@ export const FIELD_ORDER_EXPENSE = [
   "id","expense_number","date","amount","currency","category",
   "payment_method","account_id","employee_id","ledger_id",
   "status","description",
+
   "organization_id","facility_id",
+
+  // 🔥 lifecycle audit
   "approved_by_id","approved_at",
+  "posted_by_id","posted_at",
+  "reversed_by_id","reversed_at",
+  "voided_by_id","voided_at",
+
+  // 🔥 base audit
   "created_at","updated_at","deleted_at",
-  "created_by_id"
+  "created_by_id","updated_by_id","deleted_by_id"
 ];
 
 /* -------------------- Payroll -------------------- */
