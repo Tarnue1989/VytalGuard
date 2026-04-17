@@ -903,24 +903,21 @@ export const FIELD_LABELS_PATIENT_INSURANCE = {
 };
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_LABELS_INSURANCE_CLAIM = {
-  id: "ID", organization_id: "Organization", facility_id: "Facility",
-  invoice_id: "Invoice", patient_id: "Patient", provider_id: "Provider",
-  claim_number: "Claim Number", currency: "Currency",
-  amount_claimed: "Amount Claimed",
-  amount_approved: "Amount Approved",
-  amount_paid: "Amount Paid",
-  payment_reference: "Payment Reference",
-  claim_date: "Claim Date", response_date: "Response Date",
-  reviewed_at: "Reviewed At", approved_at: "Approved At",
-  paid_at: "Paid At",
-  rejection_reason: "Rejection Reason",
-  notes: "Notes",
-  status: `Status (${joinValues(INSURANCE_CLAIM_STATUS)})`,
-  created_at: "Created At", updated_at: "Updated At",
-  deleted_at: "Deleted At",
-  created_by_id: "Created By",
-  updated_by_id: "Updated By",
-  deleted_by_id: "Deleted By"
+  id:"ID",organization_id:"Organization",facility_id:"Facility",
+  invoice_id:"Invoice",patient_id:"Patient",provider_id:"Provider",patient_insurance_id:"Patient Insurance",
+  claim_number:"Claim Number",currency:"Currency",
+  invoice_total:"Invoice Total",insurance_amount:"Insurance Amount",patient_amount:"Patient Amount",
+  amount_claimed:"Amount Claimed",amount_approved:"Amount Approved",amount_paid:"Amount Paid",payment_reference:"Payment Reference",
+  coverage_amount_at_claim:"Coverage Amount (At Claim)",coverage_currency:"Coverage Currency",
+  submission_channel:"Submission Channel",
+  claim_date:"Claim Date",response_date:"Response Date",
+  submitted_at:"Submitted At",reviewed_at:"Reviewed At",approved_at:"Approved At",paid_at:"Paid At",
+  rejection_reason:"Rejection Reason",notes:"Notes",
+  parent_claim_id:"Parent Claim",
+  status:`Status (${joinValues(INSURANCE_CLAIM_STATUS)})`,
+  created_at:"Created At",updated_at:"Updated At",deleted_at:"Deleted At",
+  created_by_id:"Created By",updated_by_id:"Updated By",deleted_by_id:"Deleted By",
+  submitted_by_id:"Submitted By"
 };
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_LABELS_NEWBORN_RECORD = {

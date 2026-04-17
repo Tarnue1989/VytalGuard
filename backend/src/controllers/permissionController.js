@@ -169,23 +169,25 @@ export const getLitePermissions = async (req, res) => {
   try {
     const where = {};
 
-    // ✅ MODULE FILTER (SAFE)
+    // ✅ MODULE FILTER (FIXED)
     if (req.query.module) {
       where[Op.and] = where[Op.and] || [];
 
       where[Op.and].push({
         [Op.or]: [
           { module: req.query.module },
+
+          // 🔥 FIX: allow plural + mismatches
           {
             key: {
-              [Op.iLike]: `${req.query.module}:%`
+              [Op.iLike]: `${req.query.module}%`
             }
           }
         ]
       });
     }
 
-    // ✅ SEARCH FILTER (SAFE)
+    // ✅ SEARCH FILTER
     if (req.query.q) {
       where[Op.and] = where[Op.and] || [];
 

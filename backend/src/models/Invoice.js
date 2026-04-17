@@ -80,6 +80,14 @@ export default (sequelize) => {
         as: "deletedBy",
         foreignKey: "deleted_by_id",
       });
+      Invoice.belongsTo(models.RegistrationLog, {
+        as: "registration",
+        foreignKey: "registration_log_id",
+      });
+      Invoice.belongsTo(models.PatientInsurance, {
+        as: "patientInsurance",
+        foreignKey: "patient_insurance_id",
+      });
     }
 
     /* ============================================================
@@ -109,13 +117,20 @@ export default (sequelize) => {
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: true },
 
+      registration_log_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
       /* ================= INFO ================= */
       invoice_number: {
         type: DataTypes.STRING,
         allowNull: true,
         unique: true,
       },
-
+      patient_insurance_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
       invoice_date: {
         type: DataTypes.DATEONLY,
         allowNull: false,
@@ -302,14 +317,41 @@ export default (sequelize) => {
   ============================================================ */
 
   // 🔒 Prevent editing locked invoices
-  Invoice.beforeUpdate((invoice) => {
-    if (invoice.is_locked) {
-      throw new Error("Locked invoices cannot be modified");
-    }
-  });
+Invoice.beforeUpdate((invoice) => {
+  const allowedFields = [
+    "total_paid",
+    "balance",
+    "status",
+    "updated_at",
+    "updated_by_id",
 
+    // 🔥 ADD THESE (RECALC FIELDS)
+    "subtotal",
+    "total_tax",
+    "total_discount",
+    "applied_deposits",
+    "refunded_amount",
+    "insurance_amount",
+    "total"
+  ];
+
+  const changedFields = invoice.changed() || [];
+
+  const onlyAllowed = changedFields.every((f) =>
+    allowedFields.includes(f)
+  );
+
+  if (invoice.is_locked && !onlyAllowed && !invoice.changed("is_locked")) {
+    throw new Error("Locked invoices cannot be modified");
+  }
+});
   // 🔢 Generate invoice number + due date
   Invoice.beforeValidate(async (invoice) => {
+    // 🔥 SAFETY: skip if no org (update context)
+    if (!invoice.organization_id) {
+      return;
+    }
+
     if (!invoice.invoice_number) {
       const lastInvoice = await Invoice.findOne({
         where: {

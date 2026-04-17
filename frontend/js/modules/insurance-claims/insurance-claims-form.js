@@ -110,6 +110,10 @@ export async function setupInsuranceClaimFormSubmission({ form }) {
   const rejectionReasonInput = document.getElementById("rejectionReason");
   const notesInput = document.getElementById("notes");
 
+  const invoiceTotalInput=document.getElementById("invoiceTotal");
+  const insuranceAmountInput=document.getElementById("insuranceAmount");
+  const patientAmountInput=document.getElementById("patientAmount");
+
   /* ================= ROLE ================= */
   const userRole = resolveUserRole();
   const isSuper = userRole === "superadmin";
@@ -238,33 +242,62 @@ export async function setupInsuranceClaimFormSubmission({ form }) {
 
         if (!inv) return;
 
+        const invoiceTotal = Number(inv.total_amount || 0);
+        const coveredAmount = Number(inv.covered_amount || 0);
+
         // 🔥 provider
         if (inv.provider_id) {
           providerSelect.value = inv.provider_id;
           providerSelect.disabled = true;
         }
+
         // 🔥 currency
         if (inv.currency && currencySelect) {
           currencySelect.value = inv.currency;
           currencySelect.disabled = true;
         }
 
-        // 🔥 amount
-      let invoiceTotal = inv.total_amount || 0;
+        // 🔥 financial breakdown
+        if (invoiceTotalInput) invoiceTotalInput.value = invoiceTotal;
+        if (insuranceAmountInput) insuranceAmountInput.value = coveredAmount;
+        if (patientAmountInput) patientAmountInput.value = Math.max(invoiceTotal - coveredAmount, 0);
 
-      if (invoiceTotal) {
+        // 🔥 claimed amount
         amountClaimedInput.value = invoiceTotal;
-      }
 
-      amountClaimedInput.oninput = () => {
-        const val = Number(amountClaimedInput.value);
+        /* ================= LIVE GUARDS ================= */
 
-        if (val > invoiceTotal) {
-          showToast("❌ Amount cannot exceed invoice total");
-          amountClaimedInput.value = invoiceTotal;
+        // prevent claimed > invoice
+        amountClaimedInput.oninput = () => {
+          const val = Number(amountClaimedInput.value || 0);
+          if (val > invoiceTotal) {
+            showToast("❌ Amount cannot exceed invoice total");
+            amountClaimedInput.value = invoiceTotal;
+          }
+        };
+
+        // 🔥 sync insurance → patient
+        if (insuranceAmountInput) {
+          insuranceAmountInput.oninput = null;
+
+          insuranceAmountInput.oninput = () => {
+            let ins = Number(insuranceAmountInput.value || 0);
+
+            if (ins > invoiceTotal) {
+              showToast("❌ Insurance cannot exceed invoice total");
+              ins = invoiceTotal;
+              insuranceAmountInput.value = invoiceTotal;
+            }
+
+            if (patientAmountInput) {
+              patientAmountInput.value = Math.max(invoiceTotal - ins, 0);
+            }
+          };
         }
-      };
-      } catch {}
+
+      } catch {
+        showToast("❌ Failed to load invoice details");
+      }
     });
 
     /* ================= CLEAR INPUT ================= */
@@ -321,6 +354,9 @@ export async function setupInsuranceClaimFormSubmission({ form }) {
       paymentRefInput.value = entry.payment_reference || "";
       rejectionReasonInput.value = entry.rejection_reason || "";
       notesInput.value = entry.notes || "";
+      invoiceTotalInput && (invoiceTotalInput.value=entry.invoice_total||"");
+      insuranceAmountInput && (insuranceAmountInput.value=entry.insurance_amount||"");
+      patientAmountInput && (patientAmountInput.value=entry.patient_amount||"");
 
       setUI("edit");
 
@@ -358,18 +394,24 @@ export async function setupInsuranceClaimFormSubmission({ form }) {
       return;
     }
 
-    const payload = {
-      patient_id: normalizeUUID(patientHidden.value),
-      provider_id: normalizeUUID(providerSelect.value),
-      invoice_id: normalizeUUID(invoiceSelect.value),
-      claim_number: claimNumberInput.value || null,
-      currency: currencySelect.value || null,
-      amount_claimed: normalizeNumber(amountClaimedInput.value),
-      amount_approved: normalizeNumber(amountApprovedInput.value),
-      amount_paid: normalizeNumber(amountPaidInput.value),
-      payment_reference: paymentRefInput.value || null,
-      rejection_reason: rejectionReasonInput.value || null,
-      notes: notesInput.value || null,
+    const payload={
+      patient_id:normalizeUUID(patientHidden.value),
+      provider_id:normalizeUUID(providerSelect.value),
+      invoice_id:normalizeUUID(invoiceSelect.value),
+      claim_number:claimNumberInput.value||null,
+      currency:currencySelect.value||null,
+
+      invoice_total:normalizeNumber(invoiceTotalInput?.value),
+      insurance_amount:normalizeNumber(insuranceAmountInput?.value),
+      patient_amount:normalizeNumber(patientAmountInput?.value),
+
+      amount_claimed:normalizeNumber(amountClaimedInput.value),
+      amount_approved:normalizeNumber(amountApprovedInput.value),
+      amount_paid:normalizeNumber(amountPaidInput.value),
+
+      payment_reference:paymentRefInput.value||null,
+      rejection_reason:rejectionReasonInput.value||null,
+      notes:notesInput.value||null,
     };
 
     if (isSuper) {

@@ -823,12 +823,13 @@ export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
   admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
     "organization_id","facility_id",
-    "invoice_id","patient_id","provider_id",
+    "invoice_id","patient_id","provider_id","patient_insurance_id",
     "claim_number","currency",
-    "amount_claimed","amount_approved","amount_paid",
-    "payment_reference",
-    "claim_date","response_date",
-    "reviewed_at","approved_at","paid_at",
+    "invoice_total","insurance_amount","patient_amount",
+    "amount_claimed","amount_approved","amount_paid","payment_reference",
+    "coverage_amount_at_claim","coverage_currency","submission_channel",
+    "claim_date","response_date","submitted_at","reviewed_at","approved_at","paid_at",
+    "created_by_id","updated_by_id","submitted_by_id","parent_claim_id",
     "rejection_reason","notes","status"
   ],
   staff: [
@@ -837,7 +838,6 @@ export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
     "amount_claimed","status"
   ]
 };
-
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_DEFAULTS_NEWBORN_RECORD = {
   admin: FIELD_ORDER_NEWBORN_RECORD,

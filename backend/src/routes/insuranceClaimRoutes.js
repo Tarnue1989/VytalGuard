@@ -70,9 +70,9 @@ router.put(`/:id(${UUIDv4})`, verifyAuth, updateInsuranceClaim);
 ========================= */
 router.delete(`/:id(${UUIDv4})`, verifyAuth, deleteInsuranceClaim);
 
-/* =========================
+/* ============================================================
    🔄 STATUS ACTIONS (ENTERPRISE FLOW)
-========================= */
+============================================================ */
 
 // 1️⃣ DRAFT → SUBMITTED
 router.patch(`/:id(${UUIDv4})/submit`, verifyAuth, submitInsuranceClaim);
@@ -101,11 +101,15 @@ router.patch(
 );
 
 // 7️⃣ PROCESSING → PAID
-router.patch(`/:id(${UUIDv4})/mark-paid`, verifyAuth, markInsuranceClaimPaid);
+router.patch(
+  `/:id(${UUIDv4})/mark-paid`,
+  verifyAuth,
+  markInsuranceClaimPaid
+);
 
 // 8️⃣ PAID → REVERSED
 router.patch(
-  `/:id(${UUIDv4})/reverse`,
+  `/:id(${UUIDv4})/reverse-payment`, // 🔥 FIXED (was wrong before)
   verifyAuth,
   reverseInsuranceClaimPayment
 );

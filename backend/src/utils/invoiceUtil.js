@@ -43,7 +43,7 @@ const VALID_WAIVER_STATUS = DISCOUNT_WAIVER_STATUS.APPLIED;
 const VALID_DISCOUNT_STATUS = DISCOUNT_STATUS.FINALIZED;
 
 /* ============================================================
-   🔁 RECALC ENGINE
+   🔁 RECALC ENGINE (FINAL — LOCK SAFE)
 ============================================================ */
 export async function recalcInvoice(invoiceId, t = null) {
   global.__recalcLocks = global.__recalcLocks || {};
@@ -59,7 +59,72 @@ export async function recalcInvoice(invoiceId, t = null) {
     debug.log("START recalcInvoice", { invoiceId });
 
     const invoice = await db.Invoice.findByPk(invoiceId, { transaction: t });
+
+    // ✅ FIX: NULL SAFETY FIRST
     if (!invoice) throw new Error("❌ Invoice not found");
+
+    /* ============================================================
+      🔒 LOCK CHECK (MUST BE EARLY)
+    ============================================================ */
+    if (invoice.is_locked) {
+      debug.log("LOCKED → payment-only recalculation", { invoiceId });
+
+      const totalPaid =
+        (await db.Payment.sum("amount", {
+          where: {
+            invoice_id: invoiceId,
+            status: { [Op.in]: VALID_PAYMENT_STATUSES },
+          },
+          transaction: t,
+        })) || 0;
+
+      const totalDeposits =
+        (await db.Deposit.sum("applied_amount", {
+          where: {
+            applied_invoice_id: invoiceId,
+            applied_amount: { [Op.gt]: 0 },
+          },
+          transaction: t,
+        })) || 0;
+
+      const totalRefunds =
+        (await db.Refund.sum("amount", {
+          where: {
+            invoice_id: invoiceId,
+            status: { [Op.in]: VALID_REFUND_STATUSES },
+          },
+          transaction: t,
+        })) || 0;
+
+      const effectivePaid =
+        Number(totalPaid) +
+        Number(totalDeposits) -
+        Number(totalRefunds);
+
+      let balance = Number(invoice.total || 0) - effectivePaid;
+      if (balance < 0) balance = 0;
+
+      let newStatus = INVOICE_STATUS.UNPAID;
+
+      if (balance <= 0 && invoice.total > 0) {
+        newStatus = INVOICE_STATUS.PAID;
+      } else if (effectivePaid > 0 && balance > 0) {
+        newStatus = INVOICE_STATUS.PARTIAL;
+      }
+
+      await invoice.update(
+        {
+          total_paid: round2(totalPaid),
+          applied_deposits: round2(totalDeposits),
+          refunded_amount: round2(totalRefunds),
+          balance: round2(balance),
+          status: newStatus,
+        },
+        { transaction: t }
+      );
+
+      return invoice;
+    }
 
     /* ============================================================
        🧾 BASE TOTALS
@@ -80,7 +145,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     );
 
     /* ============================================================
-       💸 DISCOUNTS (MOVE UP — FIXED)
+       💸 DISCOUNTS
     ============================================================ */
     const totalDiscounts =
       (await db.Discount.sum("applied_amount", {
@@ -94,7 +159,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     const netAfterDiscount = subtotal - Number(totalDiscounts || 0);
 
     /* ============================================================
-       🏥 INSURANCE (AFTER DISCOUNT — FIXED)
+       🏥 INSURANCE
     ============================================================ */
     const policy = await db.PatientInsurance.findOne({
       where: {
@@ -113,11 +178,10 @@ export async function recalcInvoice(invoiceId, t = null) {
     const totalPatient = netAfterDiscount - totalInsurance;
 
     /* ============================================================
-       🔄 DISTRIBUTE INSURANCE (BASED ON NET — FIXED)
+       🔄 DISTRIBUTE INSURANCE
     ============================================================ */
     if (items.length) {
-      const totalItems = subtotal; // keep original proportions
-
+      const totalItems = subtotal;
       let distributed = 0;
 
       for (let i = 0; i < items.length; i++) {
@@ -189,9 +253,6 @@ export async function recalcInvoice(invoiceId, t = null) {
     let balance = total - effectivePaid;
     if (balance < 0) balance = 0;
 
-    /* ============================================================
-       📊 STATUS
-    ============================================================ */
     let newStatus = INVOICE_STATUS.UNPAID;
 
     if (balance <= 0 && total > 0) {
@@ -201,7 +262,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💾 UPDATE
+       🔓 NORMAL FULL RECALC
     ============================================================ */
     await invoice.update(
       {

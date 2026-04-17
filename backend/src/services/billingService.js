@@ -42,51 +42,186 @@ async function updateInvoiceStatus(invoiceId, transaction) {
 
   await invoice.save({ transaction });
 }
-async function resolveInsuranceFromEntity(entity, transaction) {
-  /* ================= 1️⃣ FROM REGISTRATION ================= */
-  let registration = null;
 
-  if (entity?.registration_log_id) {
-    registration = await sequelize.models.RegistrationLog.findByPk(
-      entity.registration_log_id,
-      { transaction }
-    );
+
+  async function resolveInsuranceFromEntity(entity, transaction) {
+    /* ================= 1️⃣ FROM REGISTRATION ================= */
+    let registration = null;
+
+    if (entity?.registration_log_id) {
+      registration = await sequelize.models.RegistrationLog.findByPk(
+        entity.registration_log_id,
+        { transaction }
+      );
+    }
+
+    // 🔥 fallback: latest registration
+    if (!registration && entity?.patient_id) {
+      registration = await sequelize.models.RegistrationLog.findOne({
+        where: { patient_id: entity.patient_id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+    }
+
+    /* ================= 2️⃣ INSURANCE ================= */
+    if (registration?.patient_insurance_id) {
+      const pi = await sequelize.models.PatientInsurance.findByPk(
+        registration.patient_insurance_id,
+        { transaction }
+      );
+
+      if (pi) {
+        return {
+          payer_type: "insurance",
+
+          // 🔥 CRITICAL FIX (THIS WAS MISSING)
+          patient_insurance_id: pi.id,
+
+          insurance_provider_id: pi.provider_id,
+
+          coverage_amount: parseFloat(pi.coverage_limit || 0),
+          coverage_currency: pi.currency || "LRD",
+        };
+      }
+    }
+
+    /* ================= 3️⃣ CASH FALLBACK ================= */
+    return {
+      payer_type: entity?.payer_type || "cash",
+
+      // 🔥 keep structure consistent
+      patient_insurance_id: null,
+
+      insurance_provider_id: null,
+      coverage_amount: 0,
+      coverage_currency: entity?.currency || "LRD",
+    };
   }
 
-  // 🔥 fallback: latest registration
-  if (!registration && entity?.patient_id) {
-    registration = await sequelize.models.RegistrationLog.findOne({
-      where: { patient_id: entity.patient_id },
-      order: [["created_at", "DESC"]],
-      transaction,
+
+/* ============================================================
+   🔥 FINALIZE VISIT BILLING (VISIT-BASED CLAIM) — FINAL FIX
+============================================================ */
+async function finalizeVisitBilling({
+  registration_log_id,
+  user,
+  transaction,
+}) {
+  const t = transaction;
+
+  console.log("🔥 [FINALIZE START]", {
+    registration_log_id,
+    rawUser: user,
+  });
+
+  /* ================= SAFE ORG ================= */
+  const orgId =
+    user.organization_id || user.organizationId || null;
+
+  /* ================= 🔥 FIX: SAFE FACILITY ================= */
+  const facilityId =
+    user.facility_id ||
+    user.facilityId ||
+    (Array.isArray(user.facility_ids)
+      ? user.facility_ids[0]
+      : null);
+
+  console.log("🔥 [ORG RESOLUTION]", {
+    resolvedOrgId: orgId,
+    resolvedFacilityId: facilityId,
+  });
+
+  if (!orgId) {
+    throw new Error("finalizeVisitBilling: organization_id missing");
+  }
+
+  /* ================= LOAD INVOICE ================= */
+  const invoice = await Invoice.findOne({
+    where: {
+      registration_log_id,
+      organization_id: orgId,
+      ...(facilityId && { facility_id: facilityId }),
+      is_locked: false,
+    },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  console.log("📄 [INVOICE RESULT]", {
+    found: !!invoice,
+    invoice_id: invoice?.id,
+  });
+
+  if (!invoice) return null;
+
+  /* ================= STATUS UPDATE ================= */
+  console.log("🔄 [STATUS UPDATE START]", {
+    invoice_id: invoice.id,
+  });
+
+  await updateInvoiceStatus(invoice.id, t);
+
+  /* ================= CLAIM ================= */
+  if (
+    invoice.payer_type === "insurance" &&
+    invoice.patient_insurance_id &&
+    invoice.insurance_provider_id
+  ) {
+    console.log("🧾 [CLAIM CHECK]", {
+      invoice_id: invoice.id,
     });
-  }
 
-  if (registration?.patient_insurance_id) {
-    const pi = await sequelize.models.PatientInsurance.findByPk(
-      registration.patient_insurance_id,
-      { transaction }
-    );
+    const existing = await InsuranceClaim.findOne({
+      where: { invoice_id: invoice.id },
+      transaction: t,
+    });
 
-    if (pi) {
-      return {
-        payer_type: "insurance",
-        insurance_provider_id: pi.provider_id,
-        coverage_amount: parseFloat(pi.coverage_limit || 0),
-        coverage_currency: pi.currency || "LRD",
-      };
+    if (!existing) {
+      console.log("🚀 [CREATING CLAIM]", {
+        invoice_id: invoice.id,
+      });
+
+      const claim = await insuranceService.createClaimFromInvoice({
+        invoice_id: invoice.id,
+        user,
+        transaction: t,
+      });
+
+      console.log("✅ [CLAIM CREATED]", {
+        claim_id: claim?.id,
+      });
+
+      invoice.insurance_claim_id = claim.id;
     }
   }
 
-  /* ================= CASH FALLBACK ================= */
-  return {
-    payer_type: entity?.payer_type || "cash",
-    insurance_provider_id: null,
-    coverage_amount: 0,
-    coverage_currency: entity?.currency || "LRD",
-  };
-}
+  /* ================= SAVE ================= */
+  console.log("💾 [SAVE BEFORE LOCK]", {
+    invoice_id: invoice.id,
+  });
 
+  await invoice.save({ transaction: t });
+
+  /* ================= LOCK ================= */
+  console.log("🔒 [LOCKING INVOICE]", {
+    invoice_id: invoice.id,
+  });
+
+  await Invoice.update(
+    { is_locked: true },
+    {
+      where: { id: invoice.id },
+      transaction: t,
+    }
+  );
+
+  console.log("✅ [FINALIZE COMPLETE]", {
+    invoice_id: invoice.id,
+  });
+
+  return invoice;
+}
 /**
  * billingService – Enterprise-grade auto billing engine
  * 🔒 WRITE-SCOPE ONLY
@@ -94,6 +229,7 @@ async function resolveInsuranceFromEntity(entity, transaction) {
  * 🔒 FK-driven (feature_module_id ONLY)
  */
 export const billingService = {
+  finalizeVisitBilling,
   /* ============================================================
     1️⃣ TRIGGER AUTO BILLING (FINAL — ENTERPRISE SAFE)
   ============================================================ */
@@ -104,18 +240,48 @@ export const billingService = {
     user,
     transaction,
   }) {
+    console.log("🔥 [TRIGGER START]", {
+      module_key,
+      entity,
+      rawUser: user,
+    });
+
     feature_module_id = await resolveFeatureModuleId({
       feature_module_id,
       module_key,
     });
 
-    if (!entity?.patient_id) return null;
+    if (!entity?.patient_id) {
+      console.warn("⚠️ [NO PATIENT ID] Skipping billing");
+      return null;
+    }
 
-    const { orgId, facilityId } = await resolveOrgFacility({
-      user,
-      body: entity,
+    /* ============================================================
+      🔥 FIX: SAFE ORG/FAC (NO RESOLVER)
+    ============================================================ */
+    const orgId =
+      user.organization_id || user.organizationId || null;
+
+    const facilityId =
+      user.facility_id || user.facilityId || null;
+
+    console.log("🔥 [ORG RESOLUTION - TRIGGER]", {
+      organization_id: user.organization_id,
+      organizationId: user.organizationId,
+      resolvedOrgId: orgId,
+      facility_id: user.facility_id,
+      facilityId: user.facilityId,
+      resolvedFacilityId: facilityId,
     });
 
+    if (!orgId) {
+      console.error("❌ [ORG ERROR - TRIGGER]", {
+        user,
+      });
+      throw new Error("triggerAutoBilling: organization_id missing");
+    }
+
+    /* ================= BILLING RULE CHECK ================= */
     const allowed = await shouldTriggerBillingDB({
       feature_module_id,
       status: entity.log_status || entity.status,
@@ -123,7 +289,7 @@ export const billingService = {
       facility_id: facilityId,
     });
 
-    debug.log("STEP 2: BILLING TRIGGER", {
+    console.log("🧭 [TRIGGER CHECK]", {
       allowed,
       status: entity.log_status || entity.status,
       entity_id: entity.id,
@@ -131,6 +297,7 @@ export const billingService = {
 
     if (!allowed) return null;
 
+    /* ================= DUPLICATE CHECK ================= */
     const existing = await InvoiceItem.findOne({
       where: {
         feature_module_id,
@@ -140,8 +307,14 @@ export const billingService = {
       transaction,
     });
 
-    if (existing) return null;
+    if (existing) {
+      console.warn("⚠️ [DUPLICATE BILLING BLOCKED]", {
+        entity_id: entity.id,
+      });
+      return null;
+    }
 
+    /* ================= LOAD RULE ================= */
     const rule = await AutoBillingRule.findOne({
       where: {
         trigger_feature_module_id: feature_module_id,
@@ -153,15 +326,36 @@ export const billingService = {
       transaction,
     });
 
-    if (!rule || !rule.billableItem) return null;
+    if (!rule || !rule.billableItem) {
+      console.warn("⚠️ [NO BILLING RULE]");
+      return null;
+    }
 
+    /* ================= INSURANCE ================= */
     const insuranceData = await resolveInsuranceFromEntity(
       entity,
       transaction
     );
 
-    debug.log("STEP 1: INSURANCE DATA", insuranceData);
+    console.log("🧾 [INSURANCE DATA]", insuranceData);
 
+    let registrationId = entity?.registration_log_id;
+
+    if (!registrationId && entity?.patient_id) {
+      const latestReg = await sequelize.models.RegistrationLog.findOne({
+        where: { patient_id: entity.patient_id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+
+      registrationId = latestReg?.id;
+    }
+
+    console.log("🔗 [REGISTRATION LINK]", {
+      registrationId,
+    });
+
+    /* ================= PRICE ================= */
     const { price } = await getBillableItemPrice({
       billable_item_id: rule.billableItem.id,
       payer_type: insuranceData.payer_type,
@@ -171,12 +365,18 @@ export const billingService = {
       transaction,
     });
 
-    /* ============================================================
-      🔍 FIND SAFE INVOICE (FIXED)
-    ============================================================ */
+    console.log("💰 [PRICE RESOLVED]", { price });
+
+    /* ================= FIND INVOICE ================= */
+    console.log("🔍 [QUERY INVOICE - TRIGGER]", {
+      registrationId,
+      orgId,
+      facilityId,
+    });
+
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: entity.patient_id,
+        registration_log_id: registrationId,
         organization_id: orgId,
         facility_id: facilityId,
         is_locked: false,
@@ -187,33 +387,27 @@ export const billingService = {
       transaction,
     });
 
-    if (invoice && invoice.currency !== (entity.currency || "LRD")) {
-      invoice = null;
-    }
-
-    debug.log("STEP 3: INVOICE FOUND", {
+    console.log("📄 [INVOICE FOUND - TRIGGER]", {
+      found: !!invoice,
       invoice_id: invoice?.id,
     });
 
-    /* ============================================================
-      🧾 CREATE INVOICE
-    ============================================================ */
+    if (invoice && invoice.currency !== (entity.currency || "LRD")) {
+      console.warn("⚠️ [CURRENCY MISMATCH → NEW INVOICE]");
+      invoice = null;
+    }
+
+    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
+      console.log("🧾 [CREATING NEW INVOICE]");
+
       const today = new Date();
       today.setDate(today.getDate() + 30);
-
-      let providerName = null;
-      if (insuranceData.insurance_provider_id) {
-        const provider = await sequelize.models.InsuranceProvider.findByPk(
-          insuranceData.insurance_provider_id,
-          { transaction }
-        );
-        providerName = provider?.name || null;
-      }
 
       invoice = await Invoice.create(
         {
           patient_id: entity.patient_id,
+          registration_log_id: registrationId,
           organization_id: orgId,
           facility_id: facilityId,
 
@@ -221,12 +415,10 @@ export const billingService = {
           currency: entity.currency || "LRD",
 
           payer_type: insuranceData.payer_type,
+          patient_insurance_id: insuranceData.patient_insurance_id,
+
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
-
-          insurance_provider_name: providerName,
-          coverage_amount_initial: insuranceData.coverage_amount,
-          coverage_currency: insuranceData.coverage_currency,
 
           insurance_amount: 0,
           total: 0,
@@ -239,68 +431,14 @@ export const billingService = {
         { transaction }
       );
 
-      if (invoice.insurance_provider_id) {
-        await insuranceService.createClaimFromInvoice({
-          invoice_id: invoice.id,
-          user,
-          transaction,
-        });
-      }
-    }
-
-    /* ============================================================
-      🔄 FX CONVERSION (FIXED PARAMS)
-    ============================================================ */
-    if (
-      invoice.insurance_provider_id &&
-      insuranceData.coverage_currency &&
-      invoice.currency &&
-      insuranceData.coverage_currency !== invoice.currency
-    ) {
-      const originalAmount = Number(invoice.coverage_amount || 0);
-
-      const convertedAmount = await fxService.convert({
-        amount: originalAmount,
-        from_currency: insuranceData.coverage_currency,
-        to_currency: invoice.currency,
-        organization_id: orgId,
-        facility_id: facilityId,
-        transaction,
+      console.log("✅ [INVOICE CREATED]", {
+        invoice_id: invoice.id,
       });
-
-      invoice.coverage_amount = Number(convertedAmount || 0);
-      await invoice.save({ transaction });
     }
 
-    /* ============================================================
-      💰 CALCULATIONS (FIXED)
-    ============================================================ */
-    const round = (v) => Number(parseFloat(v).toFixed(2));
+    /* ================= ITEM CREATION ================= */
+    console.log("🧾 [CREATING INVOICE ITEM]");
 
-    const quantity = 1;
-    const total = round(price * quantity);
-
-    const taxRate = rule.billableItem.taxable ? getTaxRate("GST") : 0;
-    const taxAmount = round(total * (taxRate / 100));
-    const net = round(total + taxAmount);
-
-    let insuranceAmount = 0;
-    let patientAmount = net;
-
-    if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-      const remaining = round(invoice.coverage_amount);
-
-      insuranceAmount = round(Math.min(net, remaining));
-      patientAmount = round(net - insuranceAmount);
-
-      /* 🔥 CRITICAL FIX: REDUCE COVERAGE */
-      invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
-      await invoice.save({ transaction });
-    }
-
-    /* ============================================================
-      🧾 CREATE ITEM (FIXED TOTALS)
-    ============================================================ */
     const item = await InvoiceItem.create(
       {
         invoice_id: invoice.id,
@@ -310,14 +448,7 @@ export const billingService = {
 
         description: rule.billableItem.name,
         unit_price: price,
-        quantity,
-
-        tax_amount: taxAmount,
-        total_price: total,
-        net_amount: net,
-
-        insurance_amount: insuranceAmount,
-        patient_amount: patientAmount,
+        quantity: 1,
 
         feature_module_id,
         entity_id: entity.id,
@@ -327,12 +458,19 @@ export const billingService = {
       { transaction }
     );
 
+    console.log("✅ [ITEM CREATED]", {
+      item_id: item.id,
+    });
+
     await recalcInvoice(invoice.id, transaction);
     await updateInvoiceStatus(invoice.id, transaction);
 
+    console.log("🏁 [TRIGGER COMPLETE]", {
+      invoice_id: invoice.id,
+    });
+
     return { invoice, item };
   },
-
   /* ============================================================
     2️⃣ BILL ORDER ITEMS (FINAL — ENTERPRISE SAFE)
   ============================================================ */
@@ -377,13 +515,23 @@ export const billingService = {
       order,
       transaction
     );
+    let registrationId = order?.registration_log_id;
 
+    if (!registrationId && order?.patient_id) {
+      const latestReg = await sequelize.models.RegistrationLog.findOne({
+        where: { patient_id: order.patient_id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+
+      registrationId = latestReg?.id;
+    }
     /* ============================================================
       🔍 SAFE INVOICE FIND (FIXED)
     ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: order.patient_id,
+        registration_log_id: registrationId,
         organization_id: orgId,
         ...(facilityId
           ? { facility_id: facilityId }
@@ -410,6 +558,7 @@ export const billingService = {
       invoice = await Invoice.create(
         {
           patient_id: order.patient_id,
+          registration_log_id: registrationId,
           organization_id: orgId,
           facility_id: facilityId,
 
@@ -428,14 +577,6 @@ export const billingService = {
         },
         { transaction }
       );
-
-      if (invoice.insurance_provider_id) {
-        await insuranceService.createClaimFromInvoice({
-          invoice_id: invoice.id,
-          user,
-          transaction,
-        });
-      }
     }
 
     /* ============================================================
@@ -452,11 +593,7 @@ export const billingService = {
 
       await invoice.save({ transaction });
 
-      await insuranceService.createClaimFromInvoice({
-        invoice_id: invoice.id,
-        user,
-        transaction,
-      });
+
     }
 
     const round = (v) => Number(parseFloat(v).toFixed(2));
@@ -609,13 +746,23 @@ export const billingService = {
       labRequest,
       transaction
     );
+    let registrationId = labRequest?.registration_log_id;
 
+    if (!registrationId && labRequest?.patient_id) {
+      const latestReg = await sequelize.models.RegistrationLog.findOne({
+        where: { patient_id: labRequest.patient_id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+
+      registrationId = latestReg?.id;
+    }
     /* ============================================================
       🔍 SAFE INVOICE FIND (FIXED)
     ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: labRequest.patient_id,
+        registration_log_id: registrationId,
         organization_id: orgId,
         ...(facilityId
           ? { facility_id: facilityId }
@@ -639,6 +786,7 @@ export const billingService = {
       invoice = await Invoice.create(
         {
           patient_id: labRequest.patient_id,
+          registration_log_id: registrationId,
           organization_id: orgId,
           facility_id: facilityId,
 
@@ -656,14 +804,6 @@ export const billingService = {
         },
         { transaction }
       );
-
-      if (invoice.insurance_provider_id) {
-        await insuranceService.createClaimFromInvoice({
-          invoice_id: invoice.id,
-          user,
-          transaction,
-        });
-      }
     }
 
     /* ============================================================
@@ -680,11 +820,6 @@ export const billingService = {
 
       await invoice.save({ transaction });
 
-      await insuranceService.createClaimFromInvoice({
-        invoice_id: invoice.id,
-        user,
-        transaction,
-      });
     }
 
     const round = (v) => Number(parseFloat(v).toFixed(2));
@@ -819,13 +954,23 @@ export const billingService = {
       prescription,
       transaction
     );
+    let registrationId = prescription?.registration_log_id;
 
+    if (!registrationId && prescription?.patient_id) {
+      const latestReg = await sequelize.models.RegistrationLog.findOne({
+        where: { patient_id: prescription.patient_id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+
+      registrationId = latestReg?.id;
+    }
     /* ============================================================
       🔍 SAFE INVOICE FIND (FIXED)
     ============================================================ */
     let invoice = await Invoice.findOne({
       where: {
-        patient_id: prescription.patient_id,
+        registration_log_id: registrationId,
         organization_id: orgId,
         ...(facilityId
           ? { facility_id: facilityId }
@@ -849,6 +994,7 @@ export const billingService = {
       invoice = await Invoice.create(
         {
           patient_id: prescription.patient_id,
+          registration_log_id: registrationId,
           organization_id: orgId,
           facility_id: facilityId,
 
@@ -866,14 +1012,6 @@ export const billingService = {
         },
         { transaction }
       );
-
-      if (invoice.insurance_provider_id) {
-        await insuranceService.createClaimFromInvoice({
-          invoice_id: invoice.id,
-          user,
-          transaction,
-        });
-      }
     }
 
     /* ============================================================
@@ -889,12 +1027,6 @@ export const billingService = {
       invoice.coverage_amount = insuranceData.coverage_amount;
 
       await invoice.save({ transaction });
-
-      await insuranceService.createClaimFromInvoice({
-        invoice_id: invoice.id,
-        user,
-        transaction,
-      });
     }
 
     const round = (v) => Number(parseFloat(v).toFixed(2));

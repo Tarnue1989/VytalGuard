@@ -120,9 +120,12 @@
                           <select id="filterStatus" class="form-select">
                             <option value="">All</option>
                             <option value="draft">Draft</option>
-                            <option value="pending">Pending</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="in_review">In Review</option>
                             <option value="approved">Approved</option>
+                            <option value="paid">Paid</option>
                             <option value="rejected">Rejected</option>
+                            <option value="cancelled">Cancelled</option>
                           </select>
                         </div>
                       </div>
@@ -224,7 +227,11 @@
 
                 <!-- SUMMARY -->
                 <hr class="my-2">
-                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
+                <div class="text-muted fw-semibold small mb-1">Claims & Financial Summary</div>
+                <small class="text-muted d-block mb-2">
+                  Includes totals for claimed, approved, paid, and coverage breakdown
+                </small>
+
                 <div class="module-summary">
                   <div id="moduleSummary"></div>
                 </div>
@@ -260,6 +267,62 @@
   <div id="loadingOverlay" class="hidden">
     <div class="spinner-box">
       <i class="fas fa-spinner fa-spin"></i> Loading...
+    </div>
+  </div>
+  <!-- ✅ APPROVE CLAIM MODAL (BASED ON DEPOSIT) -->
+  <div id="claimApproveModal" class="modal hidden">
+    <div class="modal-content">
+
+      <!-- HEADER -->
+      <div class="modal-header">
+        <h2>Approve Claim</h2>
+        <button class="close-btn" data-close="claimApproveModal">&times;</button>
+      </div>
+
+      <!-- BODY -->
+      <div class="modal-body">
+        <form id="claimApproveForm">
+
+          <!-- Hidden ID -->
+          <input type="hidden" id="approveClaimId">
+
+          <!-- Approved Amount -->
+          <div class="mb-3">
+            <label class="form-label">Approved Amount (Insurance Pays)</label>
+              <input
+                type="number"
+                id="approveAmount"
+                class="form-control"
+                step="0.01"
+                min="0.01"
+                required
+              >
+          </div>
+
+          <!-- Notes (optional) -->
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea
+              id="approveNotes"
+              class="form-control"
+              rows="2"
+              placeholder="Optional notes..."
+            ></textarea>
+          </div>
+
+          <!-- ACTIONS -->
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" data-close="claimApproveModal">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-success">
+              <i class="fas fa-check me-1"></i> Approve
+            </button>
+          </div>
+
+        </form>
+      </div>
+
     </div>
   </div>
   <!-- JS (UNCHANGED) -->

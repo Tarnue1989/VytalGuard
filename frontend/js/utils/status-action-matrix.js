@@ -20,14 +20,17 @@ export const STATUS_ACTION_MATRIX = {
   patient_insurances:{active:["edit","toggle-status","delete","print"],inactive:["edit","toggle-status","delete"],cancelled:["restore"],deleted:["restore"]},
 
   insurance_claim:{
-    draft:["edit","submit","delete"],
-    submitted:["review"],
-    in_review:["approve","partial-approve","reject"],
-    approved:["process-payment"],
-    partially_approved:["process-payment"],
-    processing_payment:["mark-paid"],
-    paid:["reverse-payment"],
-    rejected:[],cancelled:[],voided:[],reversed:[]
+    draft:["edit","submit","delete","view-invoice","print-invoice"],
+    submitted:["review","view-invoice","print-invoice"],
+    in_review:["approve","partial-approve","reject","view-invoice","print-invoice"],
+    approved:["process-payment","view-invoice","print-invoice"],
+    partially_approved:["process-payment","view-invoice","print-invoice"],
+    processing_payment:["mark-paid","view-invoice","print-invoice"],
+    paid:["reverse-payment","view-invoice","print-invoice"],
+    rejected:["view-invoice"],
+    cancelled:["view-invoice"],
+    voided:["view-invoice"],
+    reversed:["view-invoice"]
   },
 
   /* 💰 DEPOSIT / PAYMENT */
@@ -229,6 +232,8 @@ const ICONS = {
   void:"fa-xmark-circle",restore:"fa-arrow-rotate-right",delete:"fa-trash",
   print:"fa-print",
   pay:"fa-money-bill-wave", reopen:"fa-rotate-right",
+  "view-invoice":"fa-file-invoice",
+  "print-invoice":"fa-print",
 
   // ✅ ONLY THIS PART CHANGED
   "toggle-status":"fa-toggle-on",
@@ -250,18 +255,20 @@ const COLORS = {
   void:"danger",restore:"primary",delete:"danger",
   print:"info","toggle-status":"secondary",
   lock:"secondary",unlock:"warning", pay:"success",  reopen:"warning",
-  "reset-password":"warning","generate-token":"info","revoke-sessions":"danger"
+  "reset-password":"warning","generate-token":"info","revoke-sessions":"danger",
+  "view-invoice":"primary",
+  "print-invoice":"info",
 };
 
 /* ================= ORDER ================= */
 const ORDER = [
-  "view","edit","start","activate",
+  "view","view-invoice","edit","start","activate",
   "dispense","partial-dispense",
   "complete","review","verify","finalize",
   "apply","process","reverse","clear","revert",
   "approve","reject","cancel","void",
   "toggle-status","lock","unlock",
-  "restore","delete","print",
+  "restore","delete","print","print-invoice",
   "reset-password","generate-token","revoke-sessions"
 ];
 const actionLabels = {
@@ -277,7 +284,9 @@ const actionLabels = {
   "generate-token":"Generate Token",
   "revoke-sessions":"Revoke Sessions",
   submit:"Submit",issue:"Issue",fulfill:"Fulfill",
-  "process-payment":"Process Payment","mark-paid":"Mark Paid"
+  "process-payment":"Process Payment","mark-paid":"Mark Paid",
+  "view-invoice":"Invoice",
+  "print-invoice":"Print Invoice",
 };
 
 /* ================= MAIN ================= */
@@ -335,12 +344,7 @@ export function buildActionButtons({module,status,entry,entryId,user,permissionP
   let html="";
 
   for(const act of allowed){
-    let backend=act
-      .replace("toggle-status","toggle_status")
-      .replace("reset-password","reset_password")
-      .replace("generate-token","generate_token")
-      .replace("revoke-sessions","revoke_sessions");
-
+    let backend = act.replaceAll("-", "_");
     const permKey=`${permissionPrefix}:${backend}`;
 
     if(isSuperAdmin||perms.has(permKey)){

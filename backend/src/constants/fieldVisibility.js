@@ -849,17 +849,18 @@ export const FIELD_VISIBILITY_PATIENT_INSURANCE = {
 };
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_VISIBILITY_INSURANCE_CLAIM = {
-  superadmin: FIELD_ORDER_INSURANCE_CLAIM,
-  organization_admin: FIELD_ORDER_INSURANCE_CLAIM,
-  manager: [
-    "id","invoice_id","patient_id","provider_id",
+  superadmin:FIELD_ORDER_INSURANCE_CLAIM,
+  organization_admin:FIELD_ORDER_INSURANCE_CLAIM,
+  manager:[
+    "id","invoice_id","patient_id","provider_id","patient_insurance_id",
     "claim_number","currency",
+    "invoice_total","insurance_amount","patient_amount",
     "amount_claimed","amount_approved","amount_paid",
-    "claim_date","response_date",
-    "reviewed_at","approved_at","paid_at",
-    "rejection_reason","notes","status"
+    "coverage_amount_at_claim","coverage_currency","submission_channel",
+    "claim_date","response_date","submitted_at","reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","parent_claim_id","status"
   ],
-  staff: [
+  staff:[
     "id","invoice_id","patient_id","provider_id",
     "claim_number","currency",
     "amount_claimed","status"

@@ -34,7 +34,42 @@ export async function upsertRoleAccess({
     throw new Error("One or more modules not found");
   }
 
-  const moduleKeys = modules.map(m => m.key);
+  const moduleKeys = modules.map((m) => m.key);
+
+  /* ============================================================ */
+  // 🔥 CLEANUP OLD MODULE PERMISSIONS
+  const allowedPermissions = await Permission.findAll({
+    where: { module: moduleKeys },
+    attributes: ["id"],
+    transaction,
+  });
+
+  const allowedPermissionIds = new Set(
+    allowedPermissions.map((p) => p.id)
+  );
+
+  const existingAll = await RolePermission.findAll({
+    where: { role_id, organization_id, facility_id },
+    attributes: ["permission_id"],
+    transaction,
+  });
+
+  const invalidPermissionIds = existingAll
+    .map((e) => e.permission_id)
+    .filter((id) => !allowedPermissionIds.has(id));
+
+  if (invalidPermissionIds.length) {
+    await RolePermission.destroy({
+      where: {
+        role_id,
+        permission_id: { [Op.in]: invalidPermissionIds },
+        organization_id,
+        facility_id,
+      },
+      force: true,
+      transaction,
+    });
+  }
 
   /* ============================================================ */
   for (const m of modules) {
@@ -50,7 +85,7 @@ export async function upsertRoleAccess({
     transaction,
   });
 
-  const featurePayload = module_ids.map(module_id => ({
+  const featurePayload = module_ids.map((module_id) => ({
     role_id,
     module_id,
     organization_id,
@@ -69,21 +104,31 @@ export async function upsertRoleAccess({
   });
 
   /* ============================================================ */
+  // 🔥 FIXED VALIDATION (handles singular/plural automatically)
   for (const p of incomingPerms) {
     let permissionModule = p.key.split(":")[0];
 
-    // 🔥 HANDLE LEGACY BUGS (normalize once)
+    // 🔥 HANDLE IRREGULAR PLURALS
     const MODULE_KEY_MAP = {
-      registration_log: "registration_logs",
-      finance: "finance_reports",
-      finances: "finance_reports",
-      insurance_provider: "insurance_providers",
+      feature_accesses: "feature_access",
+      feature_modules: "feature_modules", // safe
       organization_brandings: "organization_branding",
+      insurance_providers: "insurance_provider",
+      finance_reports: "finance",
     };
 
-    permissionModule = MODULE_KEY_MAP[permissionModule] || permissionModule;
+    const normalizedModule =
+      MODULE_KEY_MAP[permissionModule] || permissionModule;
 
-    if (!moduleKeys.includes(permissionModule)) {
+    const isMatch = moduleKeys.some((modKey) => {
+      return (
+        normalizedModule === modKey ||         // exact
+        normalizedModule === modKey + "s" ||   // plural
+        normalizedModule + "s" === modKey      // singular
+      );
+    });
+
+    if (!isMatch) {
       throw new Error(
         `Permission '${permissionModule}' not allowed (module not selected)`
       );
@@ -97,8 +142,8 @@ export async function upsertRoleAccess({
     transaction,
   });
 
-  const existingIds = new Set(existing.map(e => e.permission_id));
-  const incomingIds = new Set(incomingPerms.map(p => p.id));
+  const existingIds = new Set(existing.map((e) => e.permission_id));
+  const incomingIds = new Set(incomingPerms.map((p) => p.id));
 
   /* ============================================================ */
   const toAdd = [];
@@ -127,7 +172,7 @@ export async function upsertRoleAccess({
 
   /* ============================================================ */
   if (toAdd.length) {
-    const payload = toAdd.map(permission_id => ({
+    const payload = toAdd.map((permission_id) => ({
       role_id,
       permission_id,
       organization_id,
@@ -137,7 +182,7 @@ export async function upsertRoleAccess({
 
     await RolePermission.bulkCreate(payload, {
       transaction,
-      ignoreDuplicates: true, // 🔥 FINAL FIX (CRITICAL)
+      ignoreDuplicates: true,
     });
   }
 

@@ -721,18 +721,17 @@ export const FIELD_ORDER_PATIENT_INSURANCE = [
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_ORDER_INSURANCE_CLAIM = [
   "id","organization_id","facility_id",
-  "invoice_id","patient_id","provider_id",
+  "invoice_id","patient_id","provider_id","patient_insurance_id",
   "claim_number","currency",
-  "amount_claimed","amount_approved","amount_paid",
-  "payment_reference",
-  "claim_date","response_date",
-  "reviewed_at","approved_at","paid_at",
-  "rejection_reason","notes",
+  "invoice_total","insurance_amount","patient_amount",
+  "amount_claimed","amount_approved","amount_paid","payment_reference",
+  "coverage_amount_at_claim","coverage_currency","submission_channel",
+  "claim_date","response_date","submitted_at","reviewed_at","approved_at","paid_at",
+  "rejection_reason","notes","parent_claim_id",
   "status",
   "created_at","updated_at","deleted_at",
-  "created_by_id","updated_by_id","deleted_by_id"
+  "created_by_id","updated_by_id","deleted_by_id","submitted_by_id"
 ];
-
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_ORDER_NEWBORN_RECORD = [
   "id", "organization_id", "facility_id",

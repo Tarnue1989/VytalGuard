@@ -1,11 +1,4 @@
-// 📦 insurance-claim-actions.js – Enterprise MASTER FINAL
-// ============================================================================
-// 🔹 Granular permissions (insurance_claims:*)
-// 🔹 Event bind guard (prevents duplicate handlers)
-// 🔹 Lifecycle permission mapping
-// 🔹 Print support added
-// 🔹 Fully MASTER aligned
-// ============================================================================
+// 📦 insurance-claim-actions.js – FINAL (PRINT FIXED)
 
 import {
   showToast,
@@ -17,16 +10,14 @@ import {
 
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./insurance-claims-render.js";
-import { printInsuranceClaimReceipt } from "./insurance-claims-receipt.js";
 
-/* ============================================================
-   🛡️ EVENT GUARD
-============================================================ */
-let insuranceClaimHandlersBound = false;
+/* 🔥 INVOICE SYSTEM */
+import { buildInvoiceReceiptHTML } from "../financial/invoices/invoice-receipt.js";
+import { renderCard as renderInvoiceCard } from "../financial/invoices/invoice-render.js";
+import { printDocument } from "../../templates/printTemplate.js";
 
-/**
- * Unified permission-aware action handler for Insurance Claim module
- */
+/* ============================================================ */
+
 export function setupActionHandlers({
   entries,
   token,
@@ -36,8 +27,6 @@ export function setupActionHandlers({
   sharedState,
   user,
 }) {
-  if (insuranceClaimHandlersBound) return;
-  insuranceClaimHandlersBound = true;
 
   const { currentEditIdRef } = sharedState || {};
 
@@ -51,17 +40,12 @@ export function setupActionHandlers({
   cardContainer?.addEventListener("click", handleActions);
   modalBody?.addEventListener("click", handleActions);
 
-  /* ============================================================
-     🔑 PERMISSIONS
-  ============================================================ */
+  /* ================= PERMISSIONS ================= */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
-      try {
-        return JSON.parse(perms);
-      } catch {
-        return perms.split(",").map((p) => p.trim());
-      }
+      try { return JSON.parse(perms); }
+      catch { return perms.split(",").map((p) => p.trim()); }
     }
     return Array.isArray(perms) ? perms : [];
   }
@@ -79,10 +63,72 @@ export function setupActionHandlers({
   const hasPerm = (key) =>
     isSuperAdmin || userPerms.has(String(key).toLowerCase());
 
-  /* ============================================================
-     🎯 ACTION DISPATCHER
-  ============================================================ */
+  /* ================= APPROVE ================= */
+  async function handleApprove(entry) {
+    const idInput = document.getElementById("approveClaimId");
+    const amountInput = document.getElementById("approveAmount");
+
+    idInput.value = entry.id;
+
+    const claimed = Number(entry.amount_claimed || 0);
+    const coverage = Number(entry.coverage_amount_at_claim || 0);
+
+    const suggested = coverage > 0
+      ? Math.min(claimed, coverage)
+      : claimed;
+
+    amountInput.value = suggested;
+    amountInput.max = claimed;
+
+    openModal("claimApproveModal");
+
+    document.getElementById("claimApproveForm").onsubmit = async (e) => {
+      e.preventDefault();
+
+      const amount = parseFloat(amountInput.value);
+
+      if (!amount || amount <= 0)
+        return showToast("❌ Amount must be greater than 0");
+
+      if (amount > claimed)
+        return showToast("❌ Cannot approve more than claimed");
+
+      try {
+        showLoading();
+
+        const res = await authFetch(
+          `/api/insurance-claims/${entry.id}/approve`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount_approved: amount,
+              notes: document.getElementById("approveNotes").value,
+            }),
+          }
+        );
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message);
+
+        showToast("✅ Claim approved");
+        closeModal("claimApproveModal");
+
+        window.latestInsuranceClaimEntries = [];
+        await loadEntries(currentPage);
+
+      } catch (err) {
+        showToast(err.message || "❌ Failed to approve");
+      } finally {
+        hideLoading();
+      }
+    };
+  }
+
+  /* ================= ACTION HANDLER ================= */
   async function handleActions(e) {
+
+    // ✅ FIXED (IMPORTANT)
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
 
@@ -93,192 +139,176 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    /* ===== fallback fetch ===== */
     if (!entry) {
       try {
         showLoading();
         const res = await authFetch(`/api/insurance-claims/${id}`);
         const data = await res.json().catch(() => ({}));
         entry = data?.data;
-      } catch {
-        return showToast("❌ Claim not found");
       } finally {
         hideLoading();
       }
     }
 
-    if (!entry) return showToast("❌ Claim data missing");
+    if (!entry) return showToast("❌ Claim missing");
 
     const cls = btn.classList;
+
+    /* ================= PRINT ================= */
+    if (cls.contains("print-btn") || btn.dataset.action === "print-invoice") {
+      if (!hasPerm("insurance_claims:print"))
+        return showToast("⛔ No permission");
+
+      if (!entry.invoice?.id)
+        return showToast("❌ No invoice");
+
+      try {
+        showLoading();
+
+        const res = await authFetch(
+          `/api/invoices/${entry.invoice.id}?print=true`
+        );
+
+        const data = await res.json();
+        if (!data?.data) throw new Error("Invoice not found");
+
+        const html = buildInvoiceReceiptHTML(data.data);
+
+        await printDocument(html, {
+          title: "Invoice Receipt",
+          invoice: data.data,
+          branding: JSON.parse(localStorage.getItem("branding") || "{}"),
+        });
+
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || "❌ Failed to print invoice");
+      } finally {
+        hideLoading();
+      }
+
+      return;
+    }
 
     /* ================= VIEW ================= */
     if (cls.contains("view-btn")) {
       if (!hasPerm("insurance_claims:view"))
-        return showToast("⛔ No permission to view claims");
-      return handleView(entry);
+        return showToast("⛔ No permission");
+
+      return openViewModal(
+        "Insurance Claim",
+        renderCard(entry, visibleFields, user)
+      );
     }
 
     /* ================= EDIT ================= */
     if (cls.contains("edit-btn")) {
       if (!hasPerm("insurance_claims:edit"))
-        return showToast("⛔ No permission to edit claims");
-      return handleEdit(entry);
+        return showToast("⛔ No permission");
+
+      if (currentEditIdRef) currentEditIdRef.value = entry.id;
+      sessionStorage.setItem("insuranceClaimEditId", entry.id);
+      window.location.href = "add-insurance-claims.html";
     }
 
     /* ================= DELETE ================= */
     if (cls.contains("delete-btn")) {
       if (!hasPerm("insurance_claims:delete"))
-        return showToast("⛔ No permission to delete claims");
-      return await handleDelete(id);
+        return showToast("⛔ No permission");
+
+      const confirmed = await showConfirm("Delete this claim?");
+      if (!confirmed) return;
+
+      try {
+        showLoading();
+
+        const res = await authFetch(`/api/insurance-claims/${id}`, {
+          method: "DELETE",
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message);
+
+        showToast("✅ Deleted");
+        window.latestInsuranceClaimEntries = [];
+        await loadEntries(currentPage);
+
+      } catch (err) {
+        showToast(err.message);
+      } finally {
+        hideLoading();
+      }
     }
 
-    /* ================= PRINT ================= */
-    if (cls.contains("print-btn")) {
-      if (!hasPerm("insurance_claims:print"))
-        return showToast("⛔ No permission to print claims");
-      return handlePrint(entry);
+    /* ================= APPROVE ================= */
+    if (cls.contains("approve-btn")) {
+      if (!hasPerm("insurance_claims:approve"))
+        return showToast("⛔ No permission");
+
+      return handleApprove(entry);
     }
 
     /* ================= LIFECYCLE ================= */
     const lifecycleMap = {
       "submit-btn": "submit",
       "review-btn": "review",
-      "approve-btn": "approve",
       "partial-btn": "partial-approve",
       "reject-btn": "reject",
-      "process-btn": "process-payment",
-      "paid-btn": "mark-paid",
+      "process-payment-btn": "process-payment",
+      "mark-paid-btn": "mark-paid",
       "reverse-btn": "reverse-payment",
-    };
-
-    const permMap = {
-      submit: "insurance_claims:submit",
-      review: "insurance_claims:review",
-      approve: "insurance_claims:approve",
-      "partial-approve": "insurance_claims:partial_approve",
-      reject: "insurance_claims:reject",
-      "process-payment": "insurance_claims:process_payment",
-      "mark-paid": "insurance_claims:mark_paid",
-      "reverse-payment": "insurance_claims:reverse_payment",
     };
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
-        const permKey = permMap[action];
-
-        if (!hasPerm(permKey))
-          return showToast(`⛔ No permission to ${action}`);
-
-        return await handleLifecycle(id, action);
+        return handleLifecycle(id, action);
       }
     }
   }
 
-  /* ============================================================
-     ⚙️ HANDLERS
-  ============================================================ */
-  function handleView(entry) {
-    openViewModal("Insurance Claim", renderCard(entry, visibleFields, user));
-  }
-
-  function handleEdit(entry) {
-    if (currentEditIdRef) currentEditIdRef.value = entry.id;
-
-    sessionStorage.setItem("insuranceClaimEditId", entry.id);
-    window.location.href = "add-insurance-claims.html";
-  }
-
-  async function handleDelete(id) {
-    const confirmed = await showConfirm("Delete this claim?");
-    if (!confirmed) return;
-
-    try {
-      showLoading();
-
-      const res = await authFetch(`/api/insurance-claims/${id}`, {
-        method: "DELETE",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete claim");
-
-      showToast("✅ Claim deleted");
-
-      window.latestInsuranceClaimEntries = [];
-      await loadEntries(currentPage);
-    } catch (err) {
-      showToast(err.message || "❌ Delete failed");
-    } finally {
-      hideLoading();
-    }
-  }
-
-  function handlePrint(entry) {
-    try {
-      printInsuranceClaimReceipt(entry);
-    } catch (err) {
-      console.error(err);
-      showToast("❌ Failed to print claim");
-    }
-  }
-
+  /* ================= LIFECYCLE ================= */
   async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(`Proceed to ${action}?`);
     if (!confirmed) return;
 
-    const endpointMap = {
-      submit: "submit",
-      review: "review",
-      approve: "approve",
-      "partial-approve": "partial-approve",
-      reject: "reject",
-      "process-payment": "process-payment",
-      "mark-paid": "mark-paid",
-      "reverse-payment": "reverse-payment",
-    };
-
-    const url = `/api/insurance-claims/${id}/${endpointMap[action]}`;
-
     try {
       showLoading();
 
-      const res = await authFetch(url, { method: "PATCH" });
-      const data = await res.json().catch(() => ({}));
+      const res = await authFetch(`/api/insurance-claims/${id}/${action}`, {
+        method: "PATCH",
+      });
 
-      if (!res.ok)
-        throw new Error(data.message || `❌ Failed to ${action}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message);
 
       showToast(`✅ ${action} successful`);
-
       window.latestInsuranceClaimEntries = [];
       await loadEntries(currentPage);
+
     } catch (err) {
-      showToast(err.message || `❌ ${action} failed`);
+      showToast(err.message);
     } finally {
       hideLoading();
     }
   }
 
-  /* ============================================================
-     🌍 GLOBAL HELPERS
-  ============================================================ */
-  const findEntry = (id) =>
-    (window.latestInsuranceClaimEntries || entries || []).find(
-      (x) => String(x.id) === String(id)
-    );
+  /* ================= MODAL ================= */
+  function openModal(id) {
+    document.getElementById(id)?.classList.remove("hidden");
+  }
 
-  window.viewInsuranceClaim = (id) => {
-    const entry = findEntry(id);
-    if (entry) handleView(entry);
-  };
+  function closeModal(id) {
+    document.getElementById(id)?.classList.add("hidden");
+  }
 
-  window.editInsuranceClaim = (id) => {
-    const entry = findEntry(id);
-    if (entry) handleEdit(entry);
-  };
+  /* ================= CLOSE HANDLER ================= */
+  document.addEventListener("click", (e) => {
+    const target = e.target.closest("[data-close]");
+    if (!target) return;
 
-  window.deleteInsuranceClaim = async (id) => {
-    await handleDelete(id);
-  };
+    const modalId = target.getAttribute("data-close");
+    const modal = document.getElementById(modalId);
+
+    if (modal) modal.classList.add("hidden");
+  });
 }
