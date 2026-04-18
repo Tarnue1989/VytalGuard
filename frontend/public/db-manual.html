@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VytalGuard Training Manual</title>
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/css/db-manual.css">
+</head>
+
+<body class="app-body dashboard-modern">
+
+<!-- ===================================================== -->
+<!-- HERO -->
+<div class="doc-hero">
+  <div class="doc-hero-inner">
+
+  <!-- TOP ROW -->
+  <div class="hero-top">
+<button onclick="goToDashboard()" class="btn-back">
+  ←
+</button>
+
+    <div class="doc-search hero-search">
+      <input 
+        id="docSearch" 
+        type="text" 
+        placeholder="🔍 Search manual..."
+      />
+    </div>
+  </div>
+
+  <!-- TEXT -->
+  <h4>🏥 System Workflow Guide</h4>
+  <p>Understand patient flow, billing, and daily operations clearly.</p>
+  </div>
+</div>
+<!-- ===================================================== -->
+<!-- KPI STRIP -->
+<!-- ===================================================== -->
+<div class="doc-kpi">
+  <div class="kpi-card">
+    <div class="kpi-title">Core Flow</div>
+    <div class="kpi-value">Patient → Payment</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-title">Critical Step</div>
+    <div class="kpi-value">Activate</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-title">Billing Rule</div>
+    <div class="kpi-value">Automatic</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-title">Money Control</div>
+    <div class="kpi-value">System</div>
+  </div>
+</div>
+
+<!-- ===================================================== -->
+<!-- TABS -->
+<!-- ===================================================== -->
+<div class="doc-tabs">
+  <button class="active" data-tab="overview">Overview</button>
+  <button data-tab="patient">Patient</button>
+  <button data-tab="registration">Registration</button>
+  <button data-tab="orders">Orders</button>
+  <button data-tab="payments">Payments</button>
+  <button data-tab="invoice">Invoices</button>
+  <button data-tab="reports">Reports</button>
+</div>
+
+<!-- ===================================================== -->
+<!-- CONTENT -->
+<!-- ===================================================== -->
+<div class="doc-container">
+
+  <!-- ===================================================== -->
+  <!-- OVERVIEW -->
+  <!-- ===================================================== -->
+  <div id="overview" class="doc-section">
+
+    <!-- FLOW -->
+    <div class="doc-card highlight">
+      <h6>🚀 System Flow</h6>
+      <div class="flow-steps">
+        <span>👤 Patient</span>
+        <span>📝 Register</span>
+        <span>⚡ Activate</span>
+        <span>🧾 Orders</span>
+        <span>📄 Invoice</span>
+        <span>💳 Payment</span>
+        <span>🧾 Receipt</span>
+      </div>
+    </div>
+
+    <!-- QUICK TASKS -->
+    <div class="doc-card">
+      <h6>⚡ Quick Tasks</h6>
+      <ul>
+        <li>Register patient → Go to Patient → Add</li>
+        <li>Create invoice → Add Order</li>
+        <li>Take payment → Open Payments</li>
+      </ul>
+    </div>
+
+    <!-- RULES -->
+    <div class="doc-card">
+      <h6>⚠️ Golden Rules</h6>
+      <ul>
+        <li class="rule">Search patient FIRST</li>
+        <li class="rule">Submit ≠ Done</li>
+        <li class="rule">Activate before billing</li>
+        <li class="rule">No item = No bill</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- PATIENT -->
+  <!-- ===================================================== -->
+  <div id="patient" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>👤 Patient Search</h6>
+      <ul>
+        <li>Search name or phone</li>
+        <li class="good">If found → Check-In</li>
+        <li class="rule">If not → Add Patient</li>
+      </ul>
+    </div>
+
+    <div class="doc-card">
+      <h6>➕ Add Patient</h6>
+      <ul>
+        <li>First Name *</li>
+        <li>Last Name *</li>
+        <li>Gender *</li>
+        <li>DOB *</li>
+        <li>Facility *</li>
+      </ul>
+      <span class="rule">Fix red fields if not saving</span>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- REGISTRATION -->
+  <!-- ===================================================== -->
+  <div id="registration" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>📝 Registration Process</h6>
+      <ul>
+        <li>Select patient</li>
+        <li>Fill form</li>
+        <li>Submit</li>
+      </ul>
+    </div>
+
+    <div class="doc-card highlight">
+      <h6>🔥 Important</h6>
+      <p>You MUST click <strong>Activate</strong> after submitting.</p>
+    </div>
+
+    <div class="doc-card">
+      <h6>📊 Status Flow</h6>
+      <div class="flow">
+        Draft → Pending → ACTIVE → Completed
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- ORDERS -->
+  <!-- ===================================================== -->
+  <div id="orders" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>🧾 Orders</h6>
+      <ul>
+        <li>Add Order</li>
+        <li>Add Item</li>
+        <li>Enter quantity</li>
+      </ul>
+    </div>
+
+    <div class="doc-card">
+      <h6>💰 Billing Logic</h6>
+      <p class="good">System calculates totals automatically</p>
+      <p class="rule">No Item = No Bill</p>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- PAYMENTS -->
+  <!-- ===================================================== -->
+  <div id="payments" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>💳 Payment</h6>
+      <ul>
+        <li>Select patient</li>
+        <li>Select invoice</li>
+        <li>Enter amount</li>
+      </ul>
+      <span class="rule">Cannot overpay</span>
+    </div>
+
+    <div class="doc-card">
+      <h6>🏦 Deposit</h6>
+      <p>Use deposit when patient has extra balance.</p>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- INVOICE -->
+  <!-- ===================================================== -->
+  <div id="invoice" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>📄 Invoice Details</h6>
+      <ul>
+        <li>Total</li>
+        <li>Paid</li>
+        <li>Balance</li>
+      </ul>
+    </div>
+
+    <div class="doc-card">
+      <h6>📊 Status</h6>
+      <ul>
+        <li>UNPAID</li>
+        <li>PARTIAL</li>
+        <li>PAID</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- REPORTS -->
+  <!-- ===================================================== -->
+  <div id="reports" class="doc-section d-none">
+
+    <div class="doc-card">
+      <h6>📊 Reports</h6>
+      <p>Shows system performance and financial data.</p>
+    </div>
+
+    <div class="doc-card">
+      <h6>📅 Rule</h6>
+      <p>Select date range before generating reports.</p>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ===================================================== -->
+<!-- JS -->
+<!-- ===================================================== -->
+<script type="module" src="/js/modules/docs/db-manual.js"></script>
+<script type="module" src="/js/utils/navigation.js"></script>
+</body>
+</html>
