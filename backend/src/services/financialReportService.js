@@ -278,5 +278,55 @@ export const financialReportService = {
       remaining: Number(remaining?.remaining || 0),
       deposit_refunded: Number(refunded?.refunded || 0),
     };
-  }
+  },
+
+    /* ============================================================
+     🔹 EXPENSES SUMMARY (NEW)
+  ============================================================ */
+  async getExpenses({ from, to, organization_id, facility_id }) {
+    const result = await db.Expense.findOne({
+      attributes: [
+        [fn("SUM", col("amount")), "total"]
+      ],
+      where: {
+        organization_id,
+        ...(facility_id && { facility_id }),
+        status: "posted",
+        date: { [Op.between]: [from, to] }
+      },
+      raw: true,
+    });
+
+    return {
+      total_expense: Number(result?.total || 0),
+    };
+  },
+
+  /* ============================================================
+     🔹 INSURANCE SUMMARY (NEW)
+  ============================================================ */
+  async getInsurance({ from, to, organization_id, facility_id }) {
+    const result = await db.InsuranceClaim.findOne({
+      attributes: [
+        [fn("SUM", col("amount_claimed")), "claimed"],
+        [fn("SUM", col("amount_approved")), "approved"],
+        [fn("SUM", col("amount_paid")), "paid"]
+      ],
+      where: {
+        organization_id,
+        ...(facility_id && { facility_id }),
+        claim_date: { [Op.between]: [from, to] }
+      },
+      raw: true,
+    });
+
+    return {
+      claimed: Number(result?.claimed || 0),
+      approved: Number(result?.approved || 0),
+      paid: Number(result?.paid || 0),
+      outstanding:
+        Number(result?.approved || 0) -
+        Number(result?.paid || 0),
+    };
+  },
 };

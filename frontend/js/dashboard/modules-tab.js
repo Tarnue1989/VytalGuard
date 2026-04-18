@@ -4,13 +4,6 @@ import { authFetch } from "../authSession.js";
 
 /* =========================================================
    🧩 Modules & Settings – ENTERPRISE FINAL (LOCKED)
-   =========================================================
-   🔹 Category selector (tab-style)
-   🔹 Single dynamic content area
-   🔹 Auto search (scoped to active category)
-   🔹 Category counts
-   🔹 Child drill-down with safe back
-   🔹 Zero CSS grid conflicts
 ========================================================= */
 
 let ALL_GROUPS = {};
@@ -23,26 +16,37 @@ export async function loadModulesTab(container) {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="card shadow-sm">
-      <div class="card-header">
-        <h5 class="mb-0">Modules & Settings</h5>
+    <div class="card modules-card border-0">
+
+      <!-- 🔥 HEADER -->
+      <div class="card-header modules-header">
+
+        <div class="modules-title">
+          <h5>Modules & Settings</h5>
+          <span class="modules-sub">Quick access & configuration</span>
+        </div>
+
+        <div class="modules-search-wrap">
+          <i class="ri-search-line"></i>
+          <input
+            type="search"
+            id="moduleSearch"
+            placeholder="Search modules..."
+          />
+        </div>
+
       </div>
 
+      <!-- CATEGORY BAR -->
+      <div class="modules-categories-wrap">
+        <div id="moduleCategories" class="modules-categories"></div>
+      </div>
+
+      <!-- CONTENT -->
       <div class="card-body">
-        <!-- Search -->
-        <input
-          type="search"
-          id="moduleSearch"
-          class="form-control form-control-sm mb-3"
-          placeholder="Search modules…"
-        />
-
-        <!-- Category Tabs -->
-        <div id="moduleCategories" class="d-flex flex-wrap gap-2 mb-3"></div>
-
-        <!-- Dynamic Content -->
-        <div id="modulesContent" class="modules-grid"></div>
+        <div id="modulesContent" class="modules-grid elite"></div>
       </div>
+
     </div>
   `;
 
@@ -61,7 +65,7 @@ export async function loadModulesTab(container) {
 
     ALL_GROUPS = groupByCategory(records);
 
-    renderCategoryTabs(categoryBar, Object.keys(ALL_GROUPS));
+    renderCategoryTabs(categoryBar, Object.keys(ALL_GROUPS), content);
 
     // default category
     ACTIVE_CATEGORY = Object.keys(ALL_GROUPS)[0] || null;
@@ -71,6 +75,7 @@ export async function loadModulesTab(container) {
     searchInput.addEventListener("input", () => {
       const q = searchInput.value.trim().toLowerCase();
       const source = ALL_GROUPS[ACTIVE_CATEGORY] || [];
+
       const filtered = q
         ? source.filter(m =>
             m.name?.toLowerCase().includes(q) ||
@@ -90,7 +95,6 @@ export async function loadModulesTab(container) {
 /* =========================================================
    🧠 HELPERS
 ========================================================= */
-
 function groupByCategory(modules = []) {
   return modules.reduce((acc, m) => {
     const cat = m.category || "Other";
@@ -101,14 +105,14 @@ function groupByCategory(modules = []) {
 }
 
 /* =========================================================
-   🧭 CATEGORY TABS
+   🧭 CATEGORY TABS (NO BOOTSTRAP)
 ========================================================= */
-function renderCategoryTabs(container, categories = []) {
+function renderCategoryTabs(container, categories = [], content) {
   container.innerHTML = "";
 
   categories.forEach(cat => {
     const btn = document.createElement("button");
-    btn.className = "btn btn-sm btn-outline-primary";
+    btn.className = "module-category-btn";
     btn.dataset.category = cat;
 
     btn.innerHTML = `
@@ -119,24 +123,23 @@ function renderCategoryTabs(container, categories = []) {
     `;
 
     btn.addEventListener("click", () => {
-      setActiveCategory(cat, container, document.getElementById("modulesContent"));
+      setActiveCategory(cat, container, content);
     });
 
     container.appendChild(btn);
   });
 }
 
+/* =========================================================
+   🎯 SET ACTIVE CATEGORY (CLEAN)
+========================================================= */
 function setActiveCategory(category, bar, content) {
   ACTIVE_CATEGORY = category;
 
   bar.querySelectorAll("button").forEach(b => {
     b.classList.toggle(
-      "btn-primary",
+      "active",
       b.dataset.category === category
-    );
-    b.classList.toggle(
-      "btn-outline-primary",
-      b.dataset.category !== category
     );
   });
 
