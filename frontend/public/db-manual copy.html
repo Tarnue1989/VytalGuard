@@ -74,13 +74,27 @@
 <!-- ===================================================== -->
 <!-- 🔥 SYSTEM FLOW BANNER -->
 <!-- ===================================================== -->
-<div class="doc-card highlight">
-  <h6>🚀 Full System Flow</h6>
-  <div class="flow">
-    Patient → Check-In → Activate → Orders → Invoice → Payment → Receipt → Reports
-  </div>
-</div>
+<div class="doc-flow-banner">
 
+  <div class="flow-main">
+    ⚠️ Always follow flow:
+    <span>Patient</span>
+    <span>Check-In</span>
+    <span>Activate</span>
+    <span>Orders</span>
+    <span>Invoice</span>
+    <span>Payment</span>
+  </div>
+
+  <div class="flow-sub">
+    🔁 Extended:
+    <span>Insurance</span>
+    <span>Finance</span>
+    <span>Inventory</span>
+    <span>Admin</span>
+  </div>
+
+</div>
 <!-- SEARCH -->
 <div class="doc-search-bar">
   <input id="docSearch" type="text" placeholder="🔍 Search guide (activate, payment, invoice...)" />
@@ -95,9 +109,16 @@
   <!-- 🔥 MAIN FLOW -->
   <div class="doc-card highlight">
     <h6>🚀 System Flow (Full)</h6>
-    <div class="flow">
-      👤 Patient → 📝 Check-In → ⚡ Activate → 🩺 Consult → 🧾 Orders → 📄 Invoice → 💳 Payment → 🧾 Receipt
-    </div>
+      <div class="flow-bar">
+        <div class="flow-step">👤 Patient</div>
+        <div class="flow-step">📝 Check-In</div>
+        <div class="flow-step">⚡ Activate</div>
+        <div class="flow-step">🩺 Consult</div>
+        <div class="flow-step">🧾 Orders</div>
+        <div class="flow-step">📄 Invoice</div>
+        <div class="flow-step">💳 Payment</div>
+        <div class="flow-step">🧾 Receipt</div>
+      </div>
   </div>
 
   <!-- 🧭 REAL WORKFLOW -->
@@ -177,12 +198,7 @@
 <div id="patient" class="doc-section d-none">
 
   <div class="doc-section-block">
-    <div class="doc-card highlight">
-      <h6>🚀 Patient Flow</h6>
-      <div class="flow">
-        🔍 Search → ➕ Add Patient → 📝 Check-In
-      </div>
-    </div>
+
     <div class="doc-section-title">👤 Patient Setup</div>
 
     <!-- FLOW -->
@@ -227,11 +243,12 @@
     <div class="doc-section-title">🏥 Visit / Registration Flow</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Visit Flow</h6>
-      <div class="flow">
-        📝 Check-In → 📤 Submit → ⚡ Activate → 🧾 Orders → ✅ Complete Visit
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Check-In</div>
+      <div class="flow-step">Submit</div>
+      <div class="flow-step">Activate</div>
+      <div class="flow-step">Consult / Orders</div>
+      <div class="flow-step">Complete Visit</div>
     </div>
 
     <!-- 📝 START VISIT -->
@@ -322,11 +339,11 @@
     <div class="doc-section-title">🧾 Services & Orders</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Orders Flow</h6>
-      <div class="flow">
-        🧾 Add Order → ➕ Add Items → 💰 Charges → 📄 Invoice Update
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Add Order</div>
+      <div class="flow-step">Add Items</div>
+      <div class="flow-step">Generate Charges</div>
+      <div class="flow-step">Invoice Updates</div>
     </div>
 
     <!-- 🧾 SERVICES / ORDERS -->
@@ -424,11 +441,11 @@
     <div class="doc-section-title">💳 Payments & Deposits</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Payment Flow</h6>
-      <div class="flow">
-        📄 Invoice → 💳 Payment → 🏦 Deposit (optional) → 🧾 Receipt
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Invoice Exists</div>
+      <div class="flow-step">Choose Payment</div>
+      <div class="flow-step">Apply Deposit (optional)</div>
+      <div class="flow-step">Complete Payment</div>
     </div>
 
     <!-- 💳 PAYMENT -->
@@ -525,12 +542,13 @@
     <div class="doc-section-title">📄 Billing / Invoice</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Invoice Flow</h6>
-      <div class="flow">
-        🧾 Items → 📄 Invoice → 💰 Balance → 💳 Ready for Payment
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Add Items</div>
+      <div class="flow-step">Invoice Created</div>
+      <div class="flow-step">Balance Updated</div>
+      <div class="flow-step">Ready for Payment</div>
     </div>
+
     <!-- 📄 INVOICE -->
     <div class="doc-card step">
       <h6>📄 Invoice</h6>
@@ -601,11 +619,11 @@
     <div class="doc-section-title">📊 Reports & Insights</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Reports Flow</h6>
-      <div class="flow">
-        📅 Select Date → 🔍 Filter → 📊 Generate → 👀 Review
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Select Date</div>
+      <div class="flow-step">Apply Filters</div>
+      <div class="flow-step">Generate Report</div>
+      <div class="flow-step">Review Data</div>
     </div>
 
     <!-- 📊 REPORTS -->
@@ -695,11 +713,14 @@
     <div class="doc-section-title">🛡️ Insurance</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Insurance Flow</h6>
-      <div class="flow">
-        👤 Patient → 🪪 Insurance → 🧾 Services → 📄 Invoice → 📤 Claim → ✅ Approval → 💰 Payment
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Patient</div>
+      <div class="flow-step">Insurance</div>
+      <div class="flow-step">Services</div>
+      <div class="flow-step">Invoice</div>
+      <div class="flow-step">Claim</div>
+      <div class="flow-step">Approval</div>
+      <div class="flow-step">Payment</div>
     </div>
 
     <div class="doc-card info">
@@ -773,11 +794,12 @@
     <div class="doc-section-title">🟤 Finance</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Finance Flow</h6>
-      <div class="flow">
-        💰 Income → 🏦 Account → 📒 Ledger → 💸 Expense → 📊 Report
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Income</div>
+      <div class="flow-step">Account</div>
+      <div class="flow-step">Ledger</div>
+      <div class="flow-step">Expense</div>
+      <div class="flow-step">Report</div>
     </div>
 
     <div class="doc-card info">
@@ -860,11 +882,12 @@
     <div class="doc-section-title">🟡 Inventory</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Inventory Flow</h6>
-      <div class="flow">
-        🏬 Supplier → 🚚 Delivery → 📦 Stock → 📤 Request → 🛠 Usage
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Supplier</div>
+      <div class="flow-step">Delivery</div>
+      <div class="flow-step">Stock</div>
+      <div class="flow-step">Request</div>
+      <div class="flow-step">Usage</div>
     </div>
 
     <div class="doc-card info">
@@ -943,11 +966,14 @@
     <div class="doc-section-title">🏥 Clinical</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Clinical Flow</h6>
-      <div class="flow">
-        👤 Patient → 🏥 Visit → 🩺 Triage → 👨‍⚕️ Consultation → 🧾 Orders → 💊 Treatment → 📄 Record
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">Patient</div>
+      <div class="flow-step">Visit</div>
+      <div class="flow-step">Triage</div>
+      <div class="flow-step">Consultation</div>
+      <div class="flow-step">Orders</div>
+      <div class="flow-step">Treatment</div>
+      <div class="flow-step">Record</div>
     </div>
 
     <!-- OVERVIEW -->
@@ -1062,11 +1088,12 @@
     <div class="doc-section-title">⚫ System Control</div>
 
     <!-- FLOW -->
-    <div class="doc-card highlight">
-      <h6>🚀 Access Flow</h6>
-      <div class="flow">
-        👤 User → 🧾 Role → 🔐 Permissions → 📦 Modules → 🚪 Access
-      </div>
+    <div class="flow-bar">
+      <div class="flow-step">User</div>
+      <div class="flow-step">Role</div>
+      <div class="flow-step">Permissions</div>
+      <div class="flow-step">Modules</div>
+      <div class="flow-step">Access</div>
     </div>
 
     <!-- OVERVIEW -->

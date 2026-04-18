@@ -123,8 +123,12 @@ body {
   padding: 14px;
   background: #ffffff;
   border-radius: 0 12px 12px 12px;
-
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+
+  /* 🔥 ADD GRID */
+  display: grid;
+  grid-template-columns: 1fr; /* mobile default */
+  gap: 12px;
 }
 
 /* ================= CARDS ================= */
@@ -229,13 +233,30 @@ body {
 
 /* ================= MOBILE ================= */
 @media (max-width: 768px) {
+
   .doc-container {
     padding: 10px;
+  }
+
+  /* ✅ KEEP OVERLAP BUT CONTROL IT */
+  .doc-tabs {
+    display: flex;
+    flex-wrap: wrap;        /* allow wrapping */
+    gap: 4px;               /* spacing between rows */
   }
 
   .doc-tabs button {
     font-size: 11px;
     padding: 5px 10px;
+
+    margin-left: -4px;      /* 👈 keep overlap effect */
+  }
+
+  /* fix first button */
+  .doc-tabs button:nth-child(1),
+  .doc-tabs button:nth-child(4),
+  .doc-tabs button:nth-child(7) {
+    margin-left: 0;         /* 👈 reset at new row */
   }
 
   .kpi-card {
@@ -243,28 +264,30 @@ body {
   }
 }
 
+/* ================= SEARCH (FINAL CLEAN + RESPONSIVE) ================= */
 
-/* ================= SEARCH ================= */
-.doc-search input {
-  width: 100%;
-  max-width: 420px; /* 👈 KEY FIX (controls size) */
-
+/* 🔍 SEARCH BAR (under tabs) */
+.doc-search-bar {
   padding: 8px 12px;
+  background: #ffffff;
 
-  border-radius: 999px; /* pill shape */
-  border: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
 
-  font-size: 12px;
-  background: #f9fafb;
+  margin-top: 6px;
 
-  transition: all 0.2s ease;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.doc-search input {
+/* 🔍 INPUT */
+.doc-search-bar input {
   width: 100%;
-  padding: 9px 12px;
+  max-width: 280px;
 
-  border-radius: 10px;
+  padding: 7px 10px;
+
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
 
   font-size: 12px;
@@ -273,7 +296,8 @@ body {
   transition: all 0.2s ease;
 }
 
-.doc-search input:focus {
+/* 🔍 FOCUS */
+.doc-search-bar input:focus {
   outline: none;
   border-color: #6366f1;
   background: #ffffff;
@@ -282,6 +306,30 @@ body {
 }
 
 
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+
+  /* ================= SEARCH BAR (OUTSIDE CLEAN) ================= */
+  .doc-search-bar {
+    padding: 6px 12px;
+
+    background: transparent;     /* 👈 remove box */
+    border: none;                /* 👈 remove lines */
+
+    display: flex;
+    justify-content: flex-end;
+
+    margin-top: 6px;
+  }
+  .doc-search-bar input {
+    max-width: 100%;            /* 👈 full width */
+    width: 100%;
+
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+}
 /* =====================================================
 🔝 HERO TOP ROW (BACK + SEARCH INLINE)
 ===================================================== */
@@ -294,31 +342,44 @@ body {
   margin-bottom: 8px;
 }
 
-/* back button small */
-/* 🔙 BACK BUTTON — STRONG + VISIBLE */
+/* 🔙 BACK BUTTON — FINAL COMPACT */
 .btn-back {
   border: none;
 
   background: #ffffff;
   color: #4f46e5;
 
-  width: 38px;
-  height: 38px;
+  /* 👇 no fixed square */
+  width: auto;
+  height: 30px;
 
-  border-radius: 10px;
+  padding: 0 10px;
 
-  display: flex;
+  border-radius: 8px;
+
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
 
-  font-size: 18px;
+  font-size: 12px;
+  font-weight: 600;
 
   cursor: pointer;
 
-  /* 👇 stronger shadow for visibility */
-  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  box-shadow: 0 3px 10px rgba(0,0,0,.15);
 
   transition: all 0.2s ease;
+}
+
+/* hover */
+.btn-back:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(0,0,0,.2);
+}
+
+/* click */
+.btn-back:active {
+  transform: scale(0.96);
 }
 
 
@@ -347,4 +408,85 @@ body {
 
 .hero-search input {
   max-width: 280px;
+}
+@media (max-width: 768px) {
+
+  .doc-search-bar {
+    display: flex;
+    justify-content: flex-end;   /* 👈 keep it right aligned */
+  }
+
+  .doc-search-bar input {
+    width: 100%;
+    max-width: 180px;            /* 👈 about half width */
+  }
+
+}
+/* ================= HERO COMPACT (ALL SCREENS) ================= */
+.doc-hero {
+  padding: 10px 12px;        /* ↓ reduce top/bottom space */
+}
+
+.doc-hero h4 {
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
+.doc-hero p {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.9;
+}
+
+/* tighten top row */
+.hero-top {
+  margin-bottom: 6px;
+}
+
+
+/* ================= BACK BUTTON (SMALL + TEXT) ================= */
+.btn-back {
+  width: auto;               /* 👈 no fixed square */
+  height: 30px;
+
+  padding: 0 10px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  border-radius: 8px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  background: #ffffff;
+  color: #4f46e5;
+
+  box-shadow: 0 3px 10px rgba(0,0,0,.15);
+}
+
+/* =====================================================
+🔥 FLOW GUIDE — CLEAN STRIP (MATCH YOUR UI)
+===================================================== */
+
+.doc-flow-hint{
+  display:flex;
+  align-items:center;
+  gap:6px;
+
+  background:#ffffff;
+  border-bottom:1px solid #e5e7eb;
+
+  padding:6px 12px;
+
+  font-size:12px;
+  font-weight:600;
+  color:#374151;
+}
+
+/* secondary (extended flow) */
+.doc-flow-hint.secondary{
+  background:#f9fafb;
+  color:#6b7280;
 }
