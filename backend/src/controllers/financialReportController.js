@@ -198,5 +198,51 @@ export const financialReportController = {
       next(err);
     }
   },
+  /* ============================================================
+    🔹 EXPENSES (NEW)
+  ============================================================ */
+  async expenses(req, res, next) {
+    try {
+      const { from, to } = resolveDateRange(req.query);
 
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
+
+      const data = await financialReportService.getExpenses({
+        from,
+        to,
+        organization_id,
+        facility_id,
+      });
+
+      res.json({ success: true, data, from, to });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /* ============================================================
+    🔹 INSURANCE (NEW)
+  ============================================================ */
+  async insurance(req, res, next) {
+    try {
+      const { from, to } = resolveDateRange(req.query);
+
+      const organization_id = req.user.organization_id;
+      const facility_id =
+        req.query.facility_id || req.user.facility_id;
+
+      const data = await financialReportService.getInsurance({
+        from,
+        to,
+        organization_id,
+        facility_id,
+      });
+
+      res.json({ success: true, data, from, to });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

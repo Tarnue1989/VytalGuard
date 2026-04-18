@@ -26,7 +26,9 @@ export async function getBillableItemPrice({
   const baseWhere = {
     billable_item_id,
     organization_id,
-    is_active: true,
+
+    // ❌ REMOVED is_active
+
     effective_from: { [Op.lte]: today },
     [Op.and]: [
       {

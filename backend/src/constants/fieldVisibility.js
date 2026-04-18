@@ -29,12 +29,8 @@ import {
 export const FIELD_VISIBILITY_ACCOUNT = {
   superadmin: FIELD_ORDER_ACCOUNT,
   organization_admin: FIELD_ORDER_ACCOUNT,
-  manager: [
-    "id","account_number","name","type","currency","balance","is_active"
-  ],
-  staff: [
-    "id","account_number","name","type","currency","balance"
-  ]
+  manager: FIELD_ORDER_ACCOUNT,
+  staff: FIELD_ORDER_ACCOUNT
 };
 
 /* -------------------- Cash Ledger -------------------- */
@@ -58,10 +54,16 @@ export const FIELD_VISIBILITY_CASH_LEDGER = {
 export const FIELD_VISIBILITY_EXPENSE = {
   superadmin: FIELD_ORDER_EXPENSE,
   organization_admin: FIELD_ORDER_EXPENSE,
+
   manager: [
     "id","expense_number","date","amount","currency","category",
-    "payment_method","account_id","description","status"
+    "payment_method","account_id","description","status",
+
+    // 🔥 key lifecycle visibility
+    "approved_by_id","approved_at",
+    "posted_by_id","posted_at"
   ],
+
   staff: [
     "id","date","amount","category","description"
   ]
@@ -73,10 +75,15 @@ export const FIELD_VISIBILITY_PAYROLL = {
   organization_admin: FIELD_ORDER_PAYROLL,
   manager: [
     "id","payroll_number","employee_id","period","currency",
-    "basic_salary","allowances","deductions","net_salary","status"
+    "basic_salary","allowances","deductions","net_salary",
+    "account_id","category","payment_method",
+    "status","paid_at",
+    "approved_by_id","approved_at",
+    "paid_by_id"
   ],
   staff: [
-    "id","employee_id","period","net_salary"
+    "id","employee_id","period","net_salary",
+    "status"
   ]
 };
 
@@ -121,15 +128,10 @@ export const FIELD_VISIBILITY_ROLE = {
 
 /* -------------------- User -------------------- */
 export const FIELD_VISIBILITY_USER = {
-    superadmin: FIELD_ORDER_USER,
+  superadmin: FIELD_ORDER_USER,
   organization_admin: FIELD_ORDER_USER,
-  manager: [
-    "id", "username", "email", "status",
-    "last_login_at", "login_attempts", "locked_until"
-  ],
-  staff: [
-    "id", "username", "email", "status"
-  ]
+  manager: FIELD_ORDER_USER,
+  staff: FIELD_ORDER_USER
 };
 /* -------------------- Permission -------------------- */
 export const FIELD_VISIBILITY_PERMISSION = {
@@ -847,17 +849,18 @@ export const FIELD_VISIBILITY_PATIENT_INSURANCE = {
 };
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_VISIBILITY_INSURANCE_CLAIM = {
-  superadmin: FIELD_ORDER_INSURANCE_CLAIM,
-  organization_admin: FIELD_ORDER_INSURANCE_CLAIM,
-  manager: [
-    "id","invoice_id","patient_id","provider_id",
+  superadmin:FIELD_ORDER_INSURANCE_CLAIM,
+  organization_admin:FIELD_ORDER_INSURANCE_CLAIM,
+  manager:[
+    "id","invoice_id","patient_id","provider_id","patient_insurance_id",
     "claim_number","currency",
+    "invoice_total","insurance_amount","patient_amount",
     "amount_claimed","amount_approved","amount_paid",
-    "claim_date","response_date",
-    "reviewed_at","approved_at","paid_at",
-    "rejection_reason","notes","status"
+    "coverage_amount_at_claim","coverage_currency","submission_channel",
+    "claim_date","response_date","submitted_at","reviewed_at","approved_at","paid_at",
+    "rejection_reason","notes","parent_claim_id","status"
   ],
-  staff: [
+  staff:[
     "id","invoice_id","patient_id","provider_id",
     "claim_number","currency",
     "amount_claimed","status"

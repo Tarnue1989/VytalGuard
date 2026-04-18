@@ -1,6 +1,6 @@
 /* ============================================================
    📁 backend/src/utils/invoiceUtil.js
-   💰 ENTERPRISE MASTER ENGINE (FINAL – SAFE + MULTI-TENANT FIXED)
+   💰 ENTERPRISE MASTER ENGINE (FINAL CORRECT)
 ============================================================ */
 
 import db, { sequelize } from "../models/index.js";
@@ -21,6 +21,12 @@ const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("invoiceUtil", DEBUG_OVERRIDE);
 
 /* ============================================================
+   🔧 ROUNDING HELPER
+============================================================ */
+const round2 = (num) =>
+  Math.round((Number(num) + Number.EPSILON) * 100) / 100;
+
+/* ============================================================
    🔁 VALID STATUSES
 ============================================================ */
 const VALID_PAYMENT_STATUSES = [
@@ -37,14 +43,13 @@ const VALID_WAIVER_STATUS = DISCOUNT_WAIVER_STATUS.APPLIED;
 const VALID_DISCOUNT_STATUS = DISCOUNT_STATUS.FINALIZED;
 
 /* ============================================================
-   🔁 RECALC ENGINE
+   🔁 RECALC ENGINE (FINAL — LOCK SAFE)
 ============================================================ */
 export async function recalcInvoice(invoiceId, t = null) {
   global.__recalcLocks = global.__recalcLocks || {};
 
-  // ✅ FIX: per-invoice lock (NOT global)
   if (global.__recalcLocks[invoiceId]) {
-    debug.warn("BLOCKED: recalc already running for this invoice", { invoiceId });
+    debug.warn("BLOCKED: recalc already running", { invoiceId });
     return;
   }
 
@@ -54,17 +59,108 @@ export async function recalcInvoice(invoiceId, t = null) {
     debug.log("START recalcInvoice", { invoiceId });
 
     const invoice = await db.Invoice.findByPk(invoiceId, { transaction: t });
+
+    // ✅ FIX: NULL SAFETY FIRST
     if (!invoice) throw new Error("❌ Invoice not found");
 
     /* ============================================================
-       🏥 INSURANCE LIMIT LOGIC (MULTI-TENANT SAFE)
+      🔒 LOCK CHECK (MUST BE EARLY)
+    ============================================================ */
+    if (invoice.is_locked) {
+      debug.log("LOCKED → payment-only recalculation", { invoiceId });
+
+      const totalPaid =
+        (await db.Payment.sum("amount", {
+          where: {
+            invoice_id: invoiceId,
+            status: { [Op.in]: VALID_PAYMENT_STATUSES },
+          },
+          transaction: t,
+        })) || 0;
+
+      const totalDeposits =
+        (await db.Deposit.sum("applied_amount", {
+          where: {
+            applied_invoice_id: invoiceId,
+            applied_amount: { [Op.gt]: 0 },
+          },
+          transaction: t,
+        })) || 0;
+
+      const totalRefunds =
+        (await db.Refund.sum("amount", {
+          where: {
+            invoice_id: invoiceId,
+            status: { [Op.in]: VALID_REFUND_STATUSES },
+          },
+          transaction: t,
+        })) || 0;
+
+      const effectivePaid =
+        Number(totalPaid) +
+        Number(totalDeposits) -
+        Number(totalRefunds);
+
+      let balance = Number(invoice.total || 0) - effectivePaid;
+      if (balance < 0) balance = 0;
+
+      let newStatus = INVOICE_STATUS.UNPAID;
+
+      if (balance <= 0 && invoice.total > 0) {
+        newStatus = INVOICE_STATUS.PAID;
+      } else if (effectivePaid > 0 && balance > 0) {
+        newStatus = INVOICE_STATUS.PARTIAL;
+      }
+
+      await invoice.update(
+        {
+          total_paid: round2(totalPaid),
+          applied_deposits: round2(totalDeposits),
+          refunded_amount: round2(totalRefunds),
+          balance: round2(balance),
+          status: newStatus,
+        },
+        { transaction: t }
+      );
+
+      return invoice;
+    }
+
+    /* ============================================================
+       🧾 BASE TOTALS
     ============================================================ */
     const items = await db.InvoiceItem.findAll({
       where: { invoice_id: invoiceId, status: "applied" },
-      order: [["created_at", "ASC"]],
       transaction: t,
     });
 
+    const subtotal = items.reduce(
+      (sum, i) => sum + Number(i.net_amount || 0),
+      0
+    );
+
+    const tax = items.reduce(
+      (sum, i) => sum + Number(i.tax_amount || 0),
+      0
+    );
+
+    /* ============================================================
+       💸 DISCOUNTS
+    ============================================================ */
+    const totalDiscounts =
+      (await db.Discount.sum("applied_amount", {
+        where: {
+          invoice_id: invoiceId,
+          status: VALID_DISCOUNT_STATUS,
+        },
+        transaction: t,
+      })) || 0;
+
+    const netAfterDiscount = subtotal - Number(totalDiscounts || 0);
+
+    /* ============================================================
+       🏥 INSURANCE
+    ============================================================ */
     const policy = await db.PatientInsurance.findOne({
       where: {
         patient_id: invoice.patient_id,
@@ -77,37 +173,46 @@ export async function recalcInvoice(invoiceId, t = null) {
     });
 
     const limit = Number(policy?.coverage_limit || 0);
-    let remaining = limit;
 
-    for (const item of items) {
-      const raw = Number(item.insurance_amount || 0);
-      const total = Number(item.total_price || 0);
+    const totalInsurance = Math.min(netAfterDiscount, limit);
+    const totalPatient = netAfterDiscount - totalInsurance;
 
-      const applied = Math.min(raw, remaining);
-      const patient = total - applied;
+    /* ============================================================
+       🔄 DISTRIBUTE INSURANCE
+    ============================================================ */
+    if (items.length) {
+      const totalItems = subtotal;
+      let distributed = 0;
 
-      if (
-        Number(item.insurance_amount) !== applied ||
-        Number(item.patient_amount) !== patient
-      ) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const itemTotal = Number(item.net_amount || 0);
+
+        let share =
+          totalItems > 0
+            ? (itemTotal / totalItems) * totalInsurance
+            : 0;
+
+        if (i === items.length - 1) {
+          share = totalInsurance - distributed;
+        }
+
+        const roundedShare = round2(share);
+        distributed += roundedShare;
+
         await item.update(
           {
-            insurance_amount: applied,
-            patient_amount: patient,
+            insurance_amount: roundedShare,
+            patient_amount: round2(itemTotal - roundedShare),
           },
           { transaction: t }
         );
       }
-
-      remaining -= applied;
-      if (remaining <= 0) remaining = 0;
     }
 
     /* ============================================================
-       💰 FINANCIAL AGGREGATION
+       💰 PAYMENTS
     ============================================================ */
-
-    // ✅ PAYMENTS
     const totalPaid =
       (await db.Payment.sum("amount", {
         where: {
@@ -117,7 +222,6 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ DEPOSITS (ONLY APPLIED)
     const totalDeposits =
       (await db.Deposit.sum("applied_amount", {
         where: {
@@ -127,7 +231,6 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ REFUNDS
     const totalRefunds =
       (await db.Refund.sum("amount", {
         where: {
@@ -137,63 +240,10 @@ export async function recalcInvoice(invoiceId, t = null) {
         transaction: t,
       })) || 0;
 
-    // ✅ WAIVERS
-    const totalWaivers =
-      (await db.DiscountWaiver.sum("applied_total", {
-        where: {
-          invoice_id: invoiceId,
-          status: VALID_WAIVER_STATUS,
-        },
-        transaction: t,
-      })) || 0;
-
-    // ✅ DISCOUNTS
-    const totalDiscounts =
-      (await db.Discount.sum("applied_amount", {
-        where: {
-          invoice_id: invoiceId,
-          status: VALID_DISCOUNT_STATUS,
-        },
-        transaction: t,
-      })) || 0;
-
-    debug.log("financials", {
-      totalPaid,
-      totalDeposits,
-      totalRefunds,
-      totalWaivers,
-      totalDiscounts,
-    });
-
-    /* ============================================================
-       🔁 BASE TOTALS
-    ============================================================ */
-
-    const [rows] = await sequelize.query(
-      `
-      SELECT
-        (SELECT COALESCE(SUM(i.net_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_items,
-        (SELECT COALESCE(SUM(i.tax_amount),0) FROM invoice_items i WHERE i.invoice_id = inv.id) AS total_tax
-      FROM invoices inv
-      WHERE inv.id = :invoiceId
-      `,
-      { replacements: { invoiceId }, transaction: t }
-    );
-
-    const t0 = rows[0] || {};
-
-    const subtotal = Number(t0.total_items || 0);
-    const tax = Number(t0.total_tax || 0);
-
     /* ============================================================
        🔥 FINAL CALCULATION
     ============================================================ */
-
-    const total =
-      subtotal +
-      tax -
-      Number(totalDiscounts) -
-      Number(totalWaivers);
+    const total = totalPatient;
 
     const effectivePaid =
       Number(totalPaid) +
@@ -202,10 +252,6 @@ export async function recalcInvoice(invoiceId, t = null) {
 
     let balance = total - effectivePaid;
     if (balance < 0) balance = 0;
-
-    /* ============================================================
-       📊 STATUS LOGIC
-    ============================================================ */
 
     let newStatus = INVOICE_STATUS.UNPAID;
 
@@ -216,38 +262,39 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💾 UPDATE INVOICE
+       🔓 NORMAL FULL RECALC
     ============================================================ */
-
     await invoice.update(
       {
-        subtotal: subtotal.toFixed(2),
-        total_tax: tax.toFixed(2),
-        total_discount: Number(totalDiscounts).toFixed(2),
+        subtotal: round2(subtotal),
+        total_tax: round2(tax),
+        total_discount: round2(totalDiscounts),
 
-        total_paid: Number(totalPaid).toFixed(2),
-        applied_deposits: Number(totalDeposits).toFixed(2),
-        refunded_amount: Number(totalRefunds).toFixed(2),
+        total_paid: round2(totalPaid),
+        applied_deposits: round2(totalDeposits),
+        refunded_amount: round2(totalRefunds),
 
-        coverage_amount: Number(totalWaivers).toFixed(2),
+        insurance_amount: round2(totalInsurance),
+        patient_amount: round2(totalPatient),
 
-        total: total.toFixed(2),
-        balance: balance.toFixed(2),
+        total: round2(total),
+        balance: round2(balance),
         status: newStatus,
       },
       { transaction: t }
     );
 
     debug.log("DONE recalcInvoice", {
-      total,
+      subtotal,
+      discount: totalDiscounts,
+      insurance: totalInsurance,
+      patient: totalPatient,
       balance,
-      status: newStatus,
     });
 
     return invoice;
 
   } finally {
-    // ✅ FIX: release only this invoice lock
     delete global.__recalcLocks[invoiceId];
   }
 }

@@ -83,7 +83,7 @@ function buildRegistrationLogSchema(mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
     registrar_id: Joi.string().uuid().allow(null, ""),
-    registration_type_id: Joi.string().uuid().allow(null, ""),
+    registration_type_id: Joi.string().uuid().required(),
     invoice_id: Joi.string().uuid().allow(null),
 
     registration_method: Joi.string()
@@ -622,7 +622,7 @@ export const activateRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "activate",
       res,
     });
     if (!allowed) return;
@@ -697,26 +697,48 @@ export const activateRegistrationLog = async (req, res) => {
 };
 
 /* ============================================================
-   📌 COMPLETE REGISTRATION LOG — MASTER (FIXED)
+   📌 COMPLETE REGISTRATION LOG — MASTER (FINAL FIXED + CLAIM)
    active → completed
 ============================================================ */
 export const completeRegistrationLog = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    console.log("🔥 [COMPLETE START]", {
+      user: req.user,
+      params: req.params,
+    });
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "complete",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
 
+    /* ================= NORMALIZE USER ================= */
+    const normalizedUser = {
+      ...req.user,
+      organization_id:
+        req.user.organization_id || req.user.organizationId,
+      facility_id:
+        req.user.facility_id || req.user.facilityId,
+    };
+
+    console.log("👤 [NORMALIZED USER]", normalizedUser);
+
+    /* ================= RESOLVE TENANT ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
-      user: req.user,
+      user: normalizedUser,
       value: {},
       body: {},
+    });
+
+    console.log("🏢 [TENANT RESOLVED]", {
+      orgId,
+      facilityId,
     });
 
     const { ACTIVE, COMPLETED } = REGISTRATION_LOG_STATUS;
@@ -728,6 +750,13 @@ export const completeRegistrationLog = async (req, res) => {
         ...(facilityId && { facility_id: facilityId }),
       },
       transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    console.log("📄 [LOG FOUND]", {
+      found: !!log,
+      log_id: log?.id,
+      status: log?.log_status,
     });
 
     if (!log) {
@@ -742,30 +771,76 @@ export const completeRegistrationLog = async (req, res) => {
 
     const oldStatus = log.log_status;
 
-    await log.update(
-      {
-        log_status: COMPLETED,
-        updated_by_id: req.user?.id || null,
-      },
-      { transaction: t }
-    );
-
-    /* 🔥 FIX: PASS patient_insurance_id */
+    /* ================= BILLING ================= */
+    console.log("💰 [TRIGGER BILLING]");
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
       entity: {
         ...log.toJSON(),
-        patient_insurance_id: log.patient_insurance_id, // ✅ CRITICAL FIX
+        patient_insurance_id: log.patient_insurance_id,
         billable_item_id: log.registration_type_id,
       },
-      user: { ...req.user, organization_id: orgId, facility_id: facilityId },
+      user: {
+        ...normalizedUser,
+        organization_id: orgId,
+        facility_id: facilityId,
+      },
       transaction: t,
     });
 
+    /* ================= FINALIZE ================= */
+    console.log("🔥 [FINALIZE BILLING]");
+    await billingService.finalizeVisitBilling({
+      registration_log_id: log.id,
+      user: {
+        ...normalizedUser,
+        organization_id: orgId,
+        facility_id: facilityId,
+      },
+      transaction: t,
+    });
+
+    /* ================= CHECK INVOICE ================= */
+    console.log("🔍 [FETCH INVOICE]");
+    const invoice = await Invoice.findOne({
+      where: {
+        registration_log_id: log.id,
+        organization_id: orgId,
+        ...(facilityId && { facility_id: facilityId }),
+      },
+      transaction: t,
+    });
+
+    console.log("📄 [INVOICE RESULT]", {
+      found: !!invoice,
+      invoice_id: invoice?.id,
+    });
+
+    if (!invoice) {
+      await t.rollback();
+      return error(res, "❌ No invoice found for this visit", null, 400);
+    }
+
+    /* ================= UPDATE STATUS ================= */
+    console.log("🔄 [UPDATE LOG STATUS]");
+    await log.update(
+      {
+        log_status: COMPLETED,
+        updated_by_id: normalizedUser?.id || null,
+      },
+      { transaction: t }
+    );
+
+    console.log("💾 [COMMIT TRANSACTION]");
     await t.commit();
 
+    /* ================= 🔥 AUDIT ================= */
+    console.log("🧾 [AUDIT START]", {
+      user: normalizedUser,
+    });
+
     await auditService.logAction({
-      user: req.user,
+      user: normalizedUser,
       module_key: MODULE_KEY,
       action: "complete",
       entityId: id,
@@ -773,13 +848,16 @@ export const completeRegistrationLog = async (req, res) => {
       details: { from: oldStatus, to: COMPLETED },
     });
 
+    console.log("✅ [AUDIT COMPLETE]");
+
     return success(res, "✅ Registration Log completed", log);
   } catch (err) {
+    console.error("❌ [COMPLETE ERROR]", err);
+
     await t.rollback();
     return error(res, "❌ Failed to complete registration log", err);
   }
 };
-
 /* ============================================================
    📌 CANCEL REGISTRATION LOG — MASTER
    pending | active → cancelled
@@ -790,7 +868,7 @@ export const cancelRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "cancel",
       res,
     });
     if (!allowed) return;
@@ -878,12 +956,13 @@ export const voidRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "void",
       res,
     });
     if (!allowed) return;
 
     const { id } = req.params;
+
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
       value: {},
@@ -897,7 +976,9 @@ export const voidRegistrationLog = async (req, res) => {
         ...(facilityId && { facility_id: facilityId }),
       },
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
+
     if (!log) {
       await t.rollback();
       return error(res, "❌ Registration Log not found", null, 404);
@@ -905,17 +986,85 @@ export const voidRegistrationLog = async (req, res) => {
 
     const oldStatus = log.log_status;
 
-    await log.update(
-      { log_status: REGISTRATION_LOG_STATUS.VOIDED, updated_by_id: req.user?.id || null },
-      { transaction: t }
-    );
+    /* ============================================================
+       🔥 STEP 1: FIND INVOICE
+    ============================================================ */
+    const invoice = await Invoice.findOne({
+      where: {
+        registration_log_id: log.id,
+        organization_id: orgId,
+        ...(facilityId && { facility_id: facilityId }),
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
+    /* ============================================================
+       🔒 BLOCK VOID IF PAID
+    ============================================================ */
+    if (invoice && Number(invoice.total_paid || 0) > 0) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Cannot void — invoice has payments",
+        null,
+        400
+      );
+    }
+
+    /* ============================================================
+       🔥 STEP 2: REVERSE CLAIM
+    ============================================================ */
+    if (invoice?.insurance_claim_id) {
+      await sequelize.models.InsuranceClaim.update(
+        {
+          status: "cancelled",
+          updated_by_id: req.user?.id || null,
+        },
+        {
+          where: { id: invoice.insurance_claim_id },
+          transaction: t,
+        }
+      );
+    }
+
+    /* ============================================================
+       🔓 STEP 3: UNLOCK INVOICE
+    ============================================================ */
+    if (invoice) {
+      await invoice.update(
+        {
+          is_locked: false,
+          insurance_claim_id: null,
+        },
+        { transaction: t }
+      );
+    }
+
+    /* ============================================================
+       🔥 STEP 4: VOID BILLING ITEMS
+    ============================================================ */
     await billingService.voidCharges({
       module_key: MODULE_KEY,
       entityId: log.id,
-      user: { ...req.user, organization_id: orgId, facility_id: facilityId },
+      user: {
+        ...req.user,
+        organization_id: orgId,
+        facility_id: facilityId,
+      },
       transaction: t,
     });
+
+    /* ============================================================
+       🔥 STEP 5: UPDATE STATUS
+    ============================================================ */
+    await log.update(
+      {
+        log_status: REGISTRATION_LOG_STATUS.VOIDED,
+        updated_by_id: req.user?.id || null,
+      },
+      { transaction: t }
+    );
 
     await t.commit();
 
@@ -928,7 +1077,7 @@ export const voidRegistrationLog = async (req, res) => {
       details: { from: oldStatus, to: REGISTRATION_LOG_STATUS.VOIDED },
     });
 
-    return success(res, "✅ Registration Log voided and charges voided", log);
+    return success(res, "✅ Registration Log voided (claim reversed)", log);
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed to void registration log", err);
@@ -944,7 +1093,7 @@ export const submitRegistrationLog = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
-      action: "update",
+      action: "submit",
       res,
     });
     if (!allowed) return;

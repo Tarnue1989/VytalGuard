@@ -1,10 +1,8 @@
-// 📁 registrationLog-actions.js – Enterprise Master Pattern (Registration Logs)
+// 📁 registrationLog-actions.js – Enterprise Master Pattern (Registration Logs) ✅ FINAL FIXED
 // ============================================================================
-// 🧭 FULL PARITY WITH department-actions.js (MASTER)
 // 🔹 Permission-driven (superadmin-aware)
-// 🔹 Explicit lifecycle: view / edit / submit / activate / complete / cancel / void / delete
+// 🔹 FULLY CONSISTENT: view / update / submit / activate / complete / cancel / void / delete
 // 🔹 NO toggle-status (enterprise-safe)
-// 🔹 Keeps all DOM IDs, routes, API calls, and UI behavior intact
 // ============================================================================
 
 import {
@@ -17,9 +15,6 @@ import {
 import { authFetch } from "../../authSession.js";
 import { renderCard } from "./registration-log-render.js";
 
-/**
- * Unified permission-aware action handler for Registration Log module
- */
 export function setupActionHandlers({
   entries,
   token,
@@ -27,13 +22,12 @@ export function setupActionHandlers({
   loadEntries,
   visibleFields,
   sharedState,
-  user, // { role, permissions, roleNames }
+  user,
 }) {
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("registrationLogTableBody");
   const cardContainer = document.getElementById("registrationLogList");
 
-  // 🗂️ Cache latest entries
   window.latestRegistrationLogEntries = entries;
 
   if (tableBody) tableBody.addEventListener("click", handleActions);
@@ -85,7 +79,6 @@ export function setupActionHandlers({
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🩹 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -103,77 +96,86 @@ export function setupActionHandlers({
 
     const cls = btn.classList;
 
+    /* ================= VIEW ================= */
     if (cls.contains("view-btn")) {
       if (!hasPerm("registration_logs:view"))
-        return showToast("⛔ You don't have permission to view registration logs");
+        return showToast("⛔ No permission to view registration logs");
       return handleView(entry);
     }
 
+    /* ================= EDIT ================= */
     if (cls.contains("edit-btn")) {
-      if (!hasPerm("registration_logs:edit"))
-        return showToast("⛔ You don't have permission to edit registration logs");
+      if (!hasPerm("registration_logs:update"))
+        return showToast("⛔ No permission to edit registration logs");
       return handleEdit(entry);
     }
 
+    /* ================= SUBMIT ================= */
     if (cls.contains("submit-btn")) {
-      if (!hasPerm("registration_logs:edit"))
+      if (!hasPerm("registration_logs:submit"))
         return showToast("⛔ No permission to submit registration logs");
       return handleLifecycle(id, "submit");
     }
 
+    /* ================= ACTIVATE ================= */
     if (cls.contains("activate-btn")) {
-      if (!hasPerm("registration_logs:edit"))
+      if (!hasPerm("registration_logs:activate"))
         return showToast("⛔ No permission to activate registration logs");
       return handleLifecycle(id, "activate");
     }
 
+    /* ================= COMPLETE ================= */
     if (cls.contains("complete-btn")) {
-      if (!hasPerm("registration_logs:edit"))
+      if (!hasPerm("registration_logs:complete"))
         return showToast("⛔ No permission to complete registration logs");
       return handleLifecycle(id, "complete");
     }
 
+    /* ================= CANCEL ================= */
     if (cls.contains("cancel-btn")) {
-      if (!hasPerm("registration_logs:edit"))
+      if (!hasPerm("registration_logs:cancel"))
         return showToast("⛔ No permission to cancel registration logs");
       return handleLifecycle(id, "cancel");
     }
 
+    /* ================= VOID ================= */
     if (cls.contains("void-btn")) {
       if (!hasPerm("registration_logs:void"))
         return showToast("⛔ No permission to void registration logs");
       return handleLifecycle(id, "void");
     }
 
+    /* ================= DELETE ================= */
     if (cls.contains("delete-btn")) {
       if (!hasPerm("registration_logs:delete"))
-        return showToast("⛔ You don't have permission to delete registration logs");
+        return showToast("⛔ No permission to delete registration logs");
       return handleDelete(id);
     }
   }
 
   /* ============================================================
-     ⚙️ Action Handlers
+     ⚙️ Handlers
   ============================================================ */
 
-  // 🔍 View
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
-    openViewModal("Registration Log Info", html);
+    openViewModal(
+      "Registration Log Info",
+      renderCard(entry, visibleFields, user)
+    );
   }
 
-  // ✏️ Edit
   function handleEdit(entry) {
     if (currentEditIdRef) currentEditIdRef.value = entry.id;
+
     sessionStorage.setItem("registrationLogEditId", entry.id);
     sessionStorage.setItem(
       "registrationLogEditPayload",
       JSON.stringify(entry)
     );
+
     window.location.href = "add-registration-log.html";
   }
 
-  // 🔁 Lifecycle (submit / activate / complete / cancel / void)
   async function handleLifecycle(id, action) {
     const confirmed = await showConfirm(
       `Are you sure you want to ${action} this registration log?`
@@ -182,27 +184,27 @@ export function setupActionHandlers({
 
     try {
       showLoading();
+
       const res = await authFetch(`/api/registration-logs/${id}/${action}`, {
         method: "PATCH",
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(
-          data.message || `❌ Failed to ${action} registration log`
-        );
+        throw new Error(data.message || `❌ Failed to ${action}`);
 
       showToast(`✅ Registration Log ${action} successful`);
+
       window.latestRegistrationLogEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
-      showToast(err.message || `❌ Failed to ${action} registration log`);
+      showToast(err.message || `❌ Failed to ${action}`);
     } finally {
       hideLoading();
     }
   }
 
-  // 🗑️ Delete
   async function handleDelete(id) {
     const confirmed = await showConfirm(
       "Delete this registration log permanently?"
@@ -211,26 +213,29 @@ export function setupActionHandlers({
 
     try {
       showLoading();
+
       const res = await authFetch(`/api/registration-logs/${id}`, {
         method: "DELETE",
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "❌ Failed to delete registration log");
+        throw new Error(data.message || "❌ Failed to delete");
 
-      showToast("✅ Registration Log deleted successfully");
+      showToast("✅ Registration Log deleted");
+
       window.latestRegistrationLogEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
       console.error(err);
-      showToast(err.message || "❌ Failed to delete registration log");
+      showToast(err.message || "❌ Failed to delete");
     } finally {
       hideLoading();
     }
   }
 
   /* ============================================================
-     🌍 Global Helpers (Inline Triggers)
+     🌍 Global Helpers
   ============================================================ */
   const findEntry = (id) =>
     (window.latestRegistrationLogEntries || entries || []).find(
@@ -239,21 +244,22 @@ export function setupActionHandlers({
 
   window.viewRegistrationLog = (id) => {
     if (!hasPerm("registration_logs:view"))
-      return showToast("⛔ No permission to view registration logs");
+      return showToast("⛔ No permission to view");
     const entry = findEntry(id);
     if (entry) handleView(entry);
   };
 
   window.editRegistrationLog = (id) => {
-    if (!hasPerm("registration_logs:edit"))
-      return showToast("⛔ No permission to edit registration logs");
+    if (!hasPerm("registration_logs:update"))
+      return showToast("⛔ No permission to edit");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
   };
 
   window.deleteRegistrationLog = async (id) => {
     if (!hasPerm("registration_logs:delete"))
-      return showToast("⛔ No permission to delete registration logs");
-    await handleDelete(id);
+      return showToast("⛔ No permission to delete");
+    const entry = findEntry(id);
+    if (entry) await handleDelete(id);
   };
 }

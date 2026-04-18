@@ -53,7 +53,7 @@ export function renderFinanceSummary(data = {}) {
       row("Balance", depositBalance, "fw-bold text-warning")
     ])}
 
-    ${groupCard("⚠️ Outstanding", [
+    ${groupCard("⚠️ Outstanding Invoices", [
       bigValue(outstanding, "text-warning")
     ])}
   `;
@@ -240,4 +240,85 @@ function formatModule(key) {
   return key
     ?.replace(/_/g, " ")
     ?.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+export function renderFinanceInsights(data = {}) {
+  const container = document.getElementById("financeInsights");
+  if (!container) return;
+
+  const paymentRefund = Number(data.payment_refunded || 0);
+  const depositRefund = Number(data.deposit_refunded || 0);
+
+  container.innerHTML = `
+    <div class="col-xl-3 col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">💸 Expenses</div>
+          <div class="fw-bold text-danger">
+            ${formatMoney(data.total_expense)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">📈 Profit</div>
+          <div class="small text-muted">Net Cash - Expenses</div>
+          <div class="fw-bold ${
+            data.profit >= 0 ? "text-success" : "text-danger"
+          }">
+            ${formatMoney(data.profit)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">🔁 Refunds</div>
+
+          <div class="small d-flex justify-content-between">
+            <span>Payment</span>
+            <span class="text-danger">${formatMoney(paymentRefund)}</span>
+          </div>
+
+          <div class="small d-flex justify-content-between">
+            <span>Deposit</span>
+            <span class="text-warning">${formatMoney(depositRefund)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">🏥 Insurance</div>
+
+          <div class="small d-flex justify-content-between">
+            <span>Claimed</span>
+            <span>${formatMoney(data.insurance_claimed)}</span>
+          </div>
+
+          <div class="small d-flex justify-content-between">
+            <span>Approved</span>
+            <span class="text-primary">${formatMoney(data.insurance_approved)}</span>
+          </div>
+
+          <div class="small d-flex justify-content-between">
+            <span>Paid</span>
+            <span class="text-success">${formatMoney(data.insurance_paid)}</span>
+          </div>
+
+          <div class="small d-flex justify-content-between fw-bold mt-1">
+            <span>Outstanding</span>
+            <span class="text-warning">${formatMoney(data.insurance_outstanding)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }

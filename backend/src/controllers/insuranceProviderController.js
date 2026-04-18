@@ -23,6 +23,7 @@ import {
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { makeModuleLogger } from "../utils/debugLogger.js";
+import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
 
 const MODULE_KEY = "insurance_providers";
 
@@ -126,34 +127,19 @@ export const createInsuranceProvider = async (req, res) => {
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ========================================================
-       🧭 SCOPE
-    ======================================================== */
-    let orgId = null;
-    let facilityId = null;
-
-    if (isSuperAdmin(req.user)) {
-      orgId = value.organization_id ?? null;
-      facilityId = value.facility_id ?? null;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = value.facility_id ?? null;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id ?? null;
-    }
+    /* ================= TENANT RESOLUTION (MASTER) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
     if (!orgId) {
       await t.rollback();
       return error(res, "Missing organization assignment", null, 400);
     }
 
-    /* ========================================================
-       🚫 DUP CHECK
-    ======================================================== */
+    /* ================= DUP CHECK ================= */
     const exists = await InsuranceProvider.findOne({
       where: {
         organization_id: orgId,
@@ -169,9 +155,7 @@ export const createInsuranceProvider = async (req, res) => {
       return error(res, "Provider already exists", null, 400);
     }
 
-    /* ========================================================
-       ✅ CREATE
-    ======================================================== */
+    /* ================= CREATE ================= */
     const created = await InsuranceProvider.create(
       {
         ...value,
@@ -203,6 +187,7 @@ export const createInsuranceProvider = async (req, res) => {
     return error(res, "❌ Failed to create provider", err);
   }
 };
+
 
 /* ============================================================
    📌 UPDATE
@@ -242,23 +227,14 @@ export const updateInsuranceProvider = async (req, res) => {
       return error(res, "❌ Provider not found", null, 404);
     }
 
-    let orgId = record.organization_id;
-    let facilityId = record.facility_id;
+    /* ================= TENANT RESOLUTION (MASTER) ================= */
+    const { orgId, facilityId } = await resolveOrgFacility({
+      user: req.user,
+      value,
+      body: req.body,
+    });
 
-    if (isSuperAdmin(req.user)) {
-      if ("organization_id" in value) orgId = value.organization_id;
-      if ("facility_id" in value) facilityId = value.facility_id;
-    } else if (isOrgOwner(req.user)) {
-      orgId = req.user.organization_id;
-      if ("facility_id" in value) facilityId = value.facility_id;
-    } else if (isFacilityHead(req.user)) {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id;
-    } else {
-      orgId = req.user.organization_id;
-      facilityId = req.user.facility_id ?? record.facility_id;
-    }
-
+    /* ================= UPDATE ================= */
     await record.update(
       {
         ...value,
@@ -292,7 +268,7 @@ export const updateInsuranceProvider = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL INSURANCE PROVIDERS (MASTER PARITY + SUMMARY)
+   📌 GET ALL INSURANCE PROVIDERS (REG STYLE)
 ============================================================ */
 export const getAllInsuranceProviders = async (req, res) => {
   try {
@@ -323,29 +299,15 @@ export const getAllInsuranceProviders = async (req, res) => {
       });
     }
 
-    /* ================= TENANT ================= */
+    /* ================= TENANT (REG STYLE) ================= */
     if (!isSuperAdmin(req.user)) {
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      if (!isOrgOwner(req.user)) {
+      if (isFacilityHead(req.user)) {
         options.where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },
-            { facility_id: req.user.facility_id },
-          ],
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        options.where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
-        options.where[Op.and].push({
-          facility_id: req.query.facility_id,
+          facility_id: req.user.facility_id,
         });
       }
     }
@@ -372,7 +334,6 @@ export const getAllInsuranceProviders = async (req, res) => {
       });
     }
 
-    /* ================= QUERY ================= */
     const { count, rows } = await InsuranceProvider.findAndCountAll({
       where: options.where,
       include: PROVIDER_INCLUDES,
@@ -389,17 +350,6 @@ export const getAllInsuranceProviders = async (req, res) => {
       inactive: rows.filter(r => r.status === INACTIVE).length,
     };
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list",
-      details: {
-        returned: count,
-        query: req.query,
-        dateRange: dateRange || null,
-      },
-    });
-
     return success(res, "✅ Insurance Providers loaded", {
       records: rows,
       summary,
@@ -414,9 +364,8 @@ export const getAllInsuranceProviders = async (req, res) => {
     return error(res, "❌ Failed to load providers", err);
   }
 };
-
 /* ============================================================
-   📌 GET BY ID
+   📌 GET BY ID (REG STYLE)
 ============================================================ */
 export const getInsuranceProviderById = async (req, res) => {
   try {
@@ -429,19 +378,14 @@ export const getInsuranceProviderById = async (req, res) => {
     if (!allowed) return;
 
     const { id } = req.params;
-    const where = { id };
 
-    if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    const where = {
+      id,
+      organization_id: req.user.organization_id,
+    };
 
-      if (isFacilityHead(req.user)) {
-        where.facility_id = req.user.facility_id;
-      }
-    } else {
-      if (req.query.organization_id)
-        where.organization_id = req.query.organization_id;
-      if (req.query.facility_id)
-        where.facility_id = req.query.facility_id;
+    if (isFacilityHead(req.user)) {
+      where.facility_id = req.user.facility_id;
     }
 
     const found = await InsuranceProvider.findOne({
@@ -451,14 +395,6 @@ export const getInsuranceProviderById = async (req, res) => {
 
     if (!found) return error(res, "❌ Provider not found", null, 404);
 
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "view",
-      entityId: id,
-      entity: found,
-    });
-
     return success(res, "✅ Insurance Provider loaded", found);
   } catch (err) {
     debug.error("view → FAILED", err);
@@ -466,11 +402,8 @@ export const getInsuranceProviderById = async (req, res) => {
   }
 };
 
-
 /* ============================================================
-   📌 GET LITE (AUTOCOMPLETE / DROPDOWN)
-   🔹 FIXED: Facility filter no longer blocks results
-   🔹 Enterprise-safe tenant filtering
+   📌 GET LITE (REG STYLE)
 ============================================================ */
 export const getAllInsuranceProvidersLite = async (req, res) => {
   try {
@@ -482,30 +415,17 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, organization_id, facility_id } = req.query;
+    const { q } = req.query;
 
-    /* ================= BASE WHERE ================= */
     const where = {
       status: INSURANCE_PROVIDER_STATUS.ACTIVE,
+      organization_id: req.user.organization_id,
     };
 
-    /* ================= TENANT (ORG) ================= */
-    if (organization_id && /^[0-9a-f-]{36}$/i.test(organization_id)) {
-      where.organization_id = organization_id;
-    } else if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+    if (isFacilityHead(req.user)) {
+      where.facility_id = req.user.facility_id;
     }
 
-    /* ================= TENANT (FACILITY) ================= */
-    // ✅ FIXED: Only apply facility filter IF explicitly provided
-    if (
-      facility_id &&
-      /^[0-9a-f-]{36}$/i.test(facility_id)
-    ) {
-      where.facility_id = facility_id;
-    }
-
-    /* ================= SEARCH ================= */
     if (q) {
       where[Op.or] = [
         { name: { [Op.iLike]: `%${q}%` } },
@@ -514,7 +434,6 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       ];
     }
 
-    /* ================= QUERY ================= */
     const providers = await InsuranceProvider.findAll({
       where,
       attributes: ["id", "name"],
@@ -522,30 +441,14 @@ export const getAllInsuranceProvidersLite = async (req, res) => {
       limit: 50,
     });
 
-    /* ================= FORMAT ================= */
-    const result = providers.map((p) => ({
+    const result = providers.map(p => ({
       id: p.id,
-      label: p.name, // ⭐ required for dropdown
+      label: p.name,
     }));
 
-    /* ================= AUDIT ================= */
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list_lite",
-      details: {
-        count: result.length,
-        q: q || null,
-        organization_id: where.organization_id || null,
-        facility_id: facility_id || null,
-      },
-    });
-
-    /* ================= RESPONSE ================= */
     return success(res, "✅ Providers loaded (lite)", {
       records: result,
     });
-
   } catch (err) {
     debug.error("list_lite → FAILED", err);
     return error(res, "❌ Failed to load providers (lite)", err);

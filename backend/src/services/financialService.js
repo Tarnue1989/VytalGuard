@@ -201,6 +201,7 @@ async applyPayment({
   user,
   organization_id,
   facility_id,
+  allow_locked_payment = false,
   t,
 }) {
   if (!t) {
@@ -261,9 +262,6 @@ async applyPayment({
     throw new Error("❌ Invoice not found");
   }
 
-  if (invoice.is_locked) {
-    throw new Error("❌ Cannot add payment to locked invoice");
-  }
 
   if (parseFloat(amount) <= 0) {
     throw new Error("❌ Payment amount must be greater than 0");
@@ -1050,9 +1048,6 @@ async applyPayment({
 
         const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
         if (!invoice) throw new Error("❌ Invoice not found");
-        if (invoice.is_locked) {
-          throw new Error("❌ Cannot apply deposit to locked invoice");
-        }
 
         const remainingDeposit = parseFloat(deposit.remaining_balance) || 0;
         const invoiceBalance = parseFloat(invoice.balance ?? invoice.total ?? 0);

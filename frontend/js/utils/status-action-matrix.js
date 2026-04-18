@@ -1,662 +1,358 @@
-// 📦 status-action-matrix.js – Enterprise Master Pattern Aligned (Full + Compact)
-// ============================================================================
-// 🧠 STATUS → ACTION MATRIX + BUTTON BUILDER (Unified Enterprise Standard)
-// ----------------------------------------------------------------------------
-// 🔹 Covers all modules: Clinical, Billing, Inventory, Master Data, Admin, etc.
-// 🔹 Standardized lifecycle actions (toggle-status, void, restore, delete, etc.)
-// 🔹 Context-aware button labels (Deposit / Refund / Refund Deposit / Waiver)
-// ============================================================================
+// 📦 STATUS ACTION MATRIX – COMPACT ENTERPRISE (SPACE OPTIMIZED)
 
 export const STATUS_ACTION_MATRIX = {
-  /* ======================== 🩺 CLINICAL ======================== */
+  /* 🩺 CLINICAL */
   consultation:{open:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
   triage_record:{open:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
   ekg_record:{pending:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["review","finalize","void"],reviewed:["finalize","void"],finalized:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
   delivery_record:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 📅 APPOINTMENT ======================== */
+  /* 📅 APPOINTMENT */
   appointment:{
     scheduled:["edit","activate","cancel","no-show","void"],
     in_progress:["complete","cancel","void"],
     completed:["verify","void"],
-    verified:[],
-    cancelled:["restore"],
-    no_show:["restore"],
-    voided:["restore"],
-    deleted:[]
+    verified:[],cancelled:["restore"],no_show:["restore"],voided:["restore"],deleted:[]
   },
 
-  /* ======================== 🏥 INSURANCE PROVIDER ======================== */
-  insurance_provider: {
-    active:   ["edit", "toggle-status", "delete"],
-    inactive: ["edit", "toggle-status", "delete"],
-    deleted:  ["restore"]
-  },
-  /* ======================== 🏥 PATIENT INSURANCE ======================== */
-  patient_insurances: {
-    active:   ["edit", "toggle-status", "delete", "print"],
-    inactive: ["edit", "toggle-status", "delete"],
-    cancelled:["restore"],                   // ✅ OPTIONAL (recommended)
-    deleted:  ["restore"],
-  },
-  /* ======================== INSURANCE CLAIMS ======================== */
+  /* 🏥 INSURANCE */
+  insurance_provider:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
+  patient_insurances:{active:["edit","toggle-status","delete","print"],inactive:["edit","toggle-status","delete"],cancelled:["restore"],deleted:["restore"]},
+
   insurance_claim:{
-  draft:["edit","submit","delete"],
-  submitted:["review"],
-  in_review:["approve","partial-approve","reject"],
-  approved:["process-payment"],
-  partially_approved:["process-payment"],
-  processing_payment:["mark-paid"],
-  paid:["reverse-payment"],
-  rejected:[],
-  cancelled:[],
-  voided:[],
-  reversed:[]
-  },
-  /* ======================== 💰 DEPOSIT ======================== */
-  deposit:{
-    pending:["edit","clear","cancel","void", "print"],
-    cleared:["apply","void","reverse", "print"],
-    applied:["apply","reverse","verify","void","print"],
-    verified:["print"],
-    cancelled:["restore"],
-    reversed:["restore"],
-    voided:["restore"],
-    deleted:["restore"],
+    draft:["edit","submit","delete","view-invoice","print-invoice"],
+    submitted:["review","view-invoice","print-invoice"],
+    in_review:["approve","partial-approve","reject","view-invoice","print-invoice"],
+    approved:["process-payment","view-invoice","print-invoice"],
+    partially_approved:["process-payment","view-invoice","print-invoice"],
+    processing_payment:["mark-paid","view-invoice","print-invoice"],
+    paid:["reverse-payment","view-invoice","print-invoice"],
+    rejected:["view-invoice"],
+    cancelled:["view-invoice"],
+    voided:["view-invoice"],
+    reversed:["view-invoice"]
   },
 
-  /* ======================== 💳 PAYMENT ======================== */
+  /* 💰 DEPOSIT / PAYMENT */
+  deposit:{
+    pending:["edit","clear","cancel","void","print"],
+    cleared:["apply","void","reverse","print"],
+    applied:["apply","reverse","verify","void","print"],
+    verified:["print"],cancelled:["restore"],reversed:["restore"],voided:["restore"],deleted:["restore"]
+  },
+  /* 💰 CASH CLOSING */
+  cash_closing:{
+    locked:["view","print","reopen"],
+    open:["view","print"]
+  },
   payment:{
     pending:["edit","complete","cancel","void","delete"],
     completed:["verify","void","print"],
-    verified:["print"],
-    cancelled:["restore"],
-    reversed:["restore"],
-    voided:["restore"],
-    deleted:["restore"],
+    verified:["print"],cancelled:["restore"],reversed:["restore"],voided:["restore"],deleted:["restore"]
   },
 
-  /* ======================== 🧾 INVOICE ======================== */
+  /* 🧾 INVOICE */
   invoice:{
     draft:["edit","void"],
     unpaid:["collect","deposit","waiver","void","print"],
     partial:["collect","deposit","waiver","refund","void","print"],
     paid:["refund","reverse","print"],
-    cancelled:["restore"],
-    voided:["restore"],
-    deleted:["restore"]
+    cancelled:["restore"],voided:["restore"],deleted:["restore"]
   },
 
-  /* ======================== 💸 DISCOUNT ======================== */
+  /* 💸 DISCOUNTS */
   discount:{
     draft:["edit","toggle-status","void"],
     active:["toggle-status","finalize","void","print"],
     inactive:["toggle-status","void","print"],
     finalized:["void","restore","print"],
-    voided:["restore"],
-    deleted:["restore"]
+    voided:["restore"],deleted:["restore"]
   },
 
-  /* ======================== 💸 DISCOUNT WAIVER ======================== */
   discount_waiver:{
     pending:["edit","approve","reject","void","delete"],
     approved:["finalize","void","print"],
     applied:["void","print"],
     finalized:["print","void","restore"],
     rejected:["restore","print"],
-    voided:["restore"],
-    deleted:["restore"],
+    voided:["restore"],deleted:["restore"]
   },
 
-  /* ======================== 💵 REFUND (payment refunds) ======================== */
+  /* 💵 REFUNDS */
   refund:{
     pending:["edit","approve","reject","cancel","void","delete"],
     approved:["process","cancel","void"],
     processed:["print"],
-    reversed:["restore"],
-    rejected:["restore"],
-    cancelled:["restore"],
-    voided:["restore"],
-    deleted:["restore"],
+    reversed:["restore"],rejected:["restore"],cancelled:["restore"],voided:["restore"],deleted:["restore"]
   },
 
-  /* ======================== 💰 REFUND DEPOSIT (DEPOSIT REFUNDS) ======================== */
-  refund_deposits: {
-    pending:   ["review", "edit", "cancel", "void", "print"],   // ✅
-    review:    ["approve", "reject", "cancel", "void", "print"],// ✅
-    approved:  ["process", "void", "print"],                    // ✅
-    processed: ["print"],                            // ✅
-
-    rejected:  [],
-    cancelled: [],
-
-    reversed:  ["restore", "print"],                            // ✅ optional
-    voided:    ["restore"],
+  refund_deposits:{
+    pending:["review","edit","cancel","void","print"],
+    review:["approve","reject","cancel","void","print"],
+    approved:["process","void","print"],
+    processed:["print"],
+    reversed:["restore","print"],
+    voided:["restore"],rejected:[],cancelled:[]
   },
 
-  /* ======================== 🩹 SURGERY ======================== */
+  /* 🧪 MEDICAL */
   surgery:{scheduled:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 🩻 ULTRASOUND ======================== */
-  ultrasound_record: {
-    pending:      ["edit", "start", "cancel", "void"],
-    in_progress:  ["complete", "cancel", "void"],
-    completed:    ["verify", "void"],
-    verified:     ["finalize", "void"],
-    finalized:    ["void"],
-    cancelled:    ["void"],
-    voided:       []
+  ultrasound_record:{
+    pending:["edit","start","cancel","void"],
+    in_progress:["complete","cancel","void"],
+    completed:["verify","void"],
+    verified:["finalize","void"],
+    finalized:["void"],cancelled:["void"],voided:[]
   },
 
-  /* ======================== 🧪 LAB ======================== */
   lab_request:{draft:["edit","submit","delete","void"],pending:["edit","cancel","void"],approved:["process","void"],processed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
   lab_result:{draft:["edit","submit","delete","void"],pending:["edit","start","cancel","void"],in_progress:["complete","cancel","void"],completed:["review","void"],reviewed:["verify","void"],verified:[],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 🩸 VITAL ======================== */
   vital:{open:["edit","start","cancel","void"],in_progress:["complete","finalize","cancel","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 🧠 MEDICAL RECORD ======================== */
   medical_record:{draft:["edit","review","delete","void"],reviewed:["finalize","void"],finalized:["verify","void"],verified:["void"],voided:["restore"]},
 
-  /* ======================== 💊 PRESCRIPTION ======================== */
   prescription:{draft:["edit","submit","delete","void"],issued:["cancel","void"],dispensed:["complete","verify","void"],completed:["verify","void"],verified:["void"],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 💊 PHARMACY TX ======================== */
   pharmacy_transaction:{
     pending:["dispense","cancel","void","delete"],
     dispensed:["verify","void"],
     partially_dispensed:["verify","void"],
     returned:["verify"],
-    /*verified:["view"],*/
+    cancelled:["restore"],voided:["restore"],deleted:["restore"]
+  },
+
+  maternity_visit:{
+    scheduled:["edit","start","cancel","void"],
+    in_progress:["complete","cancel","void"],
+    completed:["review","finalize","void"],
+    reviewed:["finalize","void"],
+    finalized:["verify","void"],
+    verified:["void"],cancelled:["void"],voided:["restore"]
+  },
+  /* 💸 EXPENSE (FINAL ENTERPRISE) */
+  expense:{
+    draft:["edit","submit","delete","void"],
+    pending:["edit","approve","cancel","void"],
+    approved:["post","void"],
+    posted:["reverse"],
     cancelled:["restore"],
     voided:["restore"],
-    deleted:["restore"]
+    reversed:["restore"]
   },
-  /* ======================== 🤰 MATERNITY VISIT ======================== */
-  maternity_visit: {
-    scheduled:   ["edit","start","cancel","void"],
-    in_progress: ["complete","cancel","void"],
-    completed:   ["review","finalize","void"],
-    reviewed:    ["finalize","void"],
-    finalized:   ["verify","void"],
-    verified:    ["void"],
-    cancelled:   ["void"],
-    voided:      ["restore"]
-  },
-
-
-  /* ======================== 🩺 PATIENT CHART ======================== */
-  patientcharts:{
-    active:["summary","revalidate","print","void"],
-    stale:["summary","revalidate","print","void"],
-    invalid:["summary","revalidate","print","restore"],
+    /* 💰 PAYROLL */
+  payroll:{
+    draft:["edit","approve","delete","void"],
+    approved:["pay","void"],
+    paid:["void"],
     voided:["restore"]
   },
+  /* 📊 PATIENT CHART */
+  patientcharts:{active:["summary","revalidate","print","void"],stale:["summary","revalidate","print","void"],invalid:["summary","revalidate","print","restore"],voided:["restore"]},
+  patientchart_cache:{active:["summary","revalidate","print"],stale:["summary","revalidate","print"],invalid:["summary","revalidate","print","restore"],voided:["restore"],deleted:["restore"]},
+  patientchart_view_logs:{logged:["view"],reviewed:["view","verify"],verified:["view"],voided:["restore"]},
 
-  patientchart_cache:{
-    active:["summary","revalidate","print"],
-    stale:["summary","revalidate","print"],
-    invalid:["summary","revalidate","print","restore"],
-    voided:["restore"],
-    deleted:["restore"]
-  },
-
-  patientchart_view_logs:{
-    logged:["view"],
-    reviewed:["view","verify"],
-    verified:["view"],
-    voided:["restore"]
-  },
-
-  /* ======================== 🧾 REGISTRATION ======================== */
+  /* 🧾 REGISTRATION / ORDER */
   registration_log:{
     draft:["edit","submit","delete","void"],
-    pending:["edit","activate","cancel","void"],
+    pending:["edit","activate","cancel","void"], // ✅ added verify
     active:["complete","cancel","void"],
-    completed:["verify","void"],
+    completed:["void"],
     verified:["void"],
     cancelled:["void"],
     voided:["restore"]
   },
-    /* ======================== 🧾 ORDER ======================== */
-    order:{
-    draft:["edit","submit",
-    "delete","void"],
-    pending:["activate","cancel",
-    "void"],
-    in_progress:["complete",
-    "cancel","void"],
-    completed:["verify",
-    "void"],
-    verified:["finalize",
-    "void"],
-    finalized:["void"],
-    cancelled:["void"],
-    voided:["restore"]
-  },
-  /* ======================== 🏭 SUPPLIER ======================== */
-  supplier: {
-    active:   ["edit", "toggle-status", "delete"],
-    inactive: ["edit", "toggle-status", "delete"],
-    deleted:  ["restore"],
+  order:{
+    draft:["edit","submit","delete","void"],
+    pending:["activate","cancel","void"],
+    in_progress:["complete","cancel","void"],
+    completed:["verify","void"],
+    verified:["finalize","void"],
+    finalized:["void"],cancelled:["void"],voided:["restore"]
   },
 
-  /* ======================== 💰 BILLING ======================== */
-  billable_item: {
-    active:   ["edit","toggle-status","delete"],
-    inactive: ["edit","toggle-status","delete"],
-    voided:   ["restore"],
-    deleted:  ["restore"]
-  },
+  /* 🏭 CORE ENTITIES */
+  supplier:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
+  billable_item:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],voided:["restore"],deleted:["restore"]},
+  billing_trigger:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
 
-
-  /* ======================== ⚡ BILLING TRIGGER ======================== */
-  billing_trigger:{
-    active:   ["edit","toggle-status","delete"],
-    inactive: ["edit","toggle-status","delete"],
-    deleted:  ["restore"]
-  },
-
-  /* ======================== 🏭 INVENTORY ======================== */
-  central_stock: {
-    active:   ["edit","toggle-status","lock","delete"],
-    inactive: ["edit","toggle-status","lock","delete"],
-    deleted:  ["restore"]
-  },
+  /* 🏭 INVENTORY */
+  central_stock:{active:["edit","toggle-status","lock","delete"],inactive:["edit","toggle-status","lock","delete"],deleted:["restore"]},
   stock_request:{draft:["edit","submit","delete","void"],pending:["edit","approve","reject","cancel","void"],approved:["issue","cancel","void"],issued:["fulfill","void"],fulfilled:["void"],cancelled:["void"],voided:["restore"]},
 
-  /* ======================== 🧩 MASTER DATA ======================== */
-  master_item:{
-    active:["edit","toggle-status","delete"],
-    inactive:["edit","toggle-status","delete"],
-    deleted:["restore"]
-  },
-  master_item_category:{
-    active:["edit","toggle-status","delete"],
-    inactive:["edit","toggle-status","delete"],
-  },
-  /* ======================== 👨‍💼 EMPLOYEE ======================== */
+  /* 🧩 MASTER */
+  master_item:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
+  master_item_category:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"]},
+
+  /* 👨‍💼 ADMIN */
   employee:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],terminated:["edit","toggle","delete"],deleted:["restore"]},
-
-  /* ======================== 🏥 FACILITY ======================== */
   facility:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
-
-  /* ======================== 🏢 ORGANIZATION ======================== */
   organization:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],deleted:["restore"]},
-
-  /* ======================== 🧍 PATIENT ======================== */
   patient:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],cancelled:["edit","toggle","delete"],voided:["restore"],deleted:["restore"]},
 
-  /* ======================== 🛡️ ADMIN ======================== */
-  role:{
-    active:["edit","toggle-status","delete"],
-    inactive:["edit","toggle-status","delete"],
-    deleted:["restore"]
-  },
+  role:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
   permission:{active:["edit"]},
-  department: {
-    active:   ["edit","toggle-status","delete"],
-    inactive: ["edit","toggle-status","delete"],
-    deleted:  ["restore"]
-  },
+  department:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
 
-  /* ======================== 👤 USER ======================== */
+  /* 👤 USER */
   user:{
     active:["edit","toggle-status","reset-password","generate-token","revoke-sessions","delete"],
     inactive:["edit","toggle-status","restore"],
     locked:["unlock","reset-password","revoke-sessions"],
     deleted:["restore"]
-  },
-
+  }
 };
 
 
 /* ============================================================
-   🧱 BUTTON BUILDER HELPERS
+   🧱 BUTTON BUILDER – FINAL ENTERPRISE (COMPACT + CONSISTENT)
 ============================================================ */
-function buildButton(action, title, icon, color, id) {
-  return `
-  <button class="btn btn-outline-${color} btn-sm ${action}-btn"
-      type="button" data-id="${id}" data-action="${action}"
-      data-bs-toggle="tooltip" data-bs-title="${title}" aria-label="${title}">
-      <i class="fas ${icon}" aria-hidden="true"></i>
-  </button>`;
+
+/* ================= BUTTON ================= */
+function buildButton(a,t,i,c,id){
+  return `<button class="btn btn-outline-${c} btn-sm ${a}-btn"
+    type="button" data-id="${id}" data-action="${a}"
+    data-bs-toggle="tooltip" data-bs-title="${t}" aria-label="${t}">
+    <i class="fa-solid ${i}"></i></button>`;
 }
 
-export function buildActionButtons({
-  module,
-  status,
-  entry,
-  entryId,
-  user,
-  permissionPrefix
-}) {
-  /* ========================= SAFETY ========================= */
-  if (!module || !entryId || !user) return "";
+/* ================= ICONS ================= */
+const ICONS = {
+  view:"fa-eye",edit:"fa-pen-to-square",
+  start:"fa-play",activate:"fa-bolt","no-show":"fa-user-xmark",
+  dispense:"fa-capsules","partial-dispense":"fa-circle-half-stroke",
+  complete:"fa-check-circle",review:"fa-magnifying-glass",
+  verify:"fa-badge-check",finalize:"fa-flag-checkered",
+  apply:"fa-link",process:"fa-gears",reverse:"fa-rotate-left",
+  clear:"fa-broom",revert:"fa-rotate-back",
+  collect:"fa-money-bill",deposit:"fa-piggy-bank",
+  waiver:"fa-file-invoice",refund:"fa-money-bill-transfer",
+  approve:"fa-circle-check",reject:"fa-circle-xmark",cancel:"fa-ban",
+  void:"fa-xmark-circle",restore:"fa-arrow-rotate-right",delete:"fa-trash",
+  print:"fa-print",
+  pay:"fa-money-bill-wave", reopen:"fa-rotate-right",
+  "view-invoice":"fa-file-invoice",
+  "print-invoice":"fa-print",
+
+  // ✅ ONLY THIS PART CHANGED
+  "toggle-status":"fa-toggle-on",
+  toggle:"fa-toggle-on",
+
+  lock:"fa-lock",unlock:"fa-lock-open",
+  "reset-password":"fa-key","generate-token":"fa-ticket","revoke-sessions":"fa-right-from-bracket",
+  summary:"fa-file-medical",revalidate:"fa-arrows-rotate",
+  submit:"fa-paper-plane",issue:"fa-truck",fulfill:"fa-box-check",
+  "process-payment":"fa-credit-card","mark-paid":"fa-dollar-sign"
+};
+
+/* ================= COLORS ================= */
+const COLORS = {
+  view:"primary",edit:"success",start:"primary",complete:"success",
+  review:"warning",verify:"info",finalize:"dark",
+  apply:"primary",process:"info",reverse:"warning",clear:"success",revert:"secondary",
+  approve:"success",reject:"danger",cancel:"warning",
+  void:"danger",restore:"primary",delete:"danger",
+  print:"info","toggle-status":"secondary",
+  lock:"secondary",unlock:"warning", pay:"success",  reopen:"warning",
+  "reset-password":"warning","generate-token":"info","revoke-sessions":"danger",
+  "view-invoice":"primary",
+  "print-invoice":"info",
+};
+
+/* ================= ORDER ================= */
+const ORDER = [
+  "view","view-invoice","edit","start","activate",
+  "dispense","partial-dispense",
+  "complete","review","verify","finalize",
+  "apply","process","reverse","clear","revert",
+  "approve","reject","cancel","void",
+  "toggle-status","lock","unlock",
+  "restore","delete","print","print-invoice",
+  "reset-password","generate-token","revoke-sessions"
+];
+const actionLabels = {
+  view:"View",edit:"Edit",
+  start:"Start",complete:"Complete",review:"Review",verify:"Verify",finalize:"Finalize",
+  apply:"Apply",process:"Process",reverse:"Reverse",clear:"Clear",revert:"Revert",
+  approve:"Approve",reject:"Reject",cancel:"Cancel",
+  void:"Void",restore:"Restore",delete:"Delete",
+  print:"Print",
+  "toggle-status":"Activate / Deactivate",
+  lock:"Lock",unlock:"Unlock",
+  "reset-password":"Reset Password",
+  "generate-token":"Generate Token",
+  "revoke-sessions":"Revoke Sessions",
+  submit:"Submit",issue:"Issue",fulfill:"Fulfill",
+  "process-payment":"Process Payment","mark-paid":"Mark Paid",
+  "view-invoice":"Invoice",
+  "print-invoice":"Print Invoice",
+};
+
+/* ================= MAIN ================= */
+export function buildActionButtons({module,status,entry,entryId,user,permissionPrefix}){
+  if(!module||!entryId||!user)return "";
 
   const isSuperAdmin =
     user?.role?.toLowerCase().includes("superadmin") ||
-    (user?.roleNames || []).some(r =>
-      r.toLowerCase().includes("superadmin")
-    );
+    (user?.roleNames||[]).some(r=>r.toLowerCase().includes("superadmin"));
 
-  const perms = new Set(
-    (user?.permissions || []).map(p => p.toLowerCase().trim())
-  );
+  const perms=new Set((user?.permissions||[]).map(p=>p.toLowerCase().trim()));
 
-  let allowed = STATUS_ACTION_MATRIX[module]?.[status] || [];
+  let allowed=[...(new Set(STATUS_ACTION_MATRIX[module]?.[status]||[]))];
 
-  /* 🔥 FIX: REMOVE DUPLICATES */
-  allowed = [...new Set(allowed)];
-  /* ========================= NORMALIZE PATIENT TOGGLE ========================= */
-  if (module === "patient") {
-    allowed = allowed.map(a =>
-      a === "toggle" ? "toggle-status" : a
-    );
+  /* ===== NORMALIZE ===== */
+  if(module==="patient")allowed=allowed.map(a=>a==="toggle"?"toggle-status":a);
+
+  if(module==="central_stock"){
+    allowed=entry?.is_locked
+      ? allowed.filter(a=>a!=="lock").concat("unlock")
+      : allowed.filter(a=>a!=="unlock");
+
+    allowed=allowed.map(a=>a==="toggle"?"toggle-status":a);
   }
 
-  /* ========================= NORMALIZE INVENTORY ACTIONS ========================= */
-  /* ========================= INVENTORY LOCK STATE ========================= */
-  if (module === "central_stock") {
-    if (entry?.is_locked === true) {
-      allowed = allowed
-        .filter(a => a !== "lock")
-        .concat("unlock");
-    } else {
-      allowed = allowed
-        .filter(a => a !== "unlock");
-    }
+  /* ===== CONTEXT ===== */
+  const isDeposit=module==="deposit";
+  const isDiscount=module==="discount";
+  const isDiscountWaiver=module==="discount_waiver"||module==="discount-waiver";
+  const isRefund=module==="refund";
+  const isRefundDeposit=module==="refund_deposits";
+  const isPharmacyTx=module==="pharmacy_transaction";
+  const isUser=module==="user";
+
+  /* ===== RULES ===== */
+  if(isDeposit){
+    const r=parseFloat(entry?.remaining_balance||0);
+    if(["cleared","applied"].includes(status)&&r<=0)allowed=allowed.filter(a=>a!=="apply");
+    if(r>0)allowed=allowed.filter(a=>a!=="verify");
   }
 
-  
-  if (module === "central_stock") {
-    allowed = allowed.map(a =>
-      a === "toggle" ? "toggle-status" : a
-    );
-  }
+  if(isRefund&&["reversed","cancelled","rejected","voided"].includes(status))
+    allowed=allowed.filter(a=>!["process","approve"].includes(a));
 
-  /* ========================= CONTEXT FLAGS ========================= */
-  const isDeposit        = module === "deposit";
-  const isDiscount       = module === "discount";
-  const isDiscountWaiver = module === "discount_waiver" || module === "discount-waiver";
-  const isRefund         = module === "refund";
-  const isRefundDeposit  = module === "refund_deposits";
-  const isPharmacyTx     = module === "pharmacy_transaction";
-  const isUser           = module === "user";
+  if(isRefundDeposit&&["reversed","voided"].includes(status))
+    allowed=allowed.filter(a=>!["approve","process"].includes(a));
 
-  /* ========================= RULE ADJUSTMENTS ========================= */
+  if(isUser&&entry?.is_system)
+    allowed=allowed.filter(a=>a!=="toggle-status");
 
-  // Deposit
-  if (isDeposit) {
-    const remaining = parseFloat(entry?.remaining_balance || 0);
-    if (["cleared", "applied"].includes(status) && remaining <= 0)
-      allowed = allowed.filter(a => a !== "apply");
-    if (remaining > 0)
-      allowed = allowed.filter(a => a !== "verify");
-  }
+  /* ===== SORT ===== */
+  allowed.sort((a,b)=>(ORDER.indexOf(a)===-1?999:ORDER.indexOf(a))-(ORDER.indexOf(b)===-1?999:ORDER.indexOf(b)));
 
-  // Refund
-  if (isRefund && ["reversed","cancelled","rejected","voided"].includes(status))
-    allowed = allowed.filter(a => !["process","approve"].includes(a));
+  /* ===== BUILD ===== */
+  let html="";
 
-  // Refund Deposit
-  if (isRefundDeposit && ["reversed","voided"].includes(status))
-    allowed = allowed.filter(a => !["approve","process"].includes(a));
+  for(const act of allowed){
+    let backend = act.replaceAll("-", "_");
+    const permKey=`${permissionPrefix}:${backend}`;
 
-  // System user safety
-  if (isUser && entry?.is_system)
-    allowed = allowed.filter(a => a !== "toggle-status");
-
-  /* ========================= ORDER ========================= */
-  const ORDER = [
-    "view","edit","start",
-    "dispense","partial-dispense",
-    "complete","review","verify","finalize",
-    "apply","process","reverse","clear","revert",
-    "approve","reject","cancel","void",
-    "toggle-status","lock","unlock",
-    "restore","delete","print",
-    "reset-password","generate-token","revoke-sessions"
-  ];
-
-  allowed.sort(
-    (a, b) =>
-      (ORDER.indexOf(a) === -1 ? 999 : ORDER.indexOf(a)) -
-      (ORDER.indexOf(b) === -1 ? 999 : ORDER.indexOf(b))
-  );
-
-  /* ========================= ICONS ========================= */
-  const icons = {
-    /* 👁️ Core */
-    view: "fa-eye",
-    edit: "fa-pen",
-    start: "fa-play",
-    activate: "fa-calendar-check",
-    "no-show": "fa-user-slash",
-
-    /* 💊 Pharmacy / Clinical */
-    dispense: "fa-pills",
-    "partial-dispense": "fa-divide",
-
-    /* ✅ Workflow */
-    complete: "fa-check",
-    review: "fa-search",
-    verify: "fa-clipboard-check",
-    finalize: "fa-flag-checkered",
-
-    /* 🔗 Processing */
-    apply: "fa-link",
-    process: "fa-gears",
-    reverse: "fa-rotate-left",
-    clear: "fa-check-double",
-    revert: "fa-undo-alt",
-
-
-    collect: "fa-money-bill-wave",
-    deposit: "fa-piggy-bank",
-    waiver: "fa-file-invoice-dollar",
-    refund: "fa-undo",
-    reverse: "fa-rotate-left",
-
-    /* 👍 Decisions */
-    approve: "fa-thumbs-up",
-    reject: "fa-thumbs-down",
-    cancel: "fa-ban",
-
-    /* 🚫 Destructive */
-    void: "fa-times-circle",
-    restore: "fa-undo",
-    delete: "fa-trash",
-
-    /* 🖨️ Output */
-    print: "fa-print",
-
-    /* 🔄 Status toggle (generic modules) */
-    "toggle-status":
-      status === "active" ? "fa-user-slash" : "fa-user-check",
-
-    /* 🏭 INVENTORY (Central Stock) */
-    toggle:
-      status === "active" ? "fa-toggle-off" : "fa-toggle-on",
-
-    lock:   "fa-lock",
-    unlock: "fa-lock-open",
-
-    /* 👤 User / Security */
-    "reset-password": "fa-key",
-    "generate-token": "fa-ticket-alt",
-    "revoke-sessions": "fa-sign-out-alt",
-
-    /* 🧠 System */
-    summary: "fa-file-medical",
-    revalidate: "fa-sync-alt",
-  };
-
-  /* ========================= TITLES ========================= */
-  const titles = {
-    /* 👁️ Core */
-    view: "View",
-    edit: "Edit",
-
-    /* ▶️ Lifecycle */
-    start: "Start",
-    complete: "Complete",
-    review: "Review",
-    verify: "Verify",
-    finalize: "Finalize",
-
-    /* 📅 Appointment */
-    activate:
-      module === "appointment" ? "Activate Appointment"
-    : module === "registration_log" ? "Activate Registration"
-    : "Activate",
-    "no-show": "Mark No Show",
-
-    /* 🔗 Processing */
-    clear: isDeposit ? "Clear Deposit" : "Clear Record",
-    revert: "Revert to Pending",
-
-    apply: isDeposit ? "Apply Deposit"
-        : isDiscountWaiver ? "Apply Waiver"
-        : isDiscount ? "Apply Discount"
-        : isRefund ? "Apply Refund"
-        : isPharmacyTx ? "Apply Pharmacy Transaction"
-        : module === "invoice" ? "Apply Invoice"
-        : "Apply",
-
-    process: isRefundDeposit ? "Process Deposit Refund"
-          : isRefund ? "Process Refund"
-          : isDiscountWaiver ? "Process Waiver"
-          : isPharmacyTx ? "Process Pharmacy Transaction"
-          : module === "invoice" ? "Process Invoice"
-          : "Process",
-
-    reverse: isRefundDeposit ? "Reverse Deposit Refund"
-          : isRefund ? "Reverse Refund"
-          : isDeposit ? "Reverse Deposit"
-          : isDiscountWaiver ? "Reverse Waiver"
-          : isDiscount ? "Reverse Discount"
-          : isPharmacyTx ? "Reverse Transaction"
-          : module === "invoice" ? "Reverse Invoice"
-          : "Reverse",
-
-    /* 👍 Decisions */
-    approve: isRefundDeposit ? "Approve Deposit Refund"
-          : isRefund ? "Approve Refund"
-          : "Approve",
-
-    reject: isRefundDeposit ? "Reject Deposit Refund"
-          : isRefund ? "Reject Refund"
-          : "Reject",
-
-    cancel: isRefundDeposit ? "Cancel Deposit Refund"
-          : isRefund ? "Cancel Refund"
-          : "Cancel",
-
-    /* 🖨️ Output */
-    print: isRefundDeposit ? "Print Deposit Refund Receipt"
-        : isRefund ? "Print Refund Receipt"
-        : isDeposit ? "Print Deposit Receipt"
-        : module === "invoice" ? "Print Invoice"
-        : "Print",
-
-    /* 🔄 Status (generic) */
-    "toggle-status":
-      status === "active" ? "Deactivate" : "Activate",
-
-    /* 🏭 INVENTORY (Central Stock) */
-    toggle:
-      status === "active" ? "Deactivate Stock" : "Activate Stock",
-    lock:
-      entry?.is_locked === true ? "Unlock Stock" : "Lock Stock",
-
-    unlock:
-      entry?.is_locked === true ? "Unlock Stock" : "Lock Stock",
-
-
-    /* 👤 User / Security */
-    "reset-password": "Reset Password",
-    "generate-token": "Generate Reset Token",
-    "revoke-sessions": "Revoke Sessions",
-  };
-
-
-  /* ========================= BUILD ========================= */
-  let html = "";
-
-  if (perms.has(`${permissionPrefix}:view`) || isSuperAdmin) {
-    html += buildButton(
-      "view",
-      titles.view,
-      icons.view,
-      "primary",
-      entryId
-    );
-  }
-
-  for (const act of allowed) {
-    let backend = act;
-
-    if (act === "reset-password") {
-      backend = "reset_password";
-    }
-
-    if (act === "generate-token") {
-      backend = "generate_token";
-    }
-
-    if (act === "revoke-sessions") {
-      backend = "revoke_sessions";
-    }
-
-    /* =========================
-      NORMALIZE TO DB PERMS
-    ========================= */
-    if (act === "toggle-status") {
-      backend = "toggle_status";
-    }
-    if (module === "supplier" && act === "toggle-status") {
-      backend = "toggle_status";
-    }
-    /* =========================
-      INVENTORY LOCK
-    ========================= */
-    if (act === "lock") backend = "lock";
-    if (act === "unlock") backend = "unlock";
-
-    const permKey = `${permissionPrefix}:${backend}`;
-
-    if (isSuperAdmin || perms.has(permKey)) {
-      html += buildButton(
+    if(isSuperAdmin||perms.has(permKey)){
+      html+=buildButton(
         act,
-        titles[act] || act,
-        icons[act] || "fa-cog",
-        {
-          view: "primary",
-          edit: "success",
-          start: "primary",
-          complete: "success",
-          review: "warning",
-          verify: "info",
-          finalize: "dark",
-          apply: "primary",
-          process: "info",
-          reverse: "warning",
-          clear: "success",
-          revert: "secondary",
-          approve: "success",
-          reject: "danger",
-          cancel: "warning",
-          void: "danger",
-          restore: "primary",
-          delete: "danger",
-          print: "info",
-          "toggle-status": "secondary",
-          unlock: "warning",
-          "reset-password": "warning",
-          "generate-token": "info",
-          "revoke-sessions": "danger"
-        }[act] || "secondary",
+        (actionLabels[act] || act),
+        ICONS[act]||"fa-circle-question",
+        COLORS[act]||"secondary",
         entryId
       );
     }
@@ -664,59 +360,3 @@ export function buildActionButtons({
 
   return `<div class="d-inline-flex gap-1">${html}</div>`;
 }
-
-
-/* ============================================================
-   Action Labels Default (GLOBAL FALLBACK)
-   Used ONLY when titles[action] is missing
-   ⚠️ Must remain generic + inventory-safe
-============================================================ */
-const actionLabels = {
-  /* 👁️ Base */
-  view: "View",
-  edit: "Edit",
-
-  /* ▶️ Lifecycle */
-  start: "Start",
-  complete: "Complete",
-  review: "Review",
-  verify: "Verify",
-  finalize: "Finalize",
-
-  /* 🔗 Processing (generic fallback only) */
-  apply: "Apply",
-  process: "Process",
-  reverse: "Reverse",
-  clear: "Clear",
-  revert: "Revert",
-
-  /* 👍 Decisions */
-  approve: "Approve",
-  reject: "Reject",
-  cancel: "Cancel",
-
-  /* 🚫 Destructive */
-  void: "Void",
-  restore: "Restore",
-  delete: "Delete",
-
-  /* 🖨️ Output */
-  print: "Print",
-
-  /* 🔄 Status (neutral fallback) */
-  "toggle-status": "Activate / Deactivate",
-
-  /* 🏭 INVENTORY-SAFE FALLBACKS */
-  lock: "Lock",
-  unlock: "Unlock",
-
-  /* 👤 USER / SECURITY (fallback only — titles override this) */
-  "reset-password": "Reset Password",
-  "generate-token": "Generate Reset Token",
-  "revoke-sessions": "Revoke Sessions",
-
-  /* 🧠 Advanced / system */
-  summary: "Summary",
-  revalidate: "Revalidate",
-};
-

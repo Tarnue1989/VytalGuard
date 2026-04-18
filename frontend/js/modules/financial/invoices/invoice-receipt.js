@@ -60,7 +60,7 @@ function getStatusMeta(status) {
 }
 
 /* ============================================================
-   🧾 BUILD RECEIPT HTML
+   🧾 BUILD RECEIPT HTML (FINAL FIXED)
 ============================================================ */
 export function buildInvoiceReceiptHTML(invoice) {
   const printedBy = getPrintedBy(invoice);
@@ -82,7 +82,9 @@ export function buildInvoiceReceiptHTML(invoice) {
   /* ================= FINANCIAL ================= */
   const total = Number(invoice.total || 0);
   const insurance = Number(invoice.insurance_amount || 0);
-  const patientPortion = total - insurance;
+
+  // ✅ FIX: DO NOT subtract again
+  const patientPortion = total;
 
   const deposits = Number(invoice.applied_deposits || 0);
   const paid = Number(invoice.total_paid || 0);
@@ -171,11 +173,10 @@ export function buildInvoiceReceiptHTML(invoice) {
           <tbody>${itemsHTML}</tbody>
         </table>
 
-        <!-- 🔥 SUMMARY FINAL STRUCTURE -->
+        <!-- SUMMARY -->
         <div style="margin-top:12px; display:flex; justify-content:flex-end;">
           <div style="width:520px; font-size:12px;">
 
-            <!-- SUBTOTAL -->
             <div style="display:flex; justify-content:space-between; font-weight:600;">
               <span>Subtotal</span>
               <span>${money(invoice.subtotal)}</span>
@@ -183,10 +184,8 @@ export function buildInvoiceReceiptHTML(invoice) {
 
             <div style="border-top:1px dashed #bbb; margin:6px 0;"></div>
 
-            <!-- 3 COLUMN BREAKDOWN -->
             <div style="display:flex; gap:20px;">
 
-              <!-- COL 1 -->
               <div style="flex:1;">
                 <div style="display:flex; justify-content:space-between;">
                   <span>Discount</span>
@@ -199,7 +198,6 @@ export function buildInvoiceReceiptHTML(invoice) {
                 </div>
               </div>
 
-              <!-- COL 2 -->
               <div style="flex:1;">
                 <div style="display:flex; justify-content:space-between;">
                   <span>Deposits</span>
@@ -212,13 +210,13 @@ export function buildInvoiceReceiptHTML(invoice) {
                 </div>
               </div>
 
-              <!-- COL 3 -->
               <div style="flex:1;">
                 <div style="display:flex; justify-content:space-between;">
                   <span>Insurance</span>
                   <span>${money(insurance)}</span>
                 </div>
 
+                <!-- ✅ FIXED -->
                 <div style="display:flex; justify-content:space-between;">
                   <span>Patient</span>
                   <span>${money(patientPortion)}</span>
@@ -239,7 +237,6 @@ export function buildInvoiceReceiptHTML(invoice) {
 
             <div style="border-top:2px solid #000; margin:8px 0;"></div>
 
-            <!-- BALANCE -->
             <div style="
               display:flex;
               justify-content:space-between;
@@ -253,7 +250,6 @@ export function buildInvoiceReceiptHTML(invoice) {
           </div>
         </div>
 
-        <!-- FOOTER -->
         <div style="margin-top:12px; font-size:11px;">
           Printed by: <strong>${printedBy}</strong> | ${printedAt}
         </div>

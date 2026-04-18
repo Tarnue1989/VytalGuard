@@ -203,30 +203,6 @@ html,body,.page-wrapper,.main-container,.app-container{
 .kpi-card .card-body{padding:12px 14px}
 .kpi-badges{margin-bottom:2px}
 .kpi-link{margin-top:2px}
-/* =================================================
-🧩 MODULE CATEGORY BUTTON – TEXT VISIBILITY FIX
-================================================= */
-
-/* FORCE readable text on hover */
-#moduleCategories .btn-outline-primary:hover,
-#moduleCategories .btn-outline-primary:focus {
-  background-color: #2563eb !important; /* blue */
-  border-color: #2563eb !important;
-  color: #ffffff !important;           /* 🔥 FIX */
-}
-
-/* Active button (selected category) */
-#moduleCategories .btn-primary {
-  background-color: #4f46e5 !important;
-  border-color: #4f46e5 !important;
-  color: #ffffff !important;
-}
-
-/* Badge must also stay readable */
-#moduleCategories .btn .badge {
-  background-color: rgba(255,255,255,.25) !important;
-  color: #ffffff !important;
-}
 
 
 /* LAYOUT */
@@ -251,51 +227,108 @@ html,body,.page-wrapper,.main-container,.app-container{
 .dashboard-section:not(:last-child){border-bottom:1px solid #eef2f7}
 .dashboard-side{position:sticky;top:90px}
 
+
 /* ===============================
-📊 KPI GRID — SINGLE SOURCE
+📊 KPI GRID — CRISP SYSTEM
 ================================ */
 .dashboard-kpi-grid,
 .dashboard-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
+
+  /* 🔥 tighter + more control */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+
+  gap: 12px;
   width: 100%;
 }
 
+/* ===============================
+📱 MOBILE EDGE CONTROL (CLEAN)
+================================ */
+@media (max-width: 768px) {
+  .app-body.dashboard-modern,
+  .app-body.dashboard-modern .container-fluid {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
 
-/* 📱 FORCE CARDS TO REACH SCREEN EDGES */
-@media(max-width:768px){
-.app-body.dashboard-modern,
-.app-body.dashboard-modern .container-fluid{
-  padding-left:.5rem!important;
-  padding-right:.5rem!important
+  .dashboard-kpi-strip,
+  .dashboard-kpi-grid,
+  .dashboard-grid {
+    gap: 8px !important;
+  }
+
+  .dashboard-section,
+  .kpi-card,
+  .side-card {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
-.dashboard-kpi-strip,
-.dashboard-kpi-grid,
-.dashboard-grid{
-  gap:.5rem!important
+
+/* ===============================
+🧱 KPI CARD BASE (CRISP)
+================================ */
+
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 6px 14px rgba(0,0,0,0.08),
+    0 14px 24px rgba(0,0,0,0.12);
 }
-.dashboard-section,
-.kpi-card,
-.side-card{
-  width:100%!important;
-  max-width:100%!important
+
+/* ===============================
+🎯 KPI ICON (CLEAN + SHARP)
+================================ */
+.kpi-card .kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 34px;
+  height: 34px;
+
+  border-radius: 8px;
+
+  background: rgba(99,102,241,0.10);
 }
+
+.kpi-card .kpi-icon i {
+  font-size: 1.2rem;
+  opacity: 0.9;
 }
-/* 🔥 KPI ICON VISIBILITY BOOST */
-.kpi-card .kpi-icon{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  width:38px;
-  height:38px;
-  border-radius:10px;
-  background:rgba(99,102,241,.12)
+
+/* ===============================
+🔤 TEXT HIERARCHY (IMPORTANT)
+================================ */
+.kpi-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
 }
-.kpi-card .kpi-icon i{
-  font-size:1.4rem;
-  opacity:1
+
+.kpi-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
 }
+
+/* ===============================
+✨ MICRO POLISH
+================================ */
+.kpi-card i {
+  opacity: 0.9;
+}
+
+.card {
+  border-radius: 12px !important;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
 
 
 /* ===============================
@@ -1079,4 +1112,759 @@ Purpose:
   max-width: 90%;
   text-align: center;
   box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+
+
+
+/* =========================================================
+🔥 ULTRA PREMIUM CHROME-STYLE TABS
+========================================================= */
+
+/* 🔷 OUTER WRAPPER (background strip) */
+.dashboard-tabs-wrapper {
+  background: #eef2f7;
+  padding: 10px 14px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 🔷 TAB CONTAINER */
+.dashboard-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* 🔷 TAB BASE */
+.dashboard-tab {
+  position: relative;
+  border: none;
+  background: transparent;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  transition: all 0.2s ease;
+}
+
+/* 🔷 HOVER */
+.dashboard-tab:hover {
+  color: #111827;
+}
+
+/* 🔷 TAB BACKGROUND SHAPE */
+.dashboard-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #e5e7eb;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  z-index: -1;
+  transition: all 0.2s ease;
+}
+
+/* 🔷 ACTIVE TAB */
+.dashboard-tab.active {
+  color: #111827;
+  z-index: 2;
+}
+
+/* ACTIVE background */
+.dashboard-tab.active::before {
+  background: #ffffff;
+  box-shadow:
+    0 -2px 6px rgba(0,0,0,0.04),
+    0 2px 0 #ffffff; /* blend into body */
+}
+
+/* 🔷 CONNECT EFFECT (remove gaps visually) */
+.dashboard-tab:not(:first-child) {
+  margin-left: -6px;
+}
+
+/* 🔷 ICON ALIGN */
+.dashboard-tab i {
+  margin-right: 6px;
+  font-size: 1rem;
+}
+
+/* 🔷 REMOVE OLD UNDERLINE */
+.dashboard-tab.active::after {
+  display: none !important;
+}
+
+/* 🔷 SMOOTH RAISE */
+.dashboard-tab.active {
+  transform: translateY(1px);
+}
+
+/* =========================================================
+📱 MOBILE VERSION (CLEAN + SCROLLABLE)
+========================================================= */
+@media (max-width: 768px) {
+
+  .dashboard-tabs-wrapper {
+    padding: 8px 10px 0;
+  }
+
+  .dashboard-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dashboard-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-tab {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+}
+
+/* =========================================================
+🔥 FIX: ACTIVE TAB TEXT VISIBILITY
+========================================================= */
+
+/* Force readable text */
+.dashboard-tab.active {
+  color: #111827 !important;   /* dark text */
+}
+
+/* Also fix icon color */
+.dashboard-tab.active i {
+  color: #4f46e5 !important;   /* nice accent */
+}
+
+/* Ensure non-active stays muted */
+.dashboard-tab {
+  color: #6b7280;
+}
+
+/* Hover still readable */
+.dashboard-tab:hover {
+  color: #111827;
+}
+
+
+/* =========================================================
+🔥 VYTALGUARD — MODULE UI FULL UPGRADE (COMPACT + PREMIUM)
+========================================================= */
+
+
+/* ===============================
+📦 MODULE GRID (COMPACT)
+=============================== */
+.modules-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap: 10px !important;
+}
+
+
+/* ===============================
+🧱 MODULE TILE (CLEAN + SMALL)
+=============================== */
+.module-tile {
+  padding: 12px 10px !important;
+  min-height: 100px !important;
+
+  border-radius: 12px !important;
+  border: 1px solid #e5e7eb !important;
+
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+
+  transition: all 0.18s ease !important;
+}
+
+
+/* 🔥 HOVER */
+.module-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.08);
+  border-color: #6366f1 !important;
+}
+
+
+/* ===============================
+🎯 TILE ICON
+=============================== */
+.module-icon i {
+  font-size: 2rem !important;
+  margin-bottom: 6px;
+  color: #6366f1;
+}
+
+
+/* ===============================
+📝 TILE TEXT
+=============================== */
+.module-name {
+  font-size: 0.82rem !important;
+  font-weight: 600;
+  text-align: center;
+  color: #111827;
+}
+
+.module-helper {
+  font-size: 0.7rem !important;
+  color: #6b7280;
+}
+
+
+
+
+/* ===============================
+✨ SECTION SOFT BACKGROUND (SUBTLE)
+=============================== */
+[data-dashboard-section="modules"] .card {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+}
+
+
+/* ===============================
+📱 MOBILE OPTIMIZATION
+=============================== */
+@media (max-width: 768px) {
+
+  .modules-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .module-tile {
+    min-height: 90px !important;
+    padding: 10px !important;
+  }
+
+  .module-icon i {
+    font-size: 1.6rem !important;
+  }
+
+  .module-name {
+    font-size: 0.75rem !important;
+  }
+}
+
+
+/* ===============================
+💎 EXTRA POLISH (SMOOTH UI)
+=============================== */
+.module-tile,
+#moduleCategories .btn {
+  transition: all 0.15s ease;
+}
+
+.module-tile:active {
+  transform: scale(0.97);
+}
+
+
+
+/* 🔽 hide panels */
+.module-tab-panel{
+  display:none;
+}
+.module-tab-panel.active{
+  display:block;
+}
+
+/* optional spacing */
+.module-tabs-wrapper{
+  margin-bottom:10px;
+}
+
+
+/* =========================
+   🔥 ELITE MODULE CARD
+========================= */
+.modules-card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* =========================
+   🧠 HEADER
+========================= */
+.modules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #eef2f7;
+}
+
+.modules-title h5 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.modules-sub {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* =========================
+   🔍 SEARCH (PREMIUM)
+========================= */
+.modules-search-wrap {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  width: 260px;
+}
+
+.modules-search-wrap i {
+  color: #9ca3af;
+  margin-right: 6px;
+}
+
+.modules-search-wrap input {
+  border: none;
+  outline: none;
+  font-size: 13px;
+  width: 100%;
+}
+
+/* =========================
+   🧱 GRID (TIGHT + CLEAN)
+========================= */
+.modules-grid.elite {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+/* =========================
+   💎 TILE (ELITE CARD)
+========================= */
+.module-tile {
+  position: relative;
+  border-radius: 14px;
+  padding: 14px 10px;
+  background: #ffffff;
+  border: 1px solid #eef2f7;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.module-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+  border-color: #6366f1;
+}
+
+/* glow hover */
+.module-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.15), transparent);
+  opacity: 0;
+  transition: 0.2s;
+}
+
+.module-tile:hover::after {
+  opacity: 1;
+}
+
+/* =========================
+   🎯 ICON
+========================= */
+.module-icon {
+  font-size: 20px;
+  margin-bottom: 6px;
+  color: #4f46e5;
+}
+
+/* =========================
+   🏷 NAME
+========================= */
+.module-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* =========================
+   📌 HELPER TEXT
+========================= */
+.module-helper {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+/* =========================
+   🚫 DISABLED
+========================= */
+.module-tile.disabled {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+}
+
+/* =========================
+   📱 MOBILE OPTIMIZATION
+========================= */
+@media (max-width: 768px) {
+  .modules-search-wrap {
+    width: 100%;
+  }
+
+  .modules-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+
+
+
+
+/* =========================
+   🧩 CATEGORY BAR (CONNECTED)
+========================= */
+.modules-categories-wrap {
+  padding: 12px 16px 6px;
+  
+  background: linear-gradient(
+    180deg,
+    #f8fafc 0%,
+    #eef2f7 100%
+  );
+
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modules-categories {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.modules-categories button {
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #1366b8;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  transition: all 0.2s ease;
+}
+
+.modules-categories button:hover {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+
+
+
+
+
+
+
+/* =========================================================
+🔥 MODULE CATEGORY TABS — FINAL (ELITE / PRODUCT-READY)
+========================================================= */
+
+/* 🔷 WRAPPER (gives tabs a surface) */
+.modules-categories-wrap {
+  padding: 12px 16px 6px;
+
+  background: linear-gradient(
+    180deg,
+    #f8fafc 0%,
+    #eef2f7 100%
+  );
+
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 🔷 TAB ROW */
+.modules-categories {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding-left: 6px;
+  overflow-x: auto;
+}
+
+/* =========================================================
+🧱 BASE TAB
+========================================================= */
+.modules-categories button {
+  position: relative;
+  border: none !important;
+  background: transparent !important;
+
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+
+  color: #64748b !important;
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  cursor: pointer;
+
+  margin-left: -6px;
+  z-index: 1;
+
+  transform: translateY(0);
+  transition: all 0.2s ease;
+}
+
+/* first tab fix */
+.modules-categories button:first-child {
+  margin-left: 0;
+}
+
+/* 🔷 INACTIVE TAB SURFACE */
+.modules-categories button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    180deg,
+    #eef2f7,
+    #e5e7eb
+  );
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  z-index: -1;
+}
+
+/* 🔷 HOVER */
+.modules-categories button:hover {
+  color: #111827 !important;
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+🔥 ACTIVE TAB — PREMIUM (FINAL)
+========================================================= */
+.modules-categories button.active {
+  color: #111827 !important;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+
+  z-index: 5;
+  transform: translateY(2px);
+}
+
+/* 🔥 elevated surface */
+.modules-categories button.active::before {
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #f9fafb 100%
+  );
+
+  box-shadow:
+    0 -3px 10px rgba(0,0,0,0.08),
+    0 2px 0 #ffffff,
+    0 10px 22px rgba(0,0,0,0.10);
+}
+
+/* 🔥 subtle top highlight */
+.modules-categories button.active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 15%;
+  width: 70%;
+  height: 2px;
+
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(99,102,241,0.6),
+    transparent
+  );
+
+  border-radius: 2px;
+}
+
+/* =========================================================
+🏷 BADGES
+========================================================= */
+
+/* base badge */
+.modules-categories .badge {
+  font-size: 10px;
+  margin-left: 6px;
+
+  background: rgba(0,0,0,0.05) !important;
+  color: #111827 !important;
+}
+
+/* active badge */
+.modules-categories button.active .badge {
+  background: linear-gradient(
+    135deg,
+    #eef2ff,
+    #e0e7ff
+  ) !important;
+
+  color: #4338ca !important;
+  font-weight: 600;
+
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+
+
+
+
+/* ================= DASHBOARD SECTIONS ================= */
+.dashboard-section {
+  margin-bottom: 16px;
+  padding: 14px;
+
+  border-radius: 12px;
+
+  background: linear-gradient(
+    180deg,
+    #ffffff,
+    #f8fafc
+  );
+
+  border: 1px solid #eef2f7;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.04);
+}
+
+/* ================= ATTENTION ================= */
+.dashboard-section.attention {
+  border: 1px solid #fecaca;
+
+  background: linear-gradient(
+    180deg,
+    #fff5f5,
+    #ffffff
+  );
+}
+
+/* ================= SECTION TITLE ================= */
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #111827;
+}
+
+/* ================= GRID ================= */
+.section-grid {
+  display: grid;
+  gap: 10px;
+}
+
+/* ================= TOP KPI ================= */
+#top-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+#top-kpis .card {
+  border-radius: 14px;
+  transition: all 0.2s ease;
+}
+
+#top-kpis .card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 30px rgba(0,0,0,0.1);
+}
+
+/* ================= PAGE BACKGROUND ================= */
+.dashboard-modern {
+  background: linear-gradient(
+    180deg,
+    #f8fafc,
+    #eef2f7
+  );
+}
+
+
+/* ===============================
+🎯 MODULE TEXT POLISH (ADD ONLY)
+================================ */
+
+/* main title */
+.module-name {
+  color: #111827;
+  transition: color 0.2s ease;
+}
+
+/* helper text */
+.module-helper {
+  color: #6b7280;
+}
+
+/* 🔥 make it feel clickable */
+.module-tile:hover .module-name {
+  color: #4f46e5;
+}
+
+/* optional: slight lift */
+.module-tile:hover {
+  transform: translateY(-2px);
+  transition: all 0.2s ease;
+}
+
+
+
+
+
+/* ===============================
+🎯 CATEGORY TEXT ENHANCEMENT (SAFE)
+================================ */
+
+/* base text */
+.modules-categories button {
+  color: #64748b !important;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+/* 🔥 hover = more visible */
+.modules-categories button:hover {
+  color: #111827 !important;
+}
+
+/* 🔥 ACTIVE = PRIMARY COLOR */
+.modules-categories button.active {
+  color: #4f46e5 !important; /* your brand */
+  font-weight: 700;
+}
+
+/* 🔥 badge color sync */
+.modules-categories button.active .badge {
+  background: #4f46e5 !important;
+  color: #fff !important;
 }

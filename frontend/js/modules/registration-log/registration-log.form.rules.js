@@ -1,26 +1,38 @@
 // =============================================
-// Registration Log Form Rules (Enterprise MASTER – FINAL SAFE)
-// ✔ Payer type restricted
-// ✔ Insurance enforced correctly
-// ✔ Controller-aligned (no mismatch)
+// Registration Log Form Rules (Enterprise MASTER – FINAL FIXED)
+// ✔ Controller-aligned (org/fac NOT validated)
+// ✔ Hidden ID validation (patientId, registrarId)
+// ✔ Billing-safe (registration type + payer)
+// ✔ Clean conditional logic (no ghost errors)
 // =============================================
 
 export const REGISTRATION_LOG_FORM_RULES = [
   /* ============================================================
      🧍 Patient / Registrar
   ============================================================ */
-  { id: "patientInput", message: "Patient is required" },
 
-  // Optional (auto-linked from user)
-  { id: "registrarInput", message: "Registrar is required", when: () => false },
+  // ✅ MUST validate hidden ID (not text input)
+  {
+    id: "patientId",
+    message: "Please select a patient from the list",
+    when: () => true,
+  },
+
+  // Optional (auto-linked or manual)
+  {
+    id: "registrarId",
+    message: "Registrar is required",
+    when: () => false,
+  },
 
   /* ============================================================
-     📋 Registration Details
+     📋 Registration Details (CORE REQUIRED)
   ============================================================ */
+
   {
     id: "registrationTypeSelect",
     message: "Registration type is required",
-    when: () => true, // 🔥 REQUIRED (billing depends on it)
+    when: () => true, // 🔥 REQUIRED FOR BILLING
   },
 
   {
@@ -35,17 +47,38 @@ export const REGISTRATION_LOG_FORM_RULES = [
     when: () => true,
   },
 
-  // Optional business fields
-  { id: "visitReason", message: "Visit reason is required", when: () => false },
-  { id: "registrationSource", message: "Registration source is required", when: () => false },
-  { id: "isEmergency", message: "Emergency status is required", when: () => false },
-  { id: "notes", message: "Notes are required", when: () => false },
+  /* ============================================================
+     📝 OPTIONAL FIELDS
+  ============================================================ */
+
+  {
+    id: "visitReason",
+    message: "Visit reason is required",
+    when: () => false,
+  },
+
+  {
+    id: "registrationSource",
+    message: "Registration source is required",
+    when: () => false,
+  },
+
+  {
+    id: "isEmergency",
+    message: "Emergency status is required",
+    when: () => false,
+  },
+
+  {
+    id: "notes",
+    message: "Notes are required",
+    when: () => false,
+  },
 
   /* ============================================================
-     💳 PAYER TYPE (STRICT CONTROL)
-     ✔ Dropdown only (no typing)
-     ✔ Required to prevent mistakes
+     💳 PAYER TYPE (REQUIRED)
   ============================================================ */
+
   {
     id: "payerType",
     message: "Payer type is required",
@@ -53,42 +86,26 @@ export const REGISTRATION_LOG_FORM_RULES = [
   },
 
   /* ============================================================
-     🛡️ INSURANCE (CONDITIONAL – STRICT)
-     ✔ Required ONLY when payer = insurance
-     ✔ Prevents backend validation failure
+     🛡️ INSURANCE (STRICT CONDITIONAL)
   ============================================================ */
+
   {
     id: "patientInsuranceSelect",
     message: "Insurance is required when payer type is Insurance",
     when: () => {
       const payer = document.getElementById("payerType")?.value;
-      return payer === "insurance";
+      const patientId = document.getElementById("patientId")?.value;
+
+      // ✅ Only require if insurance AND patient selected
+      return payer === "insurance" && !!patientId;
     },
   },
 
   /* ============================================================
-     🏢 Organization (Superadmin only)
+     🏢 ORGANIZATION (REMOVED FROM VALIDATION)
+     🏥 FACILITY (REMOVED FROM VALIDATION)
+     ------------------------------------------------------------
+     ❌ Backend forbids these fields (resolveOrgFacility)
+     ❌ Never validate them on frontend
   ============================================================ */
-  {
-    id: "organizationSelect",
-    message: "Organization is required",
-    when: () =>
-      (localStorage.getItem("userRole") || "")
-        .toLowerCase()
-        .includes("super"),
-  },
-
-  /* ============================================================
-     🏥 Facility (Facility-scoped users only)
-  ============================================================ */
-  {
-    id: "facilitySelect",
-    message: "Facility is required",
-    when: () => {
-      const role = (localStorage.getItem("userRole") || "").toLowerCase();
-      if (role.includes("super")) return false;
-      if (role.includes("org")) return false;
-      return true;
-    },
-  },
 ];

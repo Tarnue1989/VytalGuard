@@ -78,11 +78,17 @@ export const FIELD_LABELS_EXPENSE = {
   ledger_id: "Ledger Entry",
   status: "Status",
   description: "Description",
+
   created_at: "Created At",
   approved_by_id: "Approved By",
-  approved_at: "Approved At"
+  approved_at: "Approved At",
+  posted_by_id: "Posted By",
+  posted_at: "Posted At",
+  reversed_by_id: "Reversed By",
+  reversed_at: "Reversed At",
+  voided_by_id: "Voided By",
+  voided_at: "Voided At"
 };
-
 /* -------------------- Payroll -------------------- */
 export const FIELD_LABELS_PAYROLL = {
   id: "ID",
@@ -90,18 +96,41 @@ export const FIELD_LABELS_PAYROLL = {
   employee_id: "Employee",
   period: "Period",
   currency: "Currency",
+
   basic_salary: "Basic Salary",
   allowances: "Allowances",
   deductions: "Deductions",
   net_salary: "Net Salary",
-  expense_id: "Expense",
-  paid_at: "Paid At",
-  status: "Status",
-  created_at: "Created At",
-  approved_by_id: "Approved By",
-  approved_at: "Approved At"
-};
 
+  /* 🔥 PAYMENT CONFIG (ADDED) */
+  account_id: "Account",
+  category: "Category",
+  payment_method: "Payment Method",
+
+  /* 🔥 LINKS */
+  expense_id: "Expense",
+
+  /* 🔥 STATUS */
+  status: "Status",
+
+  /* 🔥 LIFECYCLE */
+  paid_at: "Paid At",
+
+  /* 🔥 AUDIT (FULL) */
+  created_by_id: "Created By",
+  created_at: "Created At",
+
+  updated_by_id: "Updated By",
+  updated_at: "Updated At",
+
+  approved_by_id: "Approved By",
+  approved_at: "Approved At",
+
+  paid_by_id: "Paid By",
+
+  voided_by_id: "Voided By",
+  voided_at: "Voided At",
+};
 /* -------------------- Cash Closing -------------------- */
 export const FIELD_LABELS_CASH_CLOSING = {
   id: "ID", date: "Date",
@@ -874,24 +903,21 @@ export const FIELD_LABELS_PATIENT_INSURANCE = {
 };
 /* -------------------- Insurance Claim -------------------- */
 export const FIELD_LABELS_INSURANCE_CLAIM = {
-  id: "ID", organization_id: "Organization", facility_id: "Facility",
-  invoice_id: "Invoice", patient_id: "Patient", provider_id: "Provider",
-  claim_number: "Claim Number", currency: "Currency",
-  amount_claimed: "Amount Claimed",
-  amount_approved: "Amount Approved",
-  amount_paid: "Amount Paid",
-  payment_reference: "Payment Reference",
-  claim_date: "Claim Date", response_date: "Response Date",
-  reviewed_at: "Reviewed At", approved_at: "Approved At",
-  paid_at: "Paid At",
-  rejection_reason: "Rejection Reason",
-  notes: "Notes",
-  status: `Status (${joinValues(INSURANCE_CLAIM_STATUS)})`,
-  created_at: "Created At", updated_at: "Updated At",
-  deleted_at: "Deleted At",
-  created_by_id: "Created By",
-  updated_by_id: "Updated By",
-  deleted_by_id: "Deleted By"
+  id:"ID",organization_id:"Organization",facility_id:"Facility",
+  invoice_id:"Invoice",patient_id:"Patient",provider_id:"Provider",patient_insurance_id:"Patient Insurance",
+  claim_number:"Claim Number",currency:"Currency",
+  invoice_total:"Invoice Total",insurance_amount:"Insurance Amount",patient_amount:"Patient Amount",
+  amount_claimed:"Amount Claimed",amount_approved:"Amount Approved",amount_paid:"Amount Paid",payment_reference:"Payment Reference",
+  coverage_amount_at_claim:"Coverage Amount (At Claim)",coverage_currency:"Coverage Currency",
+  submission_channel:"Submission Channel",
+  claim_date:"Claim Date",response_date:"Response Date",
+  submitted_at:"Submitted At",reviewed_at:"Reviewed At",approved_at:"Approved At",paid_at:"Paid At",
+  rejection_reason:"Rejection Reason",notes:"Notes",
+  parent_claim_id:"Parent Claim",
+  status:`Status (${joinValues(INSURANCE_CLAIM_STATUS)})`,
+  created_at:"Created At",updated_at:"Updated At",deleted_at:"Deleted At",
+  created_by_id:"Created By",updated_by_id:"Updated By",deleted_by_id:"Deleted By",
+  submitted_by_id:"Submitted By"
 };
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_LABELS_NEWBORN_RECORD = {

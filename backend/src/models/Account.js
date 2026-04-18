@@ -5,14 +5,40 @@ import { ACCOUNT_TYPES, CURRENCY } from "../constants/enums.js";
 export default (sequelize) => {
   class Account extends Model {
     static associate(models) {
-      Account.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
-      Account.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
+      /* ============================================================
+         🔹 TENANT LINKS
+      ============================================================ */
+      Account.belongsTo(models.Organization, {
+        as: "organization",
+        foreignKey: "organization_id",
+      });
 
-      Account.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
-      Account.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
-      Account.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
+      Account.belongsTo(models.Facility, {
+        as: "facility",
+        foreignKey: "facility_id",
+      });
 
-      // 🔥 Ledger = SOURCE OF TRUTH
+      /* ============================================================
+         🔹 AUDIT
+      ============================================================ */
+      Account.belongsTo(models.User, {
+        as: "createdBy",
+        foreignKey: "created_by_id",
+      });
+
+      Account.belongsTo(models.User, {
+        as: "updatedBy",
+        foreignKey: "updated_by_id",
+      });
+
+      Account.belongsTo(models.User, {
+        as: "deletedBy",
+        foreignKey: "deleted_by_id",
+      });
+
+      /* ============================================================
+         🔥 LEDGER (SOURCE OF TRUTH)
+      ============================================================ */
       Account.hasMany(models.CashLedger, {
         as: "ledgerEntries",
         foreignKey: "account_id",
@@ -22,6 +48,9 @@ export default (sequelize) => {
 
   Account.init(
     {
+      /* ============================================================
+         🔹 PRIMARY KEY
+      ============================================================ */
       id: {
         type: DataTypes.UUID,
         defaultValue: sequelize.literal("gen_random_uuid()"),
@@ -36,28 +65,34 @@ export default (sequelize) => {
         allowNull: false,
       },
 
-      // 🔥 NEW: ACCOUNT NUMBER (VERY IMPORTANT)
+      // 🔥 UNIQUE PER ORG (NOT GLOBAL)
       account_number: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
 
+      // 🔥 ENUM → STRING (ENTERPRISE SAFE)
       type: {
-        type: DataTypes.ENUM(...Object.values(ACCOUNT_TYPES)),
+        type: DataTypes.STRING,
         allowNull: false,
+        validate: {
+          isIn: [Object.values(ACCOUNT_TYPES)],
+        },
       },
 
       currency: {
-        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        type: DataTypes.STRING,
         allowNull: false,
+        validate: {
+          isIn: [Object.values(CURRENCY)],
+        },
       },
 
       /* ============================================================
          🔹 FINANCIAL
       ============================================================ */
 
-      // ⚠️ Cached only (real balance = ledger sum)
+      // ⚠️ Cached only (REAL = ledger sum)
       balance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
@@ -78,14 +113,26 @@ export default (sequelize) => {
 
       facility_id: {
         type: DataTypes.UUID,
+        allowNull: true,
       },
 
       /* ============================================================
-         🔹 AUDIT
+         🔹 AUDIT FIELDS
       ============================================================ */
-      created_by_id: DataTypes.UUID,
-      updated_by_id: DataTypes.UUID,
-      deleted_by_id: DataTypes.UUID,
+      created_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      updated_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      deleted_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       sequelize,
@@ -96,18 +143,26 @@ export default (sequelize) => {
       timestamps: true,
 
       /* ============================================================
-         🔥 INDEXES (ENTERPRISE)
+         🔥 INDEXES (ENTERPRISE SAFE)
       ============================================================ */
       indexes: [
+        // 🔥 UNIQUE PER ORG (FIXED)
         {
           unique: true,
-          fields: ["account_number"],
+          fields: ["account_number", "organization_id"],
         },
+
         {
           fields: ["organization_id"],
         },
         {
           fields: ["facility_id"],
+        },
+        {
+          fields: ["type"],
+        },
+        {
+          fields: ["currency"],
         },
       ],
     }

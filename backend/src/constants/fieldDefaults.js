@@ -56,10 +56,21 @@ export const FIELD_DEFAULTS_CASH_LEDGER = {
 /* -------------------- Expense -------------------- */
 export const FIELD_DEFAULTS_EXPENSE = {
   admin: FIELD_ORDER_EXPENSE,
+
   manager: [
     "date","amount","currency","category",
-    "payment_method","account_id","description","status"
+    "payment_method","account_id","description",
+
+    // 🔥 lifecycle
+    "status",
+
+    // 🔥 audit (important)
+    "approved_by_id","approved_at",
+    "posted_by_id","posted_at",
+    "reversed_by_id","reversed_at",
+    "voided_by_id","voided_at"
   ],
+
   staff: [
     "date","amount","category","description"
   ]
@@ -68,16 +79,31 @@ export const FIELD_DEFAULTS_EXPENSE = {
 /* -------------------- Payroll -------------------- */
 export const FIELD_DEFAULTS_PAYROLL = {
   admin: FIELD_ORDER_PAYROLL,
+
   manager: [
     "employee_id","period","currency",
     "basic_salary","allowances","deductions",
-    "net_salary","status"
+    "net_salary",
+
+    /* 🔥 PAYMENT CONFIG */
+    "account_id","category","payment_method",
+
+    /* 🔥 STATUS */
+    "status",
+
+    /* 🔥 AUDIT */
+    "approved_by_id","approved_at",
+    "paid_by_id","paid_at"
   ],
+
   staff: [
-    "employee_id","period","net_salary"
+    "employee_id","period","net_salary",
+
+    /* 🔥 BASIC VISIBILITY */
+    "status",
+    "paid_at"
   ]
 };
-
 /* -------------------- Cash Closing -------------------- */
 export const FIELD_DEFAULTS_CASH_CLOSING = {
   admin: FIELD_ORDER_CASH_CLOSING,
@@ -797,12 +823,13 @@ export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
   admin: FIELD_ORDER_INSURANCE_CLAIM,
   manager: [
     "organization_id","facility_id",
-    "invoice_id","patient_id","provider_id",
+    "invoice_id","patient_id","provider_id","patient_insurance_id",
     "claim_number","currency",
-    "amount_claimed","amount_approved","amount_paid",
-    "payment_reference",
-    "claim_date","response_date",
-    "reviewed_at","approved_at","paid_at",
+    "invoice_total","insurance_amount","patient_amount",
+    "amount_claimed","amount_approved","amount_paid","payment_reference",
+    "coverage_amount_at_claim","coverage_currency","submission_channel",
+    "claim_date","response_date","submitted_at","reviewed_at","approved_at","paid_at",
+    "created_by_id","updated_by_id","submitted_by_id","parent_claim_id",
     "rejection_reason","notes","status"
   ],
   staff: [
@@ -811,7 +838,6 @@ export const FIELD_DEFAULTS_INSURANCE_CLAIM = {
     "amount_claimed","status"
   ]
 };
-
 /* -------------------- Newborn Record -------------------- */
 export const FIELD_DEFAULTS_NEWBORN_RECORD = {
   admin: FIELD_ORDER_NEWBORN_RECORD,

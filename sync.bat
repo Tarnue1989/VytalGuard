@@ -20,7 +20,12 @@ set REMOTE_PASSWORD=Divine@2016
 set DUMP_FILE=C:\VytalGuard\vytalguard.sql
 
 echo.
-echo [1/2] Dumping LOCAL DB (with clean)...
+echo [1/3] Removing OLD dump file...
+IF EXIST "%DUMP_FILE%" del "%DUMP_FILE%"
+echo ✔ Old dump cleared
+echo.
+
+echo [2/3] Dumping LOCAL DB (CLEAN + SAFE)...
 
 set PGPASSWORD=%LOCAL_PASSWORD%
 
@@ -29,8 +34,11 @@ set PGPASSWORD=%LOCAL_PASSWORD%
 -U %LOCAL_USER% ^
 -d %LOCAL_DB% ^
 --clean ^
+--if-exists ^
 --no-owner ^
 --no-acl ^
+--no-comments ^
+--no-tablespaces ^
 -F p > "%DUMP_FILE%"
 
 IF %ERRORLEVEL% NEQ 0 (
@@ -42,15 +50,25 @@ IF %ERRORLEVEL% NEQ 0 (
 echo ✔ Dump OK
 echo.
 
-echo [2/2] Restoring to VPS (FULL SYNC)...
+echo [3/3] WIPING VPS + RESTORING...
 
 set PGPASSWORD=%REMOTE_PASSWORD%
 
+REM 🔥 FULL WIPE (works without schema ownership)
 "%PG_BIN%\psql.exe" ^
 -h %REMOTE_HOST% ^
 -p %REMOTE_PORT% ^
 -U %REMOTE_USER% ^
 -d %REMOTE_DB% ^
+-c "DROP OWNED BY %REMOTE_USER% CASCADE;"
+
+REM 🔄 RESTORE
+"%PG_BIN%\psql.exe" ^
+-h %REMOTE_HOST% ^
+-p %REMOTE_PORT% ^
+-U %REMOTE_USER% ^
+-d %REMOTE_DB% ^
+--set ON_ERROR_STOP=off ^
 -f "%DUMP_FILE%"
 
 IF %ERRORLEVEL% NEQ 0 (
@@ -60,5 +78,5 @@ IF %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo ✔ SUCCESS 🚀 FULL SYNC COMPLETE
+echo ✔ SUCCESS 🚀 VPS NOW MATCHES LOCAL
 pause

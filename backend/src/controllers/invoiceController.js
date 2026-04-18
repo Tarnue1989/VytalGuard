@@ -477,7 +477,7 @@ export const getAllInvoices = async (req, res) => {
   }
 };
 /* ============================================================
-   📌 GET INVOICE BY ID (with recalc)
+   📌 GET INVOICE BY ID (LOCK-SAFE + PRINT-SAFE FINAL)
 ============================================================ */
 export const getInvoiceById = async (req, res) => {
   try {
@@ -500,27 +500,55 @@ export const getInvoiceById = async (req, res) => {
       where.organization_id = req.user.organization_id;
       if (role === "facility_head") where.facility_id = req.user.facility_id;
     } else {
-      if (req.query.organization_id) where.organization_id = req.query.organization_id;
-      if (req.query.facility_id) where.facility_id = req.query.facility_id;
+      if (req.query.organization_id)
+        where.organization_id = req.query.organization_id;
+      if (req.query.facility_id)
+        where.facility_id = req.query.facility_id;
     }
 
-    let record = await Invoice.findOne({ where, include: INVOICE_INCLUDES });
-    if (!record) return error(res, "❌ Invoice not found", null, 404);
+    let record = await Invoice.findOne({
+      where,
+      include: INVOICE_INCLUDES,
+    });
 
-    // 🔹 Always recalc on single fetch
-    await financialService.recalcInvoice(record.id);
-    await record.reload({ include: INVOICE_INCLUDES });
+    if (!record)
+      return error(res, "❌ Invoice not found", null, 404);
+
+    /* ============================================================
+       🔥 FIX: DO NOT RECALC LOCKED OR PRINT MODE
+    ============================================================ */
+    if (!record.is_locked && !isPrint) {
+      await financialService.recalcInvoice(record.id);
+      await record.reload({ include: INVOICE_INCLUDES });
+    }
 
     const plain = record.get({ plain: true });
+
     const currency = plain.currency || CURRENCY.LRD;
     plain.currency = currency;
+
     /* ============================================================
        🔢 Normalize invoice-level numbers
     ============================================================ */
-    plain.subtotal = plain.subtotal != null ? parseFloat(plain.subtotal).toFixed(2) : "0.00";
-    plain.total_tax = plain.total_tax != null ? parseFloat(plain.total_tax).toFixed(2) : "0.00";
-    plain.total = plain.total != null ? parseFloat(plain.total).toFixed(2) : "0.00";
-    plain.balance = plain.balance != null ? parseFloat(plain.balance).toFixed(2) : "0.00";
+    plain.subtotal =
+      plain.subtotal != null
+        ? parseFloat(plain.subtotal).toFixed(2)
+        : "0.00";
+
+    plain.total_tax =
+      plain.total_tax != null
+        ? parseFloat(plain.total_tax).toFixed(2)
+        : "0.00";
+
+    plain.total =
+      plain.total != null
+        ? parseFloat(plain.total).toFixed(2)
+        : "0.00";
+
+    plain.balance =
+      plain.balance != null
+        ? parseFloat(plain.balance).toFixed(2)
+        : "0.00";
 
     /* ============================================================
        📦 Normalize items
@@ -528,17 +556,40 @@ export const getInvoiceById = async (req, res) => {
     ============================================================ */
     if (Array.isArray(plain.items)) {
       const items = isPrint
-        ? plain.items.filter(it => it.status !== IS.VOIDED)
+        ? plain.items.filter((it) => it.status !== IS.VOIDED)
         : plain.items;
 
-      plain.items = items.map(it => ({
+      plain.items = items.map((it) => ({
         ...it,
-        subtotal: it.subtotal != null ? parseFloat(it.subtotal).toFixed(2) : "0.00",
-        unit_price: it.unit_price != null ? parseFloat(it.unit_price).toFixed(2) : "0.00",
-        discount_amount: it.discount_amount != null ? parseFloat(it.discount_amount).toFixed(2) : "0.00",
-        tax_amount: it.tax_amount != null ? parseFloat(it.tax_amount).toFixed(2) : "0.00",
-        total_price: it.total_price != null ? parseFloat(it.total_price).toFixed(2) : "0.00",
-        net_amount: it.net_amount != null ? parseFloat(it.net_amount).toFixed(2) : "0.00",
+        subtotal:
+          it.subtotal != null
+            ? parseFloat(it.subtotal).toFixed(2)
+            : "0.00",
+
+        unit_price:
+          it.unit_price != null
+            ? parseFloat(it.unit_price).toFixed(2)
+            : "0.00",
+
+        discount_amount:
+          it.discount_amount != null
+            ? parseFloat(it.discount_amount).toFixed(2)
+            : "0.00",
+
+        tax_amount:
+          it.tax_amount != null
+            ? parseFloat(it.tax_amount).toFixed(2)
+            : "0.00",
+
+        total_price:
+          it.total_price != null
+            ? parseFloat(it.total_price).toFixed(2)
+            : "0.00",
+
+        net_amount:
+          it.net_amount != null
+            ? parseFloat(it.net_amount).toFixed(2)
+            : "0.00",
       }));
     }
 
@@ -551,8 +602,10 @@ export const getInvoiceById = async (req, res) => {
 
     plain.label = `${plain.invoice_number} · ${patientLabel} · ${plain.currency} · Bal: ${plain.balance}`;
     plain.patient_label = patientLabel;
-    plain.organization_label = plain.organization?.name || "Unknown Organization";
-    plain.facility_label = plain.facility?.name || "Unknown Facility";
+    plain.organization_label =
+      plain.organization?.name || "Unknown Organization";
+    plain.facility_label =
+      plain.facility?.name || "Unknown Facility";
 
     await auditService.logAction({
       user: req.user,
@@ -567,7 +620,6 @@ export const getInvoiceById = async (req, res) => {
     return error(res, "❌ Failed to load invoice", err);
   }
 };
-
 
 /* ============================================================
    📌 GET ALL INVOICES LITE (PAYABLE ONLY – MASTER — FINAL FIXED)

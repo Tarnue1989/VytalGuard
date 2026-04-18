@@ -558,32 +558,65 @@ function renderKpis(
     clinicalContainer.innerHTML = "";
     adminContainer.innerHTML = "";
 
+    /* ================= TOP KPIs ================= */
     const topKpis = kpis.filter(k => TOP_KPI_KEYS.includes(k.key));
-    const clinicalKpis = kpis.filter(
-      k => k.category === "Clinical" && !TOP_KPI_KEYS.includes(k.key)
-    );
-    const adminKpis = kpis.filter(k => k.category === "Administration");
-
     if (topKpis.length) {
       renderTopKpis(topKpiContainer, topKpis, currencySymbol);
     }
 
+    /* ================= GROUPING ================= */
+    const clinicalKpis = kpis.filter(
+      k => k.category === "Clinical" && !TOP_KPI_KEYS.includes(k.key)
+    );
+
+    const adminKpis = kpis.filter(k => k.category === "Administration");
+
+    const financeKpis = kpis.filter(k =>
+      ["payments","invoices","refunds","deposits"].includes(k.key)
+    );
+
+    const patientKpis = kpis.filter(k =>
+      ["patients","appointments","consultations"].includes(k.key)
+    );
+
+    /* ================= NEEDS ATTENTION ================= */
     const { needsAttention, normal } = splitClinicalKpis(clinicalKpis);
 
     if (needsAttention.length) {
-      const h = document.createElement("div");
-      h.className = "mb-2";
-      h.innerHTML = `
-        <h6 class="text-danger fw-bold">
-          <i class="ri-alarm-warning-line me-1"></i> Needs Attention
-        </h6>`;
-      clinicalContainer.appendChild(h);
+      const section = document.createElement("div");
+      section.className = "dashboard-section attention";
 
+      section.innerHTML = `
+        <h6 class="section-title text-danger">
+          🚨 Needs Attention
+        </h6>
+      `;
+
+      clinicalContainer.appendChild(section);
       renderKpis(needsAttention, currencySymbol, startDate, endDate, "clinical");
     }
 
-    renderKpis(normal, currencySymbol, startDate, endDate, "clinical");
-    renderKpis(adminKpis, currencySymbol, "", "", "admin");
+    /* ================= SECTION HELPER ================= */
+    function renderSection(title, list) {
+      if (!list.length) return;
+
+      const section = document.createElement("div");
+      section.className = "dashboard-section";
+
+      section.innerHTML = `
+        <h6 class="section-title">${title}</h6>
+        <div class="section-grid"></div>
+      `;
+
+      clinicalContainer.appendChild(section);
+      renderKpis(list, currencySymbol, startDate, endDate, "clinical");
+    }
+
+    /* ================= RENDER STRUCTURE ================= */
+    renderSection("💰 Finance Overview", financeKpis);
+    renderSection("👥 Patient Activity", patientKpis);
+    renderSection("🏥 Clinical", normal);
+    renderSection("⚙️ Administration", adminKpis);
   }
 
   /* ---------- Main Loader ---------- */

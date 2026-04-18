@@ -1,4 +1,4 @@
-// 📦 finance-filter-main.js – FINAL (UI + PRINT FULL FIXED)
+// 📦 finance-filter-main.js – FINAL (UI + PRINT FULL + EXPENSES + INSURANCE)
 // ============================================================
 
 import {
@@ -16,6 +16,7 @@ import {
   renderServiceTable,
   renderPaymentsTable,
   renderDepositSummary,
+  renderFinanceInsights 
 } from "./finance-render.js";
 
 /* ============================================================ */
@@ -59,55 +60,95 @@ async function loadReports() {
 
     const query = params.toString();
 
+    /* ========================================================
+       🔥 FETCH ALL (UPGRADED)
+    ======================================================== */
     const [
       summaryRes,
       servicesRes,
       paymentsRes,
       depositsRes,
+      expensesRes,     // 🔥 NEW
+      insuranceRes,    // 🔥 NEW
     ] = await Promise.all([
       authFetch(`/api/reports/finance/summary?${query}`),
       authFetch(`/api/reports/finance/services?${query}`),
       authFetch(`/api/reports/finance/payments?${query}`),
       authFetch(`/api/reports/finance/deposits?${query}`),
+
+      // 🔥 NEW ENDPOINTS
+      authFetch(`/api/reports/finance/expenses?${query}`),
+      authFetch(`/api/reports/finance/insurance?${query}`),
     ]);
 
-    const summaryJson  = summaryRes.ok  ? await summaryRes.json()  : {};
-    const servicesJson = servicesRes.ok ? await servicesRes.json() : {};
-    const paymentsJson = paymentsRes.ok ? await paymentsRes.json() : {};
-    const depositsJson = depositsRes.ok ? await depositsRes.json() : {};
+    /* ========================================================
+       🔥 PARSE RESPONSES
+    ======================================================== */
+    const summaryJson   = summaryRes.ok   ? await summaryRes.json()   : {};
+    const servicesJson  = servicesRes.ok  ? await servicesRes.json()  : {};
+    const paymentsJson  = paymentsRes.ok  ? await paymentsRes.json()  : {};
+    const depositsJson  = depositsRes.ok  ? await depositsRes.json()  : {};
+    const expensesJson  = expensesRes.ok  ? await expensesRes.json()  : {};
+    const insuranceJson = insuranceRes.ok ? await insuranceRes.json() : {};
 
     console.log("Finance Summary:", summaryJson);
     console.log("Deposits:", depositsJson);
+    console.log("Expenses:", expensesJson);
+    console.log("Insurance:", insuranceJson);
 
     /* ========================================================
-       🔥 MERGE DEPOSITS INTO SUMMARY (KEY FIX)
+       🔥 MERGE ALL DATA (FINAL)
     ======================================================== */
-    const summaryData = summaryJson?.data || {};
-    const depositData = depositsJson?.data || {};
+    const summaryData  = summaryJson?.data || {};
+    const depositData  = depositsJson?.data || {};
+    const expenseData  = expensesJson?.data || {};
+    const insuranceData = insuranceJson?.data || {};
 
     const mergedSummary = {
       ...summaryData,
 
-      // 🔥 FIXED MAPPING
+      /* =========================
+         🏦 DEPOSITS
+      ========================= */
       deposit_collected: depositData.collected || 0,
       applied_deposits: depositData.applied || 0,
       deposit_refunded: depositData.deposit_refunded || 0,
       deposit_balance: depositData.remaining || 0,
+
+      /* =========================
+         💸 EXPENSES (NEW)
+      ========================= */
+      total_expense: expenseData.total_expense || 0,
+
+      /* =========================
+         🏥 INSURANCE (NEW)
+      ========================= */
+      insurance_claimed: insuranceData.claimed || 0,
+      insurance_approved: insuranceData.approved || 0,
+      insurance_paid: insuranceData.paid || 0,
+      insurance_outstanding: insuranceData.outstanding || 0,
     };
 
     /* ========================================================
-       🎨 RENDER (NOW CORRECT)
+       🔥 PROFIT (CRITICAL)
+    ======================================================== */
+    mergedSummary.profit =
+      (mergedSummary.net_cash || 0) -
+      (mergedSummary.total_expense || 0);
+
+    /* ========================================================
+       🎨 RENDER
     ======================================================== */
     renderFinanceSummary(mergedSummary);
-
+    renderFinanceInsights(mergedSummary);
     renderServiceTable(servicesJson?.data || []);
     renderPaymentsTable(paymentsJson?.data || []);
-    renderDepositSummary(); // intentionally empty (as per design)
+    renderDepositSummary(); // intentionally empty
 
     /* ========================================================
        🖨️ STORE FOR PRINT
     ======================================================== */
-    window.financeSummaryData = mergedSummary;
+    window.financeSummaryData  = mergedSummary;
     window.financeServicesData = servicesJson?.data || [];
     window.financePaymentsData = paymentsJson?.data || [];
 

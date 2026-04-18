@@ -204,7 +204,7 @@ router.use("/patient-insurances", patientInsuranceRoutes);
 router.use("/accounts", accountRoutes);
 router.use("/expenses", expenseRoutes);
 router.use("/cash-ledger", cashLedgerRoutes);
-router.use("/cash-closing", cashClosingRoutes);
+router.use("/cash-closings", cashClosingRoutes);
 router.use("/payrolls", payrollRoutes);
 
 

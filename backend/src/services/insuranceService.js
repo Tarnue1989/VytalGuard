@@ -5,7 +5,10 @@ import {
   InsuranceClaim,
   Invoice,
   Organization,
+  PatientInsurance
 } from "../models/index.js";
+
+import { INSURANCE_CLAIM_STATUS } from "../constants/enums.js";
 
 export const insuranceService = {
   /* ============================================================
@@ -40,14 +43,14 @@ export const insuranceService = {
   },
 
   /* ============================================================
-     🏥 CREATE / UPDATE CLAIM FROM INVOICE (FINAL FIXED)
+     🏥 CREATE / UPDATE CLAIM FROM INVOICE (FINAL + FIXED)
   ============================================================ */
   async createClaimFromInvoice({ invoice_id, user, transaction }) {
     const t = transaction || (await sequelize.transaction());
 
     try {
       /* ============================
-         🔒 LOAD INVOICE + ITEMS
+         🔒 LOAD INVOICE
       ============================ */
       const invoice = await Invoice.findByPk(invoice_id, {
         transaction: t,
@@ -56,17 +59,37 @@ export const insuranceService = {
 
       if (!invoice) throw new Error("❌ Invoice not found");
 
-      if (!invoice.insurance_provider_id) {
-        throw new Error("❌ No insurance provider on invoice");
+      if (
+        invoice.payer_type !== "insurance" ||
+        !invoice.insurance_provider_id
+      ) {
+        return null;
       }
 
+      /* ============================
+         🔒 ENSURE PATIENT INSURANCE
+      ============================ */
+      if (!invoice.patient_insurance_id) {
+        throw new Error("❌ Missing patient insurance on invoice");
+      }
+
+      /* ============================
+         🔗 LOAD ITEMS
+      ============================ */
       const items = await invoice.getItems({ transaction: t });
 
       /* ============================
-         💰 FINAL CLAIM AMOUNT (FROM ITEMS)
+         💰 CALCULATE BREAKDOWN
       ============================ */
-      const claimAmount = (items || []).reduce(
+      const invoiceTotal = Number(invoice.total || 0);
+
+      const insuranceAmount = (items || []).reduce(
         (sum, i) => sum + Number(i.insurance_amount || 0),
+        0
+      );
+
+      const patientAmount = (items || []).reduce(
+        (sum, i) => sum + Number(i.patient_amount || 0),
         0
       );
 
@@ -78,13 +101,13 @@ export const insuranceService = {
         transaction: t,
       });
 
-      /* ============================
-         🔁 UPDATE EXISTING CLAIM
-      ============================ */
       if (existing) {
         await existing.update(
           {
-            amount_claimed: claimAmount,
+            amount_claimed: insuranceAmount,
+            insurance_amount: insuranceAmount,
+            invoice_total: invoiceTotal,
+            patient_amount: patientAmount,
           },
           { transaction: t }
         );
@@ -102,6 +125,33 @@ export const insuranceService = {
       });
 
       /* ============================
+         🧊 COVERAGE SNAPSHOT (🔥 FINAL FIX)
+      ============================ */
+      let coverageAmount = invoice.coverage_amount;
+      let coverageCurrency = invoice.coverage_currency;
+
+      /* 🔥 Ensure currency is NEVER null */
+      if (!coverageCurrency) {
+        const insurance = await PatientInsurance.findByPk(
+          invoice.patient_insurance_id,
+          { transaction: t }
+        );
+
+        if (insurance) {
+          coverageAmount =
+            coverageAmount !== null && coverageAmount !== undefined
+              ? coverageAmount
+              : insurance.coverage_limit;
+
+          coverageCurrency = insurance.currency;
+        }
+      }
+
+      /* 🔥 Final safety fallback */
+      coverageCurrency =
+        coverageCurrency || invoice.currency || "LRD";
+
+      /* ============================
          🏥 CREATE CLAIM
       ============================ */
       const claim = await InsuranceClaim.create(
@@ -113,15 +163,28 @@ export const insuranceService = {
           patient_id: invoice.patient_id,
           provider_id: invoice.insurance_provider_id,
 
+          patient_insurance_id: invoice.patient_insurance_id,
+
           claim_number: claimNumber,
 
           currency: invoice.currency,
-          amount_claimed: claimAmount, // ✅ FINAL VALUE
 
+          /* 🔥 CORE */
+          amount_claimed: insuranceAmount,
+
+          /* 🔥 FULL BREAKDOWN */
+          invoice_total: invoiceTotal,
+          insurance_amount: insuranceAmount,
+          patient_amount: patientAmount,
+
+          /* 🔥 FIXED NUMERIC DEFAULTS */
           amount_approved: 0,
           amount_paid: 0,
 
-          status: "submitted",
+          status: INSURANCE_CLAIM_STATUS.DRAFT,
+
+          coverage_amount_at_claim: coverageAmount,
+          coverage_currency: coverageCurrency,
 
           claim_date: new Date(),
 

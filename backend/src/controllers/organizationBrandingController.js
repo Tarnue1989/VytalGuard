@@ -56,7 +56,7 @@ export const getBranding = async (req, res) => {
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
-      action: "read",
+      action: "view",
       res,
     });
     if (!allowed) return;

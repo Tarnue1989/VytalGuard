@@ -216,11 +216,12 @@ async function loadEntries(page = 1) {
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    data.summary &&
-      renderModuleSummary(data.summary, "moduleSummary", {
-        moduleLabel: "INSURANCE CLAIMS",
+    if(data.summary){
+      renderModuleSummary(data.summary,"moduleSummary",{
+        moduleLabel:"INSURANCE CLAIMS",
+        showFinancials:true
       });
-
+    }
     syncViewToggleUI({ mode: viewMode });
 
     setupActionHandlers({

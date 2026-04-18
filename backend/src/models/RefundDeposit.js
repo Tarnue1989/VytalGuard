@@ -186,7 +186,7 @@ export default (sequelize) => {
   });
 
   // 🔥 Lifecycle tracking
-  RefundDeposit.afterUpdate((refund, options) => {
+  RefundDeposit.afterUpdate(async (refund, options) => {
     if (!refund.changed("status")) return;
 
     const userId = options?.user?.id || null;
@@ -204,12 +204,27 @@ export default (sequelize) => {
     };
 
     const fields = map[refund.status];
-    if (!fields) return;
+    if (fields) {
+      const [byField, atField] = fields;
+      refund.set(byField, userId);
+      refund.set(atField, now);
+    }
 
-    const [byField, atField] = fields;
+    /* ============================================================
+      🔥🔥 CRITICAL FIX — FINANCIAL IMPACT
+    ============================================================ */
+    if (refund.status === DR.PROCESSED) {
+      const { Deposit } = await import("../models/index.js");
+      const { recalcInvoice } = await import("../utils/invoiceUtil.js");
 
-    refund.set(byField, userId);
-    refund.set(atField, now);
+      const deposit = await Deposit.findByPk(refund.deposit_id);
+      if (!deposit) throw new Error("Deposit not found");
+
+      // ✅ ONLY RECALCULATE — DO NOT TOUCH BALANCE HERE
+      if (deposit.applied_invoice_id) {
+        await recalcInvoice(deposit.applied_invoice_id, options.transaction);
+      }
+    }
   });
 
   return RefundDeposit;

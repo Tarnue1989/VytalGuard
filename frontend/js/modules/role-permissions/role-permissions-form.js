@@ -382,10 +382,15 @@ export async function setupPermissionFormSubmission({ form }) {
         permission_ids: selectedPermissions.map((p) => p.permission_id),
       };
 
-      if (!payload.role_id)
-        return showToast("❌ Role is required"), hideLoading();
-      if (!payload.permission_ids.length)
-        return showToast("❌ Please add at least one permission"), hideLoading();
+      if (!payload.role_id) {
+        showToast("❌ Role is required");
+        return;
+      }
+
+      if (!payload.permission_ids.length) {
+        showToast("❌ Please add at least one permission");
+        return;
+      }
 
       const url = isEdit
         ? `/api/role-permissions/by-role/${payload.role_id}`
@@ -401,10 +406,11 @@ export async function setupPermissionFormSubmission({ form }) {
       });
 
       const result = await res.json().catch(() => ({}));
-      if (!res.ok)
+      if (!res.ok) {
         throw new Error(
           normalizeMessage(result, `❌ Server error (${res.status})`)
         );
+      }
 
       showToast(
         isEdit
@@ -412,15 +418,25 @@ export async function setupPermissionFormSubmission({ form }) {
           : "✅ Permissions assigned successfully"
       );
 
-      window.location.href = "/role-permissions-list.html";
+      /* ✅ STAY ON PAGE (NO REDIRECT) */
+
+      if (!isEdit) {
+        // reset only when creating new
+        selectedPermissions = [];
+        renderPermissionPills(false);
+        form.reset();
+      } else {
+        // for edit → just re-render (keep state)
+        renderPermissionPills(true);
+      }
+
     } catch (err) {
       console.error("❌ [Submit Error]", err);
       showToast(err.message || "❌ Submission error");
     } finally {
       hideLoading();
     }
-  };
-
+};
   /* ------------------------- Cancel / Clear ------------------------- */
   document.getElementById("cancelBtn")?.addEventListener("click", () => {
     sessionStorage.removeItem("rolePermissionEditId");

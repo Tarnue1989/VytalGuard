@@ -223,13 +223,31 @@ function setSession({ accessToken, user }) {
     }
 
     // 🔑 Save all roles (from facilityLinks)
-    if (Array.isArray(user.facilityLinks)) {
-      const roleNames = user.facilityLinks
+    let roleNames = [];
+
+    // ✅ 1. Try roles array (best case)
+    if (Array.isArray(user.roles) && user.roles.length) {
+      roleNames = user.roles.map(r =>
+        (r.normalized || r.name || "")
+          .toLowerCase()
+          .replace(/\s+/g, "")
+      );
+    }
+
+    // ✅ 2. Fallback to facilityLinks (if present)
+    else if (Array.isArray(user.facilityLinks)) {
+      roleNames = user.facilityLinks
         .map(f => f.role?.name)
         .filter(Boolean)
         .map(r => r.toLowerCase().replace(/\s+/g, ""));
-      localStorage.setItem("roleNames", JSON.stringify(roleNames));
     }
+
+    // ✅ 3. Final fallback (single role)
+    else if (user.role) {
+      roleNames = [user.role.toLowerCase().replace(/\s+/g, "")];
+    }
+
+    localStorage.setItem("roleNames", JSON.stringify(roleNames));
 
     // 🔑 Save org + facilities for scoping
     if (user.organization_id) {
@@ -319,9 +337,32 @@ function getFacilityIds() {
 function getRoleNames() {
   const stored = localStorage.getItem("roleNames");
   if (stored) return JSON.parse(stored);
-  return Array.isArray(getUser()?.facilityLinks)
-    ? getUser().facilityLinks.map(f => f.role?.name).filter(Boolean)
-    : [];
+
+  const user = getUser();
+
+  // ✅ 1. roles array (preferred)
+  if (Array.isArray(user?.roles) && user.roles.length) {
+    return user.roles.map(r =>
+      (r.normalized || r.name || "")
+        .toLowerCase()
+        .replace(/\s+/g, "")
+    );
+  }
+
+  // ✅ 2. facilityLinks fallback
+  if (Array.isArray(user?.facilityLinks)) {
+    return user.facilityLinks
+      .map(f => f.role?.name)
+      .filter(Boolean)
+      .map(r => r.toLowerCase().replace(/\s+/g, ""));
+  }
+
+  // ✅ 3. single role fallback
+  if (user?.role) {
+    return [user.role.toLowerCase().replace(/\s+/g, "")];
+  }
+
+  return [];
 }
 
 

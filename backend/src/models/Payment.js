@@ -1,17 +1,35 @@
 // 📁 backend/src/models/Payment.js
 import { DataTypes, Model } from "sequelize";
 import { PAYMENT_METHODS, PAYMENT_STATUS, CURRENCY } from "../constants/enums.js";
+import { recalcInvoice } from "../utils/invoiceUtil.js";
+
+/* ============================================================
+   🔖 Local enum map
+============================================================ */
+const PS = {
+  PENDING: PAYMENT_STATUS[0],
+  COMPLETED: PAYMENT_STATUS[1],
+  FAILED: PAYMENT_STATUS[2],
+  CANCELLED: PAYMENT_STATUS[3],
+};
 
 export default (sequelize) => {
   class Payment extends Model {
     static associate(models) {
+      // 🔹 Parent Invoice
       Payment.belongsTo(models.Invoice, { as: "invoice", foreignKey: "invoice_id" });
+
+      // 🔹 Patient
       Payment.belongsTo(models.Patient, { as: "patient", foreignKey: "patient_id" });
+
+      // 🔹 Refunds
       Payment.hasMany(models.Refund, { as: "refunds", foreignKey: "payment_id" });
 
+      // 🔹 Org / Facility scope
       Payment.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
       Payment.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
 
+      // 🔹 Audit
       Payment.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
       Payment.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
       Payment.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
@@ -26,23 +44,30 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
+      // 🔢 Human-readable number
       payment_number: {
         type: DataTypes.STRING,
         allowNull: true,
         unique: true,
       },
 
+      // 🔗 Parent
       invoice_id: { type: DataTypes.UUID, allowNull: false },
+
+      // 🔗 Patient
       patient_id: { type: DataTypes.UUID, allowNull: false },
 
+      // 🔗 Tenant scope
       organization_id: { type: DataTypes.UUID, allowNull: false },
       facility_id: { type: DataTypes.UUID, allowNull: false },
 
+      // 💱 🔥 REQUIRED (MULTI-CURRENCY SAFE)
       currency: {
         type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
       },
 
+      // 💵 Payment details
       amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -57,14 +82,16 @@ export default (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(PAYMENT_STATUS)),
         allowNull: false,
-        defaultValue: PAYMENT_STATUS.PENDING, // ✅ FIXED
+        defaultValue: PAYMENT_STATUS.PENDING,
       },
 
       transaction_ref: { type: DataTypes.STRING },
       is_deposit: { type: DataTypes.BOOLEAN, defaultValue: false },
 
+      // 📝 Reason for update
       reason: { type: DataTypes.TEXT },
 
+      // 🔹 Audit
       created_by_id: { type: DataTypes.UUID },
       updated_by_id: { type: DataTypes.UUID },
       deleted_by_id: { type: DataTypes.UUID },
@@ -86,23 +113,10 @@ export default (sequelize) => {
 
       scopes: {
         withDeleted: { paranoid: false },
-
-        pending: {
-          where: { status: PAYMENT_STATUS.PENDING, deleted_at: null },
-        },
-
-        completed: {
-          where: { status: PAYMENT_STATUS.COMPLETED, deleted_at: null },
-        },
-
-        failed: {
-          where: { status: PAYMENT_STATUS.FAILED, deleted_at: null },
-        },
-
-        cancelled: {
-          where: { status: PAYMENT_STATUS.CANCELLED, deleted_at: null },
-        },
-
+        pending: { where: { status: PS.PENDING, deleted_at: null } },
+        completed: { where: { status: PS.COMPLETED, deleted_at: null } },
+        failed: { where: { status: PS.FAILED, deleted_at: null } },
+        cancelled: { where: { status: PS.CANCELLED, deleted_at: null } },
         tenant(facilityId) {
           if (!facilityId) return {};
           return { where: { facility_id: facilityId } };
@@ -125,6 +139,7 @@ export default (sequelize) => {
      🔁 Hooks
   ============================================================ */
 
+  // ✅ Generate number + sync invoice
   Payment.beforeValidate(async (payment) => {
     const { Invoice } = await import("../models/index.js");
 
@@ -135,6 +150,8 @@ export default (sequelize) => {
       payment.organization_id = invoice.organization_id;
       payment.facility_id = invoice.facility_id;
       payment.patient_id = invoice.patient_id;
+
+      // 🔥 ensure currency matches invoice
       payment.currency = invoice.currency;
     }
 
@@ -156,6 +173,24 @@ export default (sequelize) => {
 
       const year = new Date().getFullYear();
       payment.payment_number = `PAY-${year}-${String(seq).padStart(5, "0")}`;
+    }
+  });
+
+  // 🔥 FIX: handle create
+  Payment.afterCreate(async (payment, options) => {
+    if (payment.status === PS.COMPLETED) {
+      if (payment.invoice_id) {
+        await recalcInvoice(payment.invoice_id, options?.transaction);
+      }
+    }
+  });
+
+  // 🔥 existing update hook
+  Payment.afterUpdate(async (payment, options) => {
+    if (payment.status === PS.COMPLETED) {
+      if (payment.invoice_id) {
+        await recalcInvoice(payment.invoice_id, options?.transaction);
+      }
     }
   });
 
