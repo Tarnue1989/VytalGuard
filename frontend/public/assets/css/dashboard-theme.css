@@ -753,13 +753,18 @@ Purpose:
 
 /* Mobile → full width, aligned */
 @media (max-width: 768px) {
+
   .dashboard-search-wrapper {
+    display: flex;
+    justify-content: flex-end;   /* 👈 align right */
     padding: 0 0.75rem;
   }
 
   #dashboardSearch {
     width: 100%;
+    max-width: 180px;            /* 👈 HALF WIDTH (like manual) */
   }
+
 }
 
 .dashboard-search-wrapper {
@@ -1526,15 +1531,20 @@ Purpose:
    📱 MOBILE OPTIMIZATION
 ========================= */
 @media (max-width: 768px) {
-  .modules-search-wrap {
-    width: 100%;
-  }
 
   .modules-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;            /* 👈 keep inline */
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
   }
+
+  .modules-search-wrap {
+    width: auto;                    /* 👈 remove full width */
+    max-width: 180px;               /* 👈 HALF WIDTH */
+    margin-left: auto;              /* 👈 push right */
+  }
+
 }
 
 
@@ -1874,14 +1884,17 @@ Purpose:
 
 
 /* =====================================================
-📘 FLOATING MANUAL BUTTON (FINAL FIX)
+📘 FLOATING MANUAL BUTTON (DRAG FIXED)
 ===================================================== */
 .manual-float {
   position: fixed;
 
-  top: 50%;
-  right: 18px;
-  transform: translateY(-50%);
+  /* 🔥 REMOVE center transform */
+  top: auto;
+  left: auto;
+
+  bottom: 20px;
+  right: 20px;
 
   width: 50px;
   height: 50px;
@@ -1896,16 +1909,22 @@ Purpose:
   font-size: 20px;
   border-radius: 50%;
 
-  cursor: pointer;
+  cursor: grab;
 
   box-shadow: 0 10px 25px rgba(0,0,0,.25);
 
   z-index: 9999;
+
+  touch-action: none; /* 🔥 mobile drag fix */
+}
+
+.manual-float:active {
+  cursor: grabbing;
 }
 
 /* hover */
 .manual-float:hover {
-  transform: translateY(-50%) scale(1.05);
+  transform: scale(1.05);
 }
 
 /* =====================================================
@@ -1938,4 +1957,31 @@ Purpose:
 .manual-float:hover .manual-tooltip {
   opacity: 1;
   transform: translateX(0);
+}
+
+@media (max-width: 768px) {
+
+  /* 🔥 FORCE FULL WIDTH MAIN COLUMN */
+  .dashboard-main {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 🔥 REMOVE ANY GRID INFLUENCE */
+  .dashboard-main,
+  .dashboard-side {
+    flex: none !important;
+  }
+
+  /* 🔥 ENSURE SECTION FILLS */
+  .dashboard-section {
+    width: 100% !important;
+  }
+
+}
+.app-hero-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #fff;
 }

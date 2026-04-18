@@ -126,31 +126,6 @@
                 class="text-primary fw-semibold d-flex align-items-center">
               Welcome
             </div>
-
-            <!-- 📅 DATE FILTER -->
-            <div class="date-filter-wrapper d-flex align-items-center gap-2 ms-md-auto">
-
-              <!-- Desktop label only -->
-              <span class="text-muted small d-none d-md-inline">
-                <i class="ri-filter-3-line text-primary me-1"></i>
-                Date:
-              </span>
-
-              <div class="input-group input-group-sm date-input-compact">
-                <span class="input-group-text bg-primary-lighten">
-                  <i class="ri-calendar-2-line text-primary"></i>
-                </span>
-
-                <input
-                  type="text"
-                  id="abc"
-                  class="form-control custom-daterange"
-                  placeholder="Date"
-                />
-              </div>
-
-            </div>
-
           </div>
 
         </div>
@@ -170,16 +145,33 @@
 
           <!-- ===== DASHBOARD SECTION ===== -->
           <div data-dashboard-section="dashboard">
-          <!-- 🔍 Dashboard KPI Search (GLOBAL) -->
-          <div class="dashboard-search-wrapper">
-            <input
-              id="dashboardSearch"
-              type="text"
-              class="form-control form-control-sm dashboard-search-input"
-              placeholder="Search dashboard KPIs…"
-              autocomplete="off"
-            />
-          </div>
+<!-- 🔍 DASHBOARD SEARCH + DATE (INLINE) -->
+<div class="dashboard-search-wrapper d-flex align-items-center gap-2">
+
+  <!-- 🔎 SEARCH -->
+  <input
+    id="dashboardSearch"
+    type="text"
+    class="form-control form-control-sm dashboard-search-input"
+    placeholder="Search dashboard KPIs…"
+    autocomplete="off"
+  />
+
+  <!-- 📅 DATE FILTER -->
+  <div class="input-group input-group-sm date-input-compact" style="max-width:180px;">
+    <span class="input-group-text bg-primary-lighten">
+      <i class="ri-calendar-2-line text-primary"></i>
+    </span>
+
+    <input
+      type="text"
+      id="abc"
+      class="form-control custom-daterange"
+      placeholder="Date"
+    />
+  </div>
+
+</div>
             <!-- TOP KPI STRIP -->
             <div class="container-fluid px-4 mb-4">
               <div class="dashboard-kpi-strip" id="top-kpis"></div>
