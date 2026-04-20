@@ -27,7 +27,6 @@ export const FEATURE_ACCESS_FORM_RULES = [
   /* ============================================================
      🧱 Bulk Mode Validation
   ============================================================ */
-
   {
     id: "modulePreviewList",
     message: "At least one module must be selected",

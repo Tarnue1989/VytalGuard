@@ -28,7 +28,7 @@ import { normalizeDateRangeLocal } from "../utils/date-utils.js";
    🧩 MODULE KEYS (SINGLE SOURCE OF TRUTH)
 ============================================================ */
 const MODULE_KEY_FEATURE = "feature_modules";
-const MODULE_KEY_FEATURE_ACCESS = "feature_accesses";
+const MODULE_KEY_FEATURE_ACCESS = "feature_access";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (FEATURE CONTROLLER)

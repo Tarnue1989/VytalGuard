@@ -12,7 +12,7 @@ import { setupFieldSelector } from "../../utils/ui-utils.js";
 /* ============================================================
    🔐 Auth Guard + Shared State
 ============================================================ */
-initPageGuard("feature_accesses");
+const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const sharedState = {
