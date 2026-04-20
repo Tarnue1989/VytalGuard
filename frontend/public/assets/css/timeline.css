@@ -1,0 +1,141 @@
+/* 📁 timeline.css */
+
+.tl {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 12px 0;
+}
+
+.tl-step {
+  flex: 1;
+  position: relative;
+  text-align: center;
+  min-width: 0;
+}
+
+.tl-step::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 100%;
+  height: 3px;
+  background: #d1d5db;
+  z-index: 0;
+}
+
+.tl-step:last-child::after {
+  display: none;
+}
+
+.tl-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  border: 2px solid #fff;
+}
+
+.tl-label {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: capitalize;
+
+  /* 🔥 FIX */
+  white-space: normal;       /* allow wrap */
+  overflow: visible;         /* no cutting */
+  text-overflow: unset;      /* remove ellipsis */
+  word-break: break-word;    /* safe wrap */
+}
+.tl-step {
+  flex: 1;
+  min-width: 60px;   /* 🔥 helps prevent squish */
+}
+/* DONE */
+.tl-step.done .tl-dot {
+  background: #22c55e;
+}
+
+.tl-step.done::after {
+  background: #22c55e;
+}
+
+.tl-step.done .tl-dot::before {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -55%);
+  font-size: 8px;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ACTIVE */
+.tl-step.active .tl-dot {
+  background: #2563eb;
+  transform: scale(1.15);
+}
+
+.tl-step.active .tl-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.28);
+  transform: scale(1);
+  animation: tlPulse 1.6s ease-out infinite;
+  z-index: -1;
+}
+
+/* TERMINAL */
+.tl-step.terminal .tl-dot {
+  background: #dc3545;
+}
+
+.tl-step.terminal::after {
+  background: #e5e7eb;
+}
+
+@keyframes tlPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .tl-dot {
+    width: 11px;
+    height: 11px;
+  }
+
+  .tl-label {
+    font-size: 9px;
+  }
+}
+
+.tl-sub {
+  font-size: 9px;
+  line-height: 1.1;
+  margin-top: 2px;
+  min-height: 10px;
+  color: #2563eb;
+  font-weight: 500;
+}

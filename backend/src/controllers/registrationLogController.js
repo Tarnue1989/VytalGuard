@@ -11,18 +11,19 @@
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
-  sequelize,
-  RegistrationLog,
-  Patient,
-  Employee,
-  Facility,
-  Organization,
-  User,
-  Invoice,
-  BillableItem,
-  InvoiceItem,
-  PatientInsurance, // ✅ ADDED
-  InsuranceProvider 
+    sequelize,
+    RegistrationLog,
+    Patient,
+    Employee,
+    Facility,
+    Organization,
+    User,
+    Invoice,
+    BillableItem,
+    InvoiceItem,
+    PatientInsurance,
+    InsuranceProvider,
+    InsuranceClaim
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
@@ -63,7 +64,26 @@ const debug = makeModuleLogger("registrationLogController", DEBUG_OVERRIDE);
 const REGISTRATION_LOG_INCLUDES = [
   {model:Patient,as:"patient",attributes:["id","pat_no","first_name","last_name"]},
   {model:Employee.unscoped(),as:"registrar",attributes:["id","first_name","last_name"]},
-  {model:Invoice,as:"invoice",attributes:["id","invoice_number","status","total","currency"]},
+  {
+    model: Invoice,
+    as: "invoice",
+    attributes: [
+      "id",
+      "invoice_number",
+      "status",
+      "total",
+      "currency",
+      "insurance_claim_id"
+    ],
+    include: [
+      {
+        model: InsuranceClaim,
+        as: "insuranceClaim",
+        attributes: ["id", "claim_number", "status"],
+        required: false
+      }
+    ]
+  },
   {model:BillableItem,as:"registrationType",attributes:["id","name","price"]},
 
   {model:PatientInsurance,as:"patientInsurance",attributes:["id","policy_number","plan_name","coverage_limit","currency","provider_id"],include:[
@@ -74,7 +94,8 @@ const REGISTRATION_LOG_INCLUDES = [
   {model:Facility,as:"facility",attributes:["id","name","code","organization_id"]},
   {model:User,as:"createdBy",attributes:["id","first_name","last_name"]},
   {model:User,as:"updatedBy",attributes:["id","first_name","last_name"]},
-  {model:User,as:"deletedBy",attributes:["id","first_name","last_name"]}
+  {model:User,as:"deletedBy",attributes:["id","first_name","last_name"]},
+  { model: Invoice, as: "invoice", attributes: ["id","invoice_number","status","total","currency"] }
 ];
 /* ============================================================
    📋 JOI SCHEMA (MASTER – TENANT SAFE)
@@ -644,6 +665,7 @@ export const activateRegistrationLog = async (req, res) => {
         ...(facilityId && { facility_id: facilityId }),
       },
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!log) {
@@ -666,30 +688,75 @@ export const activateRegistrationLog = async (req, res) => {
       { transaction: t }
     );
 
-    /* 🔥 FIX: PASS patient_insurance_id */
+    // 🔥 Trigger billing at activation
     await billingService.triggerAutoBilling({
       module_key: MODULE_KEY,
       entity: {
         ...log.toJSON(),
-        patient_insurance_id: log.patient_insurance_id, // ✅ CRITICAL FIX
+        patient_insurance_id: log.patient_insurance_id,
         billable_item_id: log.registration_type_id,
       },
-      user: { ...req.user, organization_id: orgId, facility_id: facilityId },
+      user: {
+        ...req.user,
+        organization_id: orgId,
+        facility_id: facilityId,
+      },
       transaction: t,
     });
 
+    // 🔥 Find linked invoice created/found by billing
+    const linkedInvoice = await Invoice.findOne({
+      where: {
+        registration_log_id: log.id,
+        organization_id: orgId,
+        ...(facilityId && { facility_id: facilityId }),
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // 🔥 Sync invoice_id back to registration log
+    if (linkedInvoice && log.invoice_id !== linkedInvoice.id) {
+      await log.update(
+        {
+          invoice_id: linkedInvoice.id,
+          updated_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
+    }
+
+    // 🔥 Ensure reverse link is also correct
+    if (linkedInvoice && linkedInvoice.registration_log_id !== log.id) {
+      await linkedInvoice.update(
+        {
+          registration_log_id: log.id,
+          updated_by_id: req.user?.id || null,
+        },
+        { transaction: t }
+      );
+    }
+
     await t.commit();
+
+    const full = await RegistrationLog.findByPk(log.id, {
+      include: REGISTRATION_LOG_INCLUDES,
+    });
 
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
       action: "activate",
       entityId: id,
-      entity: log,
-      details: { from: oldStatus, to: ACTIVE },
+      entity: full,
+      details: {
+        from: oldStatus,
+        to: ACTIVE,
+        invoice_id: full?.invoice_id || null,
+      },
     });
 
-    return success(res, "✅ Registration Log activated", log);
+    return success(res, "✅ Registration Log activated", full);
   } catch (err) {
     await t.rollback();
     return error(res, "❌ Failed to activate registration log", err);
@@ -809,6 +876,7 @@ export const completeRegistrationLog = async (req, res) => {
         ...(facilityId && { facility_id: facilityId }),
       },
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     console.log("📄 [INVOICE RESULT]", {
@@ -819,6 +887,27 @@ export const completeRegistrationLog = async (req, res) => {
     if (!invoice) {
       await t.rollback();
       return error(res, "❌ No invoice found for this visit", null, 400);
+    }
+
+    /* ================= SYNC LINKS ================= */
+    if (log.invoice_id !== invoice.id) {
+      await log.update(
+        {
+          invoice_id: invoice.id,
+          updated_by_id: normalizedUser?.id || null,
+        },
+        { transaction: t }
+      );
+    }
+
+    if (invoice.registration_log_id !== log.id) {
+      await invoice.update(
+        {
+          registration_log_id: log.id,
+          updated_by_id: normalizedUser?.id || null,
+        },
+        { transaction: t }
+      );
     }
 
     /* ================= UPDATE STATUS ================= */
@@ -834,6 +923,10 @@ export const completeRegistrationLog = async (req, res) => {
     console.log("💾 [COMMIT TRANSACTION]");
     await t.commit();
 
+    const full = await RegistrationLog.findByPk(log.id, {
+      include: REGISTRATION_LOG_INCLUDES,
+    });
+
     /* ================= 🔥 AUDIT ================= */
     console.log("🧾 [AUDIT START]", {
       user: normalizedUser,
@@ -844,13 +937,17 @@ export const completeRegistrationLog = async (req, res) => {
       module_key: MODULE_KEY,
       action: "complete",
       entityId: id,
-      entity: log,
-      details: { from: oldStatus, to: COMPLETED },
+      entity: full,
+      details: {
+        from: oldStatus,
+        to: COMPLETED,
+        invoice_id: full?.invoice_id || null,
+      },
     });
 
     console.log("✅ [AUDIT COMPLETE]");
 
-    return success(res, "✅ Registration Log completed", log);
+    return success(res, "✅ Registration Log completed", full);
   } catch (err) {
     console.error("❌ [COMPLETE ERROR]", err);
 
@@ -858,6 +955,7 @@ export const completeRegistrationLog = async (req, res) => {
     return error(res, "❌ Failed to complete registration log", err);
   }
 };
+
 /* ============================================================
    📌 CANCEL REGISTRATION LOG — MASTER
    pending | active → cancelled

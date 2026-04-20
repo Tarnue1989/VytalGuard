@@ -20,6 +20,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { getCurrencySymbol } from "../../utils/currency-utils.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE (MASTER)
@@ -252,6 +253,7 @@ export function renderCard(entry, visibleFields, user) {
       maximumFractionDigits: 2,
     })}`;
   };
+
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
     return `
@@ -290,6 +292,17 @@ export function renderCard(entry, visibleFields, user) {
       )
     : "—";
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE BLOCK (ADDED) */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="order"
+      data-status="${status}">
+    </div>
+  `;
+
   return `
     <div class="entity-card order-card">
 
@@ -309,6 +322,8 @@ export function renderCard(entry, visibleFields, user) {
             : ""
         }
       </div>
+
+      ${timeline}
 
       <!-- ===================================================== -->
       <!-- 🔹 QUICK CORE -->
@@ -337,25 +352,12 @@ export function renderCard(entry, visibleFields, user) {
             .filter(
               (f) =>
                 ![
-                  "actions",
-                  "order_date",
-                  "type",
-                  "priority",
-                  "billing_status",
-                  "organization",
-                  "facility",
-                  "provider",
-                  "department",
-                  "patient",
-                  "patient_id",
-                  "items",
-                  "notes",
-
-                  /* 🔒 AUDIT REMOVED FROM DETAILS */
+                  "actions","order_date","type","priority","billing_status",
+                  "organization","facility","provider","department",
+                  "patient","patient_id","items","notes",
                   "createdBy","updatedBy","deletedBy",
                   "approvedBy","processedBy","reversedBy","voidedBy",
                   "restoredBy","reviewedBy","rejectedBy","cancelledBy",
-
                   "created_at","updated_at","deleted_at",
                   "approved_at","processed_at","reversed_at","voided_at",
                   "restored_at","reviewed_at","rejected_at","cancelled_at",
@@ -439,9 +441,6 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
-      <!-- ===================================================== -->
-      <!-- ⚙️ ACTIONS -->
-      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -453,6 +452,7 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 /* ============================================================
    📋 LIST (MASTER FIXED)
 ============================================================ */
@@ -468,7 +468,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
   if (viewMode === "table") {
     tableContainer.classList.add("active");
-    cardContainer.classList.remove("active"); // ✅ ensure card hides
+    cardContainer.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
@@ -497,10 +497,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     });
 
     initTooltips(tableBody);
-
   } else {
     tableContainer.classList.remove("active");
-    cardContainer.classList.add("active"); // ✅ THIS FIXES YOUR ISSUE
+    cardContainer.classList.add("active");
 
     if (!entries || !entries.length) {
       cardContainer.innerHTML = `
@@ -509,16 +508,26 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       return;
     }
 
-    try {
-      cardContainer.innerHTML = entries
-        .map((e) => renderCard(e, visibleFields, user))
-        .join("");
-    } catch (err) {
-      console.error("Card render error:", err);
-      cardContainer.innerHTML = `
-        <p class="text-danger text-center">Failed to render cards</p>
-      `;
-    }
+    const fragment = document.createDocumentFragment();
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINES (CRITICAL)
+    initTimelines(cardContainer);
 
     initTooltips(cardContainer);
   }

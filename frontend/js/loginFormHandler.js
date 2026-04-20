@@ -29,41 +29,32 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     errorMsg.style.display = "none";
 
-    // Prevent multiple clicks
     submitBtn.disabled = true;
     submitBtn.textContent = "Signing in...";
 
     try {
       await login({
         email: emailField.value.trim(),
-        password: passwordField.value,
+        password: passwordField.value
       });
-      // success redirect handled by authSession.js
 
     } catch (err) {
 
-      // 🔐 MUST RESET PASSWORD → unhide reset fields (ALL-IN-ONE FORM)
       if (
         err.message &&
         err.message.toLowerCase().includes("reset")
       ) {
-        // Hide login form
         loginForm.style.display = "none";
-
-        // Show reset password form
         resetPasswordForm.style.display = "block";
 
-        // Preserve email for reset submission
         window.__RESET_EMAIL__ = emailField.value.trim();
 
-        // Focus new password field
         const newPasswordField = document.getElementById("newPassword");
         if (newPasswordField) newPasswordField.focus();
 
         return;
       }
 
-      // Normal login error
       errorMsg.textContent = err.message || "Login failed. Try again.";
       errorMsg.style.display = "block";
 
@@ -73,7 +64,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Support Enter key inside password field
   passwordField.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
       loginForm.dispatchEvent(new Event("submit", { cancelable: true }));

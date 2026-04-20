@@ -17,6 +17,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -225,8 +226,10 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH (DEPOSIT | MASTER PARITY)
+   🗂️ CARD RENDERER — RICH (DEPOSIT | MASTER PARITY + TIMELINE)
 ============================================================ */
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
+
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
@@ -234,7 +237,8 @@ export function renderCard(entry, visibleFields, user) {
   const safe = (v) =>
     v !== null && v !== undefined && v !== "" ? v : "—";
 
-  const money = (v) => `${getCurrencySymbol(entry.currency)} ${Number(v || 0).toFixed(2)}`;
+  const money = (v) =>
+    `${getCurrencySymbol(entry.currency)} ${Number(v || 0).toFixed(2)}`;
 
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
@@ -257,6 +261,17 @@ export function renderCard(entry, visibleFields, user) {
       : status === "voided"
       ? "Voided"
       : "";
+
+  /* ===================================================== */
+  /* 🔥 TIMELINE BLOCK */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="deposit"
+      data-status="${status}">
+    </div>
+  `;
 
   /* ===================== AUDIT FIELDS ===================== */
   const AUDIT_FIELDS = [
@@ -288,8 +303,10 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
+      ${timeline}
+
       <!-- ===================================================== -->
-      <!-- 🔹 QUICK CORE (LIGHT — MASTER PARITY) -->
+      <!-- 🔹 QUICK CORE -->
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Deposit #", entry.deposit_number)}
@@ -407,8 +424,9 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 /* ============================================================
-   📋 LIST RENDERER
+   📋 LIST RENDERER (WITH TIMELINE INIT)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("depositTableBody");
@@ -422,6 +440,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     tableContainer.classList.add("active");
     cardContainer.classList.remove("active");
+
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
@@ -434,10 +453,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getDepositActionButtons(
-                e,
-                user
-              )}</td>`
+            ? `<td class="actions-cell export-ignore">${getDepositActionButtons(e, user)}</td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -448,9 +464,33 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-center text-muted">No deposits found.</p>`;
+
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-center text-muted">No deposits found.</p>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
+
     initTooltips(cardContainer);
   }
 

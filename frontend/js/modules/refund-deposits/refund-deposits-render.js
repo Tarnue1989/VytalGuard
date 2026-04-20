@@ -16,6 +16,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { getCurrencySymbol } from "../../utils/currency-utils.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER)
@@ -244,7 +245,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD (MASTER)
+   🗂️ CARD (MASTER + TIMELINE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -263,6 +264,17 @@ export function renderCard(entry, visibleFields, user) {
 
   const amount = Number(entry.refund_amount || 0).toFixed(2);
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="refund_deposits"
+      data-status="${status}">
+    </div>
+  `;
+
   const AUDIT_FIELDS = [
     "createdBy","updatedBy","deletedBy","approvedBy","processedBy",
     "reversedBy","voidedBy","restoredBy","reviewedBy","rejectedBy","cancelledBy",
@@ -279,14 +291,20 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${amount}</div>
+          <div class="entity-primary">
+            ${getCurrencySymbol(entry.currency)} ${amount}
+          </div>
         </div>
         ${
           has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
             : ""
         }
       </div>
+
+      ${timeline}
 
       <!-- ===================================================== -->
       <!-- 🔹 QUICK CORE -->
@@ -299,7 +317,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <!-- ===================================================== -->
-      <!-- 📄 DETAILS (NO AUDIT MIX) -->
+      <!-- 📄 DETAILS -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Details</strong></summary>
@@ -333,7 +351,7 @@ export function renderCard(entry, visibleFields, user) {
       </details>
 
       <!-- ===================================================== -->
-      <!-- 🔍 AUDIT (ONLY PLACE FOR AUDIT DATA) -->
+      <!-- 🔍 AUDIT -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
@@ -364,8 +382,9 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 /* ============================================================
-   📋 LIST (MASTER)
+   📋 LIST (WITH TIMELINE INIT)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("refundDepositTableBody");
@@ -379,6 +398,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     tableContainer.classList.add("active");
     cardContainer.classList.remove("active");
+
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
@@ -391,7 +411,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getRefundDepositActionButtons(e, user)}</td>`
+            ? `<td class="actions-cell export-ignore">
+                 ${getRefundDepositActionButtons(e, user)}
+               </td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -399,18 +421,42 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     });
 
     initTooltips(tableBody);
+
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-center text-muted">No deposit refunds found.</p>`;
+
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-center text-muted">No deposit refunds found.</p>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
+
     initTooltips(cardContainer);
   }
 
   setupExportHandlers(entries);
 }
-
 /* ============================================================
    📤 EXPORT (MASTER)
 ============================================================ */

@@ -369,31 +369,57 @@ export const login = async (req, res) => {
       ],
     });
 
+    // ❌ user not found
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // ❌ inactive
     if (user.status?.toLowerCase() !== "active") {
       return res.status(401).json({ error: "User not active" });
     }
 
+    // 🔒 LOCK CHECK (FINAL MESSAGE FIXED)
     if (user.locked_until && user.locked_until > new Date()) {
       return res.status(403).json({
-        error: `Account locked until ${user.locked_until.toISOString()}`,
+        error: "Too many login attempts. Try again later.",
+        locked_until: user.locked_until,
       });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
+
+    // ❌ WRONG PASSWORD → TRACK ATTEMPTS
     if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
+      user.login_attempts = (user.login_attempts || 0) + 1;
+
+      // 🔒 LOCK IMMEDIATELY ON 5th ATTEMPT
+      if (user.login_attempts >= 5) {
+        user.locked_until = new Date(Date.now() + 15 * 60 * 1000);
+        await user.save();
+
+        return res.status(403).json({
+          error: "Too many login attempts. Try again later.",
+          locked_until: user.locked_until,
+        });
+      }
+
+      await user.save();
+
+      return res.status(401).json({
+        error: "Invalid credentials",
+        attempts: user.login_attempts,
+      });
     }
 
+    // 🔐 FORCE PASSWORD RESET
     if (user.must_reset_password) {
       return res.status(403).json({
         error: "❌ You must reset your password before logging in",
       });
     }
 
+    // ✅ SUCCESS → RESET LOCK
     user.login_attempts = 0;
     user.locked_until = null;
     user.last_login_at = new Date();
@@ -431,7 +457,7 @@ export const login = async (req, res) => {
     }
 
     // ============================================================
-    // 🏢 TENANT (ORG / FACILITY) — FIXED
+    // 🏢 TENANT (ORG / FACILITY)
     // ============================================================
     else {
       const links = user.facilityLinks || [];
@@ -459,9 +485,6 @@ export const login = async (req, res) => {
         });
       }
 
-      // ===============================
-      // ✅ FACILITY INJECTION (KEY FIX)
-      // ===============================
       let facilityId = null;
 
       if (facilityRoles.length > 0) {
@@ -496,9 +519,6 @@ export const login = async (req, res) => {
       };
     }
 
-    // ============================================================
-    // 🔐 PERMISSIONS
-    // ============================================================
     const roleIds = payload.roles.map((r) => r.id).filter(Boolean);
 
     const permissions = await getRolePermissions(roleIds, {
@@ -508,9 +528,6 @@ export const login = async (req, res) => {
 
     payload.permissions = permissions || [];
 
-    // ============================================================
-    // 🔑 TOKENS
-    // ============================================================
     const { accessToken, refreshToken } = generateTokens(payload);
 
     await storeHashedRefreshToken(
@@ -533,13 +550,9 @@ export const login = async (req, res) => {
         email: user.email,
         name: user.full_name || "",
         role: payload.roles?.[0]?.name || "staff",
-
         organization_id: payload.organization_id,
-
-        // ✅ THIS IS THE MISSING PIECE
         facility_ids: payload.facility_ids,
         facility_id: payload.facility_ids?.[0] || null,
-
         permissions: payload.permissions,
       },
     });
@@ -552,7 +565,6 @@ export const login = async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 };
-
 // -------------------- Me --------------------
 export const me = async (req, res) => {
   try {
