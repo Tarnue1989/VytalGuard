@@ -105,25 +105,25 @@ export function setupActionHandlers({
     const cls = btn.classList;
 
     if (cls.contains("view-btn")) {
-      if (!hasPerm("feature_accesses:view"))
+      if (!hasPerm("feature_accesse:view"))
         return showToast("⛔ You don't have permission to view");
       return handleView(entry);
     }
 
     if (cls.contains("edit-btn")) {
-      if (!hasPerm("feature_accesses:edit"))
+      if (!hasPerm("feature_accesse:edit"))
         return showToast("⛔ You don't have permission to edit");
       return handleEdit(entry);
     }
 
     if (cls.contains("toggle-status-btn")) {
-      if (!hasPerm("feature_accesses:toggle-status"))
+      if (!hasPerm("feature_accesse:toggle-status"))
         return showToast("⛔ You don't have permission to change status");
       return await handleToggleStatus(id, entry);
     }
 
     if (cls.contains("delete-btn")) {
-      if (!hasPerm("feature_accesses:delete"))
+      if (!hasPerm("feature_accesse:delete"))
         return showToast("⛔ You don't have permission to delete");
       return await handleDelete(id, entry);
     }
@@ -234,28 +234,28 @@ export function setupActionHandlers({
     );
 
   window.viewFeatureAccess = (id) => {
-    if (!hasPerm("feature_accesses:view"))
+    if (!hasPerm("feature_accesse:view"))
       return showToast("⛔ No permission to view");
     const entry = findEntry(id);
     if (entry) handleView(entry);
   };
 
   window.editFeatureAccess = (id) => {
-    if (!hasPerm("feature_accesses:edit"))
+    if (!hasPerm("feature_accesse:edit"))
       return showToast("⛔ No permission to edit");
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
   };
 
   window.toggleFeatureAccessStatus = async (id) => {
-    if (!hasPerm("feature_accesses:toggle-status"))
+    if (!hasPerm("feature_accesse:toggle-status"))
       return showToast("⛔ No permission");
     const entry = findEntry(id);
     if (entry) await handleToggleStatus(id, entry);
   };
 
   window.deleteFeatureAccess = async (id) => {
-    if (!hasPerm("feature_accesses:delete"))
+    if (!hasPerm("feature_accesse:delete"))
       return showToast("⛔ No permission");
     const entry = findEntry(id);
     if (entry) await handleDelete(id, entry);
