@@ -18,6 +18,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -228,11 +229,14 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — RICH (MASTER)
+   🗂️ CARD RENDERER — RICH (PAYMENT + TIMELINE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
+
+  const safe = (v) =>
+    v !== null && v !== undefined && v !== "" ? v : "—";
 
   const row = (label, value) => {
     if (value === undefined || value === null || value === "") return "";
@@ -244,6 +248,17 @@ export function renderCard(entry, visibleFields, user) {
     `;
   };
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE BLOCK */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="payment"
+      data-status="${status}">
+    </div>
+  `;
+
   return `
     <div class="entity-card payment-card">
 
@@ -253,27 +268,36 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}</div>
+          <div class="entity-primary">
+            ${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}
+          </div>
         </div>
         ${
           has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
             : ""
         }
       </div>
 
+      ${timeline}
+
       <!-- ===================================================== -->
-      <!-- 🔹 QUICK CORE (LIGHT) -->
+      <!-- 🔹 QUICK CORE -->
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Payment #", entry.payment_number)}
-        ${row("Amount", `${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}`)}
+        ${row(
+          "Amount",
+          `${getCurrencySymbol(entry.currency)} ${Number(entry.amount || 0).toFixed(2)}`
+        )}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>
 
       <!-- ===================================================== -->
-      <!-- 📄 DETAILS (replaces context) -->
+      <!-- 📄 DETAILS -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Details</strong></summary>
@@ -286,7 +310,7 @@ export function renderCard(entry, visibleFields, user) {
       </details>
 
       <!-- ===================================================== -->
-      <!-- 📝 REASON (if exists) -->
+      <!-- 📝 REASON -->
       <!-- ===================================================== -->
       ${
         entry.reason
@@ -326,8 +350,9 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 /* ============================================================
-   📋 LIST RENDERER
+   📋 LIST RENDERER (WITH TIMELINE INIT)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("paymentTableBody");
@@ -341,6 +366,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     tableContainer.classList.add("active");
     cardContainer.classList.remove("active");
+
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
@@ -353,10 +379,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getPaymentActionButtons(
-                e,
-                user
-              )}</td>`
+            ? `<td class="actions-cell export-ignore">
+                ${getPaymentActionButtons(e, user)}
+               </td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -367,9 +392,33 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-center text-muted">No payments found.</p>`;
+
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-center text-muted">No payments found.</p>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
+
     initTooltips(cardContainer);
   }
 

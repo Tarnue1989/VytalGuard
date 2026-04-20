@@ -19,6 +19,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { getCurrencySymbol } from "../../utils/currency-utils.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -243,7 +244,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER
+   🗂️ CARD RENDERER (REFUND + TIMELINE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -262,30 +263,25 @@ export function renderCard(entry, visibleFields, user) {
 
   const amount = Number(entry.amount || 0).toFixed(2);
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="refund"
+      data-status="${status}">
+    </div>
+  `;
+
   /* ===================== AUDIT FIELDS ===================== */
   const AUDIT_FIELDS = [
-    "createdBy",
-    "updatedBy",
-    "deletedBy",
-    "approvedBy",
-    "processedBy",
-    "reversedBy",
-    "voidedBy",
-    "restoredBy",
-    "reviewedBy",
-    "rejectedBy",
-    "cancelledBy",
-    "created_at",
-    "updated_at",
-    "deleted_at",
-    "approved_at",
-    "processed_at",
-    "reversed_at",
-    "voided_at",
-    "restored_at",
-    "reviewed_at",
-    "rejected_at",
-    "cancelled_at",
+    "createdBy","updatedBy","deletedBy",
+    "approvedBy","processedBy","reversedBy","voidedBy",
+    "restoredBy","reviewedBy","rejectedBy","cancelledBy",
+    "created_at","updated_at","deleted_at",
+    "approved_at","processed_at","reversed_at","voided_at",
+    "restored_at","reviewed_at","rejected_at","cancelled_at",
   ];
 
   return `
@@ -297,7 +293,9 @@ export function renderCard(entry, visibleFields, user) {
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderPatient(entry)}</div>
-          <div class="entity-primary">${getCurrencySymbol(entry.currency)} ${amount}</div>
+          <div class="entity-primary">
+            ${getCurrencySymbol(entry.currency)} ${amount}
+          </div>
         </div>
         ${
           has("status")
@@ -308,8 +306,10 @@ export function renderCard(entry, visibleFields, user) {
         }
       </div>
 
+      ${timeline}
+
       <!-- ===================================================== -->
-      <!-- 🔹 QUICK CORE (COMPACT) -->
+      <!-- 🔹 QUICK CORE -->
       <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Refund #", entry.refund_number)}
@@ -319,7 +319,7 @@ export function renderCard(entry, visibleFields, user) {
       </div>
 
       <!-- ===================================================== -->
-      <!-- 📄 DETAILS (NO AUDIT MIX) -->
+      <!-- 📄 DETAILS -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Details</strong></summary>
@@ -354,7 +354,7 @@ export function renderCard(entry, visibleFields, user) {
       </details>
 
       <!-- ===================================================== -->
-      <!-- 🔍 AUDIT (STRICT) -->
+      <!-- 🔍 AUDIT -->
       <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
@@ -374,7 +374,6 @@ export function renderCard(entry, visibleFields, user) {
 
       <!-- ===================================================== -->
       <!-- ⚙️ ACTIONS -->
-      <!-- ===================================================== -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -386,8 +385,9 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 }
+
 /* ============================================================
-   📋 LIST RENDERER
+   📋 LIST RENDERER (WITH TIMELINE INIT)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("refundTableBody");
@@ -401,6 +401,7 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     tableContainer.classList.add("active");
     cardContainer.classList.remove("active");
+
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
@@ -413,7 +414,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getRefundActionButtons(e, user)}</td>`
+            ? `<td class="actions-cell export-ignore">
+                 ${getRefundActionButtons(e, user)}
+               </td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -421,12 +424,37 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     });
 
     initTooltips(tableBody);
+
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-center text-muted">No refunds found.</p>`;
+
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-center text-muted">No refunds found.</p>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
+
     initTooltips(cardContainer);
   }
 

@@ -22,6 +22,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (TABLE ONLY – BACKEND SAFE)
@@ -203,7 +204,7 @@ function renderValue(entry, field) {
 }
 
 /* ============================================================
-   🗂️ CARD RENDERER — DEPARTMENT
+   🗂️ CARD RENDERER — DEPARTMENT (WITH TIMELINE)
 ============================================================ */
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
@@ -235,15 +236,24 @@ export function renderCard(entry, visibleFields, user) {
     </div>
   `;
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="department"
+      data-status="${status}">
+    </div>
+  `;
+
   const contextItems = [];
   if (has("organization"))
     contextItems.push(`🏥 ${safe(entry.organization?.name)}`);
   if (has("facility"))
     contextItems.push(`📍 ${safe(entry.facility?.name)}`);
   if (has("head_of_department"))
-    contextItems.push(
-      `👤 ${renderUserName(entry.head_of_department)}`
-    );
+    contextItems.push(`👤 ${renderUserName(entry.head_of_department)}`);
 
   const context = contextItems.length
     ? `<div class="entity-card-context">
@@ -281,52 +291,34 @@ export function renderCard(entry, visibleFields, user) {
             <div>
               ${
                 has("createdBy")
-                  ? fieldRow(
-                      "Created By",
-                      renderUserName(entry.createdBy)
-                    )
+                  ? fieldRow("Created By", renderUserName(entry.createdBy))
                   : ""
               }
               ${
                 has("created_at")
-                  ? fieldRow(
-                      "Created At",
-                      formatDateTime(entry.created_at)
-                    )
+                  ? fieldRow("Created At", formatDateTime(entry.created_at))
                   : ""
               }
             </div>
             <div>
               ${
                 has("updatedBy")
-                  ? fieldRow(
-                      "Updated By",
-                      renderUserName(entry.updatedBy)
-                    )
+                  ? fieldRow("Updated By", renderUserName(entry.updatedBy))
                   : ""
               }
               ${
                 has("updated_at")
-                  ? fieldRow(
-                      "Updated At",
-                      formatDateTime(entry.updated_at)
-                    )
+                  ? fieldRow("Updated At", formatDateTime(entry.updated_at))
                   : ""
               }
               ${
                 has("deletedBy") && entry.deletedBy
-                  ? fieldRow(
-                      "Deleted By",
-                      renderUserName(entry.deletedBy)
-                    )
+                  ? fieldRow("Deleted By", renderUserName(entry.deletedBy))
                   : ""
               }
               ${
                 has("deleted_at") && entry.deleted_at
-                  ? fieldRow(
-                      "Deleted At",
-                      formatDateTime(entry.deleted_at)
-                    )
+                  ? fieldRow("Deleted At", formatDateTime(entry.deleted_at))
                   : ""
               }
             </div>
@@ -345,6 +337,7 @@ export function renderCard(entry, visibleFields, user) {
     <div class="entity-card department-card">
       ${header}
       ${context}
+      ${timeline}
       ${body}
       ${audit}
       ${actions}
@@ -353,7 +346,7 @@ export function renderCard(entry, visibleFields, user) {
 }
 
 /* ============================================================
-   📋 LIST RENDERER (TABLE + CARD)
+   📋 LIST RENDERER (WITH TIMELINE INIT)
 ============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("departmentTableBody");
@@ -400,11 +393,31 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
 
-    cardContainer.innerHTML = entries.length
-      ? entries
-          .map((e) => renderCard(e, visibleFields, user))
-          .join("")
-      : `<p class="text-muted text-center">No departments found.</p>`;
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-muted text-center">No departments found.</p>`;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
 
     initTooltips(cardContainer);
   }

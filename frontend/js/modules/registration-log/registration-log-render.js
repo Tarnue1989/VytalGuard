@@ -22,6 +22,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================ */
 const SORTABLE_FIELDS = new Set([
@@ -229,6 +230,14 @@ export function renderCard(entry, visibleFields, user) {
 
   const status = (entry.log_status || "").toLowerCase();
 
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="registration_log"
+      data-status="${status}">
+    </div>
+  `;
+
   const header = `
     <div class="entity-card-header">
       <div>
@@ -305,21 +314,17 @@ export function renderCard(entry, visibleFields, user) {
           ? fieldRow(
               "Insurance",
               (() => {
-                // ⚠ expected but missing
                 if (entry.payer_type === "insurance" && !entry.patientInsurance) {
                   return `<span class="text-danger">⚠ Missing Insurance</span>`;
                 }
 
-                // ❌ no insurance at all
                 if (!entry.patientInsurance) return "—";
 
                 const pi = entry.patientInsurance;
-
                 const policy = pi.policy_number || "";
                 const plan = pi.plan_name || "";
                 const provider = pi.provider?.name || "";
 
-                // ✅ smart formatting
                 if (policy && plan && provider) {
                   return `${policy} - ${plan} (${provider})`;
                 }
@@ -345,7 +350,7 @@ export function renderCard(entry, visibleFields, user) {
           ? fieldRow(
               "Invoice",
               entry.invoice
-                ? `${entry.invoice.invoice_number} - ${entry.invoice.total_amount || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
+                ? `${entry.invoice.invoice_number} - ${entry.invoice.total || 0} ${entry.invoice.currency || ""} (${entry.invoice.status})`
                 : "—"
             )
           : ""}
@@ -396,13 +401,13 @@ export function renderCard(entry, visibleFields, user) {
     <div class="entity-card registration-log-card">
       ${header}
       ${context}
+      ${timeline}
       ${body}
       ${audit}
       ${actions}
     </div>
   `;
 }
-
 /* ============================================================ */
 export function renderList({ entries = [], visibleFields = [], viewMode, user }) {
   const tableBody = document.getElementById("registrationLogTableBody");
@@ -496,7 +501,15 @@ export function renderList({ entries = [], visibleFields = [], viewMode, user })
       try {
         const wrapper = document.createElement("div");
         wrapper.innerHTML = renderCard(entry, safeFields, user);
-        fragment.appendChild(wrapper.firstElementChild);
+
+        const card = wrapper.firstElementChild;
+        const timelineEl = card.querySelector(".card-timeline");
+
+        if (timelineEl) {
+          timelineEl.__entry = entry;
+        }
+
+        fragment.appendChild(card);
       } catch (err) {
         console.error("Card render error:", err);
 
@@ -508,6 +521,8 @@ export function renderList({ entries = [], visibleFields = [], viewMode, user })
     });
 
     cardContainer.appendChild(fragment);
+
+    initTimelines(cardContainer);
 
     initTooltips(cardContainer);
   }

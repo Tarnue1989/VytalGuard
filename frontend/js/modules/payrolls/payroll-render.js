@@ -7,6 +7,7 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
 /* ============================================================ */
 const SORTABLE_FIELDS = new Set([
@@ -218,9 +219,23 @@ export function renderCard(entry, visibleFields, user) {
          </div>`
       : "";
 
+  /* ===================================================== */
+  /* 🔥 TIMELINE */
+  /* ===================================================== */
+  const timeline = `
+    <div
+      class="card-timeline"
+      data-module="payroll"
+      data-status="${status}">
+    </div>
+  `;
+
   return `
     <div class="entity-card payroll-card">
 
+      <!-- ===================================================== -->
+      <!-- 🔹 HEADER -->
+      <!-- ===================================================== -->
       <div class="entity-card-header">
         <div>
           <div class="entity-secondary">${renderEmployee(entry)}</div>
@@ -228,11 +243,18 @@ export function renderCard(entry, visibleFields, user) {
         </div>
         ${
           has("status")
-            ? `<span class="entity-status ${status}">${status.toUpperCase()}</span>`
+            ? `<span class="entity-status ${status}">
+                 ${status.toUpperCase()}
+               </span>`
             : ""
         }
       </div>
 
+      ${timeline}
+
+      <!-- ===================================================== -->
+      <!-- 🔹 QUICK CORE -->
+      <!-- ===================================================== -->
       <div class="entity-card-body">
         ${row("Payroll #", entry.payroll_number)}
         ${row("Period", entry.period)}
@@ -240,6 +262,9 @@ export function renderCard(entry, visibleFields, user) {
         ${row("Currency", entry.currency)}
       </div>
 
+      <!-- ===================================================== -->
+      <!-- 📄 FINANCIAL -->
+      <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Financial</strong></summary>
         <div class="entity-card-body">
@@ -249,6 +274,9 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
+      <!-- ===================================================== -->
+      <!-- 💳 PAYMENT -->
+      <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Payment</strong></summary>
         <div class="entity-card-body">
@@ -259,6 +287,9 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
+      <!-- ===================================================== -->
+      <!-- 🔍 AUDIT -->
+      <!-- ===================================================== -->
       <details class="entity-section">
         <summary><strong>Audit</strong></summary>
         <div class="entity-card-body">
@@ -271,6 +302,8 @@ export function renderCard(entry, visibleFields, user) {
         </div>
       </details>
 
+      <!-- ===================================================== -->
+      <!-- ⚙️ ACTIONS -->
       ${
         has("actions")
           ? `<div class="entity-card-footer export-ignore">
@@ -296,10 +329,15 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   if (viewMode === "table") {
     tableContainer.classList.add("active");
     cardContainer.classList.remove("active");
+
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No payrolls found.</td></tr>`;
+      tableBody.innerHTML = `<tr>
+        <td colspan="${visibleFields.length}" class="text-center text-muted">
+          No payrolls found.
+        </td>
+      </tr>`;
       return;
     }
 
@@ -308,7 +346,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
       tr.innerHTML = visibleFields
         .map((f) =>
           f === "actions"
-            ? `<td class="actions-cell export-ignore">${getPayrollActionButtons(e, user)}</td>`
+            ? `<td class="actions-cell export-ignore">
+                 ${getPayrollActionButtons(e, user)}
+               </td>`
             : `<td>${renderValue(e, f)}</td>`
         )
         .join("");
@@ -316,12 +356,39 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     });
 
     initTooltips(tableBody);
+
   } else {
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-center text-muted">No payrolls found.</p>`;
+
+    const fragment = document.createDocumentFragment();
+
+    if (!entries.length) {
+      cardContainer.innerHTML = `
+        <p class="text-center text-muted">No payrolls found.</p>
+      `;
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+      const card = wrapper.firstElementChild;
+      const timelineEl = card.querySelector(".card-timeline");
+
+      if (timelineEl) {
+        timelineEl.__entry = entry;
+      }
+
+      fragment.appendChild(card);
+    });
+
+    cardContainer.appendChild(fragment);
+
+    // 🔥 INIT TIMELINE
+    initTimelines(cardContainer);
+
     initTooltips(cardContainer);
   }
 
