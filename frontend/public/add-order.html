@@ -76,38 +76,6 @@
                         </div>
                       </div>
 
-                      <!-- Department -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="mb-3">
-                          <label class="form-label" for="departmentSelect">
-                            Department
-                          </label>
-                          <select
-                            id="departmentSelect"
-                            name="department_id"
-                            class="form-control"
-                          ></select>
-                        </div>
-                      </div>
-
-                      <!-- Provider -->
-                      <div class="col-xxl-4 col-lg-6 col-sm-12">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="providerSearch">
-                            Provider
-                          </label>
-                          <input
-                            type="text"
-                            id="providerSearch"
-                            class="form-control suggestion-input"
-                            placeholder="Search provider..."
-                            autocomplete="off"
-                          />
-                          <input type="hidden" id="providerId" name="provider_id" />
-                          <div id="providerSearchSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
-
                     <!-- Consultation -->
                     <div class="col-xxl-4 col-lg-6 col-sm-12 d-none">
                     <div class="field-wrapper">
@@ -259,7 +227,37 @@
                           ></textarea>
                         </div>
                       </div>
+                      <!-- Department -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12 d-none">
+                        <div class="mb-3">
+                          <label class="form-label" for="departmentSelect">
+                            Department
+                          </label>
+                          <select
+                            id="departmentSelect"
+                            name="department_id"
+                            class="form-control"
+                          ></select>
+                        </div>
+                      </div>
 
+                      <!-- Provider -->
+                      <div class="col-xxl-4 col-lg-6 col-sm-12 d-none">
+                        <div class="field-wrapper">
+                          <label class="form-label" for="providerSearch">
+                            Provider
+                          </label>
+                          <input
+                            type="text"
+                            id="providerSearch"
+                            class="form-control suggestion-input"
+                            placeholder="Search provider..."
+                            autocomplete="off"
+                          />
+                          <input type="hidden" id="providerId" name="provider_id" />
+                          <div id="providerSearchSuggestions" class="suggestions"></div>
+                        </div>
+                      </div>
                       <!-- ================= Actions ================= -->
                       <div class="col-sm-12">
                         <div class="d-flex gap-2 justify-content-end">

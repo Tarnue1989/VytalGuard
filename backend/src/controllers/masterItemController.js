@@ -110,8 +110,6 @@ export const createItem = async (req, res) => {
     });
     if (!allowed) return;
 
-    debug.log("create → incoming body", req.body);
-
     const { value, errors } = validate(buildItemSchema("create"), req.body);
     if (errors) {
       await t.rollback();
@@ -122,30 +120,18 @@ export const createItem = async (req, res) => {
       if (value[f] === "") value[f] = null;
     });
 
-    /* ========================================================
-       🧭 ROLE PATTERN (FIXED)
-    ======================================================== */
     let orgId = null;
     let facilityId = null;
 
+    /* ================= ROLE LOGIC ================= */
     if (isSuperAdmin(req.user)) {
-      orgId =
-        "organization_id" in value ? value.organization_id : null;
-
-      facilityId =
-        "facility_id" in value ? value.facility_id : null;
+      // ✅ allow GLOBAL
+      orgId = value.organization_id ?? null;
+      facilityId = value.facility_id ?? null;
 
     } else if (isOrgLevelUser(req.user)) {
       orgId = req.user.organization_id;
-
-      // ✅ accept from form → fallback → allow null
-      if (value.facility_id) {
-        facilityId = value.facility_id;
-      } else if (req.user.facility_id) {
-        facilityId = req.user.facility_id;
-      } else {
-        facilityId = null;
-      }
+      facilityId = value.facility_id ?? req.user.facility_id ?? null;
 
     } else if (isFacilityHead(req.user)) {
       orgId = req.user.organization_id;
@@ -156,18 +142,21 @@ export const createItem = async (req, res) => {
       facilityId = req.user.facility_id ?? null;
     }
 
-    if (!orgId) {
+    /* 🔥 FIX: allow global ONLY for superadmin */
+    if (!orgId && !isSuperAdmin(req.user)) {
       await t.rollback();
       return error(res, "Organization is required", null, 400);
     }
 
-    /* ======================================================== */
+    /* ================= DUPLICATE CHECK ================= */
     const exists = await MasterItem.findOne({
       where: {
-        organization_id: orgId,
-        facility_id: facilityId,
         name: value.name,
         feature_module_id: value.feature_module_id ?? null,
+        [Op.or]: [
+          { organization_id: orgId, facility_id: facilityId },
+          { organization_id: null, facility_id: null }, // include global
+        ],
       },
       paranoid: false,
       transaction: t,
@@ -175,12 +164,7 @@ export const createItem = async (req, res) => {
 
     if (exists) {
       await t.rollback();
-      return error(
-        res,
-        "Item with this name already exists in this scope",
-        null,
-        400
-      );
+      return error(res, "Item already exists in this scope", null, 400);
     }
 
     if (!value.code) {
@@ -201,26 +185,12 @@ export const createItem = async (req, res) => {
 
     await t.commit();
 
-    const full = await MasterItem.findByPk(created.id, {
-      include: MASTER_ITEM_INCLUDES,
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "create",
-      entityId: created.id,
-      entity: full,
-      details: value,
-    });
-
-    return success(res, "✅ Master Item created successfully", full);
+    return success(res, "✅ Master Item created", created);
   } catch (err) {
     if (t.finished !== "commit") await t.rollback();
     return error(res, "❌ Failed to create item", err);
   }
 };
-
 /* ============================================================
    📌 UPDATE ITEM (MASTER PARITY — FINAL FIXED)
 ============================================================ */
@@ -257,20 +227,18 @@ export const updateItem = async (req, res) => {
       return error(res, "Item not found", null, 404);
     }
 
-    /* ========================================================
-       🧭 ROLE PATTERN (FIXED)
-    ======================================================== */
+    /* ================= ROLE LOGIC ================= */
     let orgId = record.organization_id;
     let facilityId = record.facility_id;
 
     if (isSuperAdmin(req.user)) {
-      if ("organization_id" in value) orgId = value.organization_id;
-      if ("facility_id" in value) facilityId = value.facility_id;
+      // ✅ allow GLOBAL updates
+      if ("organization_id" in value) orgId = value.organization_id ?? null;
+      if ("facility_id" in value) facilityId = value.facility_id ?? null;
 
     } else if (isOrgLevelUser(req.user)) {
       orgId = req.user.organization_id;
 
-      // ✅ accept form → fallback → keep existing
       if (value.facility_id) {
         facilityId = value.facility_id;
       } else if (record.facility_id) {
@@ -287,27 +255,29 @@ export const updateItem = async (req, res) => {
 
     } else {
       orgId = req.user.organization_id;
-      facilityId =
-        req.user.facility_id ?? record.facility_id;
+      facilityId = req.user.facility_id ?? record.facility_id;
     }
 
-    if (!orgId) {
+    /* 🔥 FIX: allow global only for superadmin */
+    if (!orgId && !isSuperAdmin(req.user)) {
       await t.rollback();
       return error(res, "Organization is required", null, 400);
     }
 
-    /* ======================================================== */
+    /* ================= DUPLICATE CHECK ================= */
     if (value.name) {
       const finalModuleId =
         value.feature_module_id ?? record.feature_module_id;
 
       const exists = await MasterItem.findOne({
         where: {
-          organization_id: orgId,
-          facility_id: facilityId,
           name: value.name,
           feature_module_id: finalModuleId,
           id: { [Op.ne]: id },
+          [Op.or]: [
+            { organization_id: orgId, facility_id: facilityId },
+            { organization_id: null, facility_id: null }, // include global
+          ],
         },
         paranoid: false,
         transaction: t,
@@ -317,13 +287,14 @@ export const updateItem = async (req, res) => {
         await t.rollback();
         return error(
           res,
-          "Item with this name already exists in this scope",
+          "Item already exists in this scope",
           null,
           400
         );
       }
     }
 
+    /* ================= UPDATE ================= */
     await record.update(
       {
         ...value,
@@ -349,7 +320,7 @@ export const updateItem = async (req, res) => {
       details: value,
     });
 
-    return success(res, "✅ Master Item updated successfully", full);
+    return success(res, "✅ Master Item updated", full);
   } catch (err) {
     if (t.finished !== "commit") await t.rollback();
     return error(res, "❌ Failed to update item", err);
@@ -376,54 +347,29 @@ export const getAllItems = async (req, res) => {
 
     const { q, category_id, feature_module_id, status } = req.query;
 
-    const where = {
-      [Op.and]: [],
-    };
+    const where = { [Op.and]: [] };
 
-    /* ========================================================
-       🔐 TENANT SCOPE (FINAL FIX)
-    ======================================================== */
+    /* ================= TENANT SCOPE ================= */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
-        organization_id: req.user.organization_id,
+        [Op.or]: [
+          { organization_id: null }, // ✅ GLOBAL
+          { organization_id: req.user.organization_id }, // ✅ ORG
+        ],
       });
 
-      if (!isOrgLevelUser(req.user)) {
-        where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },
-            { facility_id: req.user.facility_id },
-          ],
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-
-      if (req.query.facility_id) {
-        where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      }
+      where[Op.and].push({
+        [Op.or]: [
+          { facility_id: null }, // global + org level
+          { facility_id: req.user.facility_id },
+        ],
+      });
     }
 
-    /* ========================================================
-       🔍 FILTERS
-    ======================================================== */
-    if (status) {
-      where[Op.and].push({ status });
-    }
-
-    if (category_id) {
-      where[Op.and].push({ category_id });
-    }
-
-    if (feature_module_id) {
-      where[Op.and].push({ feature_module_id });
-    }
+    /* ================= FILTERS ================= */
+    if (status) where[Op.and].push({ status });
+    if (category_id) where[Op.and].push({ category_id });
+    if (feature_module_id) where[Op.and].push({ feature_module_id });
 
     if (q) {
       where[Op.and].push({
@@ -434,9 +380,6 @@ export const getAllItems = async (req, res) => {
       });
     }
 
-    /* ========================================================
-       📦 QUERY
-    ======================================================== */
     const records = await MasterItem.findAll({
       where,
       include: MASTER_ITEM_INCLUDES,
@@ -518,7 +461,7 @@ export const getAllItemsLite = async (req, res) => {
     if (!allowed) return;
 
     /* ========================================================
-       🧭 SCOPE (SINGLE SOURCE OF TRUTH)
+       🧭 RESOLVE TENANT
     ======================================================== */
     const { orgId, facilityId } = resolveOrgFacility({
       user: req.user,
@@ -526,25 +469,48 @@ export const getAllItemsLite = async (req, res) => {
       body: req.query,
     });
 
+    // 🔥 FIX: never allow undefined
+    const safeOrgId = orgId ?? null;
+    const safeFacilityId = facilityId ?? null;
+
     const where = {
       status: MASTER_ITEM_STATUS.ACTIVE,
+      [Op.and]: [],
     };
 
-    if (orgId) where.organization_id = orgId;
-    if (facilityId) where.facility_id = facilityId;
+    /* ========================================================
+       🌍 GLOBAL + ORG + FACILITY SCOPE
+    ======================================================== */
+    if (!isSuperAdmin(req.user)) {
+      where[Op.and].push({
+        [Op.or]: [
+          { organization_id: null },       // GLOBAL
+          { organization_id: safeOrgId },  // ORG
+        ],
+      });
+
+      where[Op.and].push({
+        [Op.or]: [
+          { facility_id: null },           // GLOBAL + ORG
+          { facility_id: safeFacilityId }, // FACILITY
+        ],
+      });
+    }
 
     /* ========================================================
-       🔍 GLOBAL SEARCH (FIXED — SUPPORT q + search)
+       🔍 SEARCH
     ======================================================== */
     const rawSearch = req.query.search || req.query.q || "";
     const search = rawSearch?.trim();
 
     if (search) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { code: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${search}%` } },
+          { code: { [Op.iLike]: `%${search}%` } },
+          { description: { [Op.iLike]: `%${search}%` } },
+        ],
+      });
     }
 
     /* ========================================================
@@ -559,15 +525,51 @@ export const getAllItemsLite = async (req, res) => {
           attributes: ["id", "name"],
         },
       ],
-      attributes: ["id", "name", "code", "description", "category_id"],
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "description",
+        "category_id",
+        "organization_id",
+        "facility_id",
+      ],
       order: [["name", "ASC"]],
-      limit: 20,
+      limit: 50,
     });
+
+    /* ========================================================
+       🧠 PRIORITY RESOLVER (NO DUPLICATES)
+       Facility > Org > Global
+    ======================================================== */
+    const map = new Map();
+
+    const getPriority = (i) =>
+      i.facility_id ? 3 : i.organization_id ? 2 : 1;
+
+    for (const item of items) {
+      const key =
+        (item.name || "").toLowerCase() +
+        "_" +
+        (item.feature_module_id || "");
+
+      if (!map.has(key)) {
+        map.set(key, item);
+      } else {
+        const existing = map.get(key);
+
+        if (getPriority(item) > getPriority(existing)) {
+          map.set(key, item);
+        }
+      }
+    }
+
+    const finalItems = Array.from(map.values());
 
     /* ========================================================
        🔄 MAP RESPONSE
     ======================================================== */
-    const records = items.map((i) => ({
+    const records = finalItems.map((i) => ({
       id: i.id,
       name: i.name,
       code: i.code || "",
