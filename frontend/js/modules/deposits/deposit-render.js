@@ -18,6 +18,11 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { initTimelines } from "../../utils/timeline/timeline-init.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
 
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
@@ -228,8 +233,6 @@ function renderValue(entry, field) {
 /* ============================================================
    🗂️ CARD RENDERER — RICH (DEPOSIT | MASTER PARITY + TIMELINE)
 ============================================================ */
-import { initTimelines } from "../../utils/timeline/timeline-init.js";
-
 export function renderCard(entry, visibleFields, user) {
   const has = (f) => visibleFields.includes(f);
   const status = (entry.status || "").toLowerCase();
@@ -425,99 +428,407 @@ export function renderCard(entry, visibleFields, user) {
   `;
 }
 
-/* ============================================================
-   📋 LIST RENDERER (WITH TIMELINE INIT)
-============================================================ */
-export function renderList({ entries, visibleFields, viewMode, user }) {
-  const tableBody = document.getElementById("depositTableBody");
-  const cardContainer = document.getElementById("depositList");
-  const tableContainer = document.querySelector(".table-container");
-  if (!tableBody || !cardContainer || !tableContainer) return;
+  /* ============================================================
+    📋 LIST RENDERER (WITH TIMELINE INIT)
+  ============================================================ */
+  export function renderList({ entries, visibleFields, viewMode, user }) {
+    const tableBody = document.getElementById("depositTableBody");
+    const cardContainer = document.getElementById("depositList");
+    const tableContainer = document.querySelector(".table-container");
+    if (!tableBody || !cardContainer || !tableContainer) return;
 
-  tableBody.innerHTML = "";
-  cardContainer.innerHTML = "";
+    tableBody.innerHTML = "";
+    cardContainer.innerHTML = "";
 
-  if (viewMode === "table") {
-    tableContainer.classList.add("active");
-    cardContainer.classList.remove("active");
+    if (viewMode === "table") {
+      tableContainer.classList.add("active");
+      cardContainer.classList.remove("active");
 
-    renderDynamicTableHead(visibleFields);
+      renderDynamicTableHead(visibleFields);
 
-    if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No deposits found.</td></tr>`;
-      return;
-    }
-
-    entries.forEach((e) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = visibleFields
-        .map((f) =>
-          f === "actions"
-            ? `<td class="actions-cell export-ignore">${getDepositActionButtons(e, user)}</td>`
-            : `<td>${renderValue(e, f)}</td>`
-        )
-        .join("");
-      tableBody.appendChild(tr);
-    });
-
-    initTooltips(tableBody);
-  } else {
-    tableContainer.classList.remove("active");
-    cardContainer.classList.add("active");
-
-    const fragment = document.createDocumentFragment();
-
-    if (!entries.length) {
-      cardContainer.innerHTML = `<p class="text-center text-muted">No deposits found.</p>`;
-      return;
-    }
-
-    entries.forEach((entry) => {
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = renderCard(entry, visibleFields, user);
-
-      const card = wrapper.firstElementChild;
-      const timelineEl = card.querySelector(".card-timeline");
-
-      if (timelineEl) {
-        timelineEl.__entry = entry;
+      if (!entries.length) {
+        tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No deposits found.</td></tr>`;
+        return;
       }
 
-      fragment.appendChild(card);
-    });
+      entries.forEach((e) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = visibleFields
+          .map((f) =>
+            f === "actions"
+              ? `<td class="actions-cell export-ignore">${getDepositActionButtons(e, user)}</td>`
+              : `<td>${renderValue(e, f)}</td>`
+          )
+          .join("");
+        tableBody.appendChild(tr);
+      });
 
-    cardContainer.appendChild(fragment);
+      initTooltips(tableBody);
+    } else {
+      tableContainer.classList.remove("active");
+      cardContainer.classList.add("active");
 
-    // 🔥 INIT TIMELINE
-    initTimelines(cardContainer);
+      const fragment = document.createDocumentFragment();
 
-    initTooltips(cardContainer);
+      if (!entries.length) {
+        cardContainer.innerHTML = `<p class="text-center text-muted">No deposits found.</p>`;
+        return;
+      }
+
+      entries.forEach((entry) => {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = renderCard(entry, visibleFields, user);
+
+        const card = wrapper.firstElementChild;
+        const timelineEl = card.querySelector(".card-timeline");
+
+        if (timelineEl) {
+          timelineEl.__entry = entry;
+        }
+
+        fragment.appendChild(card);
+      });
+
+      cardContainer.appendChild(fragment);
+
+      // 🔥 INIT TIMELINE
+      initTimelines(cardContainer);
+
+      initTooltips(cardContainer);
+    }
+
+    setupExportHandlers(entries, visibleFields);
   }
 
-  setupExportHandlers(entries);
-}
 
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatus"),
+      method: val("filterMethodSelect"),
+      transaction_ref: val("filterTransactionRef"),
+      patient_id: document.getElementById("filterPatientId")?.value,
+      dateRange: val("dateRange"),
+      currency: val("filterCurrencySelect"),
+    };
+  }
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT (UNIVERSAL TEMPLATE ENABLED)
 ============================================================ */
-let exportHandlersBound = false;
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Deposits Report";
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #depositList.active",
-      orientation: "landscape",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_DEPOSIT,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "patient":
+            case "patient_id":
+              row[f] =
+                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
+              break;
+
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "createdBy":
+              row[f] = e.createdBy
+                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "updatedBy":
+              row[f] = e.updatedBy
+                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "amount":
+            case "applied_amount":
+            case "remaining_balance":
+              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ============================================================
+     ✅ EXCEL
+  ============================================================ */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/deposits",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_DEPOSIT,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "patient":
+            case "patient_id":
+              row[f] =
+                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
+              break;
+
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "createdBy":
+              row[f] = e.createdBy
+                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "updatedBy":
+              row[f] = e.updatedBy
+                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "amount":
+            case "applied_amount":
+            case "remaining_balance":
+              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Amount": records.reduce((s, e) => s + Number(e.amount || 0), 0),
+        "Total Applied": records.reduce((s, e) => s + Number(e.applied_amount || 0), 0),
+        "Remaining Balance": records.reduce((s, e) => s + Number(e.remaining_balance || 0), 0),
+      }),
+    });
+  });
+
+  /* ============================================================
+     ✅ PDF
+  ============================================================ */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(`/api/deposits?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const currency = allEntries[0]?.currency || "USD";
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_DEPOSIT[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "patient":
+              case "patient_id":
+                row[f] =
+                  `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
+                break;
+
+              case "organization":
+              case "organization_id":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+              case "facility_id":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "createdBy":
+              case "updatedBy":
+                row[f] = e[f]
+                  ? `${e[f].first_name || ""} ${e[f].last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "amount":
+              case "applied_amount":
+              case "remaining_balance":
+                row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Amount",
+            value: `${getCurrencySymbol(currency)} ${allEntries
+              .reduce((s, e) => s + Number(e.amount || 0), 0)
+              .toFixed(2)}`,
+          },
+          {
+            label: "Total Applied",
+            value: `${getCurrencySymbol(currency)} ${allEntries
+              .reduce((s, e) => s + Number(e.applied_amount || 0), 0)
+              .toFixed(2)}`,
+          },
+          {
+            label: "Remaining Balance",
+            value: `${getCurrencySymbol(currency)} ${allEntries
+              .reduce((s, e) => s + Number(e.remaining_balance || 0), 0)
+              .toFixed(2)}`,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export full report");
+    }
+  });
 }
+

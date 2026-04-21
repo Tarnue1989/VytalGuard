@@ -255,11 +255,24 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
             border-top: 1px solid #ccc;
             padding-top: 6px;
           }
-
           @media print {
             body {
               margin: 0;
               padding: 20px;
+            }
+
+            @page {
+              margin: 20mm;
+            }
+
+            /* 🔥 PAGE NUMBERING */
+            body::before {
+              content: "Page " counter(page) " of " counter(pages);
+              position: fixed;
+              bottom: 10px;
+              right: 20px;
+              font-size: 11px;
+              color: #555;
             }
           }
         </style>
