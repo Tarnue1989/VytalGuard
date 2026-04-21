@@ -19,32 +19,41 @@ export function printReport({
   /* ============================================================
      TABLE BUILD
   ============================================================ */
-  const tableHead = columns
-    .map(
-      (c) =>
-        `<th style="padding:6px; border:1px solid #ddd; background:#f5f5f5; text-align:left;">
-          ${c.label}
-        </th>`
-    )
-    .join("");
-
+  const tableHead = `
+    <th style="padding:6px; border:1px solid #ddd; background:#f5f5f5; text-align:left;">
+      S/N
+    </th>
+    ${columns
+      .map(
+        (c) =>
+          `<th style="padding:6px; border:1px solid #ddd; background:#f5f5f5; text-align:left;">
+            ${c.label}
+          </th>`
+      )
+      .join("")}
+  `;
   const tableRows = rows
     .map(
-      (r) => `
-      <tr>
-        ${columns
-          .map(
-            (c) => `
-            <td style="padding:6px; border:1px solid #ddd;">
-              ${r[c.key] ?? "—"}
-            </td>`
-          )
-          .join("")}
-      </tr>
-    `
-    )
-    .join("");
+      (r, i) => `
+        <tr>
 
+          <!-- 🔥 S/N COLUMN -->
+          <td style="padding:6px; border:1px solid #ddd;">
+            ${i + 1}
+          </td>
+
+          ${columns
+            .map(
+              (c) => `
+              <td style="padding:6px; border:1px solid #ddd;">
+                ${r[c.key] ?? "—"}
+              </td>`
+            )
+            .join("")}
+
+        </tr>
+    `)
+    .join("");
   /* ============================================================
      FILTER BLOCK
   ============================================================ */

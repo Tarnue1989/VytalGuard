@@ -24,6 +24,12 @@ import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "registration_time",
@@ -533,31 +539,293 @@ export function renderList({ entries = [], visibleFields = [], viewMode, user })
 
   const exportSafeData = safeEntries.map((e) => ({ ...e }));
 
-  setupExportHandlers(exportSafeData);
+  setupExportHandlers(exportSafeData, visibleFields);
 }
-/* ============================================================ */
-let exportHandlersBound = false;
-
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+/* ============================================================
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
   const title = "Registration Logs Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
-    exportData({
-      type: "pdf",
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      patient_id: document.getElementById("filterPatientId")?.value,
+      registrar_id: document.getElementById("filterRegistrarId")?.value,
+      registration_type_id: val("filterRegistrationType"),
+      registration_method: val("filterMethod"),
+      patient_category: val("filterCategory"),
+      log_status: val("filterStatus"),
+      registration_source: val("filterSource"),
+      payer_type: val("filterPayerType"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #registrationLogList.active",
-      orientation: "landscape",
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_REGISTRATION_LOG,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "patient":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "registrar":
+              row[f] = e.registrar
+                ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "log_status":
+              row[f] = (e.log_status || "").toUpperCase();
+              break;
+
+            case "is_emergency":
+              row[f] = e.is_emergency ? "Yes" : "No";
+              break;
+
+            case "registration_time":
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
     });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/registration-logs",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_REGISTRATION_LOG,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "patient":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "registrar":
+              row[f] = e.registrar
+                ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "log_status":
+              row[f] = (e.log_status || "").toUpperCase();
+              break;
+
+            case "is_emergency":
+              row[f] = e.is_emergency ? "Yes" : "No";
+              break;
+
+            case "registration_time":
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/registration-logs?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_REGISTRATION_LOG[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "patient":
+                row[f] = e.patient
+                  ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "registrar":
+                row[f] = e.registrar
+                  ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "log_status":
+                row[f] = (e.log_status || "").toUpperCase();
+                break;
+
+              case "is_emergency":
+                row[f] = e.is_emergency ? "Yes" : "No";
+                break;
+
+              case "registration_time":
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
   });
 }

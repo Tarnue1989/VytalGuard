@@ -163,11 +163,11 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
             padding: 20px;
             color: #000;
             font-size: 13px;
-            position: relative;
+            position: relative;            
           }
 
-          /* 🔥 WATERMARK */
-          body::after {
+          /* 🔥 WATERMARK (FIXED) */
+          body::before {
             content: "${watermark}";
             position: fixed;
             top: 40%;
@@ -176,6 +176,7 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
             color: rgba(0,0,0,0.05);
             transform: rotate(-30deg);
             pointer-events: none;
+            z-index: 0;
           }
 
           .letterhead {
@@ -256,6 +257,7 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
             padding-top: 6px;
           }
           @media print {
+
             body {
               margin: 0;
               padding: 20px;
@@ -265,8 +267,26 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
               margin: 20mm;
             }
 
-            /* 🔥 PAGE NUMBERING */
-            body::before {
+            /* 🔥 FORCE PAGE BREAK BEHAVIOR */
+            table {
+              page-break-inside: auto;
+            }
+
+            tr {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+
+            thead {
+              display: table-header-group;
+            }
+
+            tfoot {
+              display: table-footer-group;
+            }
+
+            /* 🔥 PAGE NUMBER (CORRECT) */
+            body::after {
               content: "Page " counter(page) " of " counter(pages);
               position: fixed;
               bottom: 10px;
@@ -274,6 +294,7 @@ export async function renderPrintTemplate(contentHTML, options = {}) {
               font-size: 11px;
               color: #555;
             }
+
           }
         </style>
       </head>

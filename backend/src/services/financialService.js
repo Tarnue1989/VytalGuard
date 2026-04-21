@@ -1195,9 +1195,15 @@ async applyPayment({
       return await sequelize.transaction(async (t) => {
         const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
         if (!invoice) throw new Error("❌ Invoice not found");
-        if (invoice.is_locked)
-          throw new Error("❌ Cannot request waiver on locked invoice");
+        const status = (invoice.status || "").toLowerCase();
 
+        if ([
+          IS.PAID.toLowerCase(),
+          IS.CANCELLED.toLowerCase(),
+          IS.VOIDED.toLowerCase()
+        ].includes(status)) {
+          throw new Error(`❌ Cannot request waiver on ${invoice.status} invoice`);
+        }
         if (!["percentage", "fixed"].includes(type)) {
           throw new Error("❌ Invalid waiver type");
         }
@@ -1534,11 +1540,21 @@ async applyPayment({
 
         let invoice = null;
         if (invoice_id) {
-          invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
+          invoice = await db.Invoice.findByPk(invoice_id, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
           if (!invoice) throw new Error("❌ Invoice not found");
-          if (invoice.is_locked)
-            throw new Error("❌ Cannot apply discount to locked invoice");
+          const status = (invoice.status || "").toLowerCase();
 
+          // ❌ BLOCK ONLY FINAL STATES (MATCH PAYMENT LOGIC)
+          if ([
+            IS.PAID.toLowerCase(),
+            IS.CANCELLED.toLowerCase(),
+            IS.VOIDED.toLowerCase()
+          ].includes(status)) {
+            throw new Error(`❌ Cannot apply discount to ${invoice.status} invoice`);
+          }
           // 🔥 INHERIT FROM INVOICE (SOURCE OF TRUTH)
           orgId = invoice.organization_id;
           facId = invoice.facility_id;

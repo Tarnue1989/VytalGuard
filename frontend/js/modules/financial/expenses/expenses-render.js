@@ -4,6 +4,12 @@ import { FIELD_LABELS_EXPENSE } from "./expenses-constants.js";
 import { formatDate } from "../../../utils/ui-utils.js";
 import { exportData } from "../../../utils/export-utils.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ----------------------------- helpers ----------------------------- */
 
 function initTooltips(scope = document) {
@@ -203,33 +209,269 @@ export function renderExpenseList({ entries, visibleFields, viewMode, userRole }
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */
 
-let exportHandlersBound = false;
-
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+/* ============================================================
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
   const title = "Expenses Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
-    exportData({
-      type: "pdf",
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      account_id: val("filterAccount"),
+      category: val("filterCategory"),
+      date: val("filterDate"),
+      search: val("filterSearch"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".expense-table-container",
-      orientation: "landscape",
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_EXPENSE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "account":
+              row[f] = e.account?.name || "";
+              break;
+
+            case "amount":
+              row[f] =
+                e.amount != null
+                  ? `$${Number(e.amount).toFixed(2)}`
+                  : "";
+              break;
+
+            case "date":
+              row[f] = e.date
+                ? new Date(e.date).toLocaleDateString()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
     });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/expenses",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_EXPENSE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "account":
+              row[f] = e.account?.name || "";
+              break;
+
+            case "amount":
+              row[f] =
+                e.amount != null
+                  ? `$${Number(e.amount).toFixed(2)}`
+                  : "";
+              break;
+
+            case "date":
+              row[f] = e.date
+                ? new Date(e.date).toLocaleDateString()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+        params.set(k, v);
+      });
+
+      const res = await authFetch(`/api/expenses?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_EXPENSE[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "account":
+                row[f] = e.account?.name || "";
+                break;
+
+              case "amount":
+                row[f] =
+                  e.amount != null
+                    ? `$${Number(e.amount).toFixed(2)}`
+                    : "";
+                break;
+
+              case "date":
+                row[f] = e.date
+                  ? new Date(e.date).toLocaleDateString()
+                  : "";
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
   });
 }

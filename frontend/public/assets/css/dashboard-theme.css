@@ -1572,27 +1572,104 @@ Purpose:
   flex-wrap: wrap;
 }
 
+
+/* =========================================================
+🧱 BASE TAB (FINAL CLEAN — ALIGNED + COMPACT)
+========================================================= */
 .modules-categories button {
-  border: none;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: #1366b8;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
+  position: relative;
+  border: none !important;
+  background: transparent !important;
+
+  /* 🔥 FIXED SIZE (match btn-sm / export buttons) */
+  height: 32px;
+  padding: 0 10px;              /* horizontal only (no vertical growth) */
+  
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+
+  /* 🔥 ALIGNMENT */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+
+  color: #64748b !important;
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  cursor: pointer;
+
+  margin-left: -6px;
+  z-index: 1;
+
   transition: all 0.2s ease;
+}
+.modules-categories {
+  display: flex;
+  align-items: flex-end;   /* 🔥 keeps all tabs on same line */
+}
+/* 🔥 TAB SURFACE */
+.modules-categories button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    180deg,
+    #eef2f7,
+    #e5e7eb
+  );
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  z-index: -1;
+}
+
+/* 🔥 HOVER */
+.modules-categories button:hover {
+  color: #111827 !important;
+  transform: translateY(-1px);
+}
+
+/* 🔥 ACTIVE (MATCH DASHBOARD) */
+.modules-categories button.active {
+  color: #4f46e5 !important;
+  font-weight: 700;
+  transform: translateY(2px);
+  z-index: 5;
+}
+
+/* 🔥 ACTIVE SURFACE */
+.modules-categories button.active::before {
+  background: #ffffff;
+
+  box-shadow:
+    0 -3px 10px rgba(0,0,0,0.08),
+    0 2px 0 #ffffff,
+    0 10px 22px rgba(0,0,0,0.10);
+}
+
+/* 🔥 BADGE */
+.modules-categories button .badge {
+  background: rgba(0,0,0,0.05);
+  color: #111827;
+  font-size: 10px;
+}
+
+/* 🔥 ACTIVE BADGE */
+.modules-categories button.active .badge {
+  background: #4f46e5;
+  color: #fff;
 }
 
 .modules-categories button:hover {
   background: #e0e7ff;
   color: #4f46e5;
 }
-
-
-
-
-
-
 
 
 /* =========================================================
@@ -1621,31 +1698,6 @@ Purpose:
   overflow-x: auto;
 }
 
-/* =========================================================
-🧱 BASE TAB
-========================================================= */
-.modules-categories button {
-  position: relative;
-  border: none !important;
-  background: transparent !important;
-
-  padding: 8px 14px;
-  font-size: 0.8rem;
-  font-weight: 600;
-
-  color: #64748b !important;
-
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-
-  cursor: pointer;
-
-  margin-left: -6px;
-  z-index: 1;
-
-  transform: translateY(0);
-  transition: all 0.2s ease;
-}
 
 /* first tab fix */
 .modules-categories button:first-child {
@@ -1851,34 +1903,6 @@ Purpose:
 
 
 
-/* ===============================
-🎯 CATEGORY TEXT ENHANCEMENT (SAFE)
-================================ */
-
-/* base text */
-.modules-categories button {
-  color: #64748b !important;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-/* 🔥 hover = more visible */
-.modules-categories button:hover {
-  color: #111827 !important;
-}
-
-/* 🔥 ACTIVE = PRIMARY COLOR */
-.modules-categories button.active {
-  color: #4f46e5 !important; /* your brand */
-  font-weight: 700;
-}
-
-/* 🔥 badge color sync */
-.modules-categories button.active .badge {
-  background: #4f46e5 !important;
-  color: #fff !important;
-}
-
 
 
 
@@ -1985,3 +2009,5 @@ Purpose:
   z-index: 20;
   background: #fff;
 }
+
+

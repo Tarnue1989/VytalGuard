@@ -7,6 +7,12 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================ */
 const SORTABLE_FIELDS=new Set([
   "organization_id","facility_id","patient_id","provider_id","invoice_id",
@@ -269,4 +275,306 @@ export function renderList({entries,visibleFields,viewMode,user}){
 
     initTooltips(cardContainer);
   }
+  setupExportHandlers(entries, visibleFields);
+}
+
+/* ============================================================
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
+  const title = "Insurance Claims Report";
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatus"),
+      currency: val("filterCurrency"),
+      patient_id: document.getElementById("filterPatientId")?.value,
+      provider_id: val("filterProvider"),
+      invoice_id: val("filterInvoiceId"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_INSURANCE_CLAIM,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "patient":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "provider":
+              row[f] = e.provider?.name || "";
+              break;
+
+            case "invoice":
+              row[f] = e.invoice?.invoice_number || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "amount_claimed":
+            case "amount_approved":
+            case "amount_paid":
+              row[f] = e[f] != null
+                ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/insurance-claims",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_INSURANCE_CLAIM,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "patient":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "provider":
+              row[f] = e.provider?.name || "";
+              break;
+
+            case "invoice":
+              row[f] = e.invoice?.invoice_number || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "amount_claimed":
+            case "amount_approved":
+            case "amount_paid":
+              row[f] = e[f] != null
+                ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/insurance-claims?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_INSURANCE_CLAIM[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "patient":
+                row[f] = e.patient
+                  ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "provider":
+                row[f] = e.provider?.name || "";
+                break;
+
+              case "invoice":
+                row[f] = e.invoice?.invoice_number || "";
+                break;
+
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "amount_claimed":
+              case "amount_approved":
+              case "amount_paid":
+                row[f] = e[f] != null
+                  ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
+                  : "";
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

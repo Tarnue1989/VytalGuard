@@ -139,37 +139,43 @@
                   </div>
                 </div>
 
-                <!-- ================= VIEW TOGGLE ================= -->
+                <!-- View Toggle -->
                 <div class="d-flex mb-2 view-toggle compact align-items-center">
-
-                  <div class="dropdown">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                      id="fieldSelectorBtn" data-bs-toggle="dropdown">
+                  <div class="dropdown relative-wrapper export-ignore">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                    >
                       <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div class="dropdown-menu p-2" id="fieldSelectorDropdown"></div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
 
                   <div class="btn-group ms-2">
-                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm">
-                      <i class="fas fa-th me-1"></i> Card
+                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
+                      <i class="fas fa-th me-1"></i> Card View
                     </button>
-                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm active">
-                      <i class="fas fa-table me-1"></i> Table
+                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
+                      <i class="fas fa-table me-1"></i> Table View
                     </button>
                   </div>
+                </div>
 
-                  <div class="d-flex align-items-center gap-1 ms-2">
-                    <span class="small">Show</span>
-                    <select id="recordsPerPage" class="form-select form-select-sm" style="width:70px;">
-                      <option value="10">10</option>
-                      <option value="25" selected>25</option>
-                      <option value="50">50</option>
-                      <option value="100">100</option>
-                    </select>
-                    <span class="small">rows</span>
-                  </div>
-
+                <!-- Records -->
+                <div class="btn-group align-items-center ms-2">
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Show</span>
+                  <select id="recordsPerPage" class="btn btn-outline-secondary btn-sm">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                  <span class="btn btn-outline-secondary btn-sm pe-none">Rows</span>
                 </div>
 
                 <!-- ================= SUMMARY ================= -->

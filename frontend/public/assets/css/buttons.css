@@ -177,46 +177,17 @@ button:hover{
 
 
 /* =========================================================
-✨ CLEAN CATEGORY BUTTONS (REPLACEMENT)
+🎯 EXACT MATCH → EXPORT BUTTON SIZE (PDF / CSV / EXCEL)
 ========================================================= */
-
-#moduleCategories button {
-  background: #ffffff !important;
-  color: #334155 !important;
-  border: 1px solid #cbd5e1 !important;   /* 🔥 thinner */
-  border-radius: 8px !important;
-
-  font-weight: 500;
-  padding: 0.35rem 0.75rem;
-
-  box-shadow: none !important;            /* 🔥 remove heavy feel */
-  transition: all 0.15s ease;
+.btn.btn-primary {
+  padding: 0.25rem 0.5rem !important;   /* exact btn-sm */
+  font-size: 0.875rem !important;       /* exact bootstrap */
+  border-radius: 0.25rem !important;
+  line-height: 1.5;
 }
 
-/* HOVER */
-#moduleCategories button:hover {
-  background: #eef2ff !important;
-  border-color: #6366f1 !important;
-  color: #4338ca !important;
-}
-
-/* ACTIVE */
-#moduleCategories button.btn-primary {
-  background: #6366f1 !important;
-  color: #ffffff !important;
-  border-color: #6366f1 !important;
-
-  box-shadow: 0 4px 10px rgba(99,102,241,0.25) !important;
-}
-
-/* BADGE */
-#moduleCategories button .badge {
-  background: rgba(99,102,241,0.15) !important;
-  color: #4338ca !important;
-}
-
-/* ACTIVE BADGE */
-#moduleCategories button.btn-primary .badge {
-  background: rgba(255,255,255,0.2) !important;
-  color: #ffffff !important;
+/* icon match */
+.btn.btn-primary i {
+  font-size: 0.85rem;
+  margin-right: 0.25rem;
 }

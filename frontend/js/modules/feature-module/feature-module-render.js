@@ -12,6 +12,12 @@ import { enableColumnResize } from "../../utils/table-resize.js";
 import { formatDateTime, formatDate, initTooltips } from "../../utils/ui-utils.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS (TABLE ONLY)
 ============================================================ */
@@ -485,4 +491,214 @@ export function renderList({ entries, visibleFields, viewMode, userRole }) {
 
     initTooltips(cardContainer);
   }
+  setupExportHandlers(entries, visibleFields);
+}
+
+/* ============================================================
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
+  const title = "Feature Modules Report";
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      status: val("filterStatus"),
+      visibility: val("filterVisibility"),
+      enabled: val("filterEnabled"),
+      tenant_scope: val("filterTenantScope"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_FEATURE_MODULE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "enabled":
+              row[f] = e.enabled ? "Enabled" : "Disabled";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/features/feature-modules",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_FEATURE_MODULE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "enabled":
+              row[f] = e.enabled ? "Enabled" : "Disabled";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+        params.set(k, v);
+      });
+
+      const res = await authFetch(
+        `/api/features/feature-modules?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_FEATURE_MODULE[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "enabled":
+                row[f] = e.enabled ? "Enabled" : "Disabled";
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }
