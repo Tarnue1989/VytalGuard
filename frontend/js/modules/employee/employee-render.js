@@ -25,6 +25,12 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER)
 ============================================================ */
@@ -474,31 +480,311 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* ============================================================
-   📤 EXPORT (MASTER)
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
 ============================================================ */
-let exportHandlersBound = false;
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Employees Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("filterSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      department_id: val("filterDepartmentSelect"),
+      status: val("filterStatus"),
+      gender: val("filterGender"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #employeeList.active",
-      orientation: "landscape",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_EMPLOYEE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "department":
+              row[f] = e.department?.name || "";
+              break;
+
+            case "employee":
+            case "full_name":
+              row[f] = [
+                e.first_name,
+                e.middle_name,
+                e.last_name,
+              ]
+                .filter(Boolean)
+                .join(" ");
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "gender":
+              row[f] = (e.gender || "").toUpperCase();
+              break;
+
+            case "dob":
+            case "hire_date":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/employees",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_EMPLOYEE,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "department":
+              row[f] = e.department?.name || "";
+              break;
+
+            case "employee":
+            case "full_name":
+              row[f] = [
+                e.first_name,
+                e.middle_name,
+                e.last_name,
+              ]
+                .filter(Boolean)
+                .join(" ");
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "gender":
+              row[f] = (e.gender || "").toUpperCase();
+              break;
+
+            case "dob":
+            case "hire_date":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        // ✅ FIX: send dateRange directly (backend expects this)
+        params.set(k, v);
+      });
+
+      const res = await authFetch(
+        `/api/employees?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_EMPLOYEE[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "department":
+                row[f] = e.department?.name || "";
+                break;
+
+              case "employee":
+              case "full_name":
+                row[f] = [
+                  e.first_name,
+                  e.middle_name,
+                  e.last_name,
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                break;
+
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "gender":
+                row[f] = (e.gender || "").toUpperCase();
+                break;
+
+              case "dob":
+              case "hire_date":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

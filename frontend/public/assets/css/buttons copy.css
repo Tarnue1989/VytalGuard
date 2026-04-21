@@ -1,0 +1,228 @@
+/* =============================================================
+FILE: buttons.css (MASTER CONTROL)
+🔘 All button color, hover, effects controlled here
+============================================================= */
+
+/* =========================================================
+🧱 BASE BUTTON (ALL BUTTONS USE THIS)
+========================================================= */
+.btn {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+
+  background: #4f46e5; /* 🔥 DASHBOARD PRIMARY */
+  color: #fff;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  transition: all 0.18s ease;
+}
+
+/* hover */
+.btn:hover {
+  background: #4338ca;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(79, 70, 229, 0.25);
+}
+
+/* active press */
+.btn:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+/* =========================================================
+🎨 VARIANTS
+========================================================= */
+
+/* ================= PRIMARY ================= */
+.btn-submit {
+  background: #4f46e5;
+}
+.btn-submit:hover {
+  background: #4338ca;
+}
+
+/* ================= DANGER ================= */
+.btn-delete {
+  background: #dc2626;
+}
+.btn-delete:hover {
+  background: #b91c1c;
+}
+
+/* ================= SUCCESS ================= */
+.btn-success,
+.btn-enable,
+.btn-complete,
+.btn-finalize {
+  background: #16a34a;
+}
+.btn-success:hover,
+.btn-enable:hover,
+.btn-complete:hover,
+.btn-finalize:hover {
+  background: #15803d;
+}
+
+/* ================= WARNING ================= */
+.btn-warning {
+  background: #f59e0b;
+}
+.btn-warning:hover {
+  background: #d97706;
+}
+
+/* ================= NEUTRAL ================= */
+.btn-cancel {
+  background: #64748b;
+}
+.btn-cancel:hover {
+  background: #475569;
+}
+
+/* ================= EXPORT ================= */
+.btn-export {
+  background: #1e40af;
+}
+.btn-export:hover {
+  background: #1e3a8a;
+}
+
+/* =========================================================
+🧊 OUTLINE (OPTIONAL CLEAN STYLE)
+========================================================= */
+.btn-outline {
+  background: #fff;
+  color: #4f46e5;
+  border: 1px solid #c7d2fe;
+}
+.btn-outline:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+/* =========================================================
+🎛 SMALL / ICON BUTTONS
+========================================================= */
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.icon-btn {
+  background: #f9fafb;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+.icon-btn:hover {
+  background: #f3f4f6;
+}
+
+/* =========================================================
+📊 TABLE / CARD BUTTONS
+========================================================= */
+.actions-table button,
+.card-actions button {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+/* =========================================================
+📌 FLOATING BUTTON
+========================================================= */
+.floating-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+
+  border-radius: 50%;
+  background: #4f46e5;
+  color: #fff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 1.6rem;
+  cursor: grab;
+  z-index: 1000;
+}
+.floating-btn:hover {
+  background: #4338ca;
+  transform: scale(1.05);
+}
+
+/* =========================================================
+📤 EXPORT GROUP
+========================================================= */
+.export-btn-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* =========================================================
+🛡 SAFETY
+========================================================= */
+.export-ignore,
+.icon-btn.export-ignore {
+  display: inline-flex !important;
+  visibility: visible !important;
+}
+
+
+
+
+
+/* =========================================================
+✨ CLEAN CATEGORY BUTTONS (REPLACEMENT)
+========================================================= */
+
+#moduleCategories button {
+  background: #ffffff !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;   /* 🔥 thinner */
+  border-radius: 8px !important;
+
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+
+  box-shadow: none !important;            /* 🔥 remove heavy feel */
+  transition: all 0.15s ease;
+}
+
+/* HOVER */
+#moduleCategories button:hover {
+  background: #eef2ff !important;
+  border-color: #6366f1 !important;
+  color: #4338ca !important;
+}
+
+/* ACTIVE */
+#moduleCategories button.btn-primary {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #6366f1 !important;
+
+  box-shadow: 0 4px 10px rgba(99,102,241,0.25) !important;
+}
+
+/* BADGE */
+#moduleCategories button .badge {
+  background: rgba(99,102,241,0.15) !important;
+  color: #4338ca !important;
+}
+
+/* ACTIVE BADGE */
+#moduleCategories button.btn-primary .badge {
+  background: rgba(255,255,255,0.2) !important;
+  color: #ffffff !important;
+}

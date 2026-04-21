@@ -17,6 +17,13 @@ import {
 } from "../../utils/ui-utils.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
+
 /* ============================================================
    🔃 SORTABLE FIELDS (TABLE ONLY)
    (keep ID-based fields for backend parity)
@@ -431,4 +438,313 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     initTooltips(cardContainer);
   }
+  setupExportHandlers(entries, visibleFields);
+}
+
+/* ============================================================
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
+  const title = "Feature Access Report";
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: document.getElementById("filterOrganization")?.dataset.value,
+      module_id: document.getElementById("filterModule")?.dataset.value,
+      role_id: document.getElementById("filterRole")?.dataset.value,
+      facility_id: document.getElementById("filterFacility")?.dataset.value,
+      status: val("filterStatus"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_FEATURE_ACCESS,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "module":
+            case "module_id":
+              row[f] = e.module?.name || "";
+              break;
+
+            case "role":
+            case "role_id":
+              row[f] = e.role?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "Organization-wide";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "createdBy":
+              row[f] = e.createdBy
+                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "updatedBy":
+              row[f] = e.updatedBy
+                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ============================================================
+     ✅ EXCEL
+  ============================================================ */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/features/feature-access",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_FEATURE_ACCESS,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "module":
+            case "module_id":
+              row[f] = e.module?.name || "";
+              break;
+
+            case "role":
+            case "role_id":
+              row[f] = e.role?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "Organization-wide";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "createdBy":
+              row[f] = e.createdBy
+                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "updatedBy":
+              row[f] = e.updatedBy
+                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f]
+                ? new Date(e[f]).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ============================================================
+     ✅ PDF
+  ============================================================ */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/features/feature-access?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_FEATURE_ACCESS[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+              case "organization_id":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "module":
+              case "module_id":
+                row[f] = e.module?.name || "";
+                break;
+
+              case "role":
+              case "role_id":
+                row[f] = e.role?.name || "";
+                break;
+
+              case "facility":
+              case "facility_id":
+                row[f] = e.facility?.name || "Organization-wide";
+                break;
+
+              case "createdBy":
+              case "updatedBy":
+                row[f] = e[f]
+                  ? `${e[f].first_name || ""} ${e[f].last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export full report");
+    }
+  });
 }

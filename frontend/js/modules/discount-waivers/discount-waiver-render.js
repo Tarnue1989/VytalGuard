@@ -19,6 +19,13 @@ import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { getCurrencySymbol } from "../../utils/currency-utils.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
+
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
 ============================================================ */
@@ -369,30 +376,310 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
 ============================================================ */
-let exportHandlersBound = false;
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Discount Waivers Report";
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatus"),
+      currency: val("filterCurrency"),
+      invoice_id: document.getElementById("filterInvoiceId")?.value,
+      patient_id: document.getElementById("filterPatientId")?.value,
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #discountWaiverList.active",
-      orientation: "landscape",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_DISCOUNT_WAIVER,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "invoice":
+            case "invoice_id":
+              row[f] = e.invoice?.invoice_number || "";
+              break;
+
+            case "patient":
+            case "patient_id":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "amount":
+            case "applied_total":
+              row[f] = e[f] != null
+                ? `${getCurrencySymbol(e.currency)} ${Number(e[f]).toFixed(2)}`
+                : "";
+              break;
+
+            case "percentage":
+              row[f] = e.percentage != null ? `${e.percentage}%` : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/discount-waivers",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_DISCOUNT_WAIVER,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "invoice":
+            case "invoice_id":
+              row[f] = e.invoice?.invoice_number || "";
+              break;
+
+            case "patient":
+            case "patient_id":
+              row[f] = e.patient
+                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                : "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "amount":
+            case "applied_total":
+              row[f] = e[f] != null
+                ? `${getCurrencySymbol(e.currency)} ${Number(e[f]).toFixed(2)}`
+                : "";
+              break;
+
+            case "percentage":
+              row[f] = e.percentage != null ? `${e.percentage}%` : "";
+              break;
+
+            case "created_at":
+            case "updated_at":
+              row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/discount-waivers?${params.toString()}`
+      );
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_DISCOUNT_WAIVER[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          cleanFields.forEach((f) => {
+            switch (f) {
+              case "organization":
+              case "organization_id":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+              case "facility_id":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "invoice":
+              case "invoice_id":
+                row[f] = e.invoice?.invoice_number || "";
+                break;
+
+              case "patient":
+              case "patient_id":
+                row[f] = e.patient
+                  ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+                  : "";
+                break;
+
+              case "status":
+                row[f] = (e.status || "").toUpperCase();
+                break;
+
+              case "amount":
+              case "applied_total":
+                row[f] = e[f] != null
+                  ? `${getCurrencySymbol(e.currency)} ${Number(e[f]).toFixed(2)}`
+                  : "";
+                break;
+
+              case "percentage":
+                row[f] = e.percentage != null ? `${e.percentage}%` : "";
+                break;
+
+              case "created_at":
+              case "updated_at":
+                row[f] = e[f]
+                  ? new Date(e[f]).toLocaleDateString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        meta: {
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

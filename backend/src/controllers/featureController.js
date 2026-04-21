@@ -1953,19 +1953,21 @@ export const getAllFeatureAccesses = async (req, res) => {
     });
 
     /* ========================================================
-       🧹 STRIP UI-ONLY FILTERS
+       🧹 STRIP UI-ONLY FILTERS (🔥 FIX)
     ======================================================== */
     const {
       dateRange,
+      date_from,
+      date_to,
       organization_id,
       role_id,
       module_id,
       facility_id,
     } = req.query;
 
-    if (options.where?.dateRange) {
-      delete options.where.dateRange;
-    }
+    if (options.where?.dateRange) delete options.where.dateRange;
+    if (options.where?.date_from) delete options.where.date_from;
+    if (options.where?.date_to) delete options.where.date_to;
 
     /* ========================================================
        🏢 ORG GUARD (NON-SUPER ADMINS)
@@ -1986,7 +1988,7 @@ export const getAllFeatureAccesses = async (req, res) => {
     if (facility_id) options.where.facility_id = facility_id;
 
     /* ========================================================
-       📅 DATE RANGE FILTER (LOCAL – SINGLE SOURCE)
+       📅 DATE RANGE FILTER (MASTER – SAME AS DEPOSIT)
     ======================================================== */
     if (dateRange) {
       const range = normalizeDateRangeLocal(dateRange);
@@ -2028,11 +2030,6 @@ export const getAllFeatureAccesses = async (req, res) => {
       📊 SUMMARY (BASE-TABLE SAFE — NO JOIN ALIASES)
     ============================================================ */
 
-    /**
-     * IMPORTANT:
-     * - Summary MUST NOT use $role.name$, $module.name$, etc.
-     * - Only base FeatureAccess columns allowed
-     */
     const summaryWhere = {};
 
     /* ---------- ORG GUARD ---------- */
@@ -2073,7 +2070,7 @@ export const getAllFeatureAccesses = async (req, res) => {
     });
 
     const statusMap = Object.fromEntries(
-      statusRows.map(r => [r.status, Number(r.count)])
+      statusRows.map((r) => [r.status, Number(r.count)])
     );
 
     /* ---------- SCOPE SUMMARY ---------- */
@@ -2093,7 +2090,7 @@ export const getAllFeatureAccesses = async (req, res) => {
     });
 
     const scopeMap = Object.fromEntries(
-      scopeRows.map(r => [r.scope, Number(r.count)])
+      scopeRows.map((r) => [r.scope, Number(r.count)])
     );
 
     /* ---------- FINAL SUMMARY ---------- */

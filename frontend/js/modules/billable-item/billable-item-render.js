@@ -16,6 +16,13 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
+
 /* ============================================================
    🔃 SORTABLE FIELDS
 ============================================================ */
@@ -394,34 +401,221 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* ============================================================
-   📤 EXPORT
+   📤 EXPORT HANDLERS (DEPOSIT 1:1)
 ============================================================ */
-let exportHandlersBound = false;
 
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Billable Items Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+  // 🔥 RESET
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ============================================================
+     🔥 FILTERS
+  ============================================================ */
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatusSelect"),
+      payer_type: val("filterPayerTypeSelect"),
+      currency: val("filterCurrencySelect"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ============================================================
+     🔥 MAP ROW
+  ============================================================ */
+  const mapRow = (e, fields) => {
+    const row = {};
+
+    const yesNo = (v) => {
+      if (v === true || v === "true" || v === 1) return "Yes";
+      if (v === false || v === "false" || v === 0) return "No";
+      return "";
+    };
+
+    fields.forEach((f) => {
+      switch (f) {
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "department":
+        case "department_id":
+          row[f] = e.department?.name || "";
+          break;
+
+        case "masterItem":
+        case "master_item_id":
+          row[f] = e.masterItem?.name || "";
+          break;
+
+        case "prices":
+          row[f] = Array.isArray(e.prices)
+            ? e.prices
+                .map(
+                  (p) =>
+                    `${p.payer_type || ""} ${p.currency || ""} ${p.price || ""}${
+                      p.is_default ? " (Default)" : ""
+                    }`
+                )
+                .join(" | ")
+            : "";
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "taxable":
+        case "discountable":
+        case "override_allowed":
+        case "is_active":
+          row[f] = yesNo(e[f]);
+          break;
+
+        case "created_at":
+        case "updated_at":
+          row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #billableItemList.active",
-      orientation: "landscape",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_BILLABLE_ITEM,
+      mapRow,
+    });
+  });
+
+  /* ============================================================
+     ✅ EXCEL
+  ============================================================ */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/billable-items",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_BILLABLE_ITEM,
+      mapRow,
+    });
+  });
+
+  /* ============================================================
+     ✅ PDF
+  ============================================================ */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(`/api/billable-items?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_BILLABLE_ITEM[f] || f,
+        })),
+
+        rows: allEntries.map((e) => mapRow(e, cleanFields)),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export full report");
+    }
+  });
 }
