@@ -136,7 +136,7 @@
               <i class="ri-dashboard-line"></i> Dashboard
             </button>
             <button class="dashboard-tab" data-tab="modules">
-              <i class="ri-grid-line"></i> Modules
+              <i class="ri-grid-line"></i> Work Area
             </button>
           </div>
         </div>
@@ -238,21 +238,43 @@
 
   </div>
   <!-- Page wrapper ends -->
-   
-  <!-- SESSION MODAL -->
-  <div id="sessionTimeoutModal" class="modal hidden">
-    <div class="modal-content text-center p-4">
-      <h5>⚠️ Session Expiring</h5>
-      <p>
-        You will be logged out in 
-        <strong id="sessionCountdown">30</strong> seconds.
-      </p>
-      <button id="stayLoggedInBtn" class="btn btn-primary">
-        Stay Logged In
+<!-- SESSION MODAL -->
+<div id="sessionTimeoutModal" class="modal hidden">
+  <div class="modal-content text-center p-4">
+    <h5>⚠️ Session Expiring</h5>
+    <p>
+      You will be logged out in 
+      <strong id="sessionCountdown">30</strong> seconds.
+    </p>
+    <button id="stayLoggedInBtn" class="btn btn-primary">
+      Stay Logged In
+    </button>
+  </div>
+</div>
+
+<!-- 🔐 LOGOUT CONFIRM MODAL (NEW) -->
+<div id="logoutConfirmModal" class="modal hidden">
+  <div class="modal-content text-center p-4">
+
+    <h5>⚠️ Confirm Logout</h5>
+
+    <p id="logoutMessage">
+      Are you sure you want to log out?
+    </p>
+
+    <div class="d-flex justify-content-center gap-2 mt-3">
+      <button id="cancelLogoutBtn" class="btn btn-outline-secondary">
+        Cancel
+      </button>
+
+      <button id="confirmLogoutBtn" class="btn btn-danger">
+        Logout
       </button>
     </div>
-  </div>
 
+  </div>
+</div>
+</div>
   <!-- 📘 FLOATING MANUAL BUTTON -->
   <div class="manual-float" id="manualFloat">
     <i class="ri-book-open-line"></i>

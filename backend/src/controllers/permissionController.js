@@ -73,6 +73,7 @@ function buildPermissionSchema(mode = "create") {
 ============================================================ */
 export const getAllPermissions = async (req, res) => {
   try {
+    /* 🔐 PERMISSION */
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -81,19 +82,24 @@ export const getAllPermissions = async (req, res) => {
     });
     if (!allowed) return;
 
+    /* 🧠 BASE QUERY */
     const options = buildQueryOptions(req, "key", "ASC");
 
     delete options.filters?.dateRange;
 
     options.where = { [Op.and]: [] };
 
+    /* 📅 DATE RANGE */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
-    if (dateRange) {
+    if (dateRange?.start && dateRange?.end) {
       options.where[Op.and].push({
-        created_at: { [Op.between]: [dateRange.start, dateRange.end] },
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
       });
     }
 
+    /* 🔎 SEARCH */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -106,6 +112,30 @@ export const getAllPermissions = async (req, res) => {
       });
     }
 
+    /* 🎯 FILTERS (MASTER PARITY) */
+
+    // 🔹 module (exact match)
+    if (req.query.module) {
+      options.where[Op.and].push({
+        module: req.query.module,
+      });
+    }
+
+    // 🔹 category
+    if (req.query.category) {
+      options.where[Op.and].push({
+        category: req.query.category,
+      });
+    }
+
+    // 🔹 is_global
+    if (req.query.is_global !== undefined) {
+      options.where[Op.and].push({
+        is_global: req.query.is_global === "true",
+      });
+    }
+
+    /* 📦 QUERY */
     const { count, rows } = await Permission.findAndCountAll({
       where: options.where,
       include: PERMISSION_INCLUDES,
@@ -115,18 +145,25 @@ export const getAllPermissions = async (req, res) => {
       distinct: true,
     });
 
+    /* 🧾 AUDIT */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        query: req.query,
+        returned: count,
+        pagination: options.pagination,
+      },
     });
 
+    /* ✅ RESPONSE */
     return success(res, "✅ Permissions loaded", {
       records: rows,
       pagination: {
         total: count,
         page: options.pagination.page,
+        limit: options.pagination.limit,
         pageCount: Math.ceil(count / options.pagination.limit),
       },
     });
@@ -135,7 +172,6 @@ export const getAllPermissions = async (req, res) => {
     return error(res, "❌ Failed to load permissions", err);
   }
 };
-
 /* ============================================================
    📌 GET PERMISSION BY ID
 ============================================================ */

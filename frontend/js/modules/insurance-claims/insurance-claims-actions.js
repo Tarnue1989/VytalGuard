@@ -189,7 +189,55 @@ export function setupActionHandlers({
 
       return;
     }
+    /* ================= DOWNLOAD PDF ================= */
+    if (btn.dataset.action === "download-invoice") {
+      if (!hasPerm("insurance_claims:print"))
+        return showToast("⛔ No permission");
 
+      if (!entry.invoice?.id)
+        return showToast("❌ No invoice");
+
+      try {
+        showLoading();
+
+        const res = await authFetch(
+          `/api/invoices/${entry.invoice.id}?print=true`
+        );
+
+        const data = await res.json();
+        if (!data?.data) throw new Error("Invoice not found");
+
+        const html = buildInvoiceReceiptHTML(data.data);
+
+        const win = window.open("", "_blank");
+
+        win.document.write(`
+          <html>
+            <head>
+              <title>${data.data.invoice_number}</title>
+            </head>
+            <body>
+              ${html}
+              <script>
+                window.onload = function(){
+                  window.print();
+                }
+              <\/script>
+            </body>
+          </html>
+        `);
+
+        win.document.close();
+
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || "❌ Failed to download invoice");
+      } finally {
+        hideLoading();
+      }
+
+      return;
+    }
     /* ================= VIEW ================= */
     if (cls.contains("view-btn")) {
       if (!hasPerm("insurance_claims:view"))

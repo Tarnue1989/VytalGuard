@@ -176,12 +176,34 @@ export function renderDepositSummary() {
 /* ============================================================
    🧩 GROUP CARD
 ============================================================ */
+const FINANCE_ROUTE_MAP = {
+  revenue: "/invoices-list.html",
+  cash: "/payments-list.html",
+  deposits: "/deposits-list.html",
+  outstanding: "/invoices-list.html?status=unpaid",
+};
+
 function groupCard(title, contentRows = []) {
+  let key = "";
+
+  if (title.includes("Revenue")) key = "revenue";
+  else if (title.includes("Cash")) key = "cash";
+  else if (title.includes("Deposits")) key = "deposits";
+  else if (title.includes("Outstanding")) key = "outstanding";
+
+  const route = FINANCE_ROUTE_MAP[key] || "";
+
   return `
     <div class="col-xl-3 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 summary-card clickable"
+           data-route="${route}">
         <div class="card-body">
-          <div class="fw-semibold mb-2">${title}</div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">${title}</div>
+            ${route ? `<a href="${route}" class="small text-primary">View →</a>` : ""}
+          </div>
+
           ${contentRows.join("")}
         </div>
       </div>
@@ -251,9 +273,13 @@ export function renderFinanceInsights(data = {}) {
 
   container.innerHTML = `
     <div class="col-xl-3 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 summary-card clickable"
+           data-route="/expenses-list.html">
         <div class="card-body">
-          <div class="fw-semibold mb-2">💸 Expenses</div>
+          <div class="fw-semibold mb-2 d-flex justify-content-between">
+            <span>💸 Expenses</span>
+            <a href="/expenses-list.html" class="small text-primary">View →</a>
+          </div>
           <div class="fw-bold text-danger">
             ${formatMoney(data.total_expense)}
           </div>
@@ -262,9 +288,13 @@ export function renderFinanceInsights(data = {}) {
     </div>
 
     <div class="col-xl-3 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 summary-card clickable"
+           data-route="/finance-reports.html">
         <div class="card-body">
-          <div class="fw-semibold mb-2">📈 Profit</div>
+          <div class="fw-semibold mb-2 d-flex justify-content-between">
+            <span>📈 Profit</span>
+            <a href="/finance-reports.html" class="small text-primary">View →</a>
+          </div>
           <div class="small text-muted">Net Cash - Expenses</div>
           <div class="fw-bold ${
             data.profit >= 0 ? "text-success" : "text-danger"
@@ -276,9 +306,13 @@ export function renderFinanceInsights(data = {}) {
     </div>
 
     <div class="col-xl-3 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 summary-card clickable"
+           data-route="/refunds-list.html">
         <div class="card-body">
-          <div class="fw-semibold mb-2">🔁 Refunds</div>
+          <div class="fw-semibold mb-2 d-flex justify-content-between">
+            <span>🔁 Refunds</span>
+            <a href="/refunds-list.html" class="small text-primary">View →</a>
+          </div>
 
           <div class="small d-flex justify-content-between">
             <span>Payment</span>
@@ -294,9 +328,13 @@ export function renderFinanceInsights(data = {}) {
     </div>
 
     <div class="col-xl-3 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 summary-card clickable"
+           data-route="/insurance-claims-list.html">
         <div class="card-body">
-          <div class="fw-semibold mb-2">🏥 Insurance</div>
+          <div class="fw-semibold mb-2 d-flex justify-content-between">
+            <span>🏥 Insurance</span>
+            <a href="/insurance-claims-list.html" class="small text-primary">View →</a>
+          </div>
 
           <div class="small d-flex justify-content-between">
             <span>Claimed</span>
@@ -322,3 +360,13 @@ export function renderFinanceInsights(data = {}) {
     </div>
   `;
 }
+document.addEventListener("click", (e) => {
+  const card = e.target.closest(".summary-card.clickable");
+  if (!card) return;
+
+  // allow real links
+  if (e.target.closest("a")) return;
+
+  const route = card.dataset.route;
+  if (route) window.location.href = route;
+});

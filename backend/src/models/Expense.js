@@ -2,7 +2,7 @@
 // ============================================================================
 // 💸 Expense Model – ENTERPRISE FINAL (AUTO NUMBER + MULTI-TENANT SAFE)
 // ============================================================================
-
+import { Op } from "sequelize";
 import { DataTypes, Model } from "sequelize";
 import {
   EXPENSE_CATEGORIES,
@@ -158,42 +158,48 @@ export default (sequelize) => {
     }
   );
 
-  /* ============================================================
-     🔢 AUTO NUMBER + AUDIT (RUNS BEFORE VALIDATION)
-  ============================================================ */
-  Expense.beforeValidate(async (expense, options) => {
-    /* 🔹 Audit */
-    if (options?.user) {
-      expense.created_by_id = options.user.id;
-    }
+/* ============================================================
+   🔢 AUTO NUMBER + AUDIT (RUNS BEFORE VALIDATION)
+============================================================ */
+Expense.beforeValidate(async (expense, options) => {
+  // 🔹 Audit
+  if (options?.user) {
+    expense.created_by_id = options.user.id;
+  }
 
-    /* 🔒 Skip if already set */
-    if (expense.expense_number) return;
+  // 🔒 Skip if already set
+  if (expense.expense_number) return;
 
-    if (!expense.organization_id) {
-      throw new Error("Missing organization_id for expense numbering");
-    }
+  if (!expense.organization_id) {
+    throw new Error("Missing organization_id for expense numbering");
+  }
 
-    /* 🔥 Tenant-safe numbering */
-    const last = await Expense.findOne({
-      where: {
-        organization_id: expense.organization_id,
+  // 🔥 ONLY pick NORMAL expenses (exclude payroll)
+  const last = await Expense.findOne({
+    where: {
+      organization_id: expense.organization_id,
+      expense_number: {
+        [Op.and]: [
+          { [Op.like]: "EXP-%" },
+          { [Op.notLike]: "EXP-PAY-%" }, // 🚫 exclude payroll
+        ],
       },
-      order: [["createdAt", "DESC"]],
-      transaction: options?.transaction,
-    });
-
-    let nextNumber = 1;
-
-    if (last?.expense_number) {
-      const match = last.expense_number.match(/EXP-(\d+)/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    expense.expense_number = `EXP-${String(nextNumber).padStart(5, "0")}`;
+    },
+    order: [["expense_number", "DESC"]],
+    transaction: options?.transaction,
   });
+
+  let nextNumber = 1;
+
+  if (last?.expense_number) {
+    const match = last.expense_number.match(/^EXP-(\d{5})$/); // 🔥 strict match
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  expense.expense_number = `EXP-${String(nextNumber).padStart(5, "0")}`;
+});
 
   /* ============================================================
     🔹 UPDATE CONTROL + LIFECYCLE ENFORCEMENT (FINAL)

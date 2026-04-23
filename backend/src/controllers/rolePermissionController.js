@@ -17,6 +17,7 @@ import { auditService } from "../services/auditService.js";
 import { isSuperAdmin, hasRole } from "../utils/role-utils.js";
 import { validatePaginationStrict } from "../utils/query-utils.js";
 import { resolveOrgFacility } from "../utils/resolveOrgFacility.js";
+import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 
 /* ============================================================
    🧩 MODULE CONFIG
@@ -213,87 +214,196 @@ export const getLiteRolePermissions = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL ROLE PERMISSIONS
+   📌 GET ALL ROLE PERMISSIONS (MASTER PARITY WITH DEPOSIT)
    ============================================================ */
 export const getAllRolePermissions = async (req, res) => {
   try {
-    // 🔐 Permission check
-    await authzService.checkPermission(req.user, MODULE_KEY, "view");
+    /* ========================================================
+       🔐 AUTH
+    ======================================================== */
+    const allowed = await authzService.checkPermission({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "view",
+      res,
+    });
+    if (!allowed) return;
 
-    // 🧭 Strict pagination validation (from query-utils.js)
-    const pagination = validatePaginationStrict(req, { limit: 25, maxLimit: 200 });
+    /* ========================================================
+       🔢 STRICT PAGINATION (MATCH DEPOSIT)
+    ======================================================== */
+    const { limit, page, offset } = validatePaginationStrict(req, {
+      limit: 25,
+      maxLimit: 200,
+    });
 
-    // 🧩 Build other dynamic query options (ordering, searching, etc.)
+    /* ========================================================
+       🧼 SAFE QUERY (REMOVE UI-ONLY FIELDS)
+    ======================================================== */
+    const { dateRange, ...safeQuery } = req.query;
+    safeQuery.limit = limit;
+    safeQuery.page = page;
+    req.query = safeQuery;
+
+    /* ========================================================
+       ⚙️ BUILD OPTIONS (MASTER)
+    ======================================================== */
     const options = buildQueryOptions(req, "created_at", "DESC");
 
-    // Ensure pagination props are attached for Sequelize query
-    options.limit = pagination.limit;
-    options.offset = pagination.offset;
-    options.pagination = pagination;
+    /* ========================================================
+       🔄 MASTER SORT (FULL SAFE)
+    ======================================================== */
+    const SORT_FIELD_MAP = {
+      role: { model: Role, as: "role", field: "name" },
+      permission: { model: Permission, as: "permission", field: "key" },
+      organization: { model: Organization, as: "organization", field: "name" },
+      facility: { model: Facility, as: "facility", field: "name" },
+      created_at: { field: "created_at" },
+      updated_at: { field: "updated_at" },
+    };
 
-    /* ============================================================
-       🧱 Multi-tenant scope: Organization + Facilities
-    ============================================================ */
+    const sortByRaw = (req.query.sort_by || "").trim();
+
+    if (sortByRaw && SORT_FIELD_MAP[sortByRaw]) {
+      const config = SORT_FIELD_MAP[sortByRaw];
+
+      const direction =
+        (req.query.sort_order || "asc").toUpperCase() === "DESC"
+          ? "DESC"
+          : "ASC";
+
+      if (config.model) {
+        options.order = [[
+          { model: config.model, as: config.as },
+          config.field,
+          direction
+        ]];
+      } else {
+        options.order = [[config.field, direction]];
+      }
+    }
+    /* ========================================================
+       🧱 WHERE BASE
+    ======================================================== */
+    options.where = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE (MASTER)
+    ======================================================== */
+    if (dateRange) {
+      const { start, end } = normalizeDateRangeLocal(dateRange);
+      if (start && end) {
+        options.where[Op.and].push({
+          created_at: { [Op.between]: [start, end] },
+        });
+      }
+    }
+
+    /* ========================================================
+       🔐 TENANT FILTER (MATCH DEPOSIT)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      const orgId = req.user.organization_id;
+      options.where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
+
       const facilityIds = Array.isArray(req.user.facility_ids)
         ? req.user.facility_ids
         : [];
 
-      options.where.organization_id = orgId;
       if (facilityIds.length > 0) {
-        options.where[Op.or] = [
-          { facility_id: { [Op.in]: facilityIds } },
-          { facility_id: null },
-        ];
+        options.where[Op.and].push({
+          [Op.or]: [
+            { facility_id: { [Op.in]: facilityIds } },
+            { facility_id: null },
+          ],
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
       }
     }
 
-    /* ============================================================
-       🔍 Search filter (cross-table fields)
-    ============================================================ */
-    if (options.search) {
-      options.where[Op.or] = [
-        { "$role.name$": { [Op.iLike]: `%${options.search}%` } },
-        { "$permission.name$": { [Op.iLike]: `%${options.search}%` } },
-        { "$permission.module$": { [Op.iLike]: `%${options.search}%` } },
-        { "$facility.name$": { [Op.iLike]: `%${options.search}%` } },
-      ];
+    /* ========================================================
+       🎯 DIRECT FILTERS
+    ======================================================== */
+    if (req.query.role_id) {
+      options.where[Op.and].push({ role_id: req.query.role_id });
     }
 
-    /* ============================================================
-       📦 Query DB
-    ============================================================ */
+    if (req.query.permission_id) {
+      options.where[Op.and].push({ permission_id: req.query.permission_id });
+    }
+
+    /* ========================================================
+       🔍 GLOBAL SEARCH (MASTER)
+    ======================================================== */
+    if (options.search) {
+      options.where[Op.and].push({
+        [Op.or]: [
+          { "$role.name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$permission.name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$permission.module$": { [Op.iLike]: `%${options.search}%` } },
+          { "$facility.name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
+      });
+    }
+
+    /* ========================================================
+       🧼 CLEAN WHERE
+    ======================================================== */
+    if (!options.where[Op.and].length) {
+      delete options.where;
+    }
+
+    /* ========================================================
+       📦 QUERY (🔥 DISTINCT FIX)
+    ======================================================== */
     const { count, rows } = await RolePermission.findAndCountAll({
       where: options.where,
       include: ROLE_PERMISSION_INCLUDES,
       order: options.order,
-      offset: options.offset,
-      limit: options.limit,
+      offset,
+      limit,
+      distinct: true, // 🔥 CRITICAL FIX (JOIN DUPLICATES)
     });
 
-    /* ============================================================
-       🧾 Audit Log
-    ============================================================ */
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list",
-      details: { query: req.query, returned: count },
+      details: {
+        returned: count,
+        query: safeQuery,
+        pagination: { page, limit },
+      },
     });
 
-    /* ============================================================
-       📤 Return Success
-    ============================================================ */
+    /* ========================================================
+       ✅ RESPONSE
+    ======================================================== */
     return success(res, "✅ Role permissions loaded", {
       records: rows,
       pagination: {
         total: count,
-        page: pagination.page,
-        pageCount: Math.ceil(count / pagination.limit),
-        limit: pagination.limit,
+        page,
+        limit,
+        pageCount: Math.ceil(count / limit),
       },
     });
+
   } catch (err) {
     return error(res, "❌ Failed to load role permissions", err);
   }

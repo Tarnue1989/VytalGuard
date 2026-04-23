@@ -15,18 +15,22 @@ export const STATUS_ACTION_MATRIX = {
     verified:[],cancelled:["restore"],no_show:["restore"],voided:["restore"],deleted:[]
   },
 
+  role_permissions: {
+    default: ["view", "edit", "delete"]
+  },
+
   /* 🏥 INSURANCE */
   insurance_provider:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
   patient_insurances:{active:["edit","toggle-status","delete","print"],inactive:["edit","toggle-status","delete"],cancelled:["restore"],deleted:["restore"]},
 
   insurance_claim:{
-    draft:["edit","submit","delete","view-invoice","print-invoice"],
-    submitted:["review","view-invoice","print-invoice"],
-    in_review:["approve","partial-approve","reject","view-invoice","print-invoice"],
-    approved:["process-payment","view-invoice","print-invoice"],
-    partially_approved:["process-payment","view-invoice","print-invoice"],
-    processing_payment:["mark-paid","view-invoice","print-invoice"],
-    paid:["reverse-payment","view-invoice","print-invoice"],
+    draft:["edit","submit","delete","view-invoice","print-invoice","download-invoice"],
+    submitted:["review","view-invoice","print-invoice","download-invoice"],
+    in_review:["approve","partial-approve","reject","view-invoice","print-invoice","download-invoice"],
+    approved:["process-payment","view-invoice","print-invoice","download-invoice"],
+    partially_approved:["process-payment","view-invoice","print-invoice","download-invoice"],
+    processing_payment:["mark-paid","view-invoice","print-invoice","download-invoice"],
+    paid:["reverse-payment","view-invoice","print-invoice","download-invoice"],
     rejected:["view-invoice"],
     cancelled:["view-invoice"],
     voided:["view-invoice"],
@@ -233,7 +237,7 @@ const ICONS = {
   print:"fa-print",
   pay:"fa-money-bill-wave", reopen:"fa-rotate-right",
   "view-invoice":"fa-file-invoice",
-  "print-invoice":"fa-print",
+  "print-invoice":"fa-print", "download-invoice":"fa-download",
 
   // ✅ ONLY THIS PART CHANGED
   "toggle-status":"fa-toggle-on",
@@ -256,7 +260,7 @@ const COLORS = {
   print:"info","toggle-status":"secondary",
   lock:"secondary",unlock:"warning", pay:"success",  reopen:"warning",
   "reset-password":"warning","generate-token":"info","revoke-sessions":"danger",
-  "view-invoice":"primary",
+  "view-invoice":"primary", "download-invoice":"secondary",
   "print-invoice":"info",
 };
 
@@ -268,7 +272,7 @@ const ORDER = [
   "apply","process","reverse","clear","revert",
   "approve","reject","cancel","void",
   "toggle-status","lock","unlock",
-  "restore","delete","print","print-invoice",
+  "restore","delete","print","print-invoice","download-invoice",
   "reset-password","generate-token","revoke-sessions"
 ];
 const actionLabels = {
@@ -277,7 +281,7 @@ const actionLabels = {
   apply:"Apply",process:"Process",reverse:"Reverse",clear:"Clear",revert:"Revert",
   approve:"Approve",reject:"Reject",cancel:"Cancel",
   void:"Void",restore:"Restore",delete:"Delete",
-  print:"Print",
+  print:"Print", "download-invoice":"Download Invoice",
   "toggle-status":"Activate / Deactivate",
   lock:"Lock",unlock:"Unlock",
   "reset-password":"Reset Password",
@@ -299,7 +303,13 @@ export function buildActionButtons({module,status,entry,entryId,user,permissionP
 
   const perms=new Set((user?.permissions||[]).map(p=>p.toLowerCase().trim()));
 
-  let allowed=[...(new Set(STATUS_ACTION_MATRIX[module]?.[status]||[]))];
+  let allowed = [
+    ...(new Set(
+      STATUS_ACTION_MATRIX[module]?.[status] ||
+      STATUS_ACTION_MATRIX[module]?.default ||
+      []
+    ))
+  ];
 
   /* ===== NORMALIZE ===== */
   if(module==="patient")allowed=allowed.map(a=>a==="toggle"?"toggle-status":a);

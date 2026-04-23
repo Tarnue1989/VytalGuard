@@ -1,8 +1,7 @@
 // 📁 frontend/js/dashboard/dashboard-handler.js
-import { restoreSession, getUser, logout, authFetch } from "../authSession.js";
+import { restoreSession, getUser, logout, logoutAll, authFetch } from "../authSession.js";
 
 /* -------------------- Route resolver -------------------- */
-// Explicit maps for files whose names don't match the key 1:1
 const ROUTE_MAP = {
   departments: "/department-list.html",
   facilities: "/facilities-list.html",
@@ -14,15 +13,41 @@ const ROUTE_MAP = {
 };
 
 function resolveRoute(m) {
-  if (m?.route) return m.route; // ✅ prefer DB route
+  if (m?.route) return m.route;
   if (m?.key && ROUTE_MAP[m.key]) return ROUTE_MAP[m.key];
-  // Generic safe fallback
   return `/${String(m?.key || "").replace(/_/g, "-")}-list.html`;
+}
+
+/* =========================================================
+   🔐 LOGOUT MODAL HANDLER
+========================================================= */
+function openLogoutModal(message, onConfirm) {
+  const modal = document.getElementById("logoutConfirmModal");
+  const msg = document.getElementById("logoutMessage");
+  const confirmBtn = document.getElementById("confirmLogoutBtn");
+  const cancelBtn = document.getElementById("cancelLogoutBtn");
+
+  if (!modal) return;
+
+  msg.textContent = message;
+  modal.classList.remove("hidden");
+
+  confirmBtn.onclick = null;
+  cancelBtn.onclick = null;
+
+  confirmBtn.onclick = async () => {
+    modal.classList.add("hidden");
+    await onConfirm();
+  };
+
+  cancelBtn.onclick = () => {
+    modal.classList.add("hidden");
+  };
 }
 
 /* -------------------- Init -------------------- */
 export async function initDashboardSession() {
-  const ok = await restoreSession(); // ✅ ensure session is valid
+  const ok = await restoreSession();
   if (!ok) {
     window.location.href = "/login.html";
     return;
@@ -37,27 +62,37 @@ export async function initDashboardSession() {
 
     const role = user.role || "";
 
-    // Sidebar profile name
     const sidebarName = document.querySelector(".sidebar-profile .profile-name");
     if (sidebarName) sidebarName.textContent = displayName;
 
-    // Header user name
     const headerName = document.querySelector("#userSettings h6");
     if (headerName) headerName.textContent = displayName;
 
-    // Header role
     const headerRole = document.querySelector("#userSettings span.small");
     if (headerRole) headerRole.textContent = role;
   }
 
-  // ✅ Load sidebar after session + user info
+  // ✅ Load sidebar
   await loadSidebarModules();
 
-  // Logout hook
+  /* =========================================================
+     🔥 NEW LOGOUT HOOK (MODAL BASED)
+  ========================================================= */
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-      await logout();
+    logoutBtn.addEventListener("click", () => {
+      openLogoutModal("Log out from this device only?", async () => {
+        await logout();
+      });
+    });
+  }
+
+  const logoutAllBtn = document.getElementById("logoutAllBtn");
+  if (logoutAllBtn) {
+    logoutAllBtn.addEventListener("click", () => {
+      openLogoutModal("Log out from ALL devices?", async () => {
+        await logoutAll();
+      });
     });
   }
 }
@@ -74,8 +109,6 @@ async function loadSidebarModules() {
       : [];
 
     renderSidebarModules(records);
-
-    // Wire submenu toggles after DOM render
     setupSubmenuToggles();
   } catch (err) {
     console.error("❌ Failed to load sidebar modules:", err);
@@ -87,27 +120,24 @@ export function renderSidebarModules(modules, container = null) {
   const sidebarMenu = container || document.querySelector(".sidebar-menu");
   if (!sidebarMenu) return;
 
-  // Only clear root menu
   if (!container) sidebarMenu.innerHTML = "";
 
   modules.forEach((m) => {
     const li = document.createElement("li");
 
     if (Array.isArray(m.children) && m.children.length > 0) {
-      // 📂 Parent with submenu
       li.innerHTML = `
         <a href="javascript:void(0)" class="nav-link has-submenu" aria-expanded="false">
           <i class="${m.icon || "ri-folder-line"}"></i>
           <span>${m.name}</span>
-          <i class="ri-arrow-down-s-line submenu-caret" aria-hidden="true"></i>
+          <i class="ri-arrow-down-s-line submenu-caret"></i>
         </a>
         <ul class="submenu"></ul>
       `;
 
       const submenu = li.querySelector(".submenu");
-      renderSidebarModules(m.children, submenu); // 🔁 recursion
+      renderSidebarModules(m.children, submenu);
     } else {
-      // 📄 Leaf node
       const href = resolveRoute(m);
       li.innerHTML = `
         <a href="${href}" class="nav-link">
@@ -121,7 +151,7 @@ export function renderSidebarModules(modules, container = null) {
   });
 }
 
-/* -------------------- Submenu Toggle Wiring -------------------- */
+/* -------------------- Submenu Toggle -------------------- */
 function setupSubmenuToggles() {
   document.querySelectorAll(".nav-link.has-submenu").forEach((link) => {
     link.addEventListener("click", (e) => {
