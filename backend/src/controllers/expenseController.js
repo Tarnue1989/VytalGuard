@@ -49,7 +49,7 @@ function validateTransition(current, next) {
 const MODULE_KEY = "expenses";
 
 /* ============================================================ */
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("expenseController", DEBUG_OVERRIDE);
 
 /* ============================================================ */

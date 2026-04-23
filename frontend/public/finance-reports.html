@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="assets/css/main.min.css">
   <link rel="stylesheet" href="assets/css/dashboard-theme.css">
 
-  <!-- ************* Vendor CSS (SAME AS DASHBOARD) ************* -->
+  <!-- ************* Vendor CSS ************* -->
   <link rel="stylesheet" href="assets/vendor/overlay-scroll/OverlayScrollbars.min.css">
   <link rel="stylesheet" href="assets/vendor/daterange/daterange.css">
   <link rel="stylesheet" href="assets/vendor/jquery-ui/jquery-ui.min.css">
@@ -29,6 +29,20 @@
       .no-print {
         display: none !important;
       }
+    }
+
+    /* 🔥 NEW: Card UX (no behavior yet) */
+    .finance-cards .summary-card {
+      transition: all 0.15s ease;
+    }
+
+    .finance-cards .summary-card.clickable {
+      cursor: pointer;
+    }
+
+    .finance-cards .summary-card.clickable:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.08);
     }
   </style>
 </head>
@@ -64,7 +78,6 @@
             <li class="breadcrumb-item text-primary">Finance</li>
           </ol>
 
-          <!-- DATE RANGE + APPLY (CORRECT ORDER) -->
           <div class="ms-auto d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 mt-2 mt-sm-0">
             <label class="form-label fw-semibold text-muted mb-0 small">
               <i class="ri-filter-3-line text-primary me-1"></i>
@@ -83,7 +96,6 @@
               />
             </div>
 
-            <!-- Apply AFTER date -->
             <button
               id="financeApplyBtn"
               class="btn btn-sm btn-primary d-flex align-items-center"
@@ -102,32 +114,33 @@
             <!-- Title + Print -->
             <div class="d-flex justify-content-between align-items-center mb-3 no-print">
               <h4 class="mb-0">Finance Reports</h4>
-              <button
-                id="financePrintBtn"
-                class="btn btn-sm btn-outline-secondary"
-              >
+              <button id="financePrintBtn" class="btn btn-sm btn-outline-secondary">
                 Print
               </button>
             </div>
 
-            <!-- Summary -->
+            <!-- Finance Summary -->
             <div class="card mb-3">
               <div class="card-header">
                 <strong>Finance Summary</strong>
               </div>
               <div class="card-body">
-                <div id="financeSummary" class="row g-3"></div>
+                <!-- 🔥 upgraded -->
+                <div id="financeSummary" class="row g-3 finance-cards"></div>
               </div>
             </div>
-            <!-- 🔥 NEW: EXPENSES + PROFIT + INSURANCE -->
+
+            <!-- Financial Insights -->
             <div class="card mb-3">
               <div class="card-header">
                 <strong>Financial Insights</strong>
               </div>
               <div class="card-body">
-                <div id="financeInsights" class="row g-3"></div>
+                <!-- 🔥 upgraded -->
+                <div id="financeInsights" class="row g-3 finance-cards"></div>
               </div>
             </div>
+
             <!-- Revenue by Service -->
             <div class="card mb-3">
               <div class="card-header">
@@ -167,6 +180,7 @@
                 </table>
               </div>
             </div>
+
           </div>
         </div>
 
@@ -179,12 +193,12 @@
     </div>
   </div>
 
-  <!-- ************* JavaScript Files ************* -->
+  <!-- JS -->
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/moment.min.js"></script>
 
-  <!-- Vendor JS -->
+  <!-- Vendor -->
   <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
   <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
   <script src="assets/vendor/daterange/daterange.js"></script>
@@ -198,11 +212,9 @@
   <!-- Global -->
   <script src="assets/js/custom.js"></script>
 
-  <!-- Finance entry -->
+  <!-- Finance -->
   <script type="module" src="/js/modules/reports-finance/finance-reports.js"></script>
-<script type="module" src="/js/utils/navigation.js"></script>
- 
-  
+  <script type="module" src="/js/utils/navigation.js"></script>
 
   <!-- AUTH -->
   <script type="module" src="/js/authSession.js"></script>

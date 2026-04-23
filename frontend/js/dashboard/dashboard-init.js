@@ -188,20 +188,46 @@ function renderUserInfo() {
   const bc = document.getElementById("breadcrumbRole");
   if (bc) bc.textContent = u.department || u.role || "Dashboard";
 }
+function openLogoutModal(message, onConfirm) {
+  const modal = document.getElementById("logoutConfirmModal");
+  const msg = document.getElementById("logoutMessage");
+  const confirmBtn = document.getElementById("confirmLogoutBtn");
+  const cancelBtn = document.getElementById("cancelLogoutBtn");
 
+  if (!modal) return;
+
+  msg.textContent = message;
+  modal.classList.remove("hidden");
+
+  confirmBtn.onclick = null;
+  cancelBtn.onclick = null;
+
+  confirmBtn.onclick = async () => {
+    modal.classList.add("hidden");
+    await onConfirm();
+  };
+
+  cancelBtn.onclick = () => {
+    modal.classList.add("hidden");
+  };
+}
 /* -------------------- Logout Hooks -------------------- */
 function hookLogout() {
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-      if (confirm("Log out from this device only?")) await logout();
+    logoutBtn.addEventListener("click", () => {
+      openLogoutModal("Log out from this device only?", async () => {
+        await logout();
+      });
     });
   }
 
   const logoutAllBtn = document.getElementById("logoutAllBtn");
   if (logoutAllBtn) {
-    logoutAllBtn.addEventListener("click", async () => {
-      if (confirm("Log out from ALL devices?")) await logoutAll();
+    logoutAllBtn.addEventListener("click", () => {
+      openLogoutModal("Log out from ALL devices?", async () => {
+        await logoutAll();
+      });
     });
   }
 }

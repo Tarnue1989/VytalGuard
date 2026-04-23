@@ -1,8 +1,14 @@
-// 📁 permissions-render.js – Permission table & card renderers
+// 📦 permissions-render.js – ENTERPRISE MASTER (FULL)
 
+/* ============================================================
+   🔐 IMPORTS
+============================================================ */
 import { FIELD_LABELS_PERMISSION } from "./permissions-constants.js";
-import { formatDate } from "../../utils/ui-utils.js";
-
+import { formatDateTime, initTooltips } from "../../utils/ui-utils.js";
+import { buildActionButtons } from "../../utils/status-action-matrix.js";
+import { exportData } from "../../utils/export-utils.js";
+import { enableColumnResize } from "../../utils/table-resize.js";
+import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
 import { exportExcelReport } from "../../utils/exportExcelReport.js";
 import { exportCsvReport } from "../../utils/exportCsvReport.js";
@@ -11,161 +17,238 @@ import { authFetch } from "../../authSession.js";
 import { formatFilters } from "../../utils/filterFormatter.js";
 
 /* ============================================================
-   🧩 Helper Utilities
-   ============================================================ */
+   🔃 SORT SYSTEM
+============================================================ */
+const SORTABLE_FIELDS = new Set([
+  "key",
+  "name",
+  "module",
+  "category",
+  "is_global",
+  "created_at",
+  "updated_at",
+]);
 
-// ▶️ Bootstrap tooltips initializer
-function initTooltips(scope = document) {
-  if (!window.bootstrap) return;
-  const triggers = scope.querySelectorAll("[data-bs-toggle='tooltip']");
-  triggers.forEach((el) => {
-    if (!bootstrap.Tooltip.getInstance(el)) {
-      new bootstrap.Tooltip(el);
-    }
+let sortBy = localStorage.getItem("permissionSortBy") || "";
+let sortDir = localStorage.getItem("permissionSortDir") || "asc";
+
+function toggleSort(field) {
+  if (sortBy === field) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortBy = field;
+    sortDir = "asc";
+  }
+
+  localStorage.setItem("permissionSortBy", sortBy);
+  localStorage.setItem("permissionSortDir", sortDir);
+
+  window.setPermissionSort?.(sortBy, sortDir);
+  window.loadPermissionPage?.(1);
+}
+
+/* ============================================================
+   🛡️ SAFE HELPERS
+============================================================ */
+const safe = (v) =>
+  v !== null && v !== undefined && v !== "" ? v : "—";
+
+function renderUserName(u) {
+  if (!u) return "—";
+  return [u.first_name, u.middle_name, u.last_name]
+    .filter(Boolean)
+    .join(" ") || "—";
+}
+
+/* ============================================================
+   🎛️ ACTION BUTTONS
+============================================================ */
+function getPermissionActionButtons(entry, user) {
+  return buildActionButtons({
+    module: "permissions",
+    entry,
+    entryId: entry.id,
+    user,
+    permissionPrefix: "permissions",
   });
 }
 
-// 🧍 Format user full name safely
-function renderUserName(user) {
-  if (!user) return "—";
-  const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
-  return parts.length ? parts.join(" ") : (user.username || "—");
-}
-
 /* ============================================================
-   🛠️ Action Buttons
-   ============================================================ */
-function getPermissionActionButtons(entry, user) {
-  const userPerms = new Set(user?.permissions || []);
-  const canView = userPerms.has("permissions:view");
-  const canEdit = userPerms.has("permissions:edit");
-  const canDelete = userPerms.has("permissions:delete");
-
-  const buttons = [];
-
-  if (canView)
-    buttons.push(`
-      <button class="btn btn-outline-primary btn-sm view-btn" data-id="${entry.id}"
-        data-bs-toggle="tooltip" data-bs-title="View permission">
-        <i class="fas fa-eye"></i>
-      </button>`);
-
-  if (canEdit)
-    buttons.push(`
-      <button class="btn btn-outline-success btn-sm edit-btn" data-id="${entry.id}"
-        data-bs-toggle="tooltip" data-bs-title="Edit permission">
-        <i class="fas fa-pen"></i>
-      </button>`);
-
-  if (canDelete)
-    buttons.push(`
-      <button class="btn btn-outline-danger btn-sm delete-btn" data-id="${entry.id}"
-        data-bs-toggle="tooltip" data-bs-title="Delete permission">
-        <i class="fas fa-trash"></i>
-      </button>`);
-
-  return buttons.length
-    ? `<div class="d-inline-flex gap-1">${buttons.join("")}</div>`
-    : "";
-}
-
-/* ============================================================
-   📋 Dynamic Table Head Renderer
-   ============================================================ */
+   🧱 TABLE HEAD
+============================================================ */
 export function renderDynamicTableHead(visibleFields) {
   const thead = document.getElementById("dynamicTableHead");
-  if (!thead) return;
+  const table = thead?.closest("table");
+  if (!thead || !table) return;
 
   thead.innerHTML = "";
   const tr = document.createElement("tr");
 
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
-    th.textContent = FIELD_LABELS_PERMISSION[field] || field.replace(/_/g, " ");
-    if (field === "actions") th.classList.add("actions-cell");
+    th.dataset.key = field;
+
+    const label =
+      FIELD_LABELS_PERMISSION[field] || field.replace(/_/g, " ");
+
+    if (field === "actions") {
+      th.textContent = "Actions";
+      th.classList.add("actions-cell");
+      tr.appendChild(th);
+      return;
+    }
+
+    if (SORTABLE_FIELDS.has(field)) {
+      let icon = "ri-arrow-up-down-line";
+
+      if (sortBy === field) {
+        icon =
+          sortDir === "asc"
+            ? "ri-arrow-up-line"
+            : "ri-arrow-down-line";
+      }
+
+      th.classList.add("sortable");
+      th.innerHTML = `<span>${label}</span><i class="${icon} sort-icon"></i>`;
+      th.onclick = () => toggleSort(field);
+    } else {
+      th.innerHTML = `<span>${label}</span>`;
+    }
+
     tr.appendChild(th);
   });
 
   thead.appendChild(tr);
+
+  let colgroup = table.querySelector("colgroup");
+  if (colgroup) colgroup.remove();
+
+  colgroup = document.createElement("colgroup");
+  visibleFields.forEach(() => {
+    const col = document.createElement("col");
+    col.style.width = "160px";
+    colgroup.appendChild(col);
+  });
+
+  table.prepend(colgroup);
+
+  enableColumnResize(table);
+  enableColumnDrag({
+    table,
+    visibleFields,
+    onReorder: () => window.loadPermissionPage?.(1),
+  });
 }
 
 /* ============================================================
-   🔡 Value Renderer
-   ============================================================ */
+   🔡 VALUE RENDERER
+============================================================ */
 function renderValue(entry, field) {
   switch (field) {
-    case "organization":
-      return entry.organization?.name || "—";
-
-    case "facility":
-      return entry.facility?.name || "—";
-
     case "is_global":
       return entry.is_global
-        ? `<span class="badge bg-success">Yes</span>`
-        : `<span class="badge bg-secondary">No</span>`;
+        ? `<span class="badge bg-success">YES</span>`
+        : `<span class="badge bg-secondary">NO</span>`;
 
     case "roles":
-      if (!entry.roles || !entry.roles.length) return "—";
-      return entry.roles
-        .map((r) => `<span class="badge bg-primary text-white">${r.name}</span>`)
-        .join(" ");
+      return entry.roles?.length
+        ? entry.roles
+            .map(
+              (r) =>
+                `<span class="badge bg-primary">${r.name}</span>`
+            )
+            .join(" ")
+        : "—";
 
     case "createdBy":
       return renderUserName(entry.createdBy);
+
     case "updatedBy":
       return renderUserName(entry.updatedBy);
+
     case "deletedBy":
       return renderUserName(entry.deletedBy);
 
     case "created_at":
-      return entry.created_at ? formatDate(entry.created_at) : "—";
     case "updated_at":
-      return entry.updated_at ? formatDate(entry.updated_at) : "—";
     case "deleted_at":
-      return entry.deleted_at ? formatDate(entry.deleted_at) : "—";
+      return entry[field] ? formatDateTime(entry[field]) : "—";
 
-    default:
-      return entry[field] != null && entry[field] !== ""
-        ? String(entry[field])
-        : "—";
+    default: {
+      const v = entry[field];
+      if (v === null || v === undefined || v === "") return "—";
+      if (typeof v === "object") return "—";
+      return v;
+    }
   }
 }
 
 /* ============================================================
-   🪪 Card Renderer
-   ============================================================ */
+   🗂️ CARD VIEW (ENTERPRISE)
+============================================================ */
 export function renderCard(entry, visibleFields, user) {
-  let html = "";
+  const has = (f) => visibleFields.includes(f);
 
-  visibleFields.forEach((field) => {
-    if (field === "actions") return; // handled separately
-    const label = FIELD_LABELS_PERMISSION[field] || field.replace(/_/g, " ");
-    const value = renderValue(entry, field);
-    html += `<p class="mb-1"><strong>${label}:</strong> ${value}</p>`;
-  });
-
-  // 🔹 Optional footer with action buttons
-  const footer = visibleFields.includes("actions")
-    ? `
-      <div class="card-footer text-end">
-        <div class="table-actions">
-          ${getPermissionActionButtons(entry, user)}
-        </div>
-      </div>`
-    : "";
+  const row = (label, value) => {
+    if (!value) return "";
+    return `
+      <div class="entity-field">
+        <span class="entity-label">${label}</span>
+        <span class="entity-value">${safe(value)}</span>
+      </div>
+    `;
+  };
 
   return `
-    <div class="record-card card shadow-sm h-100">
-      <div class="card-body">${html}</div>
-      ${footer}
+    <div class="entity-card permission-card">
+
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-primary">${safe(entry.key)}</div>
+          <div class="entity-secondary">${safe(entry.module)}</div>
+        </div>
+        ${
+          has("is_global")
+            ? `<span class="entity-status ${
+                entry.is_global ? "active" : "inactive"
+              }">
+                ${entry.is_global ? "GLOBAL" : "LOCAL"}
+              </span>`
+            : ""
+        }
+      </div>
+
+      <div class="entity-card-body">
+        ${row("Name", entry.name)}
+        ${row("Category", entry.category)}
+        ${row("Description", entry.description)}
+      </div>
+
+      <details class="entity-section">
+        <summary><strong>Audit</strong></summary>
+        <div class="entity-card-body">
+          ${row("Created By", renderUserName(entry.createdBy))}
+          ${row("Created At", formatDateTime(entry.created_at))}
+          ${row("Updated By", renderUserName(entry.updatedBy))}
+          ${row("Updated At", formatDateTime(entry.updated_at))}
+        </div>
+      </details>
+
+      ${
+        has("actions")
+          ? `<div class="entity-card-footer export-ignore">
+               ${getPermissionActionButtons(entry, user)}
+             </div>`
+          : ""
+      }
+
     </div>
   `;
 }
 
 /* ============================================================
-   📦 Main List Renderer
-   ============================================================ */
+   📋 LIST RENDERER
+============================================================ */
 export function renderList({ entries, visibleFields, viewMode, user }) {
   const tableBody = document.getElementById("permissionTableBody");
   const cardContainer = document.getElementById("permissionList");
@@ -177,55 +260,59 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   cardContainer.innerHTML = "";
 
   if (viewMode === "table") {
-    cardContainer.classList.remove("active");
     tableContainer.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.remove("active");
+    cardContainer.classList.remove("active");
 
     renderDynamicTableHead(visibleFields);
 
     if (!entries.length) {
-      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted py-3">No permissions found.</td></tr>`;
-      initTooltips(tableBody);
+      tableBody.innerHTML = `<tr><td colspan="${visibleFields.length}" class="text-center text-muted">No permissions found.</td></tr>`;
       return;
     }
 
-    entries.forEach((entry) => {
-      const row = document.createElement("tr");
-      let rowHTML = "";
-      visibleFields.forEach((field) => {
-        const value =
-          field === "actions"
-            ? `<div class="table-actions export-ignore">${getPermissionActionButtons(entry, user)}</div>`
-            : renderValue(entry, field);
+    entries.forEach((e) => {
+      const tr = document.createElement("tr");
 
-        const tdClass =
-          field === "actions" ? ' class="actions-cell text-center"' : "";
-        rowHTML += `<td${tdClass}>${value}</td>`;
-      });
-      row.innerHTML = rowHTML;
-      tableBody.appendChild(row);
+      tr.innerHTML = visibleFields
+        .map((f) =>
+          f === "actions"
+            ? `<td class="actions-cell export-ignore">
+                 ${getPermissionActionButtons(e, user)}
+               </td>`
+            : `<td>${renderValue(e, f)}</td>`
+        )
+        .join("");
+
+      tableBody.appendChild(tr);
     });
 
     initTooltips(tableBody);
   } else {
-    // 🧩 Card View
     tableContainer.classList.remove("active");
     cardContainer.classList.add("active");
-    document.getElementById("cardViewBtn")?.classList.add("active");
-    document.getElementById("tableViewBtn")?.classList.remove("active");
 
-    cardContainer.innerHTML = entries.length
-      ? entries.map((e) => renderCard(e, visibleFields, user)).join("")
-      : `<p class="text-muted text-center">No permissions found.</p>`;
+    if (!entries.length) {
+      cardContainer.innerHTML = `<p class="text-muted text-center">No permissions found.</p>`;
+      return;
+    }
 
+    const fragment = document.createDocumentFragment();
+
+    entries.forEach((entry) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderCard(entry, visibleFields, user);
+      fragment.appendChild(wrapper.firstElementChild);
+    });
+
+    cardContainer.appendChild(fragment);
     initTooltips(cardContainer);
   }
+
   setupExportHandlers(entries, visibleFields);
 }
 
 /* ============================================================
-   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+   📤 EXPORT (MASTER PARITY — FIXED)
 ============================================================ */
 function setupExportHandlers(entries, visibleFields) {
   const title = "Permissions Report";
@@ -236,6 +323,7 @@ function setupExportHandlers(entries, visibleFields) {
 
   if (!pdfBtn || !csvBtn || !excelBtn) return;
 
+  // 🔥 RESET (same as MASTER)
   pdfBtn.replaceWith(pdfBtn.cloneNode(true));
   csvBtn.replaceWith(csvBtn.cloneNode(true));
   excelBtn.replaceWith(excelBtn.cloneNode(true));
@@ -244,71 +332,85 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
+  /* ============================================================
+     🔍 FILTERS (MATCH YOUR FILTER FILE)
+  ============================================================ */
   function getFiltersFromDOM() {
     const val = (id) => document.getElementById(id)?.value;
 
     return {
-      organization_id: val("filterOrganizationSelect"),
-      facility_id: val("filterFacilitySelect"),
-      key: val("filterKey"),
+      search: val("globalSearch")?.trim(),
       module: val("filterModule"),
       category: val("filterCategory"),
       is_global: val("filterIsGlobal"),
-      created_from: val("filterCreatedFrom"),
-      created_to: val("filterCreatedTo"),
+      dateRange: val("dateRange"),
     };
   }
 
-  /* ================= CSV ================= */
+  /* ============================================================
+     🔁 MAP ROW (SAFE)
+  ============================================================ */
+  const mapRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+        case "is_global":
+          row[f] = e.is_global ? "YES" : "NO";
+          break;
+
+        case "roles":
+          row[f] = e.roles?.map(r => r.name).join(", ") || "";
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "created_at":
+        case "updated_at":
+          row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
       data: entries,
       visibleFields,
       fieldLabels: FIELD_LABELS_PERMISSION,
-
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "is_global":
-              row[f] = e.is_global ? "Yes" : "No";
-              break;
-
-            case "roles":
-              row[f] = e.roles?.map((r) => r.name).join(", ") || "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow,
     });
   });
 
-  /* ================= EXCEL ================= */
+  /* ============================================================
+     ✅ EXCEL (SERVER SIDE)
+  ============================================================ */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/permissions",
@@ -316,53 +418,13 @@ function setupExportHandlers(entries, visibleFields) {
       filters: getFiltersFromDOM(),
       visibleFields,
       fieldLabels: FIELD_LABELS_PERMISSION,
-
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "is_global":
-              row[f] = e.is_global ? "Yes" : "No";
-              break;
-
-            case "roles":
-              row[f] = e.roles?.map((r) => r.name).join(", ") || "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
-
-      computeTotals: (records) => ({
-        "Total Records": records.length,
-      }),
+      mapRow,
     });
   });
 
-  /* ================= PDF ================= */
+  /* ============================================================
+     ✅ PDF (FULL REPORT)
+  ============================================================ */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
@@ -373,19 +435,22 @@ function setupExportHandlers(entries, visibleFields) {
 
       Object.entries(filters).forEach(([k, v]) => {
         if (!v || String(v).trim() === "" || v === "null") return;
-        params.set(k, v);
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
       });
 
-      const res = await authFetch(
-        `/api/permissions?${params.toString()}`
-      );
+      const res = await authFetch(`/api/permissions?${params.toString()}`);
       const json = await res.json();
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
-        (f) =>
-          f !== "actions" &&
-          !["deletedBy", "deleted_at"].includes(f)
+        (f) => f !== "actions"
       );
 
       printReport({
@@ -396,56 +461,11 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_PERMISSION[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "organization":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "is_global":
-                row[f] = e.is_global ? "Yes" : "No";
-                break;
-
-              case "roles":
-                row[f] = e.roles?.map((r) => r.name).join(", ") || "";
-                break;
-
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) => mapRow(e, cleanFields)),
 
         meta: {
           Records: allEntries.length,
         },
-
-        totals: [
-          {
-            label: "Total Records",
-            value: allEntries.length,
-            final: true,
-          },
-        ],
 
         context: {
           filters: formatFilters(filters, {
@@ -455,10 +475,9 @@ function setupExportHandlers(entries, visibleFields) {
           printedAt: new Date().toLocaleString(),
         },
       });
-
     } catch (err) {
       console.error(err);
-      alert("❌ Failed to export report");
+      alert("❌ Failed to export full report");
     }
   });
 }

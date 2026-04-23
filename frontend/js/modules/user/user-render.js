@@ -23,6 +23,12 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS
 ============================================================ */
@@ -460,34 +466,190 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* ============================================================
-   📤 EXPORT HANDLERS
+   📤 EXPORT HANDLERS (MASTER — MATCH ROLE)
 ============================================================ */
-let exportHandlersBound = false;
 
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Users Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
-    exportData({
-      type: "pdf",
-      title,
-      selector: ".table-container.active, #userList.active",
-      orientation: "landscape",
+  // 🔥 RESET (same as role / deposit)
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ============================================================
+     🔥 FILTERS
+  ============================================================ */
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganization"),
+      facility_id: val("filterFacility"),
+      status: val("filterStatus"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* ============================================================
+     🔥 MAP ROW
+  ============================================================ */
+  const mapRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+        case "organization":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facilities":
+          row[f] = Array.isArray(e.facilities)
+            ? e.facilities.map((x) => x.name).join(", ")
+            : "";
+          break;
+
+        case "roles":
+          row[f] = Array.isArray(e.roles)
+            ? e.roles.map((r) => r.name).join(", ")
+            : "";
+          break;
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "createdByUser":
+          row[f] = e.createdByUser
+            ? `${e.createdByUser.first_name || ""} ${e.createdByUser.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedByUser":
+          row[f] = e.updatedByUser
+            ? `${e.updatedByUser.first_name || ""} ${e.updatedByUser.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "created_at":
+        case "updated_at":
+        case "last_login_at":
+        case "locked_until":
+          row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
     });
+
+    return row;
+  };
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_USER,
+      mapRow,
+    });
+  });
+
+  /* ============================================================
+     ✅ EXCEL (API FULL DATA)
+  ============================================================ */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/users",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_USER,
+      mapRow,
+    });
+  });
+
+  /* ============================================================
+     ✅ PDF (FULL FETCH + FILTERS)
+  ============================================================ */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(`/api/users?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedByUser", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_USER[f] || f,
+        })),
+
+        rows: allEntries.map((e) => mapRow(e, cleanFields)),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Records: allEntries.length,
+        },
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export full report");
+    }
   });
 }

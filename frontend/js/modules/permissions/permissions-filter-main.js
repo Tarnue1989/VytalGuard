@@ -1,5 +1,8 @@
-// 📦 permissions-filter-main.js – Filters + Table/Card (Enterprise-Parity)
+// 📦 permissions-filter-main.js – FULL MASTER (BACKEND ALIGNED)
 
+/* ============================================================
+   🔐 IMPORTS
+============================================================ */
 import {
   showToast,
   showLoading,
@@ -8,76 +11,69 @@ import {
   setupToggleSection,
   renderPaginationControls,
   initLogoutWatcher,
-  autoPagePermissionKey
+  autoPagePermissionKey,
 } from "../../utils/index.js";
 
 import { authFetch } from "../../authSession.js";
 
-import {
-  loadOrganizationsLite,
-  loadFacilitiesLite,
-  setupSelectOptions,
-} from "../../utils/data-loaders.js";
-
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
-import { renderList, renderDynamicTableHead } from "./permissions-render.js";
+import {
+  renderList,
+  renderDynamicTableHead,
+} from "./permissions-render.js";
+
 import { setupPermissionActionHandlers } from "./permissions-actions.js";
 
 import {
   FIELD_ORDER_PERMISSION,
   FIELD_DEFAULTS_PERMISSION,
+  FIELD_LABELS_PERMISSION,
 } from "./permissions-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
+import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+import { syncViewToggleUI } from "../../utils/view-toggle.js";
 
 /* ============================================================
-   🔐 Auth
+   🔐 AUTH
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
+/* ============================================================
+   👤 USER
+============================================================ */
+const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
+
+const permissions = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
+      String(p.key || p).toLowerCase()
+    );
+  } catch {
+    return [];
+  }
+})();
+
+const user = { role: userRole, permissions };
 
 /* ============================================================
-   🌐 Role + Permissions
+   🧠 STATE
 ============================================================ */
-const roleRaw = localStorage.getItem("userRole") || "";
-const userRole = roleRaw.trim().toLowerCase();
+let entries = [];
+let currentPage = 1;
+let viewMode = localStorage.getItem("permissionView") || "table";
+let sortBy = "";
+let sortDir = "asc";
 
-let perms = [];
-try {
-  const rawPerms = JSON.parse(localStorage.getItem("permissions") || "[]");
-  perms = Array.isArray(rawPerms)
-    ? rawPerms.map((p) => String(p.key || p).toLowerCase().trim())
-    : [];
-} catch {
-  perms = [];
-}
-
-const user = { role: userRole, permissions: perms };
-
-// ✅ Superadmin override
-if (userRole.includes("super")) {
-  user.permissions = [
-    "permissions:view",
-    "permissions:create",
-    "permissions:edit",
-    "permissions:delete",
-  ];
-}
-
-/* ============================================================
-   🧠 Shared State
-============================================================ */
 const sharedState = { currentEditIdRef: { value: null } };
-window.showForm = () => {};
-window.resetForm = () => {};
 
 /* ============================================================
-   🧩 Field Visibility
+   👁️ FIELD VISIBILITY
 ============================================================ */
-window.entries = [];
 let visibleFields = setupVisibleFields({
   moduleKey: "permission",
   userRole,
@@ -86,13 +82,13 @@ let visibleFields = setupVisibleFields({
 });
 
 /* ============================================================
-   🧩 Field Selector
+   🧩 FIELD SELECTOR
 ============================================================ */
 renderFieldSelector(
   {},
   visibleFields,
-  (newFields) => {
-    visibleFields = newFields;
+  (fields) => {
+    visibleFields = fields;
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
@@ -100,94 +96,99 @@ renderFieldSelector(
 );
 
 /* ============================================================
-   🔎 Filter DOM Refs
+   🔎 FILTER DOM (MASTER)
 ============================================================ */
-const filterOrg = document.getElementById("filterOrganizationSelect");
-const filterFacility = document.getElementById("filterFacilitySelect");
-const filterKey = document.getElementById("filterKey");
-const filterModule = document.getElementById("filterModule");
-const filterCategory = document.getElementById("filterCategory");
-const filterIsGlobal = document.getElementById("filterIsGlobal");
-const filterCreatedFrom = document.getElementById("filterCreatedFrom");
-const filterCreatedTo = document.getElementById("filterCreatedTo");
+const qs = (id) => document.getElementById(id);
+
+const globalSearch = qs("globalSearch");
+const filterModule = qs("filterModule");
+const filterCategory = qs("filterCategory");
+const filterIsGlobal = qs("filterIsGlobal");
+const dateRange = qs("dateRange");
 
 /* ============================================================
-   ⬇️ Export Buttons
+   🔃 SORT
 ============================================================ */
-const exportCSVBtn = document.getElementById("exportCSVBtn");
-const exportPDFBtn = document.getElementById("exportPDFBtn");
+window.setPermissionSort = (field, dir) => {
+  sortBy = field;
+  sortDir = dir;
+};
+
+window.loadPermissionPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
-   🌍 View + Paging
-============================================================ */
-let currentPage = 1;
-let totalPages = 1;
-let viewMode = localStorage.getItem("permissionView") || "table";
-
-/* ============================================================
-   🔁 Pagination Control (MATCHES ALL OTHER MODULES)
+   📄 PAGINATION
 ============================================================ */
 const getPagination = initPaginationControl(
   "permission",
   loadEntries,
-  25
+  Number(localStorage.getItem("permissionPageLimit") || 25)
 );
 
 /* ============================================================
-   📋 Build Filters
+   🔎 AUTO SEARCH / FILTER
+============================================================ */
+setupAutoSearch(globalSearch, loadEntries);
+
+setupAutoFilters({
+  searchInput: globalSearch,
+  selectInputs: [filterModule, filterCategory, filterIsGlobal],
+  dateRangeInput: dateRange,
+  onChange: loadEntries,
+});
+
+/* ============================================================
+   📋 FILTER BUILDER
 ============================================================ */
 function getFilters() {
   return {
-    organization_id: filterOrg?.value || "",
-    facility_id: filterFacility?.value || "",
-    key: filterKey?.value || "",
-    module: filterModule?.value || "",
-    category: filterCategory?.value || "",
-    is_global: filterIsGlobal?.value || "",
-    created_from: filterCreatedFrom?.value || "",
-    created_to: filterCreatedTo?.value || "",
+    search: globalSearch?.value?.trim(),
+    module: filterModule?.value,
+    category: filterCategory?.value,
+    is_global: filterIsGlobal?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 Load Permissions (PAGINATION FIXED)
+   📦 LOAD PERMISSIONS (ALIGNED WITH BACKEND)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
     showLoading();
-    const filters = getFilters();
+
     const q = new URLSearchParams();
+    const { page: safePage, limit } = getPagination(page);
+    const f = getFilters();
 
-    const { page: safePage, limit: safeLimit } = getPagination(page);
-    q.append("page", safePage);
-    q.append("limit", safeLimit);
+    q.set("page", safePage);
+    q.set("limit", limit);
 
-    if (filters.created_from) q.append("created_at[gte]", filters.created_from);
-    if (filters.created_to) q.append("created_at[lte]", filters.created_to);
+    if (sortBy) {
+      q.set("sortBy", sortBy);
+      q.set("sortOrder", sortDir);
+    }
 
-    Object.entries(filters).forEach(([k, v]) => {
-      if (!v || k === "created_from" || k === "created_to") return;
-      q.append(k, v);
-    });
-
-    const safeFields = visibleFields.filter((f) =>
-      FIELD_ORDER_PERMISSION.includes(f)
-    );
-    if (safeFields.length) q.append("fields", safeFields.join(","));
+    if (f.search) q.set("search", f.search);
+    if (f.dateRange) q.set("dateRange", f.dateRange);
+    if (f.module) q.set("module", f.module);
+    if (f.category) q.set("category", f.category);
+    if (f.is_global) q.set("is_global", f.is_global);
 
     const res = await authFetch(`/api/permissions?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const result = await res.json().catch(() => ({}));
-    const payload = result?.data || {};
-    const records = Array.isArray(payload.records) ? payload.records : [];
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message);
 
-    window.entries = records;
-    currentPage = Number(payload.pagination?.page) || safePage;
-    totalPages = Number(payload.pagination?.pageCount) || 1;
+    const data = json.data || {};
+    entries = data.records || [];
+    currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
+
+    syncViewToggleUI({ mode: viewMode });
 
     setupPermissionActionHandlers({
       entries,
@@ -200,13 +201,13 @@ async function loadEntries(page = 1) {
     });
 
     renderPaginationControls(
-      document.getElementById("paginationButtons"),
+      qs("paginationButtons"),
       currentPage,
-      totalPages,
+      data.pagination?.pageCount || 1,
       loadEntries
     );
   } catch (err) {
-    console.error("❌ loadEntries failed:", err);
+    console.error(err);
     showToast("❌ Failed to load permissions");
   } finally {
     hideLoading();
@@ -214,62 +215,54 @@ async function loadEntries(page = 1) {
 }
 
 /* ============================================================
-   🧭 View Toggle
+   🧭 VIEW TOGGLE
 ============================================================ */
-document.getElementById("tableViewBtn").onclick = () => {
+qs("tableViewBtn").onclick = () => {
   viewMode = "table";
   localStorage.setItem("permissionView", "table");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
-document.getElementById("cardViewBtn").onclick = () => {
+qs("cardViewBtn").onclick = () => {
   viewMode = "card";
   localStorage.setItem("permissionView", "card");
+  syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 /* ============================================================
-   🔎 Filter Actions
+   🔄 RESET
 ============================================================ */
-document.getElementById("filterBtn").onclick = async () => {
-  await loadEntries(1);
-};
-
-document.getElementById("resetFilterBtn").onclick = () => {
-  [
-    filterKey,
-    filterModule,
-    filterCategory,
-    filterIsGlobal,
-    filterCreatedFrom,
-    filterCreatedTo,
-  ].forEach((el) => el && (el.value = ""));
-
-  if (filterOrg) filterOrg.value = "";
-  if (filterFacility) filterFacility.value = "";
-
+qs("resetFilterBtn").onclick = () => {
+  [globalSearch, filterModule, filterCategory, filterIsGlobal, dateRange].forEach(
+    (el) => el && (el.value = "")
+  );
   loadEntries(1);
 };
 
 /* ============================================================
-   ⬇️ Export
+   ⬇️ EXPORT
 ============================================================ */
-if (exportCSVBtn)
-  exportCSVBtn.onclick = () =>
-    exportToExcel(
-      entries,
-      `permissions_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+qs("exportCSVBtn")?.addEventListener("click", () => {
+  if (!entries.length) return showToast("❌ No data");
 
-if (exportPDFBtn)
-  exportPDFBtn.onclick = () => {
-    const target =
-      viewMode === "table" ? ".table-container" : "#permissionList";
-    exportToPDF("Permission List", target, "portrait", true);
-  };
+  exportToExcel(
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_PERMISSION),
+    `permissions_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+qs("exportPDFBtn")?.addEventListener("click", () => {
+  exportToPDF(
+    "Permissions List",
+    viewMode === "table" ? ".table-container" : "#permissionList",
+    "portrait"
+  );
+});
 
 /* ============================================================
-   🚀 Init
+   🚀 INIT
 ============================================================ */
 export async function initPermissionModule() {
   renderDynamicTableHead(visibleFields);
@@ -281,64 +274,12 @@ export async function initPermissionModule() {
     "permissionFilterVisible"
   );
 
-  try {
-    const orgs = await loadOrganizationsLite();
-
-    if (userRole.includes("super")) {
-      orgs.unshift({ id: "", name: "-- All Organizations --" });
-      setupSelectOptions(filterOrg, orgs, "id", "name");
-
-      let facs = await loadFacilitiesLite();
-      facs.unshift({ id: "", name: "-- All Facilities --" });
-      setupSelectOptions(filterFacility, facs, "id", "name");
-
-      filterOrg?.addEventListener("change", async () => {
-        const id = filterOrg.value;
-        let nextFacs = id
-          ? await loadFacilitiesLite({ organization_id: id })
-          : await loadFacilitiesLite();
-        nextFacs.unshift({ id: "", name: "-- All Facilities --" });
-        setupSelectOptions(filterFacility, nextFacs, "id", "name");
-      });
-    } else {
-      const orgId = localStorage.getItem("organizationId");
-      const facId = localStorage.getItem("facilityId");
-
-      const scopedOrg = orgs.find((o) => o.id === orgId);
-      setupSelectOptions(filterOrg, scopedOrg ? [scopedOrg] : [], "id", "name");
-      filterOrg.disabled = true;
-      filterOrg.value = orgId || "";
-
-      const facs = orgId
-        ? await loadFacilitiesLite({ organization_id: orgId })
-        : [];
-      setupSelectOptions(
-        filterFacility,
-        facs,
-        "id",
-        "name",
-        "-- All Facilities --"
-      );
-      if (facId) filterFacility.value = facId;
-    }
-  } catch (err) {
-    console.error("❌ preload org/facility failed:", err);
-  }
-
   await loadEntries(1);
 }
 
 /* ============================================================
-   🏁 Boot
+   🏁 BOOT
 ============================================================ */
-function boot() {
-  initPermissionModule().catch((err) =>
-    console.error("initPermissionModule failed:", err)
-  );
-}
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
-  boot();
-}
+document.readyState === "loading"
+  ? document.addEventListener("DOMContentLoaded", initPermissionModule)
+  : initPermissionModule();

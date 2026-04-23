@@ -1729,41 +1729,82 @@ async applyPayment({
       });
     },
 
+
     /* ============================================================
-      🏁 Finalize Discount
+      🏁 Finalize Discount (FIXED — INSURANCE SAFE)
     ============================================================ */
     async finalizeDiscount({ id, user }) {
       return await sequelize.transaction(async (t) => {
         const discount = await db.Discount.findByPk(id, { transaction: t });
         if (!discount) throw new Error("❌ Discount not found");
+
         if (discount.status !== DSC.ACTIVE) {
           throw new Error("❌ Only active discounts can be finalized");
         }
 
+        /* ============================================================
+          🔥 LOAD INVOICE
+        ============================================================ */
+        const invoice = await db.Invoice.findByPk(discount.invoice_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        if (!invoice) throw new Error("❌ Invoice not found");
+
+        /* ============================================================
+          🧮 USE PATIENT BALANCE AS BASE (CRITICAL FIX)
+        ============================================================ */
+        const patientBalance = parseFloat(invoice.balance || 0);
+
+        let applied = 0;
+
+        if (discount.type === "percentage") {
+          applied = patientBalance * (parseFloat(discount.value) / 100);
+        } else {
+          applied = parseFloat(discount.value);
+        }
+
+        /* ============================================================
+          🔒 HARD CAP (NEVER EXCEED BALANCE)
+        ============================================================ */
+        if (applied > patientBalance) {
+          applied = patientBalance;
+        }
+
+        /* ============================================================
+          💾 STORE CORRECT VALUE (OVERRIDE MODEL)
+        ============================================================ */
         await discount.update(
           {
             status: DSC.FINALIZED,
+            applied_amount: applied.toFixed(2),
             finalized_by_id: user?.id,
             finalized_at: new Date(),
           },
           { transaction: t, user }
         );
 
-        if (discount.invoice_id) {
-          await recalcInvoice(discount.invoice_id, t);
-          await logLedger({
-            type: "discount",
-            entity: discount,
-            organization_id: discount.organization_id,
-            facility_id: discount.facility_id,
-            patient_id: discount.patient_id,
-            invoice_id: discount.invoice_id,
-            amount: discount.value,
-            note: `Discount finalized: ${discount.type} ${discount.value}${discount.type === "percentage" ? "%" : ""}`,
-            user,
-            t,
-          });
-        }
+        /* ============================================================
+          🔄 RECALCULATE INVOICE
+        ============================================================ */
+        await recalcInvoice(invoice.id, t);
+
+        /* ============================================================
+          📒 LEDGER
+        ============================================================ */
+        await logLedger({
+          type: "discount",
+          entity: discount,
+          organization_id: discount.organization_id,
+          facility_id: discount.facility_id,
+          patient_id: discount.patient_id,
+          invoice_id: invoice.id,
+          amount: applied,
+          note: `Discount finalized (PATIENT ONLY): ${discount.type} ${discount.value}${discount.type === "percentage" ? "%" : ""}`,
+          user,
+          t,
+        });
 
         return discount;
       });

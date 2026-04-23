@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = document.createElement("button");
     btn.id = "backToModulesBtn";
     btn.className = "btn btn-outline-secondary btn-sm";
-    btn.innerHTML = `<i class="ri-arrow-left-line me-1"></i> Modules`;
+    btn.innerHTML = `<i class="ri-arrow-left-line me-1"></i> Work Area`;
 
     // add BEFORE other buttons
     actionWrapper.prepend(btn);
