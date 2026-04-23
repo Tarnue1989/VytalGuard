@@ -419,10 +419,10 @@ export const loadExpensesLite = (params = {}, force = false) => {
 // 📦 Payments lite loader
 // Supports optional filters: 
 // { patient_id, invoice_id, facility_id, organization_id, status, is_deposit, q }
-export const loadPaymentsLite = (params = {}, force = true) => {
+export const loadPaymentsLite = (params = {}, force = false) => {
   const q = new URLSearchParams(params);
   const endpoint = `/api/lite/payments${q.toString() ? "?" + q.toString() : ""}`;
-  return fetchGenericList(endpoint, "data.records", 0, true); // 💥 Always fresh
+  return fetchGenericList(endpoint, "data.records", 20, force);
 };
 
 

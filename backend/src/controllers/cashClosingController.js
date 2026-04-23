@@ -76,7 +76,7 @@ function buildSchema(role) {
 }
 
 /* ============================================================
-   📌 CLOSE CASH DAY
+   📌 CLOSE CASH DAY (FINAL FIXED)
 ============================================================ */
 export const closeCashDay = async (req, res) => {
   const t = await sequelize.transaction();
@@ -99,6 +99,10 @@ export const closeCashDay = async (req, res) => {
 
     const { date, account_id } = value;
 
+    /* ================= DATE NORMALIZATION ================= */
+    const closingDate = new Date(date);
+    closingDate.setHours(0, 0, 0, 0);
+
     /* ================= TENANT ================= */
     const { orgId, facilityId } = await resolveOrgFacility({
       user: req.user,
@@ -109,7 +113,7 @@ export const closeCashDay = async (req, res) => {
     /* ================= DUPLICATE CHECK ================= */
     const exists = await CashClosing.findOne({
       where: {
-        date,
+        date: closingDate,
         account_id,
         organization_id: orgId,
       },
@@ -121,22 +125,24 @@ export const closeCashDay = async (req, res) => {
       return error(res, "❌ Already closed for this date", null, 400);
     }
 
-    /* ================= LEDGER FETCH ================= */
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-
+    /* ================= LEDGER FETCH (LOCKED) ================= */
     const entries = await CashLedger.findAll({
       where: {
         account_id,
         organization_id: orgId,
-        date: { [Op.between]: [start, end] },
+
+        // 🔥 CRITICAL FIX: match ledger date exactly
+        date: closingDate,
+
+        ...(facilityId && { facility_id: facilityId }),
       },
       transaction: t,
+      lock: t.LOCK.UPDATE, // 🔥 prevent race conditions
     });
-
+    if (!entries.length) {
+      await t.rollback();
+      return error(res, "❌ No transactions found for this account/date", null, 400);
+    }
     /* ================= CALCULATE ================= */
     let total_in = 0;
     let total_out = 0;
@@ -147,10 +153,27 @@ export const closeCashDay = async (req, res) => {
       if (e.direction === "out") total_out += amt;
     });
 
-    /* ================= OPENING BALANCE ================= */
+    /* ================= OPENING BALANCE (LEDGER-BASED) ================= */
+    const lastClosing = await CashClosing.findOne({
+      where: {
+        account_id,
+        organization_id: orgId,
+        date: { [Op.lt]: closingDate },
+      },
+      order: [["date", "DESC"]],
+      transaction: t,
+    });
+
+    const opening_balance = lastClosing
+      ? parseFloat(lastClosing.closing_balance || 0)
+      : 0;
+
+    const closing_balance = opening_balance + total_in - total_out;
+
+    /* ================= VALIDATE ACCOUNT ================= */
     const account = await Account.findByPk(account_id, {
-    transaction: t,
-    lock: t.LOCK.UPDATE,
+      transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!account) {
@@ -158,14 +181,12 @@ export const closeCashDay = async (req, res) => {
       return error(res, "❌ Account not found", null, 400);
     }
 
-    const closing_balance = parseFloat(account.balance || 0);
-    const opening_balance = closing_balance - total_in + total_out;
-
     /* ================= CREATE ================= */
     const record = await CashClosing.create(
       {
-        date,
+        date: closingDate,
         account_id,
+        currency: account.currency,
         opening_balance,
         closing_balance,
         total_in,

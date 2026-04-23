@@ -10,6 +10,7 @@ import {
   Facility,
   User,
   Refund,
+  Account,
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
@@ -40,18 +41,23 @@ import { FIELD_VISIBILITY_PAYMENT } from "../constants/fieldVisibility.js";
 /* ============================================================
    🔐 MODULE
 ============================================================ */
-const MODULE_KEY = "payment";
+const MODULE_KEY = "payments";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE
 ============================================================ */
-const DEBUG_OVERRIDE = false;
+const DEBUG_OVERRIDE = true;
 const debug = makeModuleLogger("paymentController", DEBUG_OVERRIDE);
 
 /* ============================================================
    🔖 STATUS MAPS (ENUM-SAFE, MASTER STYLE)
 ============================================================ */
-const PS = PAYMENT_STATUS;
+const PS = {
+  PENDING: PAYMENT_STATUS.PENDING,
+  COMPLETED: PAYMENT_STATUS.COMPLETED,
+  FAILED: PAYMENT_STATUS.FAILED,
+  CANCELLED: PAYMENT_STATUS.CANCELLED,
+};
 
 const RS = {
   PENDING: REFUND_STATUS.PENDING,
@@ -117,6 +123,8 @@ const PAYMENT_INCLUDES = [
     as: "facility",
     attributes: ["id", "name", "code", "organization_id"],
   },
+    // 🔥 ADD THIS (ACCOUNT — SAME PATTERN AS PAYMENT)
+  { model: Account, as: "account", attributes: ["id", "name", "account_number"] },
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
@@ -128,24 +136,35 @@ const PAYMENT_INCLUDES = [
 function buildPaymentSchema(userRole, mode = "create") {
   const base = {
     invoice_id: Joi.string().uuid().required(),
-    patient_id: Joi.forbidden(), // ✅ FIX
+
+    // 🔥 ADD THIS (REQUIRED)
+    account_id: Joi.string().uuid().required(),
+
+    patient_id: Joi.forbidden(),
+
     amount: Joi.number().positive().required(),
 
-    // 🔥 ONLY ADD THIS (MISSING)
+    // 🔥 REQUIRED
     currency: Joi.string().valid("USD", "LRD").required(),
 
-    method: Joi.string().valid(...Object.values(PAYMENT_METHODS)).required(),
+    method: Joi.string()
+      .valid(...Object.values(PAYMENT_METHODS))
+      .required(),
+
     transaction_ref: Joi.string().allow(null, ""),
+
     is_deposit: Joi.boolean().forbidden(),
     status: Joi.forbidden(),
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
+    });
     base.reason = Joi.string().min(5).required();
   }
 
-  // ✅ SUPER ADMIN MAY PASS TENANT (resolved server-side)
+  // ✅ SUPER ADMIN MAY PASS TENANT
   if (userRole === "superadmin") {
     base.organization_id = Joi.string().uuid().optional();
     base.facility_id = Joi.string().uuid().allow(null).optional();
@@ -156,7 +175,6 @@ function buildPaymentSchema(userRole, mode = "create") {
 
   return Joi.object(base);
 }
-
 
 /* ============================================================
    📌 CREATE PAYMENT (MASTER PARITY – TENANT RESOLVED)
@@ -542,10 +560,13 @@ export const deletePayment = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL PAYMENTS (MASTER-ALIGNED – FIXED TENANT)
+   📌 GET ALL PAYMENTS (DEBUG MODE)
 ============================================================ */
 export const getAllPayments = async (req, res) => {
   try {
+    console.log("====================================");
+    console.log("🔥 GET ALL PAYMENTS DEBUG START");
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -554,19 +575,30 @@ export const getAllPayments = async (req, res) => {
     });
     if (!allowed) return;
 
+    console.log("👤 USER:", req.user);
+
     const { limit, page, offset } = validatePaginationStrict(req, {
       limit: 25,
       maxLimit: 200,
     });
 
+    console.log("📄 PAGINATION:", { limit, page, offset });
+
     const role = (req.user?.roleNames?.[0] || "staff").toLowerCase();
     const visibleFields =
       FIELD_VISIBILITY_PAYMENT[role] || FIELD_VISIBILITY_PAYMENT.staff;
 
+    console.log("👁️ ROLE:", role);
+
     const { dateRange, ...safeQuery } = req.query;
+
+    console.log("📥 RAW QUERY:", req.query);
+
     safeQuery.limit = limit;
     safeQuery.page = page;
     req.query = safeQuery;
+
+    console.log("📥 CLEAN QUERY:", req.query);
 
     const options = buildQueryOptions(
       req,
@@ -577,8 +609,18 @@ export const getAllPayments = async (req, res) => {
 
     options.where = { [Op.and]: [] };
 
+    /* ================= SAFE GUARD ================= */
+    const safe = (v) =>
+      v !== undefined &&
+      v !== "undefined" &&
+      v !== "null" &&
+      v !== "";
+
+    /* ================= DATE RANGE ================= */
     if (dateRange) {
       const { start, end } = normalizeDateRangeLocal(dateRange);
+      console.log("📅 DATE RANGE:", { start, end });
+
       if (start && end) {
         options.where[Op.and].push({
           created_at: { [Op.between]: [start, end] },
@@ -586,7 +628,10 @@ export const getAllPayments = async (req, res) => {
       }
     }
 
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
+      console.log("🏢 TENANT FILTER ACTIVE");
+
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
@@ -595,51 +640,86 @@ export const getAllPayments = async (req, res) => {
         Array.isArray(req.user.facility_ids) &&
         req.user.facility_ids.length > 0
       ) {
+        console.log("🏥 FACILITY IDS:", req.user.facility_ids);
+
         options.where[Op.and].push({
-          [Op.or]: [
-            { facility_id: { [Op.in]: req.user.facility_ids } },
-            { facility_id: null },
-          ],
+          facility_id: { [Op.in]: req.user.facility_ids },
         });
       }
 
-      if (isOrgLevelUser(req.user) && req.query.facility_id) {
-        options.where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      }
-    } else {
-      if (req.query.organization_id) {
-        options.where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-      if (req.query.facility_id) {
+      if (isOrgLevelUser(req.user) && safe(req.query.facility_id)) {
+        console.log("🏥 FILTER FACILITY:", req.query.facility_id);
+
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
     }
 
-    if (req.query.invoice_id) {
-      options.where[Op.and].push({ invoice_id: req.query.invoice_id });
-    }
-    if (req.query.patient_id) {
-      options.where[Op.and].push({ patient_id: req.query.patient_id });
-    }
-    if (req.query.method) {
-      options.where[Op.and].push({ method: req.query.method });
-    }
-    if (req.query.status) {
-      options.where[Op.and].push({ status: req.query.status });
+    /* ================= FILTERS ================= */
+
+    if (safe(req.query.invoice_id)) {
+      console.log("🧾 FILTER invoice_id:", req.query.invoice_id);
+
+      options.where[Op.and].push({
+        invoice_id: req.query.invoice_id,
+      });
     }
 
-    // 🔥 ONLY ADD THIS (currency filter)
-    if (req.query.currency) {
-      options.where[Op.and].push({ currency: req.query.currency });
+    if (safe(req.query.patient_id)) {
+      console.log("👤 FILTER patient_id:", req.query.patient_id);
+
+      options.where[Op.and].push({
+        patient_id: req.query.patient_id,
+      });
     }
 
+    if (safe(req.query.method)) {
+      console.log("💳 FILTER method:", req.query.method);
+
+      options.where[Op.and].push({
+        method: req.query.method,
+      });
+    }
+
+    if (safe(req.query.status)) {
+      console.log("📊 FILTER status:", req.query.status);
+
+      options.where[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    if (safe(req.query.currency)) {
+      console.log("💱 FILTER currency:", req.query.currency);
+
+      options.where[Op.and].push({
+        currency: req.query.currency,
+      });
+    }
+
+    if (safe(req.query.account_id)) {
+      console.log("🏦 FILTER account_id:", req.query.account_id);
+
+      options.where[Op.and].push({
+        account_id: req.query.account_id,
+      });
+    }
+
+    if (safe(req.query.transaction_ref)) {
+      console.log("🔎 FILTER transaction_ref:", req.query.transaction_ref);
+
+      options.where[Op.and].push({
+        transaction_ref: {
+          [Op.like]: `%${req.query.transaction_ref}%`,
+        },
+      });
+    }
+
+    /* ================= SEARCH ================= */
     if (options.search) {
+      console.log("🔍 SEARCH:", options.search);
+
       options.where[Op.and].push({
         [Op.or]: [
           { payment_number: { [Op.iLike]: `%${options.search}%` } },
@@ -647,6 +727,12 @@ export const getAllPayments = async (req, res) => {
         ],
       });
     }
+
+    console.log("🧱 FINAL WHERE:", JSON.stringify(options.where, null, 2));
+
+    if (!options.where[Op.and].length) delete options.where;
+
+    console.log("🚀 RUNNING QUERY...");
 
     const { count, rows } = await Payment.findAndCountAll({
       where: options.where,
@@ -657,51 +743,29 @@ export const getAllPayments = async (req, res) => {
       distinct: true,
     });
 
-    const summary = { total: count };
-
-    const statusCounts = await Payment.findAll({
-      where: options.where,
-      attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-      ],
-      group: ["status"],
-    });
-
-    Object.values(PS).forEach((status) => {
-      const found = statusCounts.find((s) => s.status === status);
-      summary[status] = found ? Number(found.get("count")) : 0;
-    });
-
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list",
-      details: {
-        query: safeQuery,
-        returned: count,
-        pagination: { page, limit },
-      },
-    });
+    console.log("✅ QUERY SUCCESS:", count, "records");
 
     return success(res, "✅ Payments loaded", {
       records: rows,
-      summary,
       pagination: {
         total: count,
         page,
         limit,
-        pageCount: Math.ceil(count / limit),
       },
     });
+
   } catch (err) {
+    console.log("====================================");
+    console.error("💥 FULL ERROR OBJECT:", err);
+    console.error("💥 ERROR MESSAGE:", err.message);
+    console.error("💥 SQL (if any):", err.sql);
+    console.log("====================================");
+
     return error(res, "❌ Failed to load payments", err);
   }
 };
-
-
 /* ============================================================
-   📌 GET ALL PAYMENTS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
+   📌 GET ALL PAYMENTS (LITE – SAFE, NO CRASH)
 ============================================================ */
 export const getAllPaymentsLite = async (req, res) => {
   try {
@@ -716,6 +780,7 @@ export const getAllPaymentsLite = async (req, res) => {
     const { q, patient_id } = req.query;
     const where = { [Op.and]: [] };
 
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
         organization_id: req.user.organization_id,
@@ -739,19 +804,27 @@ export const getAllPaymentsLite = async (req, res) => {
       }
     }
 
+    /* ================= FILTERS ================= */
     if (patient_id) {
       where[Op.and].push({ patient_id });
     }
 
+    /* ================= SEARCH (SAFE) ================= */
     if (q) {
       where[Op.and].push({
         [Op.or]: [
           { payment_number: { [Op.iLike]: `%${q}%` } },
-          { transaction_ref: { [Op.iLike]: `%${q}%` } },
+          ...(Payment.rawAttributes.transaction_ref
+            ? [{ transaction_ref: { [Op.like]: `%${q}%` } }]
+            : []),
         ],
       });
     }
 
+    // 🔥 prevent empty AND crash
+    if (!where[Op.and].length) delete where[Op.and];
+
+    /* ================= QUERY ================= */
     const payments = await Payment.findAll({
       where,
       attributes: [
@@ -760,7 +833,7 @@ export const getAllPaymentsLite = async (req, res) => {
         "invoice_id",
         "patient_id",
         "amount",
-        "currency", // 🔥 ONLY ADD THIS
+        ...(Payment.rawAttributes.currency ? ["currency"] : []), // 🔥 SAFE
         "method",
         "transaction_ref",
         "status",
@@ -787,6 +860,7 @@ export const getAllPaymentsLite = async (req, res) => {
       limit: 20,
     });
 
+    /* ================= MAP ================= */
     const records = payments
       .map((p) => {
         const refunded = (p.refunds || [])
@@ -805,7 +879,7 @@ export const getAllPaymentsLite = async (req, res) => {
           label: `${p.payment_number || p.transaction_ref || p.id} - ${p.amount}`,
 
           amount: p.amount,
-          currency: p.currency, // 🔥 ONLY ADD THIS
+          currency: p.currency, // safe (undefined if not present)
           refunded_amount: refunded,
           remaining_balance: remaining,
 
@@ -823,6 +897,7 @@ export const getAllPaymentsLite = async (req, res) => {
       })
       .filter((r) => r.remaining_balance > 0);
 
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -834,10 +909,12 @@ export const getAllPaymentsLite = async (req, res) => {
       },
     });
 
+    /* ================= RESPONSE ================= */
     return success(res, "Payments loaded (lite)", {
       records,
     });
   } catch (err) {
+    console.error("❌ getAllPaymentsLite ERROR:", err);
     return error(res, "❌ Failed to load payments (lite)", err);
   }
 };

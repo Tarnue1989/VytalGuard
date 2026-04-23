@@ -30,6 +30,7 @@ import {
   loadFacilitiesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
+  loadAccountsLite 
 } from "../../utils/data-loaders.js";
 
 import { resolveUserRole } from "../../utils/roleResolver.js";
@@ -114,6 +115,7 @@ export async function setupDepositFormSubmission({ form }) {
   const transactionRefInput = document.getElementById("transactionRef");
   const notesInput = document.getElementById("notes");
   const reasonInput = document.getElementById("reason");
+  const accountSelect = document.getElementById("accountSelect");
 
   /* ============================================================
      👥 Role
@@ -169,6 +171,13 @@ export async function setupDepositFormSubmission({ form }) {
       },
       "label"
     );
+    setupSelectOptions(
+      accountSelect,
+      await loadAccountsLite({}, true),
+      "id",
+      "name",
+      "-- Select Account --"
+    );
   } catch (err) {
     console.error(err);
     showToast("❌ Failed to load reference data");
@@ -209,7 +218,9 @@ export async function setupDepositFormSubmission({ form }) {
       transactionRefInput.value = entry.transaction_ref || "";
       notesInput.value = entry.notes || "";
       reasonInput.value = entry.reason || "";
-
+      if (accountSelect && entry.account_id) {
+        accountSelect.value = entry.account_id;
+      }
       if (isSuper) {
         if (orgSelect && entry.organization_id)
           orgSelect.value = entry.organization_id;
@@ -257,6 +268,7 @@ export async function setupDepositFormSubmission({ form }) {
 
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
+      account_id: normalizeUUID(accountSelect.value),
       currency: currencySelect.value || null,
       applied_invoice_id: normalizeUUID(appliedInvoiceHidden?.value),
       amount: normalizeNumber(amountInput.value),
@@ -318,6 +330,10 @@ export async function setupDepositFormSubmission({ form }) {
     clearFormErrors(form);
     form.reset();
     appliedInvoiceHidden.value = "";
+
+    // 🔥 ADD THIS
+    if (accountSelect) accountSelect.value = "";
+
     setUI("add");
   });
 }

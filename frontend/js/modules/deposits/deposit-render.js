@@ -18,6 +18,7 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { initTimelines } from "../../utils/timeline/timeline-init.js";
+
 import { printReport } from "../../utils/printBuilder.js";
 import { authFetch } from "../../authSession.js";
 import { formatFilters } from "../../utils/filterFormatter.js";
@@ -179,6 +180,9 @@ function renderValue(entry, field) {
     case "organization":
     case "organization_id":
       return entry.organization?.name || "—";
+    case "account":
+    case "account_id":
+      return entry.account?.name || "—";
 
     case "facility":
     case "facility_id":
@@ -317,6 +321,7 @@ export function renderCard(entry, visibleFields, user) {
         ${row("Available", money(entry.remaining_balance))}
         ${hasRefund ? row("Refunded", money(refundedAmount)) : ""}
         ${row("Currency", entry.currency)}
+        ${row("Account", entry.account?.name)}
         ${row("Method", entry.method)}
         ${row("Status", status.toUpperCase())}
       </div>
@@ -566,7 +571,10 @@ function setupExportHandlers(entries, visibleFields) {
             case "facility_id":
               row[f] = e.facility?.name || "";
               break;
-
+            case "account":
+            case "account_id":
+              row[f] = e.account?.name || "";
+              break;
             case "status":
               row[f] = (e.status || "").toUpperCase();
               break;
@@ -640,7 +648,10 @@ function setupExportHandlers(entries, visibleFields) {
             case "facility_id":
               row[f] = e.facility?.name || "";
               break;
-
+            case "account":
+            case "account_id":
+              row[f] = e.account?.name || "";
+              break;
             case "status":
               row[f] = (e.status || "").toUpperCase();
               break;
@@ -759,7 +770,10 @@ function setupExportHandlers(entries, visibleFields) {
                   ? `${e[f].first_name || ""} ${e[f].last_name || ""}`.trim()
                   : "";
                 break;
-
+              case "account":
+              case "account_id":
+                row[f] = e.account?.name || "";
+                break;
               case "status":
                 row[f] = (e.status || "").toUpperCase();
                 break;

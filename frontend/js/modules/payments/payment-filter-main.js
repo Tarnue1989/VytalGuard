@@ -27,6 +27,7 @@ import {
   loadFacilitiesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
+  loadAccountsLite
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
@@ -123,7 +124,7 @@ const filterPatientSuggestions = qs("filterPatientSuggestions");
 const filterMethod        = qs("filterMethodSelect");
 const filterCurrency      = qs("filterCurrency"); // ✅ ADD
 const filterTransactionRef = qs("filterTransactionRef");
-const filterInvoiceId     = qs("filterInvoiceId");
+const filterAccount = qs("filterAccountSelect");
 
 /* ============================================================
    🔃 SORT BRIDGE (MASTER)
@@ -156,6 +157,7 @@ setupAutoFilters({
     filterStatus,
     filterMethod,
     filterCurrency,
+    filterAccount,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -166,21 +168,21 @@ setupAutoFilters({
 ============================================================ */
 function getFilters() {
   return {
-    search: globalSearch?.value?.trim(),
-    organization_id: filterOrg?.value,
-    facility_id: filterFacility?.value,
-    status: filterStatus?.value,
-    method: filterMethod?.value,
-    currency: qs("filterCurrency")?.value, // ✅ ADD
-    transaction_ref: filterTransactionRef?.value,
-    patient_id: filterPatientHidden?.value,
-    invoice_id: filterInvoiceId?.value,
-    dateRange: dateRange?.value,
+    search: globalSearch?.value?.trim() || "",
+    organization_id: filterOrg?.value || "",
+    facility_id: filterFacility?.value || "",
+    status: filterStatus?.value || "",
+    method: filterMethod?.value || "",
+    currency: filterCurrency?.value || "",
+    transaction_ref: filterTransactionRef?.value || "",
+    patient_id: filterPatientHidden?.value || "",
+    dateRange: dateRange?.value || "",
+    account_id: filterAccount?.value || "",
   };
 }
 
 /* ============================================================
-   📦 LOAD PAYMENTS (MASTER SAFE)
+   📦 LOAD PAYMENTS (DEBUG + SAFE)
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -189,6 +191,10 @@ async function loadEntries(page = 1) {
     const q = new URLSearchParams();
     const { page: safePage, limit } = getPagination(page);
     const f = getFilters();
+
+    console.log("====================================");
+    console.log("🔥 FRONTEND LOAD START");
+    console.log("📥 FILTERS:", f);
 
     q.set("page", safePage);
     q.set("limit", limit);
@@ -204,55 +210,113 @@ async function loadEntries(page = 1) {
     if (f.facility_id)     q.set("facility_id", f.facility_id);
     if (f.status)          q.set("status", f.status);
     if (f.method)          q.set("method", f.method);
-    if (f.currency)        q.set("currency", f.currency); 
+    if (f.currency)        q.set("currency", f.currency);
+    if (f.account_id)      q.set("account_id", f.account_id);
     if (f.transaction_ref) q.set("transaction_ref", f.transaction_ref);
     if (f.patient_id)      q.set("patient_id", f.patient_id);
-    if (f.invoice_id)      q.set("invoice_id", f.invoice_id);
+
+    console.log("🌐 FINAL QUERY:", q.toString());
 
     const res = await authFetch(`/api/payments?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.message);
+    console.log("📡 RESPONSE STATUS:", res.status);
 
-    const data = json.data || {};
-    entries = data.records || [];
+    let json = {};
+    try {
+      json = await res.json();
+    } catch (parseErr) {
+      console.error("💥 JSON PARSE ERROR:", parseErr);
+      throw new Error("Invalid JSON response from server");
+    }
+
+    console.log("📦 API RESPONSE:", json);
+
+    if (!res.ok) {
+      console.error("💥 BACKEND ERROR:", json);
+      throw new Error(json?.message || "Backend request failed");
+    }
+
+    /* ========================================================
+       🛡️ SAFE DATA EXTRACTION
+    ======================================================== */
+    const data = json?.data || {};
+
+    console.log("📊 DATA BLOCK:", data);
+
+    if (!data || typeof data !== "object") {
+      throw new Error("Invalid data format from backend");
+    }
+
+    entries = Array.isArray(data.records) ? data.records : [];
     currentPage = data.pagination?.page || safePage;
 
-    renderList({ entries, visibleFields, viewMode, user, currentPage });
+    console.log("📋 ENTRIES:", entries);
 
-    data.summary &&
-      renderModuleSummary(data.summary, "moduleSummary", {
-        moduleLabel: "PAYMENTS",
+    /* ========================================================
+       🧩 RENDER (THIS IS WHERE ERRORS USUALLY HAPPEN)
+    ======================================================== */
+    try {
+      renderList({ entries, visibleFields, viewMode, user, currentPage });
+    } catch (renderErr) {
+      console.error("💥 RENDER ERROR:", renderErr);
+      throw new Error("Render failed: " + renderErr.message);
+    }
+
+    try {
+      if (data.summary) {
+        renderModuleSummary(data.summary, "moduleSummary", {
+          moduleLabel: "PAYMENTS",
+        });
+      }
+    } catch (summaryErr) {
+      console.error("💥 SUMMARY ERROR:", summaryErr);
+    }
+
+    try {
+      syncViewToggleUI({ mode: viewMode });
+    } catch (viewErr) {
+      console.error("💥 VIEW TOGGLE ERROR:", viewErr);
+    }
+
+    try {
+      setupActionHandlers({
+        entries,
+        token,
+        currentPage,
+        loadEntries,
+        visibleFields,
+        sharedState,
+        user,
       });
+    } catch (actionErr) {
+      console.error("💥 ACTION HANDLER ERROR:", actionErr);
+    }
 
-    syncViewToggleUI({ mode: viewMode });
+    try {
+      renderPaginationControls(
+        qs("paginationButtons"),
+        currentPage,
+        data.pagination?.pageCount || 1,
+        loadEntries
+      );
+    } catch (paginationErr) {
+      console.error("💥 PAGINATION ERROR:", paginationErr);
+    }
 
-    setupActionHandlers({
-      entries,
-      token,
-      currentPage,
-      loadEntries,
-      visibleFields,
-      sharedState,
-      user,
-    });
+    console.log("✅ FRONTEND LOAD SUCCESS");
 
-    renderPaginationControls(
-      qs("paginationButtons"),
-      currentPage,
-      data.pagination?.pageCount || 1,
-      loadEntries
-    );
   } catch (err) {
-    console.error(err);
-    showToast("❌ Failed to load payments");
+    console.log("====================================");
+    console.error("💥 FINAL FRONTEND ERROR:", err);
+    console.log("====================================");
+
+    showToast(err.message || "❌ Failed to load payments");
   } finally {
     hideLoading();
   }
 }
-
 /* ============================================================
    🧭 VIEW TOGGLE
 ============================================================ */
@@ -280,6 +344,8 @@ qs("resetFilterBtn").onclick = () => {
     filterFacility,
     filterStatus,
     filterMethod,
+    filterCurrency,
+    filterAccount,
     filterTransactionRef,
     filterPatient,
     dateRange,
@@ -331,6 +397,9 @@ export async function initPaymentModule() {
     },
     "label"
   );
+  const accounts = await loadAccountsLite({}, true);
+  accounts.unshift({ id: "", name: "-- All Accounts --" });
+  setupSelectOptions(filterAccount, accounts, "id", "name");
 
   if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();

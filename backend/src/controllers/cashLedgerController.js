@@ -1,6 +1,6 @@
 // 📁 backend/src/controllers/cashLedgerController.js
 // ============================================================================
-// 📊 Cash Ledger Controller – MASTER-ALIGNED (READ ONLY)
+// 📊 Cash Ledger Controller – MASTER-ALIGNED (READ ONLY FINAL)
 // ============================================================================
 
 import { Op } from "sequelize";
@@ -85,6 +85,10 @@ export const getAllLedgerEntries = async (req, res) => {
           date: { [Op.between]: [start, end] },
         });
       }
+    } else {
+      // 🔥 Default today filter (prevents empty screen)
+      const today = new Date().toISOString().slice(0, 10);
+      options.where[Op.and].push({ date: today });
     }
 
     /* ================= FILTERS ================= */
@@ -104,10 +108,18 @@ export const getAllLedgerEntries = async (req, res) => {
       options.where[Op.and].push({ currency: req.query.currency });
     }
 
-    /* ================= SEARCH ================= */
+    if (req.query.reference_type) {
+      options.where[Op.and].push({ reference_type: req.query.reference_type });
+    }
+
+    /* ================= SEARCH (UPGRADED) ================= */
     if (options.search) {
       options.where[Op.and].push({
-        description: { [Op.iLike]: `%${options.search}%` },
+        [Op.or]: [
+          { description: { [Op.iLike]: `%${options.search}%` } },
+          { reference_type: { [Op.iLike]: `%${options.search}%` } },
+          { "$account.name$": { [Op.iLike]: `%${options.search}%` } },
+        ],
       });
     }
 
@@ -119,6 +131,16 @@ export const getAllLedgerEntries = async (req, res) => {
       limit,
     });
 
+    /* ================= SUMMARY ================= */
+    let total_in = 0;
+    let total_out = 0;
+
+    rows.forEach((r) => {
+      const amt = parseFloat(r.amount || 0);
+      if (r.direction === "in") total_in += amt;
+      if (r.direction === "out") total_out += amt;
+    });
+
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
@@ -128,6 +150,11 @@ export const getAllLedgerEntries = async (req, res) => {
 
     return success(res, "✅ Ledger entries loaded", {
       records: rows,
+      summary: {
+        total_in,
+        total_out,
+        net: total_in - total_out,
+      },
       pagination: {
         total: count,
         page,

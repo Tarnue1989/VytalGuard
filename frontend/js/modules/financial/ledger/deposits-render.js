@@ -208,7 +208,7 @@ export function renderLedgerList({ entries, visibleFields, viewMode }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */

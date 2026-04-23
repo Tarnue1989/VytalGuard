@@ -476,15 +476,20 @@ export const FIELD_VISIBILITY_CONSULTATION = {
 
 /* -------------------- Deposit -------------------- */
 export const FIELD_VISIBILITY_DEPOSIT = {
-    superadmin: FIELD_ORDER_DEPOSIT,
+  superadmin: FIELD_ORDER_DEPOSIT,
   organization_admin: FIELD_ORDER_DEPOSIT,
-  manager: ["deposit_number", 
+  manager: ["deposit_number",
     "id", "patient_id", "organization_id", "facility_id", "applied_invoice_id",
-    "amount", "applied_amount", "remaining_balance", "unapplied_amount",
-    "method", "transaction_ref", "status", "notes", "reason"
+    "account_id", "amount", "currency",
+    "applied_amount", "unapplied_amount", "refund_amount", "balance", "remaining_balance",
+    "is_refundable",
+    "method", "transaction_ref",
+    "status", "notes", "reason"
   ],
-  staff: ["deposit_number", 
-    "id", "patient_id", "amount", "remaining_balance", "unapplied_amount",
+  staff: ["deposit_number",
+    "id", "patient_id",
+    "amount", "currency",
+    "remaining_balance", "unapplied_amount",
     "method", "status"
   ]
 };
@@ -1116,18 +1121,20 @@ export const FIELD_VISIBILITY_INSURANCE_PROVIDER = {
 
 /* -------------------- Payment -------------------- */
 export const FIELD_VISIBILITY_PAYMENT = {
-    superadmin: FIELD_ORDER_PAYMENT,
+  superadmin: FIELD_ORDER_PAYMENT,
   organization_admin: FIELD_ORDER_PAYMENT,
-  manager: ["payment_number", 
-    "id", "invoice_id", "patient_id",
-    "amount", "method", "status", "transaction_ref", "is_deposit", "reason", 
+  manager: ["payment_number",
+    "id", "invoice_id", "patient_id", "organization_id", "facility_id",
+    "account_id", "amount", "currency",
+    "method", "status", "transaction_ref", "is_deposit",
+    "reason"
   ],
-  staff: ["payment_number", 
+  staff: ["payment_number",
     "id", "invoice_id", "patient_id",
-    "amount", "status", "method"
-  ],
+    "amount", "currency",
+    "method", "status"
+  ]
 };
-
 
 /* -------------------- Ward -------------------- */
 export const FIELD_VISIBILITY_WARD = {

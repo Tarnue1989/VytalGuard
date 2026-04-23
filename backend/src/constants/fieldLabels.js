@@ -509,8 +509,11 @@ export const FIELD_LABELS_CONSULTATION = {
 /* -------------------- Deposit -------------------- */
 export const FIELD_LABELS_DEPOSIT = {deposit_number: "Deposit No",
   id: "ID", patient_id: "Patient", organization_id: "Organization", facility_id: "Facility",
-  applied_invoice_id: "Invoice", amount: "Amount", applied_amount: "Applied Amount",
-  remaining_balance: "Remaining Balance", unapplied_amount: "Unapplied Amount",
+  applied_invoice_id: "Invoice",
+  account_id: "Account", amount: "Amount", currency: "Currency",
+  applied_amount: "Applied Amount", unapplied_amount: "Unapplied Amount",
+  refund_amount: "Refund Amount", balance: "Balance", remaining_balance: "Remaining Balance",
+  is_refundable: "Refundable",
   method: `Payment Method (${joinValues(PAYMENT_METHODS)})`, transaction_ref: "Transaction Ref",
   status: `Status (${joinValues(DEPOSIT_STATUS)})`, notes: "Notes", reason: "Reason",
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
@@ -1147,10 +1150,10 @@ export const FIELD_LABELS_TRIAGE_RECORD = {
 export const FIELD_LABELS_PAYMENT = {payment_number: "Payment No",
   id: "ID", invoice_id: "Invoice", patient_id: "Patient",
   organization_id: "Organization", facility_id: "Facility",
-  amount: "Amount",
+  account_id: "Account", amount: "Amount", currency: "Currency",
   method: `Method (${joinValues(PAYMENT_METHODS)})`,
   status: `Status (${joinValues(PAYMENT_STATUS)})`,
-  transaction_ref: "Transaction Ref", is_deposit: "Deposit",   reason: "Reason", 
+  transaction_ref: "Transaction Ref", is_deposit: "Deposit", reason: "Reason",
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
 };

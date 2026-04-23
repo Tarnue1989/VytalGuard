@@ -6,6 +6,7 @@ export const FIELD_LABELS_DEPOSIT = {
   facility: "Facility",
   patient: "Patient",
   appliedInvoice: "Applied Invoice",
+  account: "Account", // 🔥 ADDED
   amount: "Amount",
   applied_amount: "Applied Amount",
   remaining_balance: "Remaining Balance",
@@ -30,6 +31,7 @@ export const FIELD_ORDER_DEPOSIT = [
   "facility",
   "patient",
   "appliedInvoice",
+  "account", // 🔥 ADDED
   "amount",
   "applied_amount",
   "remaining_balance",
@@ -55,6 +57,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "facility",
     "patient",
     "appliedInvoice",
+    "account", // 🔥 ADDED
     "amount",
     "applied_amount",
     "remaining_balance",
@@ -79,6 +82,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "facility",
     "patient",
     "appliedInvoice",
+    "account", // 🔥 ADDED
     "amount",
     "applied_amount",
     "remaining_balance",
@@ -102,6 +106,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "facility",
     "patient",
     "appliedInvoice",
+    "account", // 🔥 ADDED
     "amount",
     "applied_amount",
     "remaining_balance",
@@ -123,6 +128,7 @@ export const FIELD_DEFAULTS_DEPOSIT = {
     "facility",
     "patient",
     "appliedInvoice",
+    "account", // 🔥 ADDED
     "amount",
     "applied_amount",
     "remaining_balance",
@@ -138,6 +144,7 @@ export const FIELD_GROUPS_DEPOSIT = {
   org_scope: ["organization", "facility"],
   patient_info: ["patient", "appliedInvoice"],
   financials: [
+    "account", // 🔥 ADDED
     "amount",
     "applied_amount",
     "remaining_balance",

@@ -225,7 +225,7 @@ export function renderDepositList({ entries, visibleFields, viewMode, userRole }
   }
 
   // ⚡ bind export
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */

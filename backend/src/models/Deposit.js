@@ -1,10 +1,14 @@
 // 📁 backend/src/models/Deposit.js
 // ============================================================================
-// 💰 Deposit Model – ENTERPRISE (WITH RECALC INTEGRATION)
+// 💰 Deposit Model – ENTERPRISE (FULLY ALIGNED + ACCOUNT FIX)
 // ============================================================================
 
 import { DataTypes, Model } from "sequelize";
-import { DEPOSIT_STATUS, PAYMENT_METHODS, CURRENCY } from "../constants/enums.js";
+import {
+  DEPOSIT_STATUS,
+  PAYMENT_METHODS,
+  CURRENCY,
+} from "../constants/enums.js";
 
 export default (sequelize) => {
   class Deposit extends Model {
@@ -27,6 +31,12 @@ export default (sequelize) => {
       Deposit.belongsTo(models.Facility, {
         as: "facility",
         foreignKey: "facility_id",
+      });
+
+      // 🔥🔥🔥 CRITICAL FIX (ACCOUNT RELATION)
+      Deposit.belongsTo(models.Account, {
+        as: "account",
+        foreignKey: "account_id",
       });
 
       Deposit.belongsTo(models.User, {
@@ -68,6 +78,11 @@ export default (sequelize) => {
       applied_invoice_id: {
         type: DataTypes.UUID,
         allowNull: true,
+      },
+
+      account_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
       },
 
       organization_id: {
@@ -199,14 +214,12 @@ export default (sequelize) => {
   });
 
   /* ============================================================
-     🔁 RECALC HOOK (🔥 CRITICAL ENTERPRISE FIX)
+     🔁 RECALC HOOK
   ============================================================ */
   Deposit.afterUpdate(async (deposit, options) => {
     try {
-      // ✅ Only recalc if linked to invoice
       if (!deposit.applied_invoice_id) return;
 
-      // ✅ Only recalc when financial fields or status changes
       if (
         deposit.changed("applied_amount") ||
         deposit.changed("status") ||
@@ -214,7 +227,10 @@ export default (sequelize) => {
       ) {
         const { recalcInvoice } = await import("../utils/invoiceUtil.js");
 
-        await recalcInvoice(deposit.applied_invoice_id, options?.transaction);
+        await recalcInvoice(
+          deposit.applied_invoice_id,
+          options?.transaction
+        );
       }
     } catch (err) {
       console.error("❌ Deposit recalc error:", err.message);

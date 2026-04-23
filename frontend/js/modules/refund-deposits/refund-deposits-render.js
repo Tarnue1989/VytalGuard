@@ -18,6 +18,14 @@ import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { getCurrencySymbol } from "../../utils/currency-utils.js";
 import { initTimelines } from "../../utils/timeline/timeline-init.js";
 
+
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
+
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER)
 ============================================================ */
@@ -455,32 +463,225 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 /* ============================================================
-   📤 EXPORT (MASTER)
+   📤 EXPORT (MASTER – FULL PARITY)
 ============================================================ */
-let exportHandlersBound = false;
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
+function getFiltersFromDOM() {
+  const val = (id) => document.getElementById(id)?.value;
 
+  return {
+    search: val("globalSearch")?.trim(),
+    organization_id: val("filterOrganizationSelect"),
+    facility_id: val("filterFacilitySelect"),
+    status: val("filterStatus"),
+    method: val("filterMethodSelect"),
+    patient_id: document.getElementById("filterPatientId")?.value,
+    deposit_id: document.getElementById("filterDepositId")?.value,
+    dateRange: val("dateRange"),
+    currency: val("filterCurrency"),
+  };
+}
+
+function setupExportHandlers(entries, visibleFields) {
   const title = "Deposit Refunds Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #refundDepositList.active",
-      orientation: "landscape",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_REFUND_DEPOSIT,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "patient":
+            case "patient_id":
+              row[f] =
+                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
+              break;
+
+            case "organization":
+            case "organization_id":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+            case "facility_id":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "deposit":
+            case "deposit_id":
+              row[f] = e.deposit?.transaction_ref || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "refund_amount":
+              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e.refund_amount || 0).toFixed(2)}`;
+              break;
+
+            case "created_at":
+              row[f] = e.created_at
+                ? new Date(e.created_at).toLocaleDateString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/refund-deposits",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_REFUND_DEPOSIT,
+
+      mapRow: (e, fields) => {
+        const row = {};
+
+        fields.forEach((f) => {
+          switch (f) {
+            case "patient":
+            case "patient_id":
+              row[f] =
+                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
+              break;
+
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "deposit":
+              row[f] = e.deposit?.transaction_ref || "";
+              break;
+
+            case "status":
+              row[f] = (e.status || "").toUpperCase();
+              break;
+
+            case "refund_amount":
+              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e.refund_amount || 0).toFixed(2)}`;
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total Refund": records.reduce(
+          (s, e) => s + Number(e.refund_amount || 0),
+          0
+        ),
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v) return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from);
+          if (to) params.set("date_to", to);
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(`/api/refund-deposits?${params}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const currency = allEntries[0]?.currency || "USD";
+
+      printReport({
+        title,
+
+        columns: visibleFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_REFUND_DEPOSIT[f] || f,
+        })),
+
+        rows: allEntries.map((e) => ({
+          refund: e.refund_deposit_number,
+          amount: `${getCurrencySymbol(e.currency)} ${Number(e.refund_amount || 0).toFixed(2)}`,
+          status: (e.status || "").toUpperCase(),
+        })),
+
+        totals: [
+          {
+            label: "Total Refund",
+            value: `${getCurrencySymbol(currency)} ${allEntries
+              .reduce((s, e) => s + Number(e.refund_amount || 0), 0)
+              .toFixed(2)}`,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, { sample: allEntries[0] }),
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

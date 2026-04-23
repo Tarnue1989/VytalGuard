@@ -198,7 +198,7 @@ export function renderList({ entries, visibleFields, viewMode, userRole }) {
       : `<p class="text-muted">No discount policies found.</p>`;
     initTooltips(cardContainer);
   }
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */

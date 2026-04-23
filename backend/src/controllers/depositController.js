@@ -18,6 +18,7 @@ import {
   Organization,
   Facility,
   User,
+  Account 
 } from "../models/index.js";
 
 import { success, error } from "../utils/response.js";
@@ -72,17 +73,23 @@ const DEPOSIT_INCLUDES = [
   { model: Invoice, as: "appliedInvoice", attributes: ["id", "invoice_number", "status", "total", "balance"] },
   { model: Organization, as: "organization", attributes: ["id", "name", "code"] },
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
+
+  // 🔥 ADD THIS (ACCOUNT — SAME PATTERN AS PAYMENT)
+  { model: Account, as: "account", attributes: ["id", "name", "account_number"] },
+
   { model: User, as: "createdBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "updatedBy", attributes: ["id", "first_name", "last_name"] },
   { model: User, as: "deletedBy", attributes: ["id", "first_name", "last_name"] },
 ];
-
 /* ============================================================
    📋 ROLE-AWARE JOI SCHEMA (MASTER-SAFE, TENANT-RESOLVED)
 ============================================================ */
 function buildDepositSchema(userRole, mode = "create") {
   const base = {
     patient_id: Joi.string().uuid().required(),
+
+    // 🔥 ADD THIS (REQUIRED)
+    account_id: Joi.string().uuid().required(),
 
     // 🔥 FIX: REQUIRED FOR DB
     currency: Joi.string().valid("USD", "LRD").required(),
@@ -91,7 +98,9 @@ function buildDepositSchema(userRole, mode = "create") {
 
     amount: Joi.number().positive().required(),
 
-    method: Joi.string().valid(...Object.values(PAYMENT_METHODS)).required(),
+    method: Joi.string()
+      .valid(...Object.values(PAYMENT_METHODS))
+      .required(),
 
     transaction_ref: Joi.string().allow(null, ""),
     notes: Joi.string().allow(null, ""),
@@ -102,7 +111,9 @@ function buildDepositSchema(userRole, mode = "create") {
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach((k) => (base[k] = base[k].optional()));
+    Object.keys(base).forEach((k) => {
+      base[k] = base[k].optional();
+    });
     base.reason = Joi.string().min(5).required();
   }
 
@@ -117,7 +128,6 @@ function buildDepositSchema(userRole, mode = "create") {
 
   return Joi.object(base);
 }
-
 
 /* ============================================================
    📌 CREATE DEPOSIT (LEDGER-FIRST – MASTER PARITY)
@@ -299,7 +309,6 @@ export const updateDeposit = async (req, res) => {
 
 /* ============================================================
    📌 GET ALL DEPOSITS (MASTER-ALIGNED – CONSULTATION PARITY)
-   ✅ FIXED → FACILITY ACCESS MATCHES REGISTRATION LOG
 ============================================================ */
 export const getAllDeposits = async (req, res) => {
   try {
@@ -344,16 +353,13 @@ export const getAllDeposits = async (req, res) => {
       }
     }
 
-    /* ================= TENANT SCOPE (FIXED) ================= */
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
-      // 🔒 ALWAYS restrict by org
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
-      // ✅ MATCH REGISTRATION LOG
       if (isFacilityHead(req.user)) {
-        // facility head → ONLY their facility
         options.where[Op.and].push({
           [Op.or]: [
             { facility_id: { [Op.in]: req.user.facility_ids } },
@@ -362,18 +368,12 @@ export const getAllDeposits = async (req, res) => {
         });
       }
 
-      if (isOrgLevelUser(req.user) && req.query.facility_id) {
-        options.where[Op.and].push({
-          facility_id: req.query.facility_id,
-        });
-      } else if (req.query.facility_id) {
-        // others → can filter facility
+      if (req.query.facility_id) {
         options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
     } else {
-      // superadmin → full control
       if (req.query.organization_id) {
         options.where[Op.and].push({
           organization_id: req.query.organization_id,
@@ -411,16 +411,27 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
-    // 🔥 SAFE ADD: currency filter (non-breaking)
     if (req.query.currency) {
       options.where[Op.and].push({
         currency: req.query.currency,
       });
     }
 
-    /* ========================================================
-       🔍 GLOBAL SEARCH (MASTER)
-    ======================================================== */
+    // 🔥 ADD (was missing)
+    if (req.query.account_id) {
+      options.where[Op.and].push({
+        account_id: req.query.account_id,
+      });
+    }
+
+    // 🔥 ADD (was missing)
+    if (req.query.transaction_ref) {
+      options.where[Op.and].push({
+        transaction_ref: { [Op.iLike]: `%${req.query.transaction_ref}%` },
+      });
+    }
+
+    /* ================= SEARCH ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [
@@ -431,7 +442,7 @@ export const getAllDeposits = async (req, res) => {
       });
     }
 
-    /* ================= MAIN QUERY ================= */
+    /* ================= QUERY ================= */
     const { count, rows } = await Deposit.findAndCountAll({
       where: options.where,
       include: DEPOSIT_INCLUDES,
@@ -458,18 +469,6 @@ export const getAllDeposits = async (req, res) => {
       summary[status] = found ? Number(found.get("count")) : 0;
     });
 
-    /* ================= AUDIT ================= */
-    await auditService.logAction({
-      user: req.user,
-      module: MODULE_KEY,
-      action: "list",
-      details: {
-        query: safeQuery,
-        returned: count,
-        pagination: { page, limit },
-      },
-    });
-
     /* ================= RESPONSE ================= */
     return success(res, "✅ Deposits loaded", {
       records: rows,
@@ -483,13 +482,9 @@ export const getAllDeposits = async (req, res) => {
     });
   } catch (err) {
     debug.error("getAllDeposits → FAILED", err);
-    if (err.statusCode === 400) {
-      return error(res, err.message, null, 400);
-    }
     return error(res, "❌ Failed to load deposits", err);
   }
 };
-
 /* ============================================================
    📌 GET ALL DEPOSITS (LITE – AUTOCOMPLETE PARITY + REFUND SAFE)
 ============================================================ */

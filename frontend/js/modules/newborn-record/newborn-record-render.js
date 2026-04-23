@@ -237,7 +237,7 @@ export function renderList({ entries, visibleFields, viewMode, userRole }) {
   }
 
   // ⚡ Setup Export Buttons (bind once)
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */

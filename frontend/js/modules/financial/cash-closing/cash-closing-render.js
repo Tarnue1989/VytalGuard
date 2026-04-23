@@ -210,7 +210,7 @@ export function renderCashClosingList({ entries, visibleFields, viewMode, userRo
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */
