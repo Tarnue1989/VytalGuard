@@ -307,6 +307,7 @@ export const getAllAccounts = async (req, res) => {
     return error(res, "❌ Failed to load accounts", err);
   }
 };
+
 /* ============================================================ */
 /* 📌 GET ACCOUNT BY ID */
 export const getAccountById = async (req, res) => {
@@ -353,7 +354,9 @@ export const getAccountById = async (req, res) => {
 };
 
 /* ============================================================ */
-/* 📌 GET ALL ACCOUNTS (LITE) */
+/* ============================================================
+   📌 GET ALL ACCOUNTS (LITE) — FINAL FIXED
+============================================================ */
 export const getAllAccountsLite = async (req, res) => {
   try {
     const allowed = await authzService.checkPermission({
@@ -378,6 +381,11 @@ export const getAllAccountsLite = async (req, res) => {
       }
     }
 
+    /* ================= 🔥 CURRENCY FILTER (FIX) ================= */
+    if (req.query.currency) {
+      where.currency = req.query.currency;
+    }
+
     /* ================= FETCH ================= */
     const records = await Account.findAll({
       where,
@@ -395,7 +403,7 @@ export const getAllAccountsLite = async (req, res) => {
       currency: r.currency,
     }));
 
-    /* ================= RESPONSE (FIXED) ================= */
+    /* ================= RESPONSE ================= */
     return success(res, "✅ Accounts (lite) loaded", {
       records: lite,
     });
@@ -404,6 +412,7 @@ export const getAllAccountsLite = async (req, res) => {
     return error(res, "❌ Failed to load accounts (lite)", err);
   }
 };
+
 /* ============================================================
    📌 TOGGLE ACCOUNT STATUS (🔥 FINAL FIXED)
 ============================================================ */

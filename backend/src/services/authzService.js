@@ -130,7 +130,8 @@ export const authzService = {
       .replace(/-/g, "_")
       .replace(/\s+/g, "_");
 
-    if (!normalizedModule.endsWith("s")) {
+    // ✅ DO NOT pluralize system modules (they already use correct names)
+    if (!normalizedModule.includes("_") && !normalizedModule.endsWith("s")) {
       normalizedModule += "s";
     }
 

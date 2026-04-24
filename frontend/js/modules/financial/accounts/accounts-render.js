@@ -209,7 +209,7 @@ export function renderAccountList({ entries, visibleFields, viewMode, userRole }
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
 /* -------------------------- export handlers --------------------------- */

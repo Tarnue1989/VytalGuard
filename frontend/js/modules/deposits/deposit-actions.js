@@ -159,7 +159,12 @@ export function setupActionHandlers({
      ⚙️ Action Handlers
   ============================================================ */
   function handleView(entry) {
-    const html = renderCard(entry, visibleFields, user);
+    // 🔥 ensure account is always included in modal
+    const fields = visibleFields?.includes("account")
+      ? visibleFields
+      : ["account", ...(visibleFields || [])];
+
+    const html = renderCard(entry, fields, user);
     openViewModal("Deposit Info", html);
   }
 

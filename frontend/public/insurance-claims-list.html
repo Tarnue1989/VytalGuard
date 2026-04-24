@@ -326,6 +326,58 @@
 
     </div>
   </div>
+
+    <!-- ✅ MARK CLAIM PAID MODAL -->
+  <div id="claimMarkPaidModal" class="modal hidden">
+    <div class="modal-content">
+
+      <!-- HEADER -->
+      <div class="modal-header">
+        <h2>Mark Claim as Paid</h2>
+        <button class="close-btn" data-close="claimMarkPaidModal">&times;</button>
+      </div>
+
+      <!-- BODY -->
+      <div class="modal-body">
+        <form id="claimMarkPaidForm">
+
+          <!-- Hidden Claim ID -->
+          <input type="hidden" id="markPaidClaimId">
+
+          <!-- Account Selection -->
+          <div class="mb-3">
+            <label class="form-label">Select Account</label>
+            <select
+              id="markPaidAccountSelect"
+              class="form-select"
+              required
+            >
+              <!-- 🔥 populated dynamically -->
+            </select>
+            <small class="text-muted">
+              Only accounts matching claim currency are shown
+            </small>
+          </div>
+
+          <!-- ACTIONS -->
+          <div class="d-flex justify-content-end gap-2">
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              data-close="claimMarkPaidModal"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-check me-1"></i> Confirm Payment
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+    </div>
+  </div>
   <!-- JS (UNCHANGED) -->
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/bootstrap.bundle.min.js"></script>

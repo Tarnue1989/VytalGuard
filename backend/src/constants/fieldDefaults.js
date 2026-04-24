@@ -453,12 +453,37 @@ export const FIELD_DEFAULTS_CONSULTATION = {
 /* -------------------- Deposit -------------------- */
 export const FIELD_DEFAULTS_DEPOSIT = {
   admin: FIELD_ORDER_DEPOSIT,
-  manager: [ "deposit_number",   
-    "patient_id", "organization_id", "facility_id", "applied_invoice_id",
-    "amount", "applied_amount", "remaining_balance", "unapplied_amount",
-    "method", "transaction_ref", "status", "notes", "reason"
+  manager: [
+    "deposit_number",
+
+    "patient_id", "organization_id", "facility_id",
+    "applied_invoice_id",
+
+    "account_id",
+    "amount", "currency",
+
+    "applied_amount",
+    "unapplied_amount",
+    "refund_amount",
+    "balance",
+    "remaining_balance",
+
+    "is_refundable",
+
+    "method",
+    "transaction_ref",
+    "status",
+    "notes",
+    "reason"
   ],
-  staff: [ "deposit_number", "amount", "method", "transaction_ref", "status", "reason"]
+  staff: [
+    "deposit_number",
+    "amount", "currency",
+    "method",
+    "transaction_ref",
+    "status",
+    "reason"
+  ]
 };
 
 /* -------------------- Financial Ledger -------------------- */
@@ -1046,16 +1071,27 @@ export const FIELD_DEFAULTS_RADIOLOGY_RECORD = {
 /* -------------------- Payment -------------------- */
 export const FIELD_DEFAULTS_PAYMENT = {
   admin: FIELD_ORDER_PAYMENT,
-  manager: [ "payment_number", 
+  manager: [
+    "payment_number",
     "invoice_id", "patient_id", "organization_id", "facility_id",
-    "amount", "method", "status", "transaction_ref", "is_deposit", "reason"
+
+    "account_id",        // 🔥 added
+    "amount", "currency",// 🔥 added
+
+    "method", "status",
+    "transaction_ref",
+    "is_deposit",
+    "reason"
   ],
-  staff: [ "payment_number", 
+  staff: [
+    "payment_number",
     "invoice_id", "patient_id",
-    "amount", "method", "status", "reason"
+
+    "amount", "currency", // 🔥 added
+    "method", "status",
+    "reason"
   ],
 };
-
 
 /* -------------------- Ward -------------------- */
 export const FIELD_DEFAULTS_WARD = {

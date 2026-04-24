@@ -45,7 +45,7 @@
 .text-amber,.border-amber,.btn-outline-amber{color:#fbbf24!important;border-color:#fbbf24!important}
 
 /* Org & Admin */
-.text-blue,.border-blue,.btn-outline-blue{color:#2563eb!important;border-color:#2563eb!important}
+.text-blue,.border-blue,.btn-outline-blue{color:#2563eb!important;border-color:#2564eb15!important}
 .text-green,.border-green,.btn-outline-green{color:#16a34a!important;border-color:#16a34a!important}
 .text-violet,.border-violet,.btn-outline-violet{color:#8b5cf6!important;border-color:#8b5cf6!important}
 .text-lime,.border-lime,.btn-outline-lime{color:#84cc16!important;border-color:#84cc16!important}
@@ -1548,259 +1548,6 @@ Purpose:
 }
 
 
-
-
-
-/* =========================
-   🧩 CATEGORY BAR (CONNECTED)
-========================= */
-.modules-categories-wrap {
-  padding: 12px 16px 6px;
-  
-  background: linear-gradient(
-    180deg,
-    #f8fafc 0%,
-    #eef2f7 100%
-  );
-
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.modules-categories {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-
-/* =========================================================
-🧱 BASE TAB (FINAL CLEAN — ALIGNED + COMPACT)
-========================================================= */
-.modules-categories button {
-  position: relative;
-  border: none !important;
-  background: transparent !important;
-
-  /* 🔥 FIXED SIZE (match btn-sm / export buttons) */
-  height: 32px;
-  padding: 0 10px;              /* horizontal only (no vertical growth) */
-  
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1;
-
-  /* 🔥 ALIGNMENT */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-
-  color: #64748b !important;
-
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-
-  cursor: pointer;
-
-  margin-left: -6px;
-  z-index: 1;
-
-  transition: all 0.2s ease;
-}
-
-/* 🔥 TAB SURFACE */
-.modules-categories button::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-
-background: linear-gradient(
-  180deg,
-  #f5f7ff,
-  #eef2ff
-);
-
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-
-  z-index: -1;
-}
-
-/* 🔥 HOVER */
-.modules-categories button:hover {
-  color: #111827 !important;
-  transform: translateY(-1px);
-}
-
-/* 🔥 ACTIVE (MATCH DASHBOARD) */
-.modules-categories button.active {
-  color: #4f46e5 !important;
-  font-weight: 700;
-  transform: translateY(2px);
-  z-index: 5;
-}
-
-/* 🔥 ACTIVE SURFACE */
-.modules-categories button.active::before {
-  background: #ffffff;
-
-  box-shadow:
-    0 -3px 10px rgba(0,0,0,0.08),
-    0 2px 0 #ffffff,
-    0 10px 22px rgba(0,0,0,0.10);
-}
-
-/* 🔥 BADGE */
-.modules-categories button .badge {
-  background: rgba(0,0,0,0.05);
-  color: #111827;
-  font-size: 10px;
-}
-
-/* 🔥 ACTIVE BADGE */
-.modules-categories button.active .badge {
-  background: #4f46e5;
-  color: #fff;
-}
-
-.modules-categories button:hover {
-  background: #e0e7ff;
-  color: #4f46e5;
-}
-
-
-/* =========================================================
-🔥 MODULE CATEGORY TABS — FINAL (ELITE / PRODUCT-READY)
-========================================================= */
-
-/* 🔷 WRAPPER (gives tabs a surface) */
-.modules-categories-wrap {
-  padding: 12px 16px 6px;
-
-  background: linear-gradient(
-    180deg,
-    #f8fafc 0%,
-    #eef2f7 100%
-  );
-
-  border-bottom: 1px solid #e5e7eb;
-}
-
-/* 🔷 TAB ROW */
-.modules-categories {
-  display: flex;
-  align-items: flex-end;
-  gap: 0;
-  padding-left: 6px;
-  overflow-x: auto;
-}
-
-
-/* first tab fix */
-.modules-categories button:first-child {
-  margin-left: 0;
-}
-
-/* 🔷 INACTIVE TAB SURFACE */
-.modules-categories button::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-
-  background: linear-gradient(
-    180deg,
-    #eef2f7,
-    #e5e7eb
-  );
-
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-
-  z-index: -1;
-}
-
-/* 🔷 HOVER */
-.modules-categories button:hover {
-  color: #111827 !important;
-  transform: translateY(-1px);
-}
-
-/* =========================================================
-🔥 ACTIVE TAB — PREMIUM (FINAL)
-========================================================= */
-.modules-categories button.active {
-  color: #111827 !important;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-
-  z-index: 5;
-  transform: translateY(2px);
-}
-
-/* 🔥 elevated surface */
-.modules-categories button.active::before {
-  background: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    #f9fafb 100%
-  );
-
-  box-shadow:
-    0 -3px 10px rgba(0,0,0,0.08),
-    0 2px 0 #ffffff,
-    0 10px 22px rgba(0,0,0,0.10);
-}
-
-/* 🔥 subtle top highlight */
-.modules-categories button.active::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 15%;
-  width: 70%;
-  height: 2px;
-
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(99,102,241,0.6),
-    transparent
-  );
-
-  border-radius: 2px;
-}
-
-/* =========================================================
-🏷 BADGES
-========================================================= */
-
-/* base badge */
-.modules-categories .badge {
-  font-size: 10px;
-  margin-left: 6px;
-
-  background: rgba(0,0,0,0.05) !important;
-  color: #111827 !important;
-}
-
-/* active badge */
-.modules-categories button.active .badge {
-  background: linear-gradient(
-    135deg,
-    #eef2ff,
-    #e0e7ff
-  ) !important;
-
-  color: #4338ca !important;
-  font-weight: 600;
-
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-
-
-
-
-
 /* ================= DASHBOARD SECTIONS ================= */
 .dashboard-section {
   margin-bottom: 16px;
@@ -2010,3 +1757,146 @@ background: linear-gradient(
 
 
 
+
+
+
+
+
+
+/* =========================================================
+🔥 MODULE CATEGORY TABS — FINAL (CONNECTED + WRAPPED IN CARD)
+========================================================= */
+
+/* 🔷 WRAPPER */
+.modules-categories-wrap {
+  padding: 10px 14px 6px;
+  background: linear-gradient(180deg, #f8fafc, #eef2f7);
+  border-bottom: 1px solid #e5e7eb;
+
+  overflow: hidden; /* 🔥 keep inside card */
+}
+
+/* 🔷 TAB ROW (WRAPS CLEANLY — NO SCROLL) */
+.modules-categories {
+  display: flex;
+  flex-wrap: wrap;              /* 🔥 wrap inside card */
+  align-items: flex-end;
+
+  padding-left: 6px;
+
+  gap: 6px 0;                   /* 🔥 vertical spacing only */
+}
+
+/* 🔷 BASE TAB */
+.modules-categories button {
+  position: relative;
+  border: none !important;
+  background: transparent !important;
+
+  height: 32px;
+  padding: 0 12px;
+
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+
+  color: #64748b !important;
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  cursor: pointer;
+
+  margin-left: -6px;           /* 🔥 connected effect */
+  z-index: 1;
+
+  transition: all 0.2s ease;
+}
+
+/* 🔥 FIX FIRST TAB */
+.modules-categories button:first-child {
+  margin-left: 0;
+}
+
+/* 🔥 FIX NEW ROW START (prevents overlap bug) */
+.modules-categories button:nth-child(6n+1) {
+  margin-left: 0;
+}
+
+/* 🔷 TAB SURFACE */
+.modules-categories button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(180deg, #eef2f7, #e5e7eb);
+
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+
+  z-index: -1;
+}
+
+/* 🔷 HOVER */
+.modules-categories button:hover {
+  color: #111827 !important;
+  transform: translateY(-1px);
+}
+
+/* 🔥 ACTIVE TAB (CLEAR + RAISED) */
+.modules-categories button.active {
+  color: #4f46e5 !important;
+  font-weight: 700;
+
+  transform: translateY(2px);
+  z-index: 5;
+}
+
+/* 🔥 ACTIVE SURFACE */
+.modules-categories button.active::before {
+  background: #ffffff;
+
+  box-shadow:
+    0 -3px 10px rgba(0,0,0,0.08),
+    0 2px 0 #ffffff,
+    0 10px 20px rgba(0,0,0,0.10);
+}
+
+/* 🔥 ACTIVE TOP HIGHLIGHT */
+.modules-categories button.active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 15%;
+  width: 70%;
+  height: 2px;
+
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(99,102,241,0.6),
+    transparent
+  );
+
+  border-radius: 2px;
+}
+
+/* 🔷 BADGE */
+.modules-categories .badge {
+  font-size: 10px;
+  margin-left: 6px;
+
+  background: rgba(0,0,0,0.05) !important;
+  color: #111827 !important;
+}
+
+/* 🔥 ACTIVE BADGE */
+.modules-categories button.active .badge {
+  background: #4f46e5 !important;
+  color: #fff !important;
+}

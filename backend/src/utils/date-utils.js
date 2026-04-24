@@ -59,3 +59,11 @@ export function normalizeDateRangeLocal(range) {
 
   return { start, end };
 }
+
+// Get current LOCAL date (YYYY-MM-DD) — avoids UTC shift issues from toISOString()
+export function getLocalDate() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0];
+}

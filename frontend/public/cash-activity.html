@@ -4,10 +4,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VytalGuard - Accounts List</title>
+  <title>VytalGuard - Cash Activity</title>
 
-  <!-- Meta -->
-  <meta name="description" content="VytalGuard HMS - Accounts List" />
+  <meta name="description" content="VytalGuard HMS - Cash Activity" />
   <link rel="shortcut icon" href="assets/images/favicon.svg" />
 
   <!-- CSS (UNCHANGED) -->
@@ -18,11 +17,11 @@
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css" />
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css" />
   <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
   <link rel="stylesheet" href="assets/css/summary.css" />
+  <link rel="stylesheet" href="assets/css/timeline.css" />
 </head>
 
 <body>
@@ -38,10 +37,8 @@
           <li class="breadcrumb-item">
             <a href="dashboard.html"><i class="ri-home-3-line"></i></a>
           </li>
-          <li class="breadcrumb-item">Accounts</li>
-          <li class="breadcrumb-item text-primary" aria-current="page">
-            Accounts List
-          </li>
+          <li class="breadcrumb-item">Finance</li>
+          <li class="breadcrumb-item text-primary">Cash Activity</li>
         </ol>
       </div>
 
@@ -53,25 +50,19 @@
 
               <!-- Header -->
               <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 class="card-title mb-0">Accounts</h5>
-                <a href="add-accounts.html" class="btn btn-primary ms-auto">
-                  <i class="ri-add-line me-1"></i> Add Account
-                </a>
+                <h5 class="card-title mb-0">Cash Activity</h5>
               </div>
 
               <div class="card-body">
 
-                <!-- ============================================================ -->
-                <!-- 🔍 FILTERS (SIMPLIFIED) -->
-                <!-- ============================================================ -->
+                <!-- FILTER (ONLY SMALL CHANGES) -->
                 <div class="card panel-card mb-3">
                   <div class="card-header d-flex align-items-center justify-content-between">
+
                     <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
                       <i class="fas fa-filter me-1"></i> Filters
-                      <i id="filterChevron" class="fas fa-chevron-down ms-1"></i>
                     </button>
 
-                    <!-- Export -->
                     <div class="view-actions d-flex gap-2">
                       <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
                       <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
@@ -80,45 +71,76 @@
                   </div>
 
                   <div id="filterCollapse" class="card-body filter-body hidden">
-                    <div class="row gx-3 gy-2">
 
-                      <!-- Search -->
-                      <div class="col-md-3">
-                        <label class="form-label">Search</label>
-                        <input id="globalSearch" class="form-control" placeholder="Search..." />
-                      </div>
+                    <div class="row gx-3 gy-2 filter-grid compact">
 
-                      <!-- Type -->
-                      <div class="col-md-3">
-                        <label class="form-label">Type</label>
-                        <select id="filterType" class="form-select">
-                          <option value="">All</option>
-                          <option value="cash">Cash</option>
-                          <option value="bank">Bank</option>
-                          <option value="mobile_money">Mobile Money</option>
-                          <option value="other">Other</option>
+                      <!-- Account -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label">Account</label>
+                        <select id="filterAccountSelect" class="form-select">
+                          <option value="">All Accounts</option>
                         </select>
                       </div>
 
-                      <!-- Status -->
-                      <div class="col-md-3">
-                        <label class="form-label">Status</label>
-                        <select id="filterStatus" class="form-select">
+                      <!-- Direction -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label">Direction</label>
+                        <select id="filterDirection" class="form-select">
                           <option value="">All</option>
-                          <option value="true">Active</option>
-                          <option value="false">Inactive</option>
+                          <option value="in">In</option>
+                          <option value="out">Out</option>
                         </select>
+                      </div>
+
+                      <!-- Currency -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label">Currency</label>
+                        <select id="filterCurrency" class="form-select">
+                          <option value="">All</option>
+                          <option value="USD">USD</option>
+                          <option value="LRD">LRD</option>
+                        </select>
+                      </div>
+
+                      <!-- Org -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label">Organization</label>
+                        <select id="filterOrganizationSelect" class="form-select"></select>
+                      </div>
+
+                      <!-- Facility -->
+                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                        <label class="form-label">Facility</label>
+                        <select id="filterFacilitySelect" class="form-select"></select>
+                      </div>
+
+
+                      <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
+                      <div class="col-md-3">
+                        <div class="field-wrapper">
+                          <label for="dateRange" class="form-label">Date Range</label>
+                          <div class="input-group">
+                            <span class="input-group-text bg-primary-lighten">
+                              <i class="ri-calendar-2-line text-primary"></i>
+                            </span>
+                            <input
+                              type="text"
+                              id="dateRange"
+                              class="form-control custom-daterange"
+                              placeholder="Select date range"
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       <div class="col-12 mt-2">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                          Clear
-                        </button>
+                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">Clear</button>
                       </div>
 
                     </div>
                   </div>
                 </div>
+
                 <!-- ============================================================ -->
                 <!-- 🧭 VIEW CONTROLS -->
                 <!-- ============================================================ -->
@@ -180,15 +202,15 @@
                 <div class="table-responsive table-container active">
                   <table class="table m-0 align-middle data-table print-table">
                     <thead id="dynamicTableHead"></thead>
-                    <tbody id="accountTableBody"></tbody>
+                    <tbody id="cashActivityTableBody"></tbody>
                   </table>
                 </div>
 
-                <!-- CARD -->
-                <div id="accountList" class="card-list"></div>
+                <!-- CARDS -->
+                <div id="cashActivityList" class="card-list"></div>
 
                 <!-- PAGINATION -->
-                <div id="paginationButtons" class="text-center mt-3"></div>
+                <div id="paginationButtons" class="pagination-controls text-center mt-3"></div>
 
               </div>
             </div>
@@ -196,59 +218,28 @@
         </div>
       </div>
 
-      <!-- Footer -->
       <div class="app-footer">
         <span>© VytalGuard HMS 2025</span>
       </div>
+
     </div>
   </div>
 
-  <!-- Loading -->
-  <div id="loadingOverlay" class="hidden">
-    <div class="spinner-box">
-      <i class="fas fa-spinner fa-spin"></i> Loading...
-    </div>
-  </div>
-
-  <!-- View Modal -->
-  <div id="viewModal" class="modal hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="viewModalTitle">Details</h2>
-        <button id="closeViewModal" class="close-btn">&times;</button>
-      </div>
-      <div class="modal-body" id="viewModalBody"></div>
-    </div>
-  </div>
-
-  <!-- JS (UNCHANGED EXCEPT MODULE) -->
+  <!-- JS (UNCHANGED BASE) -->
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/moment.min.js"></script>
-  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
-  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
   <script src="assets/vendor/daterange/daterange.js"></script>
   <script src="assets/vendor/daterange/custom-daterange.js"></script>
-  <script src="assets/vendor/datatables/dataTables.min.js"></script>
-  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
-  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
-  <script src="assets/js/custom.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-  <!-- ONLY CHANGED -->
-  <script type="module" src="/js/modules/accounts/accounts-filter-main.js"></script>
-  <script type="module" src="/js/modules/accounts/accounts-render.js"></script>
-
-  <!-- KEEP OTHERS -->
   <script type="module" src="/js/logout.js"></script>
   <script type="module" src="/js/authSession.js"></script>
+
+  <!-- 🔥 ONLY CHANGE -->
+  <script type="module" src="/js/modules/cash-activity/cash-activity.js"></script>
+
+  <!-- KEEP -->
   <script type="module" src="/js/modules/shared/list-export.js"></script>
   <script type="module" src="/js/utils/navigation.js"></script>
-    <script type="module" src="/js/utils/navigation.js"></script>
-
-  <!-- AUTH -->
-  <script type="module" src="/js/authSession.js"></script>
 
 </body>
 </html>

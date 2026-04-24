@@ -113,8 +113,12 @@ export async function setupCashClosingForm({ form }) {
   }
 
   /* ================= SUBMIT ================= */
-  form.onsubmit = async (e) => {
+ form.onsubmit = async (e) => {
     e.preventDefault();
+
+    const submitBtn = form.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+
     clearFormErrors(form);
 
     const errors = [];
@@ -134,6 +138,8 @@ export async function setupCashClosingForm({ form }) {
     if (errors.length) {
       applyServerErrors(form, errors);
       showToast("❌ Please fix highlighted fields");
+
+      if (submitBtn) submitBtn.disabled = false; // 🔥 re-enable on validation fail
       return;
     }
 
@@ -170,6 +176,8 @@ export async function setupCashClosingForm({ form }) {
       showToast(err.message || "❌ Submission failed");
     } finally {
       hideLoading();
+
+      if (submitBtn) submitBtn.disabled = false; // 🔥 always re-enable
     }
   };
 

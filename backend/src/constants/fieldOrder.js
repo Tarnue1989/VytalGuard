@@ -381,10 +381,12 @@ export const FIELD_ORDER_CONSULTATION = [
 
 
 /* -------------------- Deposit -------------------- */
-export const FIELD_ORDER_DEPOSIT = ["deposit_number", 
+export const FIELD_ORDER_DEPOSIT = ["deposit_number",
   "id", "patient_id", "organization_id", "facility_id",
   "applied_invoice_id",
-  "amount", "applied_amount", "remaining_balance", "unapplied_amount",
+  "account_id", "amount", "currency",
+  "applied_amount", "unapplied_amount", "refund_amount", "balance", "remaining_balance",
+  "is_refundable",
   "method", "transaction_ref",
   "status", "notes", "reason",
   "created_at", "updated_at", "deleted_at",
@@ -906,10 +908,12 @@ export const FIELD_ORDER_RECOMMENDATION = [
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
 /* -------------------- Payment -------------------- */
-export const FIELD_ORDER_PAYMENT = ["payment_number", 
+export const FIELD_ORDER_PAYMENT = ["payment_number",
   "id", "invoice_id", "patient_id", "organization_id", "facility_id",
-  "amount", "method", "status", "transaction_ref", "is_deposit",
-  "reason", "created_at", "updated_at", "deleted_at",
+  "account_id", "amount", "currency",
+  "method", "status", "transaction_ref", "is_deposit",
+  "reason",
+  "created_at", "updated_at", "deleted_at",
   "created_by_id", "updated_by_id", "deleted_by_id"
 ];
 

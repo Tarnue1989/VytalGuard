@@ -13,6 +13,8 @@ import {
 } from "../constants/enums.js";
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
+import { isDateLocked } from "./cashClosingService.js";
+import { getLocalDate } from "../utils/date-utils.js";
 
 /* ============================================================
    🔖 Local enum maps (FIXED — OBJECT ENUM SAFE)
@@ -85,6 +87,7 @@ const DSC = {
   VOIDED: DISCOUNT_STATUS.VOIDED,
 };
 
+
 /* ============================================================
    🔹 Helper: Write to FinancialLedger (ENTERPRISE MASTER FINAL)
 ============================================================ */
@@ -121,6 +124,7 @@ async function logLedger({
   const ledgerData = {
     organization_id,
     facility_id,
+    account_id: account_id || null,
     patient_id: patient_id || null,
     invoice_id: invoice_id || null,
     amount: parseFloat(amount),
@@ -193,83 +197,72 @@ async function logLedger({
 ============================================================ */
 export const financialService = {
   /* ----------------- Payments (TRANSACTION-SAFE) ----------------- */
-async applyPayment({
-  invoice_id,
-  amount,
-  method,
-  transaction_ref,
-  user,
-  organization_id,
-  facility_id,
-  allow_locked_payment = false,
-  t,
-}) {
-  if (!t) {
-    throw new Error("❌ Transaction (t) is required for applyPayment");
-  }
-
-  /* ============================
-     🔍 DEBUG: ENTRY PAYLOAD
-  ============================ */
-  console.log("💰 [applyPayment] START", {
+  /* ----------------- Payments (FIXED – ACCOUNT + LEDGER SAFE) ----------------- */
+  async applyPayment({
     invoice_id,
+    account_id, // 🔥 NEW (REQUIRED)
     amount,
     method,
     transaction_ref,
+    user,
     organization_id,
     facility_id,
-    user_org: user?.organization_id,
-    user_fac: user?.facility_id,
-  });
+    allow_locked_payment = false,
+    t,
+  }) {
+    if (!t) {
+      throw new Error("❌ Transaction (t) is required for applyPayment");
+    }
 
-  /* ============================
-     🧠 DEBUG: ACTIVE DATABASE
-  ============================ */
-  const [dbName] = await sequelize.query("select current_database()");
-  console.log("🧠 [applyPayment] Connected DB:", dbName?.current_database);
+    if (!account_id) {
+      throw new Error("❌ account_id is required for payment");
+    }
+    /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+    const today = getLocalDate();
 
-  /* ============================
-     🔒 LOAD + LOCK INVOICE
-  ============================ */
-  const invoice = await db.Invoice.findByPk(invoice_id, {
-    transaction: t,
-    lock: t.LOCK.UPDATE,
-  });
+    const locked = await isDateLocked({
+      account_id,
+      date: today,
+      organization_id,
+    });
 
-  console.log("📄 [applyPayment] Invoice lookup:", {
-    found: !!invoice,
-    id: invoice?.id,
-    org: invoice?.organization_id,
-    fac: invoice?.facility_id,
-    status: invoice?.status,
-  });
+    if (locked && !allow_locked_payment) {
+      throw new Error("❌ This day is already closed for this account");
+    }
+    /* ============================
+      🔒 LOAD ACCOUNT (CRITICAL)
+    ============================ */
+    const account = await db.Account.findByPk(account_id, { transaction: t });
+    if (!account) throw new Error("❌ Account not found");
 
-  /* ============================
-     🧪 RAW SQL CHECK (IF NULL)
-  ============================ */
-  if (!invoice) {
-    const [rows] = await sequelize.query(
-      `SELECT id, invoice_number, organization_id, facility_id, status
-       FROM invoices
-       WHERE id = :id`,
-      {
-        replacements: { id: invoice_id },
-        transaction: t,
-      }
-    );
+    /* ============================
+      🔒 LOAD + LOCK INVOICE
+    ============================ */
+    const invoice = await db.Invoice.findByPk(invoice_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
-    console.log("🧪 [applyPayment] Raw SQL invoice check:", rows);
-    throw new Error("❌ Invoice not found");
-  }
+    if (!invoice) {
+      throw new Error("❌ Invoice not found");
+    }
 
+    if (parseFloat(amount) <= 0) {
+      throw new Error("❌ Payment amount must be greater than 0");
+    }
 
-  if (parseFloat(amount) <= 0) {
-    throw new Error("❌ Payment amount must be greater than 0");
-  }
+    /* ============================
+      🔒 CURRENCY ENFORCEMENT
+    ============================ */
+    if (invoice.currency !== account.currency) {
+      throw new Error(
+        `❌ Currency mismatch: account is ${account.currency}, invoice is ${invoice.currency}`
+      );
+    }
 
-  /* ============================
-     💳 CREATE PAYMENT
-  ============================ */
+    /* ============================
+      💳 CREATE PAYMENT
+    ============================ */
     const payment = await db.Payment.create(
       {
         invoice_id,
@@ -277,8 +270,9 @@ async applyPayment({
         facility_id: facility_id ?? invoice.facility_id,
         patient_id: invoice.patient_id,
 
-        // 🔥 FIX — ALWAYS DERIVE FROM INVOICE
-        currency: invoice.currency,
+        account_id, // 🔥 NEW
+
+        currency: invoice.currency, // always from invoice
 
         amount,
         method,
@@ -290,42 +284,54 @@ async applyPayment({
       { transaction: t, user }
     );
 
-  console.log("💳 [applyPayment] Payment created:", {
-    payment_id: payment.id,
-    amount: payment.amount,
-    status: payment.status,
-  });
+    /* ============================
+      📒 FINANCIAL LEDGER (AUDIT)
+    ============================ */
+    await logLedger({
+      type: "payment",
+      entity: payment,
+      organization_id: payment.organization_id,
+      facility_id: payment.facility_id,
+      account_id: account_id, // 🔥 ADD THIS
+      patient_id: payment.patient_id,
+      invoice_id,
+      amount,
+      method,
+      note: `Payment of ${amount} via ${method}`,
+      user,
+      t,
+    });
 
-  /* ============================
-     📒 LEDGER ENTRY
-  ============================ */
-  await logLedger({
-    type: "payment",
-    entity: payment,
-    organization_id: payment.organization_id,
-    facility_id: payment.facility_id,
-    patient_id: payment.patient_id,
-    invoice_id,
-    amount,
-    method,
-    note: `Payment of ${amount} via ${method}`,
-    user,
-    t,
-  });
+    /* ============================
+      💰 CASH LEDGER (REAL MONEY) 🔥
+    ============================ */
+    await db.CashLedger.create(
+      {
+        date: today,
+        type: LEDGER_TYPES.COLLECTION,
+        direction: LEDGER_DIRECTIONS.IN,
 
-  /* ============================
-     🔄 RECALC INVOICE
-  ============================ */
-  const updatedInvoice = await recalcInvoice(invoice_id, t);
+        account_id,
+        amount,
+        currency: payment.currency,
 
-  console.log("🔄 [applyPayment] Invoice recalculated:", {
-    invoice_id: updatedInvoice?.id,
-    balance: updatedInvoice?.balance,
-    status: updatedInvoice?.status,
-  });
+        reference_type: "payment",
+        reference_id: payment.id,
 
-  return { payment, invoice: updatedInvoice };
-},
+        organization_id: payment.organization_id,
+        facility_id: payment.facility_id,
+        created_by_id: user?.id,
+      },
+      { transaction: t }
+    );
+
+    /* ============================
+      🔄 RECALC INVOICE
+    ============================ */
+    const updatedInvoice = await recalcInvoice(invoice_id, t);
+
+    return { payment, invoice: updatedInvoice };
+  },
 
   async completePayment({ payment_id, user, t }) {
     if (!t) {
@@ -367,8 +373,20 @@ async applyPayment({
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
-
       if (!payment) throw new Error("❌ Payment not found");
+
+      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+      const today = getLocalDate();
+
+      const locked = await isDateLocked({
+        account_id: payment.account_id,
+        date: today,
+        organization_id: payment.organization_id,
+      });
+
+      if (locked) {
+        throw new Error("❌ Cannot create refund — day is already closed for this account");
+      }
 
       if (parseFloat(amount) <= 0) {
         throw new Error("❌ Refund amount must be greater than 0");
@@ -461,18 +479,6 @@ async applyPayment({
           t,
         });
 
-        await logLedger({
-          type: "refund",
-          entity: refund,
-          organization_id: refund.organization_id,
-          facility_id: refund.facility_id,
-          patient_id: refund.patient_id,
-          invoice_id: refund.invoice_id,
-          amount: refund.amount,
-          note: `Refund approved`,
-          user,
-          t,
-        });
         /* ================= 🧾 TRANSACTION LOG ================= */
         await db.RefundTransaction.create(
           {
@@ -542,8 +548,11 @@ async applyPayment({
       });
     },
 
+    /* ----------------- Process Refund (FULL – LOCK SAFE) ----------------- */
     async processRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
+
+        /* ================= 🔒 LOAD REFUND ================= */
         const refund = await db.Refund.findByPk(refund_id, {
           transaction: t,
           lock: t.LOCK.UPDATE,
@@ -554,6 +563,30 @@ async applyPayment({
           throw new Error("❌ Refund must be approved before processing");
         }
 
+        /* ================= 🔒 LOAD PAYMENT (GET ACCOUNT) ================= */
+        const payment = await db.Payment.findByPk(refund.payment_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (!payment) throw new Error("❌ Original payment not found");
+
+        const account_id = payment.account_id;
+        const organization_id = refund.organization_id;
+
+        /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+        const today = getLocalDate();
+
+        const locked = await isDateLocked({
+          account_id,
+          date: today,
+          organization_id,
+        });
+
+        if (locked) {
+          throw new Error("❌ This day is already closed for this account");
+        }
+
+        /* ================= 🔄 UPDATE STATUS ================= */
         await applyLifecycleTransition({
           entity: refund,
           action: "processed",
@@ -562,6 +595,7 @@ async applyPayment({
           t,
         });
 
+        /* ================= 🧾 TRANSACTION LOG ================= */
         await db.RefundTransaction.create(
           {
             refund_id: refund.id,
@@ -577,11 +611,13 @@ async applyPayment({
           { transaction: t, user }
         );
 
+        /* ================= 📒 FINANCIAL LEDGER ================= */
         await logLedger({
           type: "refund",
           entity: refund,
           organization_id: refund.organization_id,
           facility_id: refund.facility_id,
+          account_id,
           patient_id: refund.patient_id,
           invoice_id: refund.invoice_id,
           amount: refund.amount,
@@ -590,7 +626,30 @@ async applyPayment({
           t,
         });
 
+        /* ================= 💰 CASH LEDGER ================= */
+        await db.CashLedger.create(
+          {
+            date: today,
+            type: LEDGER_TYPES.REFUND,
+            direction: LEDGER_DIRECTIONS.OUT, // 💸 money leaves
+
+            account_id,
+            amount: refund.amount,
+            currency: refund.currency,
+
+            reference_type: "refund",
+            reference_id: refund.id,
+
+            organization_id: refund.organization_id,
+            facility_id: refund.facility_id,
+            created_by_id: user?.id,
+          },
+          { transaction: t }
+        );
+
+        /* ================= 🔄 RECALC INVOICE ================= */
         const invoice = await recalcInvoice(refund.invoice_id, t);
+
         return { refund, invoice };
       });
     },
@@ -638,21 +697,46 @@ async applyPayment({
         return { refund };
       });
     },
+    /* ----------------- Reverse Refund (FULL – FINAL SAFE) ----------------- */
     async reverseRefund(refund_id, user) {
       return await sequelize.transaction(async (t) => {
+
+        /* ================= 🔒 LOAD REFUND ================= */
         const refund = await db.Refund.findByPk(refund_id, {
           transaction: t,
-          lock: t.LOCK.UPDATE, // 🔥 LOCK ADDED
+          lock: t.LOCK.UPDATE,
           paranoid: false,
         });
         if (!refund) throw new Error("❌ Refund not found");
 
+        /* ================= 🔒 LOAD PAYMENT (FOR ACCOUNT) ================= */
+        const payment = await db.Payment.findByPk(refund.payment_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (!payment) throw new Error("❌ Original payment not found");
+
+        /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+        const today = getLocalDate();
+
+        const locked = await isDateLocked({
+          account_id: payment.account_id,
+          date: today,
+          organization_id: payment.organization_id,
+        });
+
+        if (locked) {
+          throw new Error("❌ Cannot reverse refund — day is already closed for this account");
+        }
+
+        /* ================= STATUS GUARD ================= */
         if (refund.status !== RS.PROCESSED) {
           throw new Error(
             `❌ Only processed refunds can be reversed (current: ${refund.status})`
           );
         }
 
+        /* ================= 🔄 LIFECYCLE ================= */
         await applyLifecycleTransition({
           entity: refund,
           action: "reversed",
@@ -662,6 +746,7 @@ async applyPayment({
           t,
         });
 
+        /* ================= 🧾 TRANSACTION LOG ================= */
         await db.RefundTransaction.create(
           {
             refund_id: refund.id,
@@ -677,11 +762,13 @@ async applyPayment({
           { transaction: t, user }
         );
 
+        /* ================= 📒 FINANCIAL LEDGER ================= */
         await logLedger({
           type: "reversal",
           entity: refund,
           organization_id: refund.organization_id,
           facility_id: refund.facility_id,
+          account_id: payment.account_id,
           patient_id: refund.patient_id,
           invoice_id: refund.invoice_id,
           amount: refund.amount,
@@ -690,14 +777,43 @@ async applyPayment({
           t,
         });
 
+        /* ================= 💰 CASH LEDGER (REAL MONEY BACK) ================= */
+        await db.CashLedger.create(
+          {
+            date: today,
+            type: LEDGER_TYPES.REVERSAL,
+            direction: LEDGER_DIRECTIONS.IN, // 💰 money returns
+
+            account_id: payment.account_id,
+            amount: refund.amount,
+            currency: refund.currency,
+
+            reference_type: "refund_reversal",
+            reference_id: refund.id,
+
+            organization_id: refund.organization_id,
+            facility_id: refund.facility_id,
+            created_by_id: user?.id,
+          },
+          { transaction: t }
+        );
+
+        /* ================= 🔄 RECALC INVOICE ================= */
         const invoice = await recalcInvoice(refund.invoice_id, t);
-        return { refund, invoice, message: "✅ Refund reversed" };
+
+        return {
+          refund,
+          invoice,
+          message: "✅ Refund reversed successfully",
+        };
       });
     },
 
-    async voidRefund(refund_id, reason, user) {
+    /* ----------------- Void Refund (FULL – FINAL SAFE) ----------------- */
+    async voidRefund(refund_id, user, reason = null) {
       return await sequelize.transaction(async (t) => {
-        /* ================= 🔒 LOCK REFUND ================= */
+
+        /* ================= 🔒 LOAD REFUND ================= */
         const refund = await db.Refund.findByPk(refund_id, {
           transaction: t,
           lock: t.LOCK.UPDATE,
@@ -705,8 +821,12 @@ async applyPayment({
         if (!refund) throw new Error("❌ Refund not found");
 
         /* ================= STATUS GUARD ================= */
-        if ([RS.PROCESSED, RS.REVERSED].includes(refund.status)) {
-          throw new Error("❌ Processed or reversed refunds cannot be voided");
+        if (refund.status === RS.PROCESSED) {
+          throw new Error("❌ Cannot void a processed refund");
+        }
+
+        if (refund.status === RS.VOIDED) {
+          throw new Error("❌ Refund already voided");
         }
 
         /* ================= 🔄 LIFECYCLE ================= */
@@ -715,11 +835,11 @@ async applyPayment({
           action: "voided",
           nextStatus: RS.VOIDED,
           user,
-          reason,
+          reason: reason || "Refund voided",
           t,
         });
 
-        /* ================= 🧾 TRANSACTION LOG (ADDED FIX) ================= */
+        /* ================= 🧾 TRANSACTION LOG ================= */
         await db.RefundTransaction.create(
           {
             refund_id: refund.id,
@@ -735,24 +855,10 @@ async applyPayment({
           { transaction: t, user }
         );
 
-        /* ================= 📒 LEDGER REVERSAL ================= */
-        await logLedger({
-          type: "reversal",
-          entity: refund,
-          organization_id: refund.organization_id,
-          facility_id: refund.facility_id,
-          patient_id: refund.patient_id,
-          invoice_id: refund.invoice_id,
-          amount: -Math.abs(refund.amount),
-          note: `Refund voided · ${reason || "no reason"}`,
-          user,
-          t,
-        });
-
-        /* ================= 🔄 RECALC INVOICE ================= */
-        const invoice = await recalcInvoice(refund.invoice_id, t);
-
-        return { refund, invoice };
+        return {
+          refund,
+          message: "✅ Refund voided successfully",
+        };
       });
     },
     async restoreRefund(refund_id, user) {
@@ -808,29 +914,51 @@ async applyPayment({
       });
     },
 
-    /* ----------------- Deposits ----------------- */
+    /* ----------------- Deposits (FINAL – ACCOUNT + LEDGER + AUDIT SAFE) ----------------- */
     async applyDeposit({
       patient_id,
       organization_id,
       facility_id,
+      account_id,
       amount,
       method,
       transaction_ref,
       notes,
       reason,
       invoice_id,
-      currency, // 🔥 ADDED (allow standalone deposits)
+      currency,
       user,
       t,
     }) {
+      if (!t) throw new Error("❌ Transaction (t) is required");
+
+      if (!account_id) {
+        throw new Error("❌ account_id is required for deposit");
+      }
+      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+      const today = getLocalDate();
+
+      const locked = await isDateLocked({
+        account_id,
+        date: today,
+        organization_id,
+      });
+
+      if (locked) {
+        throw new Error("❌ This day is already closed for this account");
+      }
       if (parseFloat(amount) <= 0) {
         throw new Error("❌ Deposit amount must be greater than 0");
       }
 
+      /* ================= 🔒 LOAD ACCOUNT ================= */
+      const account = await db.Account.findByPk(account_id, { transaction: t });
+      if (!account) throw new Error("❌ Account not found");
+
       let appliedAmt = 0;
       let remaining = parseFloat(amount) || 0;
 
-      // 🔥 LOAD INVOICE (OPTIONAL — MASTER SAFE)
+      /* ================= 🔥 LOAD INVOICE (OPTIONAL) ================= */
       let invoice = null;
 
       if (invoice_id) {
@@ -842,31 +970,34 @@ async applyPayment({
         remaining -= appliedAmt;
       }
 
-      /* ============================================================
-        🔥 RESOLVE CURRENCY (FIXED — SUPPORT BOTH CASES)
-      ============================================================ */
+      /* ================= 🔥 RESOLVE CURRENCY ================= */
       let resolvedCurrency;
 
       if (invoice?.currency) {
-        // ✅ Case 1: Deposit tied to invoice
         resolvedCurrency = invoice.currency;
       } else {
-        // ✅ Case 2: Standalone deposit
         if (!currency) {
           throw new Error("❌ Currency is required when no invoice is provided");
         }
         resolvedCurrency = currency;
       }
 
+      /* ================= 🔒 CURRENCY ENFORCEMENT ================= */
+      if (resolvedCurrency !== account.currency) {
+        throw new Error(
+          `❌ Currency mismatch: account is ${account.currency}, deposit is ${resolvedCurrency}`
+        );
+      }
+
+      /* ================= 💰 CREATE DEPOSIT ================= */
       const deposit = await db.Deposit.create(
         {
           patient_id,
           organization_id,
           facility_id,
+          account_id,
           applied_invoice_id: invoice_id || null,
-
-          currency: resolvedCurrency, // ✅ ALWAYS SET
-
+          currency: resolvedCurrency,
           amount,
           method,
           transaction_ref,
@@ -887,11 +1018,13 @@ async applyPayment({
         { transaction: t, user }
       );
 
+      /* ================= 📒 FINANCIAL LEDGER (FIXED) ================= */
       await logLedger({
         type: "deposit",
         entity: deposit,
         organization_id,
         facility_id,
+        account_id: account_id, // 🔥 CRITICAL FIX
         patient_id,
         invoice_id,
         amount,
@@ -903,6 +1036,28 @@ async applyPayment({
         t,
       });
 
+      /* ================= 💰 CASH LEDGER ================= */
+      await db.CashLedger.create(
+        {
+          date: today,
+          type: LEDGER_TYPES.COLLECTION,
+          direction: LEDGER_DIRECTIONS.IN,
+
+          account_id,
+          amount,
+          currency: resolvedCurrency,
+
+          reference_type: "deposit",
+          reference_id: deposit.id,
+
+          organization_id,
+          facility_id,
+          created_by_id: user?.id,
+        },
+        { transaction: t }
+      );
+
+      /* ================= 🔄 RECALC ================= */
       let updatedInvoice = null;
       if (invoice_id) {
         updatedInvoice = await recalcInvoice(invoice_id, t);
@@ -910,6 +1065,7 @@ async applyPayment({
 
       return { deposit, invoice: updatedInvoice };
     },
+
     /* ----------------- Finalize Deposit ----------------- */
     async finalizeDeposit({ deposit_id, invoice_id = null, user, t }) {
       const useTx = t || await sequelize.transaction();
@@ -1438,7 +1594,8 @@ async applyPayment({
       });
     },
 
-    /* ----------------- reverseTransaction (waiver only) ----------------- */
+    /* ----------------- reverseTransaction (FINAL – FULL SAFE VERSION) ----------------- */
+    /* ----------------- reverseTransaction (FULL FIXED – ALL TYPES SAFE) ----------------- */
     async reverseTransaction({ type, id, user, reason = null }) {
       return await sequelize.transaction(async (t) => {
 
@@ -1478,39 +1635,91 @@ async applyPayment({
         }
 
         /* =========================
-          🔁 DEPOSIT REVERSAL (FIX)
+          🔁 DEPOSIT REVERSAL (FINAL FIX)
         ========================= */
         if (type === "deposit") {
-          const deposit = await db.Deposit.findByPk(id, { transaction: t });
+          const deposit = await db.Deposit.findByPk(id, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
           if (!deposit) throw new Error("❌ Deposit not found");
 
+          /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+          const today = getLocalDate();
+
+          const locked = await isDateLocked({
+            account_id: deposit.account_id,
+            date: today,
+            organization_id: deposit.organization_id,
+          });
+
+          if (locked) {
+            throw new Error("❌ Cannot reverse — day is already closed for this account");
+          }
+
+          if (deposit.status === DS.REVERSED) {
+            throw new Error("❌ Deposit already reversed");
+          }
+
+          /* ================= 📒 FINANCIAL LEDGER ================= */
           await logLedger({
             type: "reversal",
             entity: deposit,
             organization_id: deposit.organization_id,
             facility_id: deposit.facility_id,
+            account_id: deposit.account_id,
             patient_id: deposit.patient_id,
             invoice_id: deposit.applied_invoice_id,
-            amount: -Math.abs(deposit.amount),
+            amount: Math.abs(deposit.amount),
             note: `Deposit reversal${reason ? ` · ${reason}` : ""}`,
             user,
             t,
           });
-            await applyLifecycleTransition({
-              entity: deposit,
-              action: "reversed",
-              nextStatus: DS.REVERSED,
-              user,
-              t,
-            });
+
+          /* ================= 💰 CASH LEDGER ================= */
+          await db.CashLedger.create(
+            {
+              date: today,
+              type: LEDGER_TYPES.REVERSAL,
+              direction: LEDGER_DIRECTIONS.OUT,
+
+              account_id: deposit.account_id,
+              amount: Math.abs(deposit.amount),
+              currency: deposit.currency,
+
+              reference_type: "deposit_reversal",
+              reference_id: deposit.id,
+
+              organization_id: deposit.organization_id,
+              facility_id: deposit.facility_id,
+              created_by_id: user?.id,
+            },
+            { transaction: t }
+          );
+
+          /* ================= 🔄 STATUS ================= */
+          await applyLifecycleTransition({
+            entity: deposit,
+            action: "reversed",
+            nextStatus: DS.REVERSED,
+            user,
+            t,
+          });
+
+          /* ================= 🔄 RECALC ================= */
+          if (deposit.applied_invoice_id) {
+            await recalcInvoice(deposit.applied_invoice_id, t);
+          }
 
           return { success: true };
         }
 
+        /* =========================
+          ❌ FAIL SAFE
+        ========================= */
         throw new Error("❌ Unsupported reversal type");
       });
     },
-
 
     /* ----------------- Discounts ----------------- */
     async createDiscount({
@@ -1853,8 +2062,10 @@ async applyPayment({
   ============================================================ */
 
   /* ----------------- Create Expense ----------------- */
+  /* ============================================================
+    💸 EXPENSES (ENTERPRISE MASTER – FULL FIXED + LOCK SAFE)
+  ============================================================ */
   async createExpense({
-    date,
     amount,
     currency,
     category,
@@ -1871,7 +2082,7 @@ async applyPayment({
         throw new Error("❌ User organization context missing");
       }
 
-      if (!date || !amount || !currency || !category || !account_id) {
+      if (!amount || !currency || !category || !account_id) {
         throw new Error("❌ Missing required expense fields");
       }
 
@@ -1879,10 +2090,35 @@ async applyPayment({
         throw new Error("❌ Expense amount must be greater than 0");
       }
 
-      /* ================= CREATE ================= */
+      /* ================= 📅 SINGLE SOURCE DATE ================= */
+      const today = getLocalDate();
+
+      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+      const locked = await isDateLocked({
+        account_id,
+        date: today,
+        organization_id,
+      });
+
+      if (locked) {
+        throw new Error("❌ This day is already closed for this account");
+      }
+
+      /* ================= 🔒 LOAD ACCOUNT ================= */
+      const account = await db.Account.findByPk(account_id, { transaction: t });
+      if (!account) throw new Error("❌ Account not found");
+
+      /* ================= 🔒 CURRENCY CHECK ================= */
+      if (currency !== account.currency) {
+        throw new Error(
+          `❌ Currency mismatch: account is ${account.currency}, expense is ${currency}`
+        );
+      }
+
+      /* ================= CREATE EXPENSE ================= */
       const expense = await db.Expense.create(
         {
-          date,
+          date: today, // ✅ FIXED
           amount,
           currency,
           category,
@@ -1895,19 +2131,40 @@ async applyPayment({
         { transaction: t, user }
       );
 
-      /* ================= LEDGER (CRITICAL) ================= */
+      /* ================= 📒 FINANCIAL LEDGER (AUDIT) ================= */
       await logLedger({
         type: "expense",
         entity: expense,
         organization_id,
         facility_id,
-        account_id, // 🔥 FIXED
+        account_id,
         amount,
         method: null,
         note: `Expense: ${category}${description ? ` · ${description}` : ""}`,
         user,
         t,
       });
+
+      /* ================= 💰 CASH LEDGER (REAL MONEY) ================= */
+      await db.CashLedger.create(
+        {
+          date: today, // ✅ SAME DATE (IMPORTANT)
+          type: LEDGER_TYPES.EXPENSE,
+          direction: LEDGER_DIRECTIONS.OUT,
+
+          account_id,
+          amount,
+          currency,
+
+          reference_type: "expense",
+          reference_id: expense.id,
+
+          organization_id,
+          facility_id,
+          created_by_id: user?.id,
+        },
+        { transaction: t }
+      );
 
       return expense;
     });
@@ -1916,6 +2173,7 @@ async applyPayment({
   /* ============================================================
     🔁 TRANSFERS (ENTERPRISE MASTER – FINAL)
   ============================================================ */
+  /* ----------------- Transfer (FULL – FINAL SAFE) ----------------- */
   async applyTransfer({
     from_account_id,
     to_account_id,
@@ -1939,62 +2197,129 @@ async applyPayment({
       throw new Error("❌ Both source and destination accounts are required");
     }
 
-    const currency = user?.currency || "USD";
+    if (from_account_id === to_account_id) {
+      throw new Error("❌ Cannot transfer to the same account");
+    }
 
-    /* ================= OUT (DEBIT) ================= */
+    /* ================= 🔒 CASH CLOSING LOCK CHECK (FIXED) ================= */
+    const today = getLocalDate();
+
+    const [lockedFrom, lockedTo] = await Promise.all([
+      isDateLocked({
+        account_id: from_account_id,
+        date: today,
+        organization_id,
+      }),
+      isDateLocked({
+        account_id: to_account_id,
+        date: today,
+        organization_id,
+      }),
+    ]);
+
+    if (lockedFrom || lockedTo) {
+      throw new Error("❌ One or both accounts are closed for this day");
+    }
+
+    /* ================= 🔒 LOAD ACCOUNTS ================= */
+    const fromAccount = await db.Account.findByPk(from_account_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!fromAccount) throw new Error("❌ Source account not found");
+
+    const toAccount = await db.Account.findByPk(to_account_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!toAccount) throw new Error("❌ Destination account not found");
+
+    /* ================= 🔒 CURRENCY CHECK ================= */
+    if (fromAccount.currency !== toAccount.currency) {
+      throw new Error("❌ Cross-currency transfer not allowed");
+    }
+
+    const currency = fromAccount.currency;
+
+    /* ================= 📒 FINANCIAL LEDGER ================= */
+
+    // 🔴 OUT (from account)
     await logLedger({
-      type: "transfer", // ✅ FIXED
+      type: "transfer",
       entity: { id: null },
       organization_id,
       facility_id,
-      account_id: from_account_id, // 🔥 CRITICAL
-      amount: -Math.abs(amount),
-      note: `Transfer OUT → account ${from_account_id}`,
-      user,
-      t,
-    });
-
-    /* ================= IN (CREDIT) ================= */
-    await logLedger({
-      type: "transfer", // ✅ FIXED
-      entity: { id: null },
-      organization_id,
-      facility_id,
-      account_id: to_account_id, // 🔥 CRITICAL
-      amount: Math.abs(amount),
-      note: `Transfer IN → account ${to_account_id}`,
-      user,
-      t,
-    });
-
-    /* ================= CASH LEDGER (OPTIONAL VIEW) ================= */
-    await db.CashLedger.create({
-      date: new Date(),
-      type: LEDGER_TYPES.TRANSFER,
-      direction: LEDGER_DIRECTIONS.OUT,
       account_id: from_account_id,
-      amount,
-      currency,
+      amount: -amount, // ✅ FIX
+      note: `Transfer OUT → ${toAccount.name}`,
+      user,
+      t,
+    });
+
+    // 🟢 IN (to account)
+    await logLedger({
+      type: "transfer",
+      entity: { id: null },
       organization_id,
       facility_id,
-      created_by_id: user?.id,
-    }, { transaction: t });
-
-    await db.CashLedger.create({
-      date: new Date(),
-      type: LEDGER_TYPES.TRANSFER,
-      direction: LEDGER_DIRECTIONS.IN,
       account_id: to_account_id,
-      amount,
-      currency,
-      organization_id,
-      facility_id,
-      created_by_id: user?.id,
-    }, { transaction: t });
+      amount: amount, // ✅ keep positive
+      note: `Transfer IN ← ${fromAccount.name}`,
+      user,
+      t,
+    });
 
-    return { success: true };
+    /* ================= 💰 CASH LEDGER ================= */
+
+    // 🔴 OUT
+    await db.CashLedger.create(
+      {
+        date: today,
+        type: LEDGER_TYPES.TRANSFER,
+        direction: LEDGER_DIRECTIONS.OUT,
+
+        account_id: from_account_id,
+        amount,
+        currency,
+
+        reference_type: "transfer",
+        reference_id: null,
+
+        organization_id,
+        facility_id,
+        created_by_id: user?.id,
+      },
+      { transaction: t }
+    );
+
+    // 🟢 IN
+    await db.CashLedger.create(
+      {
+        date: today,
+        type: LEDGER_TYPES.TRANSFER,
+        direction: LEDGER_DIRECTIONS.IN,
+
+        account_id: to_account_id,
+        amount,
+        currency,
+
+        reference_type: "transfer",
+        reference_id: null,
+
+        organization_id,
+        facility_id,
+        created_by_id: user?.id,
+      },
+      { transaction: t }
+    );
+
+    return {
+      success: true,
+      message: "✅ Transfer completed successfully",
+    };
   },
 
+  
     /* ============================================================
     ♻️ Restore Discount – (Fixed v2.5 Enterprise Aligned)
     🔹 Restores both voided and soft-deleted discounts
@@ -2077,6 +2402,8 @@ async applyPayment({
     /* ----------------- Public Invoice Recalc ----------------- */
     async recalcInvoice(invoiceId, t = null) {
     return await recalcInvoice(invoiceId, t); // thin wrapper
-    }
+    },
 
+    logLedger,
+    
 };

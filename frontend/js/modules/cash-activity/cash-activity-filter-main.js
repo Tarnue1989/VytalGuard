@@ -1,4 +1,8 @@
-// 📦 deposit-filter-main.js – Enterprise Filter + Table/Card (MASTER PARITY)
+// 📦 cash-activity-filter-main.js – Enterprise MASTER–ALIGNED (Ledger)
+// ============================================================================
+// 🔹 READ-ONLY Ledger Module
+// 🔹 FULL MASTER parity (sorting + export + filters + summary)
+// ============================================================================
 
 import {
   showToast,
@@ -17,70 +21,53 @@ import {
   loadOrganizationsLite,
   loadFacilitiesLite,
   setupSelectOptions,
-  setupSuggestionInputDynamic,
-  loadAccountsLite 
+  loadAccountsLite,
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
 import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
+import { mapDataForExport } from "../../utils/export-mapper.js";
+
+import { renderList, renderDynamicTableHead } from "./cash-activity-render.js";
 
 import {
-  renderList,
-  renderDynamicTableHead,
-} from "./deposit-render.js";
-
-import { setupActionHandlers } from "./deposit-actions.js";
-
-import {
-  FIELD_ORDER_DEPOSIT,
-  FIELD_DEFAULTS_DEPOSIT,
-  FIELD_LABELS_DEPOSIT,
-} from "./deposit-constants.js";
+  FIELD_ORDER_CASH_ACTIVITY,
+  FIELD_DEFAULTS_CASH_ACTIVITY,
+  FIELD_LABELS_CASH_ACTIVITY,
+} from "./cash-activity-constants.js";
 
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
 import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
-import { mapDataForExport } from "../../utils/export-mapper.js";
 import { syncViewToggleUI } from "../../utils/view-toggle.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
 /* ============================================================
-   🔐 AUTH + USER
+   🔐 AUTH
 ============================================================ */
 const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 const userRole = (localStorage.getItem("userRole") || "").toLowerCase();
-const permissions = (() => {
-  try {
-    return (JSON.parse(localStorage.getItem("permissions")) || []).map((p) =>
-      String(p.key || p).toLowerCase()
-    );
-  } catch {
-    return [];
-  }
-})();
-const user = { role: userRole, permissions };
+const user = { role: userRole };
 
 /* ============================================================
    🧠 STATE
 ============================================================ */
 let entries = [];
 let currentPage = 1;
-let viewMode = localStorage.getItem("depositView") || "table";
+let viewMode = localStorage.getItem("cashActivityView") || "table";
 let sortBy = "";
 let sortDir = "asc";
-
-const sharedState = { currentEditIdRef: { value: null } };
 
 /* ============================================================
    👁️ FIELD VISIBILITY
 ============================================================ */
 let visibleFields = setupVisibleFields({
-  moduleKey: "deposit",
+  moduleKey: "cashActivity",
   userRole,
-  defaultFields: FIELD_DEFAULTS_DEPOSIT,
-  allowedFields: FIELD_ORDER_DEPOSIT,
+  defaultFields: FIELD_DEFAULTS_CASH_ACTIVITY,
+  allowedFields: FIELD_ORDER_CASH_ACTIVITY,
 });
 
 /* ============================================================
@@ -94,7 +81,7 @@ renderFieldSelector(
     renderDynamicTableHead(visibleFields);
     renderList({ entries, visibleFields, viewMode, user, currentPage });
   },
-  FIELD_ORDER_DEPOSIT
+  FIELD_ORDER_CASH_ACTIVITY
 );
 
 /* ============================================================
@@ -102,37 +89,30 @@ renderFieldSelector(
 ============================================================ */
 const qs = (id) => document.getElementById(id);
 
-const globalSearch   = qs("globalSearch");
-const filterOrg      = qs("filterOrganizationSelect");
+const globalSearch = qs("globalSearch");
+const filterOrg = qs("filterOrganizationSelect");
 const filterFacility = qs("filterFacilitySelect");
-const filterStatus   = qs("filterStatus");
-const dateRange      = qs("dateRange");
-
-const filterPatient            = qs("filterPatient");
-const filterPatientHidden      = qs("filterPatientId");
-const filterPatientSuggestions = qs("filterPatientSuggestions");
-
-const filterMethod         = qs("filterMethodSelect");
-const filterTransactionRef = qs("filterTransactionRef");
-const filterCurrency       = qs("filterCurrencySelect");
-const filterAccount = qs("filterAccountSelect"); // 🔥 ADD
+const filterAccount = qs("filterAccountSelect");
+const filterDirection = qs("filterDirection");
+const filterCurrency = qs("filterCurrency");
+const dateRange = qs("dateRange");
 
 /* ============================================================
    🔃 SORT
 ============================================================ */
-window.setDepositSort = (field, dir) => {
+window.setCashActivitySort = (field, dir) => {
   sortBy = field;
   sortDir = dir;
 };
-window.loadDepositPage = (p = 1) => loadEntries(p);
+window.loadCashActivityPage = (p = 1) => loadEntries(p);
 
 /* ============================================================
    📄 PAGINATION
 ============================================================ */
 const getPagination = initPaginationControl(
-  "deposit",
+  "cashActivity",
   loadEntries,
-  Number(localStorage.getItem("depositPageLimit") || 25)
+  Number(localStorage.getItem("cashActivityPageLimit") || 25)
 );
 
 /* ============================================================
@@ -145,10 +125,9 @@ setupAutoFilters({
   selectInputs: [
     filterOrg,
     filterFacility,
-    filterStatus,
-    filterMethod,
-    filterCurrency,
     filterAccount,
+    filterDirection,
+    filterCurrency,
   ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
@@ -159,21 +138,18 @@ setupAutoFilters({
 ============================================================ */
 function getFilters() {
   return {
-    search: globalSearch?.value?.trim(),
+    search: globalSearch?.value,
     organization_id: filterOrg?.value,
     facility_id: filterFacility?.value,
-    status: filterStatus?.value,
-    method: filterMethod?.value,
-    transaction_ref: filterTransactionRef?.value,
-    patient_id: filterPatientHidden?.value,
-    dateRange: dateRange?.value,
-    currency: filterCurrency?.value,
     account_id: filterAccount?.value,
+    direction: filterDirection?.value,
+    currency: filterCurrency?.value,
+    dateRange: dateRange?.value,
   };
 }
 
 /* ============================================================
-   📦 LOAD
+   📦 LOAD LEDGER
 ============================================================ */
 async function loadEntries(page = 1) {
   try {
@@ -197,35 +173,27 @@ async function loadEntries(page = 1) {
       }
     });
 
-    const res = await authFetch(`/api/deposits?${q.toString()}`, {
+    const res = await authFetch(`/api/cash-ledger?${q.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
     const json = await res.json();
-    if (!res.ok) throw new Error(json?.message);
+    if (!res.ok) throw new Error(json.message || "Failed");
 
     const data = json.data || {};
-    entries = data.records || [];
+
+    entries = Array.isArray(data.records) ? data.records : [];
     currentPage = data.pagination?.page || safePage;
 
     renderList({ entries, visibleFields, viewMode, user, currentPage });
 
-    data.summary &&
+    if (data.summary) {
       renderModuleSummary(data.summary, "moduleSummary", {
-        moduleLabel: "DEPOSITS",
+        moduleLabel: "CASH ACTIVITY",
       });
+    }
 
     syncViewToggleUI({ mode: viewMode });
-
-    setupActionHandlers({
-      entries,
-      token,
-      currentPage,
-      loadEntries,
-      visibleFields,
-      sharedState,
-      user,
-    });
 
     renderPaginationControls(
       qs("paginationButtons"),
@@ -233,9 +201,9 @@ async function loadEntries(page = 1) {
       data.pagination?.pageCount || 1,
       loadEntries
     );
+
   } catch (err) {
-    console.error(err);
-    showToast("❌ Failed to load deposits");
+    showToast(err.message || "❌ Failed to load cash activity");
   } finally {
     hideLoading();
   }
@@ -246,14 +214,14 @@ async function loadEntries(page = 1) {
 ============================================================ */
 qs("tableViewBtn").onclick = () => {
   viewMode = "table";
-  localStorage.setItem("depositView", "table");
+  localStorage.setItem("cashActivityView", "table");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
 
 qs("cardViewBtn").onclick = () => {
   viewMode = "card";
-  localStorage.setItem("depositView", "card");
+  localStorage.setItem("cashActivityView", "card");
   syncViewToggleUI({ mode: viewMode });
   renderList({ entries, visibleFields, viewMode, user, currentPage });
 };
@@ -266,15 +234,11 @@ qs("resetFilterBtn").onclick = () => {
     globalSearch,
     filterOrg,
     filterFacility,
-    filterStatus,
-    filterMethod,
-    filterCurrency,
-    filterTransactionRef,
-    filterPatient,
-    dateRange,
     filterAccount,
+    filterDirection,
+    filterCurrency,
+    dateRange,
   ].forEach((el) => el && (el.value = ""));
-  filterPatientHidden.value = "";
   loadEntries(1);
 };
 
@@ -283,16 +247,17 @@ qs("resetFilterBtn").onclick = () => {
 ============================================================ */
 qs("exportCSVBtn")?.addEventListener("click", () => {
   if (!entries.length) return showToast("❌ No data");
+
   exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_DEPOSIT),
-    `deposits_${new Date().toISOString().slice(0, 10)}.csv`
+    mapDataForExport(entries, visibleFields, FIELD_LABELS_CASH_ACTIVITY),
+    `cash_activity_${new Date().toISOString().slice(0, 10)}.csv`
   );
 });
 
 qs("exportPDFBtn")?.addEventListener("click", () => {
   exportToPDF(
-    "Deposits List",
-    viewMode === "table" ? ".table-container" : "#depositList",
+    "Cash Activity",
+    viewMode === "table" ? ".table-container" : "#cashActivityList",
     "portrait"
   );
 });
@@ -300,28 +265,17 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
 /* ============================================================
    🚀 INIT
 ============================================================ */
-export async function initDepositModule() {
+export async function initCashActivityModule() {
   renderDynamicTableHead(visibleFields);
 
   setupToggleSection(
     "toggleFilterBtn",
     "filterCollapse",
     "filterChevron",
-    "depositFilterVisible"
+    "cashActivityFilterVisible"
   );
 
-  setupSuggestionInputDynamic(
-    filterPatient,
-    filterPatientSuggestions,
-    "/api/lite/patients",
-    (selected) => {
-      filterPatientHidden.value = selected?.id || "";
-      filterPatient.value = selected?.label || "";
-      loadEntries(1);
-    },
-    "label"
-  );
-
+  // 🔥 Load org/fac/account filters (same as deposit)
   if (userRole.includes("super") || userRole.includes("admin")) {
     const orgs = await loadOrganizationsLite();
     orgs.unshift({ id: "", name: "-- All Organizations --" });
@@ -335,16 +289,13 @@ export async function initDepositModule() {
       facs.unshift({ id: "", name: "-- All Facilities --" });
       setupSelectOptions(filterFacility, facs, "id", "name");
     };
-    // 🔥 Account filter
+
     const accounts = await loadAccountsLite({}, true);
     accounts.unshift({ id: "", name: "-- All Accounts --" });
     setupSelectOptions(filterAccount, accounts, "id", "name");
 
     await reloadFacilities();
     filterOrg.onchange = () => reloadFacilities(filterOrg.value || null);
-  } else {
-    filterOrg?.closest(".form-group")?.classList.add("hidden");
-    filterFacility?.closest(".form-group")?.classList.add("hidden");
   }
 
   await loadEntries(1);
@@ -354,5 +305,5 @@ export async function initDepositModule() {
    🏁 BOOT
 ============================================================ */
 document.readyState === "loading"
-  ? document.addEventListener("DOMContentLoaded", initDepositModule)
-  : initDepositModule();
+  ? document.addEventListener("DOMContentLoaded", initCashActivityModule)
+  : initCashActivityModule();

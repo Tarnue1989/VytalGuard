@@ -8,6 +8,13 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================ */
 const SORTABLE_FIELDS = new Set([
   "date",
@@ -266,27 +273,271 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
     initTooltips(cardContainer);
   }
 
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 
-/* ============================================================ */
-let exportHandlersBound = false;
+/* ============================================================
+   📤 EXPORT (MASTER – CASH CLOSING FULL)
+============================================================ */
+function getFiltersFromDOM() {
+  const val = (id) => document.getElementById(id)?.value;
 
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
+  return {
+    search: val("globalSearch")?.trim(),
+    account_id: val("filterAccountSelect"),
+    organization_id: val("filterOrganizationSelect"),
+    facility_id: val("filterFacilitySelect"),
+    dateRange: val("dateRange"),
+  };
+}
 
+function setupExportHandlers(entries, visibleFields) {
   const title = "Cash Closing Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ================= CSV ================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #cashClosingList.active",
-    })
-  );
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_CASH_CLOSING,
+      mapRow: (e, fields) => {
+        const row = {};
+        fields.forEach((f) => {
+          switch (f) {
+            case "account":
+              row[f] = e.account?.name || "";
+              break;
+
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "opening_balance":
+            case "closing_balance":
+            case "total_in":
+            case "total_out":
+              row[f] = Number(e[f] || 0).toFixed(2);
+              break;
+
+            case "is_locked":
+              row[f] = e.is_locked ? "LOCKED" : "OPEN";
+              break;
+
+            case "closedBy":
+              row[f] =
+                `${e.closedBy?.first_name || ""} ${e.closedBy?.last_name || ""}`.trim();
+              break;
+
+            case "closed_at":
+              row[f] = e.closed_at
+                ? new Date(e.closed_at).toLocaleString()
+                : "";
+              break;
+
+            case "created_at":
+              row[f] = e.created_at
+                ? new Date(e.created_at).toLocaleString()
+                : "";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+        return row;
+      },
+    });
+  });
+
+  /* ================= EXCEL ================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/cash-closings",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_CASH_CLOSING,
+
+      mapRow: (e, fields) => {
+        const row = {};
+        fields.forEach((f) => {
+          switch (f) {
+            case "account":
+              row[f] = e.account?.name || "";
+              break;
+
+            case "organization":
+              row[f] = e.organization?.name || "";
+              break;
+
+            case "facility":
+              row[f] = e.facility?.name || "";
+              break;
+
+            case "opening_balance":
+            case "closing_balance":
+            case "total_in":
+            case "total_out":
+              row[f] = Number(e[f] || 0).toFixed(2);
+              break;
+
+            case "is_locked":
+              row[f] = e.is_locked ? "LOCKED" : "OPEN";
+              break;
+
+            default:
+              row[f] =
+                typeof e[f] === "object"
+                  ? ""
+                  : String(e[f] ?? "");
+          }
+        });
+        return row;
+      },
+
+      computeTotals: (records) => ({
+        "Total In": records.reduce((s, e) => s + Number(e.total_in || 0), 0),
+        "Total Out": records.reduce((s, e) => s + Number(e.total_out || 0), 0),
+      }),
+    });
+  });
+
+  /* ================= PDF ================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(`/api/cash-closings?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      printReport({
+        title,
+
+        columns: visibleFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_CASH_CLOSING[f] || f,
+        })),
+
+        rows: allEntries.map((e) => {
+          const row = {};
+
+          visibleFields.forEach((f) => {
+            switch (f) {
+              case "account":
+                row[f] = e.account?.name || "";
+                break;
+
+              case "organization":
+                row[f] = e.organization?.name || "";
+                break;
+
+              case "facility":
+                row[f] = e.facility?.name || "";
+                break;
+
+              case "opening_balance":
+              case "closing_balance":
+              case "total_in":
+              case "total_out":
+                row[f] = Number(e[f] || 0).toFixed(2);
+                break;
+
+              case "is_locked":
+                row[f] = e.is_locked ? "LOCKED" : "OPEN";
+                break;
+
+              case "closedBy":
+                row[f] =
+                  `${e.closedBy?.first_name || ""} ${e.closedBy?.last_name || ""}`.trim();
+                break;
+
+              case "closed_at":
+                row[f] = e.closed_at
+                  ? new Date(e.closed_at).toLocaleString()
+                  : "";
+                break;
+
+              case "created_at":
+                row[f] = e.created_at
+                  ? new Date(e.created_at).toLocaleString()
+                  : "";
+                break;
+
+              default:
+                row[f] =
+                  typeof e[f] === "object"
+                    ? ""
+                    : String(e[f] ?? "");
+            }
+          });
+
+          return row;
+        }),
+
+        totals: [
+          {
+            label: "Total In",
+            value: allEntries
+              .reduce((s, e) => s + Number(e.total_in || 0), 0)
+              .toFixed(2),
+          },
+          {
+            label: "Total Out",
+            value: allEntries
+              .reduce((s, e) => s + Number(e.total_out || 0), 0)
+              .toFixed(2),
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, { sample: allEntries[0] }),
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

@@ -176,24 +176,23 @@ export function autoPagePermissionKey() {
   const path = window.location.pathname.split("/").pop() || "";
   const baseName = path.replace(".html", "").trim().toLowerCase();
 
-  // 🧠 Extract module name correctly (handles both prefix and suffix patterns)
+  // 🧠 Extract module name correctly
   let moduleKey = baseName;
   const prefixMatch =
     baseName.match(/^(add|edit|view|verify|approve|list)-(.+)$/) ||
     baseName.match(/^(.+?)-(list|main|filter)$/);
 
   if (prefixMatch) {
-    // Determine which regex matched
     if (/^(add|edit|view|verify|approve|list)-/.test(baseName)) {
-      moduleKey = prefixMatch[2]; // first regex → capture after prefix
+      moduleKey = prefixMatch[2];
     } else {
-      moduleKey = prefixMatch[1]; // second regex → capture before suffix
+      moduleKey = prefixMatch[1];
     }
   } else {
-    moduleKey = baseName.split("-")[0];
+    moduleKey = baseName; // ✅ keep full name
   }
 
-  // ✅ Normalize module naming (for underscore-based permission keys)
+  // ✅ Normalize naming
   moduleKey = moduleKey
     .replace(/-/g, "_")
     .replace(/centralstock/, "central_stock")
@@ -207,21 +206,22 @@ export function autoPagePermissionKey() {
     .replace(/stockrequest/, "stock_request")
     .toLowerCase();
 
-  // ✅ Smart pluralization engine (covers common English cases safely)
+  // 🔥 DOMAIN ALIGNMENT (MUST COME BEFORE ANY PLURAL LOGIC)
+  if (moduleKey === "cash_activity") {
+    moduleKey = "cash_ledger";
+  }
+
+  // ✅ ONLY pluralize simple modules (NO underscore modules)
+  // 🔥 FORCE PLURAL FOR ALL MODULES (INCLUDING _)
   if (moduleKey.endsWith("y")) {
-    // category → categories, facility → facilities
     moduleKey = moduleKey.slice(0, -1) + "ies";
   } else if (moduleKey.endsWith("sis")) {
-    // analysis → analyses, diagnosis → diagnoses
     moduleKey = moduleKey.slice(0, -3) + "ses";
   } else if (moduleKey.endsWith("ex") || moduleKey.endsWith("ix")) {
-    // index → indices, appendix → appendices
     moduleKey = moduleKey.slice(0, -2) + "ices";
   } else if (moduleKey.endsWith("us")) {
-    // focus → foci (rare)
     moduleKey = moduleKey.slice(0, -2) + "i";
   } else if (!moduleKey.endsWith("s")) {
-    // Default plural: add "s"
     moduleKey += "s";
   }
 
@@ -233,16 +233,17 @@ export function autoPagePermissionKey() {
   else if (baseName.startsWith("verify-")) action = "verify";
 
   const permissionKey = `${moduleKey}:${action}`;
-  console.log(`🧩 [autoPagePermissionKey] → ${permissionKey}`);
 
-  // 🔁 Dual-mode Add/Edit allowed
+  console.log("🧩 [autoPagePermissionKey] →", permissionKey);
+  console.log("🧠 Final Module →", moduleKey);
+
+  // 🔁 Dual-mode Add/Edit
   if (action === "create" || action === "edit") {
     return [`${moduleKey}:create`, `${moduleKey}:edit`];
   }
 
   return permissionKey;
 }
-
 
 // ============================================================
 // 🌐 Global Logout Watcher

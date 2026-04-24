@@ -30,6 +30,7 @@ import {
   loadFacilitiesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
+  loadAccountsLite
 } from "../../utils/data-loaders.js";
 
 import { resolveUserRole } from "../../utils/roleResolver.js";
@@ -114,6 +115,7 @@ export async function setupPaymentFormSubmission({ form }) {
   const methodSelect = document.getElementById("methodSelect");
   const transactionRefInput = document.getElementById("transactionRef");
   const reasonInput = document.getElementById("reason");
+  const accountSelect = document.getElementById("accountSelect");
 
   let selectedInvoiceBalance = null;
 
@@ -235,6 +237,13 @@ export async function setupPaymentFormSubmission({ form }) {
       },
       "label"
     );
+    setupSelectOptions(
+      accountSelect,
+      await loadAccountsLite({}, true),
+      "id",
+      "name",
+      "-- Select Account --"
+    );
   } catch {
     showToast("❌ Failed to load reference data");
   }
@@ -309,7 +318,9 @@ export async function setupPaymentFormSubmission({ form }) {
       currencySelect.value = entry.currency || "";
       transactionRefInput.value = entry.transaction_ref || "";
       reasonInput.value = entry.reason || "";
-
+      if (accountSelect && entry.account_id) {
+        accountSelect.value = entry.account_id;
+      }
       if (isSuper) {
         if (orgSelect && entry.organization_id)
           orgSelect.value = entry.organization_id;
@@ -352,6 +363,7 @@ export async function setupPaymentFormSubmission({ form }) {
     }
     const payload = {
       patient_id: normalizeUUID(patientHidden.value),
+      account_id: normalizeUUID(accountSelect.value),
       invoice_id: normalizeUUID(invoiceSelect.value),
       currency: currencySelect.value || null,
       amount: normalizeNumber(amountInput.value),
@@ -418,6 +430,8 @@ export async function setupPaymentFormSubmission({ form }) {
     form.reset();
     patientHidden.value = "";
     selectedInvoiceBalance = null;
-    setUI("add");
+
+    // 🔥 ADD
+    if (accountSelect) accountSelect.value = "";
   });
 }

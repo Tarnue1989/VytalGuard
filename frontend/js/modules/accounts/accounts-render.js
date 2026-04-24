@@ -5,6 +5,13 @@ import { formatDate, formatDateTime, initTooltips } from "../../utils/ui-utils.j
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 import { exportData } from "../../utils/export-utils.js";
+
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS
 ============================================================ */
@@ -155,20 +162,19 @@ function renderValue(entry, field) {
       return renderUserName(entry.deletedBy);
 
     case "created_at":
-      return entry.createdAt
-        ? formatDate(entry.createdAt)
+      return entry.created_at
+        ? formatDateTime(entry.created_at)
         : "—";
 
     case "updated_at":
-      return entry.updatedAt
-        ? formatDate(entry.updatedAt)
+      return entry.updated_at
+        ? formatDateTime(entry.updated_at)
         : "—";
 
     case "deleted_at":
-      return entry.deletedAt
-        ? formatDate(entry.deletedAt)
+      return entry.deleted_at
+        ? formatDateTime(entry.deleted_at)
         : "—";
-
     default:
       return safe(entry[field]);
   }
@@ -231,13 +237,13 @@ export function renderCard(entry, visibleFields, user) {
         <div class="entity-card-body">
 
           ${row("Created By", renderUserName(entry.createdBy))}
-          ${row("Created At", entry.createdAt ? formatDateTime(entry.createdAt) : "—")}
+          ${row("Created At", entry.created_at ? formatDateTime(entry.created_at) : "—")}
 
           ${row("Updated By", renderUserName(entry.updatedBy))}
-          ${row("Updated At", entry.updatedAt ? formatDateTime(entry.updatedAt) : "—")}
+          ${row("Updated At", entry.updated_at ? formatDateTime(entry.updated_at) : "—")}
 
           ${row("Deleted By", renderUserName(entry.deletedBy))}
-          ${row("Deleted At", entry.deletedAt ? formatDateTime(entry.deletedAt) : "—")}
+          ${row("Deleted At", entry.deleted_at ? formatDateTime(entry.deleted_at) : "—")}
 
         </div>
       </details>
@@ -312,17 +318,19 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
                 </button>
               </td>`;
           }
-
-          if (f === "created_at") {
-            return `<td>${e.createdAt ? formatDate(e.createdAt) : "—"}</td>`;
+          if (f === "created_at" || f === "createdAt") {
+            const val = e.created_at || e.createdAt;
+            return `<td>${val ? formatDateTime(val) : "—"}</td>`;
           }
 
-          if (f === "updated_at") {
-            return `<td>${e.updatedAt ? formatDate(e.updatedAt) : "—"}</td>`;
+          if (f === "updated_at" || f === "updatedAt") {
+            const val = e.updated_at || e.updatedAt;
+            return `<td>${val ? formatDateTime(val) : "—"}</td>`;
           }
 
-          if (f === "deleted_at") {
-            return `<td>${e.deletedAt ? formatDate(e.deletedAt) : "—"}</td>`;
+          if (f === "deleted_at" || f === "deletedAt") {
+            const val = e.deleted_at || e.deletedAt;
+            return `<td>${val ? formatDateTime(val) : "—"}</td>`;
           }
 
           if (f === "createdBy") {
@@ -356,35 +364,189 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     initTooltips(cardContainer);
   }
-  setupExportHandlers(entries);
+  setupExportHandlers(entries, visibleFields);
 }
 /* ============================================================
-   📤 EXPORT (FINAL – ALWAYS USE LATEST DATA)
+   📤 EXPORT (MASTER – ACCOUNTS FULL + PRETTY DATE)
 ============================================================ */
-function setupExportHandlers(entries) {
+function getFiltersFromDOM() {
+  const val = (id) => document.getElementById(id)?.value;
+
+  return {
+    search: val("globalSearch")?.trim(),
+    type: val("filterType"),
+    is_active: val("filterStatus"),
+  };
+}
+
+function setupExportHandlers(entries, visibleFields) {
   const title = "Accounts Report";
 
+  const pdfBtn = document.getElementById("exportPDFBtn");
   const csvBtn = document.getElementById("exportCSVBtn");
   const excelBtn = document.getElementById("exportExcelBtn");
-  const pdfBtn = document.getElementById("exportPDFBtn");
 
-  if (csvBtn) {
-    csvBtn.onclick = () =>
-      exportData({ type: "csv", data: entries, title });
-  }
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  if (excelBtn) {
-    excelBtn.onclick = () =>
-      exportData({ type: "xlsx", data: entries, title });
-  }
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
 
-  if (pdfBtn) {
-    pdfBtn.onclick = () =>
-      exportData({
-        type: "pdf",
-        title,
-        selector: ".table-container.active, #accountList.active",
-        orientation: "landscape",
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* ============================================================
+     🔁 DATE FORMAT (MATCH DEPARTMENT)
+  ============================================================ */
+  const formatDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "";
+
+  /* ============================================================
+     🔁 MAP ROW
+  ============================================================ */
+  const mapRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+        case "organization":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "balance":
+          row[f] = Number(e.balance || 0).toFixed(2);
+          break;
+
+        case "is_active":
+          row[f] = e.is_active ? "ACTIVE" : "INACTIVE";
+          break;
+
+        case "createdBy":
+          row[f] =
+            `${e.createdBy?.first_name || ""} ${e.createdBy?.last_name || ""}`.trim();
+          break;
+
+        case "updatedBy":
+          row[f] =
+            `${e.updatedBy?.first_name || ""} ${e.updatedBy?.last_name || ""}`.trim();
+          break;
+
+        case "created_at":
+        case "updated_at":
+          row[f] = formatDate(e[f]);
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* ============================================================
+     ✅ CSV
+  ============================================================ */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+      data: entries,
+      visibleFields,
+      fieldLabels: FIELD_LABELS_ACCOUNT,
+      mapRow,
+    });
+  });
+
+  /* ============================================================
+     ✅ EXCEL
+  ============================================================ */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/accounts",
+      title,
+      filters: getFiltersFromDOM(),
+      visibleFields,
+      fieldLabels: FIELD_LABELS_ACCOUNT,
+      mapRow,
+
+      computeTotals: (records) => ({
+        "Total Balance": records.reduce(
+          (s, e) => s + Number(e.balance || 0),
+          0
+        ),
+      }),
+    });
+  });
+
+  /* ============================================================
+     ✅ PDF
+  ============================================================ */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "") return;
+        params.set(k, v);
       });
-  }
+
+      const res = await authFetch(`/api/accounts?${params.toString()}`);
+      const json = await res.json();
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_ACCOUNT[f] || f,
+        })),
+
+        rows: allEntries.map((e) => mapRow(e, cleanFields)),
+
+        totals: [
+          {
+            label: "Total Balance",
+            value: allEntries
+              .reduce((s, e) => s + Number(e.balance || 0), 0)
+              .toFixed(2),
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, { sample: allEntries[0] }),
+          printedAt: new Date().toLocaleString(),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

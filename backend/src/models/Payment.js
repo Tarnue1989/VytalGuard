@@ -7,10 +7,10 @@ import { recalcInvoice } from "../utils/invoiceUtil.js";
    🔖 Local enum map
 ============================================================ */
 const PS = {
-  PENDING: PAYMENT_STATUS[0],
-  COMPLETED: PAYMENT_STATUS[1],
-  FAILED: PAYMENT_STATUS[2],
-  CANCELLED: PAYMENT_STATUS[3],
+  PENDING: PAYMENT_STATUS.PENDING,
+  COMPLETED: PAYMENT_STATUS.COMPLETED,
+  FAILED: PAYMENT_STATUS.FAILED,
+  CANCELLED: PAYMENT_STATUS.CANCELLED,
 };
 
 export default (sequelize) => {
@@ -25,9 +25,15 @@ export default (sequelize) => {
       // 🔹 Refunds
       Payment.hasMany(models.Refund, { as: "refunds", foreignKey: "payment_id" });
 
-      // 🔹 Org / Facility scope
+      // 🔹 Org / Facility
       Payment.belongsTo(models.Organization, { as: "organization", foreignKey: "organization_id" });
       Payment.belongsTo(models.Facility, { as: "facility", foreignKey: "facility_id" });
+
+      // 🔥🔥🔥 ACCOUNT FIX (THIS WAS MISSING)
+      Payment.belongsTo(models.Account, {
+        as: "account",
+        foreignKey: "account_id",
+      });
 
       // 🔹 Audit
       Payment.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
@@ -44,30 +50,43 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // 🔢 Human-readable number
       payment_number: {
         type: DataTypes.STRING,
         allowNull: true,
         unique: true,
       },
 
-      // 🔗 Parent
-      invoice_id: { type: DataTypes.UUID, allowNull: false },
+      invoice_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
-      // 🔗 Patient
-      patient_id: { type: DataTypes.UUID, allowNull: false },
+      // 🔥 REQUIRED
+      account_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
-      // 🔗 Tenant scope
-      organization_id: { type: DataTypes.UUID, allowNull: false },
-      facility_id: { type: DataTypes.UUID, allowNull: false },
+      patient_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
-      // 💱 🔥 REQUIRED (MULTI-CURRENCY SAFE)
+      organization_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+
+      facility_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+
       currency: {
         type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
       },
 
-      // 💵 Payment details
       amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -85,16 +104,22 @@ export default (sequelize) => {
         defaultValue: PAYMENT_STATUS.PENDING,
       },
 
-      transaction_ref: { type: DataTypes.STRING },
-      is_deposit: { type: DataTypes.BOOLEAN, defaultValue: false },
+      transaction_ref: {
+        type: DataTypes.STRING,
+      },
 
-      // 📝 Reason for update
-      reason: { type: DataTypes.TEXT },
+      is_deposit: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
 
-      // 🔹 Audit
-      created_by_id: { type: DataTypes.UUID },
-      updated_by_id: { type: DataTypes.UUID },
-      deleted_by_id: { type: DataTypes.UUID },
+      reason: {
+        type: DataTypes.TEXT,
+      },
+
+      created_by_id: DataTypes.UUID,
+      updated_by_id: DataTypes.UUID,
+      deleted_by_id: DataTypes.UUID,
     },
     {
       sequelize,
@@ -103,6 +128,7 @@ export default (sequelize) => {
       underscored: true,
       paranoid: true,
       timestamps: true,
+
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
@@ -139,7 +165,6 @@ export default (sequelize) => {
      🔁 Hooks
   ============================================================ */
 
-  // ✅ Generate number + sync invoice
   Payment.beforeValidate(async (payment) => {
     const { Invoice } = await import("../models/index.js");
 
@@ -176,21 +201,15 @@ export default (sequelize) => {
     }
   });
 
-  // 🔥 FIX: handle create
   Payment.afterCreate(async (payment, options) => {
-    if (payment.status === PS.COMPLETED) {
-      if (payment.invoice_id) {
-        await recalcInvoice(payment.invoice_id, options?.transaction);
-      }
+    if (payment.status === PS.COMPLETED && payment.invoice_id) {
+      await recalcInvoice(payment.invoice_id, options?.transaction);
     }
   });
 
-  // 🔥 existing update hook
   Payment.afterUpdate(async (payment, options) => {
-    if (payment.status === PS.COMPLETED) {
-      if (payment.invoice_id) {
-        await recalcInvoice(payment.invoice_id, options?.transaction);
-      }
+    if (payment.status === PS.COMPLETED && payment.invoice_id) {
+      await recalcInvoice(payment.invoice_id, options?.transaction);
     }
   });
 
