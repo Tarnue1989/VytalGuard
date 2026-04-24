@@ -59,118 +59,119 @@
 
               <div class="card-body">
 
-                <!-- ============================================================ -->
-                <!-- FILTERS (MASTER FIXED) -->
-                <!-- ============================================================ -->
-                <div class="card panel-card mb-3">
-                  <div class="card-header d-flex align-items-center justify-content-between">
+              <!-- ============================================================ -->
+              <!-- FILTERS (MASTER FIXED) -->
+              <!-- ============================================================ -->
+              <div class="card panel-card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
 
-                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                      <i class="fas fa-filter me-1"></i>Filter
-                      <i id="filterChevron" class="fas fa-chevron-down ms-1"></i>
-                    </button>
+                  <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-filter me-1"></i>Filter
+                    <i id="filterChevron" class="fas fa-chevron-down ms-1"></i>
+                  </button>
 
-                    <!-- Export -->
-                    <div class="d-flex gap-2">
-                      <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
-                      <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
-                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
-                    </div>
-
+                  <!-- Export -->
+                  <div class="d-flex gap-2">
+                    <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
+                    <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
+                    <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
                   </div>
 
-                  <div id="filterCollapse" class="card-body filter-body hidden">
+                </div>
 
-                    <div class="row gx-3 gy-2 filter-grid compact">
+                <div id="filterCollapse" class="card-body filter-body hidden">
 
-                      <!-- 🔍 GLOBAL SEARCH -->
-                      <div class="col-md-3">
-                        <label class="form-label">Search</label>
-                        <input id="globalSearch" class="form-control" placeholder="Search invoices..." />
-                      </div>
+                  <div class="row gx-3 gy-2 filter-grid compact">
 
-                      <!-- Patient -->
-                      <div class="col-md-3">
-                        <label class="form-label">Patient</label>
-                        <input id="filterPatient" class="form-control suggestion-input" />
-                        <input type="hidden" id="filterPatientId" />
-                        <div id="filterPatientSuggestions" class="suggestions"></div>
-                      </div>
+                    <!-- 🔍 GLOBAL SEARCH -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Search</label>
+                      <input id="globalSearch" class="form-control" placeholder="Search invoices..." />
+                    </div>
 
-                      <!-- Status -->
-                      <div class="col-md-3">
-                        <label class="form-label">Status</label>
-                        <select id="filterStatus" class="form-select">
-                          <option value="">All</option>
-                          <option value="draft">Draft</option>
-                          <option value="issued">Issued</option>
-                          <option value="unpaid">Unpaid</option>
-                          <option value="partial">Partial</option>
-                          <option value="paid">Paid</option>
-                          <option value="cancelled">Cancelled</option>
-                          <option value="voided">Voided</option>
-                        </select>
-                      </div>
+                    <!-- Patient -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Patient</label>
+                      <input id="filterPatient" class="form-control suggestion-input" />
+                      <input type="hidden" id="filterPatientId" />
+                      <div id="filterPatientSuggestions" class="suggestions"></div>
+                    </div>
 
-                      <!-- Currency -->
-                      <div class="col-md-3">
-                        <label class="form-label">Currency</label>
-                        <select id="filterCurrency" class="form-select">
-                          <option value="">All</option>
-                          <option value="USD">USD</option>
-                          <option value="LRD">LRD</option>
-                        </select>
-                      </div>
+                    <!-- Status -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Status</label>
+                      <select id="filterStatus" class="form-select">
+                        <option value="">All</option>
+                        <option value="draft">Draft</option>
+                        <option value="issued">Issued</option>
+                        <option value="unpaid">Unpaid</option>
+                        <option value="partial">Partial</option>
+                        <option value="paid">Paid</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="voided">Voided</option>
+                      </select>
+                    </div>
 
-                      <!-- Payer Type -->
-                      <div class="col-md-3">
-                        <label class="form-label">Payer Type</label>
-                        <select id="filterPayerType" class="form-select">
-                          <option value="">All</option>
-                          <option value="cash">Cash</option>
-                          <option value="insurance">Insurance</option>
-                        </select>
-                      </div>
+                    <!-- Currency -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Currency</label>
+                      <select id="filterCurrency" class="form-select">
+                        <option value="">All</option>
+                        <option value="USD">USD</option>
+                        <option value="LRD">LRD</option>
+                      </select>
+                    </div>
 
-                      <!-- Org -->
-                      <div class="col-md-3">
-                        <label class="form-label">Organization</label>
-                        <select id="filterOrganizationSelect" class="form-select"></select>
-                      </div>
+                    <!-- Payer Type -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Payer Type</label>
+                      <select id="filterPayerType" class="form-select">
+                        <option value="">All</option>
+                        <option value="cash">Cash</option>
+                        <option value="insurance">Insurance</option>
+                      </select>
+                    </div>
 
-                      <!-- Facility -->
-                      <div class="col-md-3">
-                        <label class="form-label">Facility</label>
-                        <select id="filterFacilitySelect" class="form-select"></select>
-                      </div>
-                      <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
-                      <div class="col-md-3">
-                        <div class="field-wrapper">
-                          <label for="dateRange" class="form-label">Date Range</label>
-                          <div class="input-group">
-                            <span class="input-group-text bg-primary-lighten">
-                              <i class="ri-calendar-2-line text-primary"></i>
-                            </span>
-                            <input
-                              type="text"
-                              id="dateRange"
-                              class="form-control custom-daterange"
-                              placeholder="Select date range"
-                            />
-                          </div>
+                    <!-- Org -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Organization</label>
+                      <select id="filterOrganizationSelect" class="form-select"></select>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Facility</label>
+                      <select id="filterFacilitySelect" class="form-select"></select>
+                    </div>
+
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label for="dateRange" class="form-label">Date Range</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-calendar-2-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="dateRange"
+                            class="form-control custom-daterange"
+                            placeholder="Select date range"
+                          />
                         </div>
                       </div>
-
-                      <!-- CLEAR -->
-                      <div class="col-12">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                          Clear
-                        </button>
-                      </div>
-
                     </div>
+
+                    <!-- CLEAR -->
+                    <div class="col-12">
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        Clear
+                      </button>
+                    </div>
+
                   </div>
                 </div>
+              </div>
 
                 <!-- ============================================================ -->
                 <!-- VIEW CONTROLS -->

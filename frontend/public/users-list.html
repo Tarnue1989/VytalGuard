@@ -55,89 +55,89 @@
 
               <div class="card-body">
 
-                <!-- ================= FILTERS ================= -->
-                <div class="card panel-card mb-3">
-                  <div class="card-header d-flex align-items-center justify-content-between">
-                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                      <i class="fas fa-filter me-1"></i> Filters
-                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+              <!-- ================= FILTERS ================= -->
+              <div class="card panel-card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                  <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-filter me-1"></i> Filters
+                    <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                  </button>
+
+                  <div class="view-actions d-flex gap-2">
+                    <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+                      <i class="fas fa-file-csv me-1"></i> CSV
                     </button>
-
-                    <div class="view-actions d-flex gap-2">
-                      <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
-                        <i class="fas fa-file-csv me-1"></i> CSV
-                      </button>
-                      <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-file-excel me-1"></i> Excel
-                      </button>
-                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
-                        <i class="fas fa-file-pdf me-1"></i> PDF
-                      </button>
-                    </div>
-                  </div>
-
-                  <div id="filterCollapse" class="card-body filter-body">
-                    <div class="section-label mb-2"><strong>Filter Users</strong></div>
-
-                    <div class="row g-3 filter-grid compact">
-
-                      <!-- 🔍 GLOBAL SEARCH -->
-                      <div class="col-md-4">
-                        <label class="form-label">Search</label>
-                        <div class="input-group">
-                          <span class="input-group-text bg-primary-lighten">
-                            <i class="ri-search-line text-primary"></i>
-                          </span>
-                          <input id="globalSearch" type="text" class="form-control"
-                            placeholder="Username, email, name…" />
-                        </div>
-                      </div>
-
-                      <!-- ORGANIZATION -->
-                      <div class="col-md-3">
-                        <label class="form-label">Organization</label>
-                        <select id="filterOrganization" class="form-select"></select>
-                      </div>
-
-                      <!-- FACILITY -->
-                      <div class="col-md-3">
-                        <label class="form-label">Facility</label>
-                        <select id="filterFacility" class="form-select"></select>
-                      </div>
-
-                      <!-- STATUS -->
-                      <div class="col-md-2">
-                        <label class="form-label">Status</label>
-                        <select id="filterStatus" class="form-select">
-                          <option value="">All</option>
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="suspended">Suspended</option>
-                        </select>
-                      </div>
-
-                      <!-- DATE RANGE -->
-                      <div class="col-md-3">
-                        <label class="form-label">Date Range</label>
-                        <div class="input-group">
-                          <span class="input-group-text bg-primary-lighten">
-                            <i class="ri-calendar-2-line text-primary"></i>
-                          </span>
-                          <input id="dateRange" type="text" class="form-control custom-daterange"
-                            placeholder="Select date range" />
-                        </div>
-                      </div>
-
-                      <!-- ACTIONS -->
-                      <div class="col-12 d-flex gap-2">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                          <i class="fas fa-times me-1"></i> Clear
-                        </button>
-                      </div>
-
-                    </div>
+                    <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-file-excel me-1"></i> Excel
+                    </button>
+                    <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                      <i class="fas fa-file-pdf me-1"></i> PDF
+                    </button>
                   </div>
                 </div>
+
+                <div id="filterCollapse" class="card-body filter-body">
+                  <div class="section-label mb-2"><strong>Filter Users</strong></div>
+
+                  <div class="row g-3 filter-grid compact">
+
+                    <!-- 🔍 GLOBAL SEARCH -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Search</label>
+                      <div class="input-group">
+                        <span class="input-group-text bg-primary-lighten">
+                          <i class="ri-search-line text-primary"></i>
+                        </span>
+                        <input id="globalSearch" type="text" class="form-control"
+                          placeholder="Username, email, name…" />
+                      </div>
+                    </div>
+
+                    <!-- ORGANIZATION -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Organization</label>
+                      <select id="filterOrganization" class="form-select"></select>
+                    </div>
+
+                    <!-- FACILITY -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Facility</label>
+                      <select id="filterFacility" class="form-select"></select>
+                    </div>
+
+                    <!-- STATUS -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Status</label>
+                      <select id="filterStatus" class="form-select">
+                        <option value="">All</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="suspended">Suspended</option>
+                      </select>
+                    </div>
+
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <label class="form-label">Date Range</label>
+                      <div class="input-group">
+                        <span class="input-group-text bg-primary-lighten">
+                          <i class="ri-calendar-2-line text-primary"></i>
+                        </span>
+                        <input id="dateRange" type="text" class="form-control custom-daterange"
+                          placeholder="Select date range" />
+                      </div>
+                    </div>
+
+                    <!-- ACTIONS -->
+                    <div class="col-12 d-flex gap-2">
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
 
                 <!-- View Toggle -->
                 <div class="d-flex mb-2 view-toggle compact align-items-center">

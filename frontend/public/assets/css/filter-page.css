@@ -510,3 +510,33 @@ th.sortable .sort-icon {
   opacity: 0.5;
   margin-left: 4px;
 }
+
+
+/* =========================================================
+   📱 MOBILE DROPDOWN FIX (INSIDE CARD)
+========================================================= */
+
+/* Allow dropdowns to render fully inside filter card */
+.panel-card,
+.filter-body,
+.card {
+  overflow: visible !important;
+}
+
+/* Ensure dropdown menu stacks above content */
+.dropdown-menu {
+  z-index: 1055 !important;
+}
+
+
+/* =========================================================
+   📱 FIX DOUBLE ARROW ON SELECT (MOBILE)
+========================================================= */
+
+select.form-select {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  -moz-appearance: auto !important;
+  background-image: none !important;
+}
+

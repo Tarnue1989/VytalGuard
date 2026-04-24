@@ -1,6 +1,6 @@
 // 📁 backend/src/controllers/cashLedgerController.js
 // ============================================================================
-// 📊 Cash Ledger Controller – MASTER-ALIGNED (READ ONLY FINAL)
+// 📊 Cash Ledger Controller – MASTER-ALIGNED (READ ONLY FINAL - FIXED)
 // ============================================================================
 
 import { Op } from "sequelize";
@@ -65,8 +65,22 @@ export const getAllLedgerEntries = async (req, res) => {
     const options = buildQueryOptions(req, "date", "DESC", visibleFields);
     options.where = { [Op.and]: [] };
 
-    /* ================= TENANT ================= */
-    if (!isSuperAdmin(req.user)) {
+    /* ================= TENANT (🔥 FIXED) ================= */
+    if (isSuperAdmin(req.user)) {
+      // ✅ allow filtering from frontend
+      if (req.query.organization_id) {
+        options.where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        options.where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+    } else {
+      // 🔒 enforce tenant
       options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
@@ -87,7 +101,6 @@ export const getAllLedgerEntries = async (req, res) => {
         });
       }
     } else {
-      // 🔥 Default today filter (LOCAL DATE — FIXED)
       const today = getLocalDate();
       options.where[Op.and].push({ date: today });
     }
@@ -113,7 +126,7 @@ export const getAllLedgerEntries = async (req, res) => {
       options.where[Op.and].push({ reference_type: req.query.reference_type });
     }
 
-    /* ================= SEARCH (UPGRADED) ================= */
+    /* ================= SEARCH ================= */
     if (options.search) {
       options.where[Op.and].push({
         [Op.or]: [

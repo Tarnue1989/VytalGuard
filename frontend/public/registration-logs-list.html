@@ -92,7 +92,7 @@
                   <div class="row g-3 filter-grid compact">
 
                     <!-- 🔍 GLOBAL SEARCH -->
-                    <div class="col-md-4">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="globalSearch" class="form-label">Search</label>
                         <div class="input-group">
@@ -109,19 +109,23 @@
                         </div>
                       </div>
                     </div>
-                      <!-- Patient -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label" for="filterPatient">Patient</label>
-                          <input type="text" id="filterPatient" class="form-control suggestion-input"
-                                 placeholder="Search patient..." autocomplete="off" />
-                          <input type="hidden" id="filterPatientId" />
-                          <div id="filterPatientSuggestions" class="suggestions"></div>
-                        </div>
+
+                    <!-- Patient -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label" for="filterPatient">Patient</label>
+                        <input type="text"
+                              id="filterPatient"
+                              class="form-control suggestion-input"
+                              placeholder="Search patient..."
+                              autocomplete="off" />
+                        <input type="hidden" id="filterPatientId" />
+                        <div id="filterPatientSuggestions" class="suggestions"></div>
                       </div>
+                    </div>
 
                     <!-- ORGANIZATION -->
-                    <div class="col-md-3">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="filterOrganizationSelect" class="form-label">Organization</label>
                         <select id="filterOrganizationSelect" class="form-select"></select>
@@ -129,7 +133,7 @@
                     </div>
 
                     <!-- FACILITY -->
-                    <div class="col-md-3">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="filterFacilitySelect" class="form-label">Facility</label>
                         <select id="filterFacilitySelect" class="form-select"></select>
@@ -137,7 +141,7 @@
                     </div>
 
                     <!-- STATUS -->
-                    <div class="col-md-2">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="filterStatus" class="form-label">Status</label>
                         <select id="filterStatus" class="form-select">
@@ -151,8 +155,9 @@
                         </select>
                       </div>
                     </div>
+
                     <!-- PAYER TYPE -->
-                    <div class="col-md-2">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="filterPayerType" class="form-label">Payer</label>
                         <select id="filterPayerType" class="form-select">
@@ -162,8 +167,9 @@
                         </select>
                       </div>
                     </div>
-                    <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
-                    <div class="col-md-3">
+
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label for="dateRange" class="form-label">Date Range</label>
                         <div class="input-group">

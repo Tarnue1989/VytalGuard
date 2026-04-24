@@ -86,102 +86,102 @@
 
                   </div>
 
-                  <!-- Filter Body -->
-                  <div id="filterCollapse" class="card-body filter-body hidden">
+                <!-- Filter Body -->
+                <div id="filterCollapse" class="card-body filter-body hidden">
 
-                    <div class="section-label mb-2">
-                      <strong>Filter Payrolls</strong>
-                    </div>
-
-                    <div class="row gx-3 gy-2 filter-grid compact">
-
-                      <!-- Employee -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Employee</label>
-                          <input type="text" id="filterEmployee" class="form-control suggestion-input" />
-                          <input type="hidden" id="filterEmployeeId" />
-                          <div id="filterEmployeeSuggestions" class="suggestions"></div>
-                        </div>
-                      </div>
-
-                      <!-- Payroll # -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Payroll #</label>
-                          <input type="text" id="filterPayrollNumber" class="form-control" />
-                        </div>
-                      </div>
-
-                      <!-- Currency -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Currency</label>
-                          <select id="filterCurrencySelect" class="form-select">
-                            <option value="">All</option>
-                            <option value="USD">USD</option>
-                            <option value="LRD">LRD</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- Status -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Status</label>
-                          <select id="filterStatus" class="form-select">
-                            <option value="">All</option>
-                            <option value="draft">Draft</option>
-                            <option value="approved">Approved</option>
-                            <option value="paid">Paid</option>
-                            <option value="voided">Voided</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <!-- Organization -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Organization</label>
-                          <select id="filterOrganizationSelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <!-- Facility -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Facility</label>
-                          <select id="filterFacilitySelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <!-- DATE RANGE (MASTER SAME AS DEPOSITS) -->
-                      <div class="col-md-3">
-                        <div class="field-wrapper">
-                          <label class="form-label">Date Range</label>
-                          <div class="input-group">
-                            <span class="input-group-text bg-primary-lighten">
-                              <i class="ri-calendar-2-line text-primary"></i>
-                            </span>
-                            <input
-                              type="text"
-                              id="dateRange"
-                              class="form-control custom-daterange"
-                              placeholder="Select date range"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- Actions -->
-                      <div class="col-12 d-flex gap-2 filter-actions mt-2">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                          <i class="fas fa-times me-1"></i> Clear
-                        </button>
-                      </div>
-
-                    </div>
+                  <div class="section-label mb-2">
+                    <strong>Filter Payrolls</strong>
                   </div>
+
+                  <div class="row gx-3 gy-2 filter-grid compact">
+
+                    <!-- Employee -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Employee</label>
+                        <input type="text" id="filterEmployee" class="form-control suggestion-input" />
+                        <input type="hidden" id="filterEmployeeId" />
+                        <div id="filterEmployeeSuggestions" class="suggestions"></div>
+                      </div>
+                    </div>
+
+                    <!-- Payroll # -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Payroll #</label>
+                        <input type="text" id="filterPayrollNumber" class="form-control" />
+                      </div>
+                    </div>
+
+                    <!-- Currency -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Currency</label>
+                        <select id="filterCurrencySelect" class="form-select">
+                          <option value="">All</option>
+                          <option value="USD">USD</option>
+                          <option value="LRD">LRD</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Status</label>
+                        <select id="filterStatus" class="form-select">
+                          <option value="">All</option>
+                          <option value="draft">Draft</option>
+                          <option value="approved">Approved</option>
+                          <option value="paid">Paid</option>
+                          <option value="voided">Voided</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Organization</label>
+                        <select id="filterOrganizationSelect" class="form-select"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Facility</label>
+                        <select id="filterFacilitySelect" class="form-select"></select>
+                      </div>
+                    </div>
+
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Date Range</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-calendar-2-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="dateRange"
+                            class="form-control custom-daterange"
+                            placeholder="Select date range"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="col-12 d-flex gap-2 filter-actions mt-2">
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
                 </div>
 
                 <!-- ============================================================ -->

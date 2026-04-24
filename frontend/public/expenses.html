@@ -63,85 +63,84 @@
 
       <div class="card-body">
 
-        <!-- FILTERS -->
-        <div class="card panel-card mb-3">
+            <!-- FILTERS -->
+            <div class="card panel-card mb-3">
 
-          <div class="card-header d-flex justify-content-between">
+              <div class="card-header d-flex justify-content-between">
 
-            <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-              <i class="fas fa-filter"></i> Filter
-              <i id="filterChevron" class="fas fa-chevron-down"></i>
-            </button>
-
-            <div class="d-flex gap-2">
-              <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
-              <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
-              <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
-            </div>
-
-          </div>
-
-          <div id="filterCollapse" class="card-body hidden">
-
-            <div class="row g-2">
-
-              <!-- SEARCH -->
-              <div class="col-md-3">
-                <label>Search</label>
-                <input id="filterSearch" class="form-control" placeholder="Search expenses...">
-              </div>
-
-              <!-- CATEGORY -->
-              <div class="col-md-3">
-                <label>Category</label>
-                <select id="filterCategory" class="form-select"></select>
-              </div>
-
-              <!-- ACCOUNT -->
-              <div class="col-md-3">
-                <label>Account</label>
-                <select id="filterAccount" class="form-select"></select>
-              </div>
-
-              <!-- CURRENCY -->
-              <div class="col-md-3">
-                <label>Currency</label>
-                <select id="filterCurrency" class="form-select">
-                  <option value="">All</option>
-                  <option value="USD">USD</option>
-                  <option value="LRD">LRD</option>
-                </select>
-              </div>
-
-              <!-- DATE RANGE -->
-              <div class="col-md-3">
-                <label>Date Range</label>
-                <input id="dateRange" class="form-control custom-daterange">
-              </div>
-
-              <!-- ORG -->
-              <div class="col-md-3">
-                <label>Organization</label>
-                <select id="filterOrganizationSelect" class="form-select"></select>
-              </div>
-
-              <!-- FACILITY -->
-              <div class="col-md-3">
-                <label>Facility</label>
-                <select id="filterFacilitySelect" class="form-select"></select>
-              </div>
-
-              <div class="col-12">
-                <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                  Clear
+                <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                  <i class="fas fa-filter"></i> Filter
+                  <i id="filterChevron" class="fas fa-chevron-down"></i>
                 </button>
+
+                <div class="d-flex gap-2">
+                  <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
+                  <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
+                  <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
+                </div>
+
+              </div>
+
+              <div id="filterCollapse" class="card-body filter-body hidden">
+
+                <div class="row g-2 filter-grid compact">
+
+                  <!-- SEARCH -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Search</label>
+                    <input id="filterSearch" class="form-control" placeholder="Search expenses...">
+                  </div>
+
+                  <!-- CATEGORY -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Category</label>
+                    <select id="filterCategory" class="form-select"></select>
+                  </div>
+
+                  <!-- ACCOUNT -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Account</label>
+                    <select id="filterAccount" class="form-select"></select>
+                  </div>
+
+                  <!-- CURRENCY -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Currency</label>
+                    <select id="filterCurrency" class="form-select">
+                      <option value="">All</option>
+                      <option value="USD">USD</option>
+                      <option value="LRD">LRD</option>
+                    </select>
+                  </div>
+
+                  <!-- DATE RANGE -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Date Range</label>
+                    <input id="dateRange" class="form-control custom-daterange">
+                  </div>
+
+                  <!-- ORG -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Organization</label>
+                    <select id="filterOrganizationSelect" class="form-select"></select>
+                  </div>
+
+                  <!-- FACILITY -->
+                  <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                    <label>Facility</label>
+                    <select id="filterFacilitySelect" class="form-select"></select>
+                  </div>
+
+                  <div class="col-12">
+                    <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                      Clear
+                    </button>
+                  </div>
+
+                </div>
               </div>
 
             </div>
-          </div>
-
-        </div>
-
                 <!-- ============================================================ -->
                 <!-- VIEW CONTROLS -->
                 <!-- ============================================================ -->
