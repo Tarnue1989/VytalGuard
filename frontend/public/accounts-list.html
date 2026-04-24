@@ -119,30 +119,66 @@
                     </div>
                   </div>
                 </div>
-
                 <!-- ============================================================ -->
-                <!-- VIEW CONTROLS -->
+                <!-- 🧭 VIEW CONTROLS -->
                 <!-- ============================================================ -->
-                <div class="d-flex mb-2 align-items-center gap-2">
+                <div class="d-flex mb-2 view-toggle compact align-items-center gap-2 flex-wrap">
 
-                  <div class="dropdown">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle"
-                      data-bs-toggle="dropdown">
-                      Select Fields
+                  <!-- Field Selector -->
+                  <div class="dropdown relative-wrapper export-ignore">
+                    <button
+                      class="btn btn-outline-primary btn-sm dropdown-toggle"
+                      id="fieldSelectorBtn"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                    >
+                      <i class="fas fa-columns me-1"></i> Select Fields
                     </button>
-                    <div id="fieldSelectorDropdown" class="dropdown-menu p-2"></div>
+                    <div
+                      class="dropdown-menu p-2 field-selector-dropdown"
+                      id="fieldSelectorDropdown"
+                      style="min-width:240px;"
+                    ></div>
                   </div>
 
-                  <div class="btn-group">
-                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm">Card</button>
-                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm active">Table</button>
+                  <!-- View Toggle -->
+                  <div class="btn-group" role="group">
+                    <button id="cardViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle">
+                      <i class="fas fa-th me-1"></i> Card View
+                    </button>
+                    <button id="tableViewBtn" class="btn btn-outline-secondary btn-sm btn-toggle active">
+                      <i class="fas fa-table me-1"></i> Table View
+                    </button>
                   </div>
-
                 </div>
+
+                <!-- Records Per Page -->
+                <div class="btn-group align-items-center ms-2" role="group">
+                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Show</span>
+                  <select
+                    id="recordsPerPage"
+                    class="btn btn-outline-secondary btn-sm text-center"
+                    style="width:64px; appearance:auto;"
+                  >
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                  <span class="btn btn-outline-secondary btn-sm px-2 pe-none">Rows</span>
+                </div>
+
+                <!-- 📊 Breakdown Summary -->
+                <hr class="my-2" />
+                <div class="text-muted fw-semibold small mb-1">Breakdown Summary</div>
+                <div class="module-summary">
+                  <div id="moduleSummary"></div>
+                </div>
+                <hr class="my-2" />
 
                 <!-- TABLE -->
                 <div class="table-responsive table-container active">
-                  <table class="table m-0 align-middle">
+                  <table class="table m-0 align-middle data-table print-table">
                     <thead id="dynamicTableHead"></thead>
                     <tbody id="accountTableBody"></tbody>
                   </table>

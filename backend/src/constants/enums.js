@@ -1022,6 +1022,9 @@ export const LEDGER_TYPES = Object.freeze({
   EXPENSE: "expense",         // expenses
   TRANSFER: "transfer",       // account → account
   ADJUSTMENT: "adjustment",   // reversal, correction, void
+    // 🔥 ADD THESE
+  REFUND: "refund",
+  REVERSAL: "reversal",
 });
 
 // ------------------------------------------------------------

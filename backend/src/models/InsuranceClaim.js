@@ -178,6 +178,10 @@ InsuranceClaim.init(
       allowNull: true,
       validate: { min: 0 },
     },
+    payment_processed: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
 
     payment_reference: {
       type: DataTypes.STRING(120),
@@ -226,7 +230,10 @@ InsuranceClaim.init(
     submitted_at: { type: DataTypes.DATE },
     reviewed_at: { type: DataTypes.DATE },
     approved_at: { type: DataTypes.DATE },
-    paid_at: { type: DataTypes.DATE },
+    paid_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
 
     /* ============================================================
        🔁 RESUBMISSION SUPPORT

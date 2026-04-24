@@ -26,9 +26,10 @@ import { FIELD_VISIBILITY_CASH_LEDGER } from "../constants/fieldVisibility.js";
 
 import { authzService } from "../services/authzService.js";
 import { auditService } from "../services/auditService.js";
+import { getLocalDate } from "../utils/date-utils.js";
 
 /* ============================================================ */
-const MODULE_KEY = "cash_ledger";
+const MODULE_KEY = "cash_ledgers";
 const debug = makeModuleLogger("cashLedgerController");
 
 /* ============================================================ */
@@ -86,8 +87,8 @@ export const getAllLedgerEntries = async (req, res) => {
         });
       }
     } else {
-      // 🔥 Default today filter (prevents empty screen)
-      const today = new Date().toISOString().slice(0, 10);
+      // 🔥 Default today filter (LOCAL DATE — FIXED)
+      const today = getLocalDate();
       options.where[Op.and].push({ date: today });
     }
 

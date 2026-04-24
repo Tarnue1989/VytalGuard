@@ -930,7 +930,7 @@ export const rejectInsuranceClaim = (req, res) =>
 export const processInsuranceClaimPayment = (req, res) =>
   updateClaimStatus(req, res, INSURANCE_CLAIM_STATUS.PROCESSING_PAYMENT, "process_payment");
 
-// 7️⃣ PROCESSING → PAID (FINAL SAFE)
+// 7️⃣ PROCESSING → PAID (FINAL SAFE — MASTER ALIGNED)
 export const markInsuranceClaimPaid = async (req, res) => {
   const t = await sequelize.transaction();
 
@@ -945,6 +945,20 @@ export const markInsuranceClaimPaid = async (req, res) => {
       res,
     });
     if (!allowed) return;
+
+    /* ================= VALIDATION ================= */
+    const schema = Joi.object({
+      account_id: Joi.string().uuid().required(),
+    });
+
+    const { error: validationError, value } = schema.validate(req.body);
+
+    if (validationError) {
+      await t.rollback();
+      return error(res, "❌ Account is required", validationError, 400);
+    }
+
+    const { account_id } = value;
 
     /* ================= FETCH CLAIM ================= */
     const record = await InsuranceClaim.findByPk(id, { transaction: t });
@@ -965,7 +979,11 @@ export const markInsuranceClaimPaid = async (req, res) => {
       return error(res, "❌ Claim already paid", null, 400);
     }
 
-    if (!INSURANCE_CLAIM_TRANSITIONS[record.status]?.[INSURANCE_CLAIM_STATUS.PAID]) {
+    if (
+      !INSURANCE_CLAIM_TRANSITIONS[record.status]?.[
+        INSURANCE_CLAIM_STATUS.PAID
+      ]
+    ) {
       await t.rollback();
       return error(
         res,
@@ -982,24 +1000,57 @@ export const markInsuranceClaimPaid = async (req, res) => {
 
     if (paidAmount <= 0) {
       await t.rollback();
-      return error(res, "❌ Payment amount must be greater than 0", null, 400);
+      return error(
+        res,
+        "❌ Payment amount must be greater than 0",
+        null,
+        400
+      );
     }
 
-    /* ================= CREATE PAYMENT ================= */
-    await Payment.create({
+    /* ================= VALIDATE ACCOUNT ================= */
+    const account = await sequelize.models.Account.findByPk(account_id, {
+      transaction: t,
+    });
+
+    if (!account) {
+      await t.rollback();
+      return error(res, "❌ Invalid account", null, 400);
+    }
+
+    // 🔥 currency safety
+    if (account.currency !== record.currency) {
+      await t.rollback();
+      return error(res, "❌ Account currency mismatch", null, 400);
+    }
+
+    // 🔥 org safety
+    if (account.organization_id !== record.organization_id) {
+      await t.rollback();
+      return error(
+        res,
+        "❌ Account does not belong to organization",
+        null,
+        400
+      );
+    }
+
+    /* =========================================================
+       🔥 CREATE PAYMENT (MASTER WAY — THIS FIXES CASH ACTIVITY)
+    ========================================================= */
+    const { payment } = await financialService.applyPayment({
       invoice_id: record.invoice_id,
-      patient_id: record.patient_id,
+      account_id: account_id,
       amount: paidAmount,
-      currency: record.currency || "LRD",
       method: "insurance",
-      status: "completed",
-      reference: record.claim_number,
+      transaction_ref: record.claim_number,
+      user: req.user,
       organization_id: record.organization_id,
       facility_id: record.facility_id,
-      created_by_id: req.user.id,
-    }, { transaction: t });
+      t,
+    });
 
-    /* ================= UPDATE CLAIM FIRST ================= */
+    /* ================= UPDATE CLAIM ================= */
     record.amount_paid = paidAmount;
     record.status = INSURANCE_CLAIM_STATUS.PAID;
     record.paid_at = new Date();
@@ -1007,7 +1058,7 @@ export const markInsuranceClaimPaid = async (req, res) => {
 
     await record.save({ transaction: t });
 
-    /* ================= RECALC AFTER STATE IS STABLE ================= */
+    /* ================= RECALC ================= */
     await recalcInvoice(String(record.invoice_id), t);
 
     /* ================= COMMIT ================= */

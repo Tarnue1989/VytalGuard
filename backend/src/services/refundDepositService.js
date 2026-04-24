@@ -7,16 +7,17 @@
 //            ↘ cancelled
 // voided → restored
 // ============================================================================
-
+import db from "../models/index.js";
 import {
   sequelize,
   RefundDeposit,
   Deposit,
   RefundDepositTransaction,
 } from "../models/index.js";
-
+import { LEDGER_TYPES, LEDGER_DIRECTIONS } from "../constants/enums.js";
 import { DEPOSIT_REFUND_STATUS as RS } from "../constants/enums.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
+import { financialService } from "./financialService.js";
 
 export const refundDepositService = {
 
@@ -158,6 +159,40 @@ export const refundDepositService = {
 
       await deposit.save({ transaction: t, user });
 
+      await financialService.logLedger({
+        type: "refund",
+        entity: refund,
+        organization_id: refund.organization_id,
+        facility_id: refund.facility_id,
+        account_id: deposit.account_id,
+        patient_id: refund.patient_id,
+        invoice_id: deposit.applied_invoice_id,
+        amount: refundAmount,
+        note: "Deposit refund",
+        user,
+        t,
+      });
+      
+      await db.CashLedger.create(
+      {
+        date: new Date().toISOString().slice(0, 10),
+
+      type: LEDGER_TYPES.REFUND,
+      direction: LEDGER_DIRECTIONS.OUT,
+
+        account_id: deposit.account_id,
+        amount: refundAmount,
+        currency: deposit.currency,
+
+        reference_type: "refund_deposit",
+        reference_id: refund.id,
+
+        organization_id: refund.organization_id,
+        facility_id: refund.facility_id,
+        created_by_id: user.id,
+      },
+      { transaction: t }
+      );
       // 🔹 ledger transaction
       await RefundDepositTransaction.create(
         {
@@ -281,7 +316,26 @@ export const refundDepositService = {
         Number(refund.refund_amount);
 
       await deposit.save({ transaction: t, user });
+      await db.CashLedger.create(
+      {
+        date: new Date().toISOString().slice(0, 10),
 
+        type: LEDGER_TYPES.REVERSAL,
+        direction: LEDGER_DIRECTIONS.IN,
+
+        account_id: deposit.account_id,
+        amount: refund.refund_amount,
+        currency: deposit.currency,
+
+        reference_type: "refund_deposit_reversal",
+        reference_id: refund.id,
+
+        organization_id: refund.organization_id,
+        facility_id: refund.facility_id,
+        created_by_id: user.id,
+      },
+      { transaction: t }
+      );
       await applyLifecycleTransition({
         entity: refund,
         action: "reversed",

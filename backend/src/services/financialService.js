@@ -14,6 +14,7 @@ import {
 import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
 import { isDateLocked } from "./cashClosingService.js";
+import { getLocalDate } from "../utils/date-utils.js";
 
 /* ============================================================
    🔖 Local enum maps (FIXED — OBJECT ENUM SAFE)
@@ -85,6 +86,7 @@ const DSC = {
   FINALIZED: DISCOUNT_STATUS.FINALIZED,
   VOIDED: DISCOUNT_STATUS.VOIDED,
 };
+
 
 /* ============================================================
    🔹 Helper: Write to FinancialLedger (ENTERPRISE MASTER FINAL)
@@ -216,7 +218,7 @@ export const financialService = {
       throw new Error("❌ account_id is required for payment");
     }
     /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDate();
 
     const locked = await isDateLocked({
       account_id,
@@ -305,7 +307,7 @@ export const financialService = {
     ============================ */
     await db.CashLedger.create(
       {
-        date: new Date().toISOString().slice(0, 10),
+        date: today,
         type: LEDGER_TYPES.COLLECTION,
         direction: LEDGER_DIRECTIONS.IN,
 
@@ -374,7 +376,7 @@ export const financialService = {
       if (!payment) throw new Error("❌ Payment not found");
 
       /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDate();
 
       const locked = await isDateLocked({
         account_id: payment.account_id,
@@ -572,7 +574,7 @@ export const financialService = {
         const organization_id = refund.organization_id;
 
         /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getLocalDate();
 
         const locked = await isDateLocked({
           account_id,
@@ -627,7 +629,7 @@ export const financialService = {
         /* ================= 💰 CASH LEDGER ================= */
         await db.CashLedger.create(
           {
-            date: new Date().toISOString().slice(0, 10),
+            date: today,
             type: LEDGER_TYPES.REFUND,
             direction: LEDGER_DIRECTIONS.OUT, // 💸 money leaves
 
@@ -715,7 +717,7 @@ export const financialService = {
         if (!payment) throw new Error("❌ Original payment not found");
 
         /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getLocalDate();
 
         const locked = await isDateLocked({
           account_id: payment.account_id,
@@ -778,7 +780,7 @@ export const financialService = {
         /* ================= 💰 CASH LEDGER (REAL MONEY BACK) ================= */
         await db.CashLedger.create(
           {
-            date: new Date().toISOString().slice(0, 10),
+            date: today,
             type: LEDGER_TYPES.REVERSAL,
             direction: LEDGER_DIRECTIONS.IN, // 💰 money returns
 
@@ -934,7 +936,7 @@ export const financialService = {
         throw new Error("❌ account_id is required for deposit");
       }
       /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDate();
 
       const locked = await isDateLocked({
         account_id,
@@ -1037,7 +1039,7 @@ export const financialService = {
       /* ================= 💰 CASH LEDGER ================= */
       await db.CashLedger.create(
         {
-          date: new Date().toISOString().slice(0, 10),
+          date: today,
           type: LEDGER_TYPES.COLLECTION,
           direction: LEDGER_DIRECTIONS.IN,
 
@@ -1643,7 +1645,7 @@ export const financialService = {
           if (!deposit) throw new Error("❌ Deposit not found");
 
           /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-          const today = new Date().toISOString().slice(0, 10);
+          const today = getLocalDate();
 
           const locked = await isDateLocked({
             account_id: deposit.account_id,
@@ -1677,7 +1679,7 @@ export const financialService = {
           /* ================= 💰 CASH LEDGER ================= */
           await db.CashLedger.create(
             {
-              date: new Date().toISOString().slice(0, 10),
+              date: today,
               type: LEDGER_TYPES.REVERSAL,
               direction: LEDGER_DIRECTIONS.OUT,
 
@@ -2064,7 +2066,6 @@ export const financialService = {
     💸 EXPENSES (ENTERPRISE MASTER – FULL FIXED + LOCK SAFE)
   ============================================================ */
   async createExpense({
-    date,
     amount,
     currency,
     category,
@@ -2081,7 +2082,7 @@ export const financialService = {
         throw new Error("❌ User organization context missing");
       }
 
-      if (!date || !amount || !currency || !category || !account_id) {
+      if (!amount || !currency || !category || !account_id) {
         throw new Error("❌ Missing required expense fields");
       }
 
@@ -2089,9 +2090,10 @@ export const financialService = {
         throw new Error("❌ Expense amount must be greater than 0");
       }
 
-      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
-      const today = new Date().toISOString().slice(0, 10);
+      /* ================= 📅 SINGLE SOURCE DATE ================= */
+      const today = getLocalDate();
 
+      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
       const locked = await isDateLocked({
         account_id,
         date: today,
@@ -2116,7 +2118,7 @@ export const financialService = {
       /* ================= CREATE EXPENSE ================= */
       const expense = await db.Expense.create(
         {
-          date,
+          date: today, // ✅ FIXED
           amount,
           currency,
           category,
@@ -2146,9 +2148,9 @@ export const financialService = {
       /* ================= 💰 CASH LEDGER (REAL MONEY) ================= */
       await db.CashLedger.create(
         {
-          date: new Date().toISOString().slice(0, 10),
+          date: today, // ✅ SAME DATE (IMPORTANT)
           type: LEDGER_TYPES.EXPENSE,
-          direction: LEDGER_DIRECTIONS.OUT, // 💸 MONEY LEAVES
+          direction: LEDGER_DIRECTIONS.OUT,
 
           account_id,
           amount,
@@ -2167,6 +2169,7 @@ export const financialService = {
       return expense;
     });
   },
+
   /* ============================================================
     🔁 TRANSFERS (ENTERPRISE MASTER – FINAL)
   ============================================================ */
@@ -2199,7 +2202,7 @@ export const financialService = {
     }
 
     /* ================= 🔒 CASH CLOSING LOCK CHECK (FIXED) ================= */
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDate();
 
     const [lockedFrom, lockedTo] = await Promise.all([
       isDateLocked({
@@ -2247,7 +2250,7 @@ export const financialService = {
       organization_id,
       facility_id,
       account_id: from_account_id,
-      amount,
+      amount: -amount, // ✅ FIX
       note: `Transfer OUT → ${toAccount.name}`,
       user,
       t,
@@ -2260,7 +2263,7 @@ export const financialService = {
       organization_id,
       facility_id,
       account_id: to_account_id,
-      amount,
+      amount: amount, // ✅ keep positive
       note: `Transfer IN ← ${fromAccount.name}`,
       user,
       t,
@@ -2271,7 +2274,7 @@ export const financialService = {
     // 🔴 OUT
     await db.CashLedger.create(
       {
-        date: new Date().toISOString().slice(0, 10),
+        date: today,
         type: LEDGER_TYPES.TRANSFER,
         direction: LEDGER_DIRECTIONS.OUT,
 
@@ -2292,7 +2295,7 @@ export const financialService = {
     // 🟢 IN
     await db.CashLedger.create(
       {
-        date: new Date().toISOString().slice(0, 10),
+        date: today,
         type: LEDGER_TYPES.TRANSFER,
         direction: LEDGER_DIRECTIONS.IN,
 
@@ -2399,6 +2402,8 @@ export const financialService = {
     /* ----------------- Public Invoice Recalc ----------------- */
     async recalcInvoice(invoiceId, t = null) {
     return await recalcInvoice(invoiceId, t); // thin wrapper
-    }
+    },
 
+    logLedger,
+    
 };

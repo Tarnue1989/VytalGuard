@@ -14,7 +14,7 @@ import { auditService } from "../services/auditService.js";
 
 import { makeModuleLogger } from "../utils/debugLogger.js";
 
-const MODULE_KEY = "organization_branding";
+const MODULE_KEY = "organization_brandings";
 const debug = makeModuleLogger("organizationBrandingController", true);
 
 /* ============================================================

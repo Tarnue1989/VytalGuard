@@ -125,6 +125,83 @@ export function setupActionHandlers({
     };
   }
 
+  async function handleMarkPaid(entry) {
+    const idInput = document.getElementById("markPaidClaimId");
+    const select = document.getElementById("markPaidAccountSelect");
+
+    idInput.value = entry.id;
+
+    try {
+      showLoading();
+
+      // 🔥 load accounts by currency
+      const res = await authFetch(
+        `/api/lite/accounts?currency=${entry.currency}`
+      );
+
+      const data = await res.json();
+      const accounts = data?.data?.records || [];
+
+      if (!accounts.length) {
+        showToast("❌ No accounts available for this currency");
+        return;
+      }
+
+      // 🔥 populate dropdown
+      select.innerHTML = accounts.map(acc => `
+        <option value="${acc.id}">
+          ${acc.name} (${acc.currency})
+        </option>
+      `).join("");
+
+      // 🔥 auto select first
+      select.value = accounts[0].id;
+
+      // 🔥 open modal
+      openModal("claimMarkPaidModal");
+
+      // 🔥 submit handler
+      document.getElementById("claimMarkPaidForm").onsubmit = async (e) => {
+        e.preventDefault();
+
+        const account_id = select.value;
+
+        try {
+          showLoading();
+
+          const res = await authFetch(
+            `/api/insurance-claims/${entry.id}/mark-paid`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ account_id }),
+            }
+          );
+
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.message);
+
+          showToast("✅ Claim marked as paid");
+
+          closeModal("claimMarkPaidModal");
+
+          window.latestInsuranceClaimEntries = [];
+          await loadEntries(currentPage);
+
+        } catch (err) {
+          showToast(err.message || "❌ Failed to mark paid");
+        } finally {
+          hideLoading();
+        }
+      };
+
+    } catch (err) {
+      showToast("❌ Failed to load accounts");
+    } finally {
+      hideLoading();
+    }
+  }
+
   /* ================= ACTION HANDLER ================= */
   async function handleActions(e) {
 
@@ -309,6 +386,12 @@ export function setupActionHandlers({
 
     for (const [clsName, action] of Object.entries(lifecycleMap)) {
       if (cls.contains(clsName)) {
+
+        // 🔥 INTERCEPT MARK PAID
+        if (action === "mark-paid") {
+          return handleMarkPaid(entry);
+        }
+
         return handleLifecycle(id, action);
       }
     }

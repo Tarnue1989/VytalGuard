@@ -101,11 +101,17 @@ function renderValue(entry, field) {
         : "—";
 
     case "type":
-      if (entry.reference_type === "payment") return "Payment";
-      if (entry.reference_type === "deposit") return "Deposit";
-      if (entry.reference_type === "expense") return "Expense";
-      if (entry.reference_type === "refund") return "Refund";
-      return entry.type || "—";
+    if (entry.reference_type === "payment") return "Payment";
+    if (entry.reference_type === "deposit") return "Deposit";
+    if (entry.reference_type === "expense") return "Expense";
+
+    // 🔥 NEW (ADD THESE)
+    if (entry.reference_type === "payment_refund") return "Refund";
+    if (entry.reference_type === "refund_deposit") return "Refund";
+
+    return entry.type
+        ? entry.type.charAt(0).toUpperCase() + entry.type.slice(1)
+        : "—";
 
     case "direction":
       return renderDirection(entry.direction);
@@ -217,16 +223,21 @@ function renderCard(entry, visibleFields) {
     `;
   };
 
-  const typeLabel =
-    entry.reference_type === "payment"
-      ? "Payment"
-      : entry.reference_type === "deposit"
-      ? "Deposit"
-      : entry.reference_type === "expense"
-      ? "Expense"
-      : entry.reference_type === "refund"
-      ? "Refund"
-      : entry.type;
+const typeLabel =
+  entry.reference_type === "payment"
+    ? "Payment"
+    : entry.reference_type === "deposit"
+    ? "Deposit"
+    : entry.reference_type === "expense"
+    ? "Expense"
+    : entry.reference_type === "payment_refund" ||
+      entry.reference_type === "refund_deposit"
+    ? "Refund"
+    : entry.reference_type === "refund_deposit_reversal"
+    ? "Reversal"
+    : entry.type
+    ? entry.type.charAt(0).toUpperCase() + entry.type.slice(1)
+    : "—";
 
   return `
     <div class="entity-card">
