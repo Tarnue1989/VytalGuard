@@ -61,91 +61,91 @@
 
               <div class="card-body">
 
-                <!-- ============================================================ -->
-                <!-- 🔍 FILTER SECTION (UNCHANGED STRUCTURE) -->
-                <!-- ============================================================ -->
-                <div class="card panel-card mb-3">
-                  <div class="card-header d-flex align-items-center justify-content-between">
-                    <div class="d-flex align-items-center gap-2">
-                      <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-filter me-1"></i> Filters
-                        <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
-                      </button>
-                    </div>
-
-                    <div class="view-actions d-flex gap-2">
-                      <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
-                        <i class="fas fa-file-csv me-1"></i> CSV
-                      </button>
-                      <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-file-excel me-1"></i> Excel
-                      </button>
-                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
-                        <i class="fas fa-file-pdf me-1"></i> PDF
-                      </button>
-                    </div>
+              <!-- ============================================================ -->
+              <!-- 🔍 FILTER SECTION (UNCHANGED STRUCTURE) -->
+              <!-- ============================================================ -->
+              <div class="card panel-card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                  <div class="d-flex align-items-center gap-2">
+                    <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-filter me-1"></i> Filters
+                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
+                    </button>
                   </div>
 
-                  <!-- FILTER BODY -->
-                  <div id="filterCollapse" class="card-body filter-body hidden">
-                    <div class="section-label mb-2">
-                      <strong>Filter Cash Closings</strong>
-                    </div>
-
-                    <div class="row gx-3 gy-2 filter-grid compact">
-
-                      <!-- Account -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper">
-                          <label class="form-label">Account</label>
-                          <select id="filterAccountSelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <!-- Organization -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper form-group">
-                          <label class="form-label">Organization</label>
-                          <select id="filterOrganizationSelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <!-- Facility -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
-                        <div class="field-wrapper form-group">
-                          <label class="form-label">Facility</label>
-                          <select id="filterFacilitySelect" class="form-select"></select>
-                        </div>
-                      </div>
-
-                      <!-- DATE RANGE (UNCHANGED) -->
-                      <div class="col-md-3">
-                        <div class="field-wrapper">
-                          <label for="dateRange" class="form-label">Date Range</label>
-                          <div class="input-group">
-                            <span class="input-group-text bg-primary-lighten">
-                              <i class="ri-calendar-2-line text-primary"></i>
-                            </span>
-                            <input
-                              type="text"
-                              id="dateRange"
-                              class="form-control custom-daterange"
-                              placeholder="Select date range"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- RESET -->
-                      <div class="col-12 d-flex gap-2 filter-actions mt-2">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
-                          <i class="fas fa-times me-1"></i> Clear
-                        </button>
-                      </div>
-
-                    </div>
+                  <div class="view-actions d-flex gap-2">
+                    <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+                      <i class="fas fa-file-csv me-1"></i> CSV
+                    </button>
+                    <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-file-excel me-1"></i> Excel
+                    </button>
+                    <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                      <i class="fas fa-file-pdf me-1"></i> PDF
+                    </button>
                   </div>
                 </div>
+
+                <!-- FILTER BODY -->
+                <div id="filterCollapse" class="card-body filter-body hidden">
+                  <div class="section-label mb-2">
+                    <strong>Filter Cash Closings</strong>
+                  </div>
+
+                  <div class="row gx-3 gy-2 filter-grid compact">
+
+                    <!-- Account -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Account</label>
+                        <select id="filterAccountSelect" class="form-select"></select>
+                      </div>
+                    </div>
+
+                    <!-- Organization -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper form-group">
+                        <label class="form-label">Organization</label>
+                        <select id="filterOrganizationSelect" class="form-select"></select>
+                      </div>
+                    </div>
+
+                    <!-- Facility -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper form-group">
+                        <label class="form-label">Facility</label>
+                        <select id="filterFacilitySelect" class="form-select"></select>
+                      </div>
+                    </div>
+
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label for="dateRange" class="form-label">Date Range</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-calendar-2-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="dateRange"
+                            class="form-control custom-daterange"
+                            placeholder="Select date range"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- RESET -->
+                    <div class="col-12 d-flex gap-2 filter-actions mt-2">
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
 
                 <!-- ============================================================ -->
                 <!-- VIEW CONTROLS (UNCHANGED) -->

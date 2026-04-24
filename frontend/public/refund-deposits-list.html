@@ -94,8 +94,9 @@
                   </div>
 
                   <div class="row gx-3 gy-2 filter-grid compact">
+
                     <!-- 🔍 GLOBAL SEARCH -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label">Search</label>
                       <input
                         type="text"
@@ -104,36 +105,37 @@
                         placeholder="Search refunds..."
                       >
                     </div>
+
                     <!-- Patient -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label class="form-label" for="filterPatient">Patient</label>
                         <input type="text"
-                               id="filterPatient"
-                               class="form-control suggestion-input"
-                               placeholder="Search patient..."
-                               autocomplete="off">
+                              id="filterPatient"
+                              class="form-control suggestion-input"
+                              placeholder="Search patient..."
+                              autocomplete="off">
                         <input type="hidden" id="filterPatientId">
                         <div id="filterPatientSuggestions" class="suggestions"></div>
                       </div>
                     </div>
 
-                    <!-- Deposit (MASTER-MAPPED from Payment) -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Deposit -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label class="form-label" for="filterDeposit">Deposit</label>
                         <input type="text"
-                               id="filterDeposit"
-                               class="form-control suggestion-input"
-                               placeholder="Search deposit..."
-                               autocomplete="off">
+                              id="filterDeposit"
+                              class="form-control suggestion-input"
+                              placeholder="Search deposit..."
+                              autocomplete="off">
                         <input type="hidden" id="filterDepositId">
                         <div id="filterDepositSuggestions" class="suggestions"></div>
                       </div>
                     </div>
 
                     <!-- Method -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label" for="filterMethodSelect">Method</label>
                       <select id="filterMethodSelect" class="form-select">
                         <option value="">All</option>
@@ -144,19 +146,21 @@
                         <option value="cheque">Cheque</option>
                       </select>
                     </div>
+
                     <!-- Currency -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
-                      <div class="mb-3">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
                         <label class="form-label">Currency</label>
-                        <select id="filterCurrency" class="form-control">
+                        <select id="filterCurrency" class="form-select">
                           <option value="">-- All Currency --</option>
                           <option value="USD">USD</option>
                           <option value="LRD">LRD</option>
                         </select>
                       </div>
                     </div>
+
                     <!-- Status -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label" for="filterStatus">Status</label>
                       <select id="filterStatus" class="form-select">
                         <option value="">All</option>
@@ -173,19 +177,19 @@
                     </div>
 
                     <!-- Organization -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label" for="filterOrganizationSelect">Organization</label>
                       <select id="filterOrganizationSelect" class="form-select"></select>
                     </div>
 
                     <!-- Facility -->
-                    <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label" for="filterFacilitySelect">Facility</label>
                       <select id="filterFacilitySelect" class="form-select"></select>
                     </div>
 
                     <!-- Date Range -->
-                    <div class="col-md-3">
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <div class="field-wrapper">
                         <label class="form-label" for="dateRange">Date Range</label>
                         <div class="input-group">
@@ -193,9 +197,9 @@
                             <i class="ri-calendar-2-line text-primary"></i>
                           </span>
                           <input type="text"
-                                 id="dateRange"
-                                 class="form-control custom-daterange"
-                                 placeholder="Select date range">
+                                id="dateRange"
+                                class="form-control custom-daterange"
+                                placeholder="Select date range">
                         </div>
                       </div>
                     </div>

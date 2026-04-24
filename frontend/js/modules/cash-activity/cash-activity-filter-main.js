@@ -96,6 +96,8 @@ const filterAccount = qs("filterAccountSelect");
 const filterDirection = qs("filterDirection");
 const filterCurrency = qs("filterCurrency");
 const dateRange = qs("dateRange");
+const filterType = qs("filterType");
+const filterReferenceType = qs("filterReferenceType");
 
 /* ============================================================
    🔃 SORT
@@ -122,13 +124,15 @@ setupAutoSearch(globalSearch, loadEntries);
 
 setupAutoFilters({
   searchInput: globalSearch,
-  selectInputs: [
-    filterOrg,
-    filterFacility,
-    filterAccount,
-    filterDirection,
-    filterCurrency,
-  ],
+    selectInputs: [
+      filterOrg,
+      filterFacility,
+      filterAccount,
+      filterDirection,
+      filterCurrency,
+      filterType,
+      filterReferenceType,
+    ],
   dateRangeInput: dateRange,
   onChange: loadEntries,
 });
@@ -144,6 +148,8 @@ function getFilters() {
     account_id: filterAccount?.value,
     direction: filterDirection?.value,
     currency: filterCurrency?.value,
+    type: filterType?.value,
+    reference_type: filterReferenceType?.value,
     dateRange: dateRange?.value,
   };
 }
@@ -237,6 +243,8 @@ qs("resetFilterBtn").onclick = () => {
     filterAccount,
     filterDirection,
     filterCurrency,
+    filterType,
+    filterReferenceType,
     dateRange,
   ].forEach((el) => el && (el.value = ""));
   loadEntries(1);
@@ -268,12 +276,12 @@ qs("exportPDFBtn")?.addEventListener("click", () => {
 export async function initCashActivityModule() {
   renderDynamicTableHead(visibleFields);
 
-  setupToggleSection(
+    setupToggleSection(
     "toggleFilterBtn",
     "filterCollapse",
     "filterChevron",
     "cashActivityFilterVisible"
-  );
+    );
 
   // 🔥 Load org/fac/account filters (same as deposit)
   if (userRole.includes("super") || userRole.includes("admin")) {

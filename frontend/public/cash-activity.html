@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5.css" />
   <link rel="stylesheet" href="assets/vendor/datatables/dataTables.bs5-custom.css" />
   <link rel="stylesheet" href="assets/vendor/datatables/buttons/dataTables.bs5-custom.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="assets/css/admin-global.css" />
   <link rel="stylesheet" href="assets/css/filter-page.css" />
   <link rel="stylesheet" href="assets/css/print.css" media="print" />
@@ -55,35 +56,58 @@
 
               <div class="card-body">
 
-                <!-- FILTER (ONLY SMALL CHANGES) -->
-                <div class="card panel-card mb-3">
-                  <div class="card-header d-flex align-items-center justify-content-between">
+              <!-- ============================================================ -->
+              <!-- 🔍 FILTER SECTION (MASTER PARITY — CASH ACTIVITY) -->
+              <!-- ============================================================ -->
+              <div class="card panel-card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
 
+                  <!-- LEFT (MATCH DISCOUNT) -->
+                  <div class="d-flex align-items-center gap-2">
                     <button id="toggleFilterBtn" class="btn btn-outline-secondary btn-sm">
                       <i class="fas fa-filter me-1"></i> Filters
+                      <i id="filterChevron" class="fas fa-chevron-down toggle-icon ms-1"></i>
                     </button>
-
-                    <div class="view-actions d-flex gap-2">
-                      <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">CSV</button>
-                      <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">Excel</button>
-                      <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">PDF</button>
-                    </div>
                   </div>
 
-                  <div id="filterCollapse" class="card-body filter-body hidden">
+                  <!-- RIGHT (EXPORT — MATCH DISCOUNT) -->
+                  <div class="view-actions d-flex gap-2">
+                    <button id="exportCSVBtn" class="btn btn-outline-success btn-sm">
+                      <i class="fas fa-file-csv me-1"></i> CSV
+                    </button>
+                    <button id="exportExcelBtn" class="btn btn-outline-secondary btn-sm">
+                      <i class="fas fa-file-excel me-1"></i> Excel
+                    </button>
+                    <button id="exportPDFBtn" class="btn btn-outline-danger btn-sm">
+                      <i class="fas fa-file-pdf me-1"></i> PDF
+                    </button>
+                  </div>
+                </div>
 
-                    <div class="row gx-3 gy-2 filter-grid compact">
+                <!-- COLLAPSE (MATCH DISCOUNT) -->
+                <div id="filterCollapse" class="card-body filter-body hidden">
 
-                      <!-- Account -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                  <!-- LABEL (MATCH DISCOUNT) -->
+                  <div class="section-label mb-2">
+                    <strong>Filter Cash Activity</strong>
+                  </div>
+
+                  <!-- GRID -->
+                  <div class="row gx-3 gy-2 filter-grid compact">
+
+                    <!-- Account -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
                         <label class="form-label">Account</label>
                         <select id="filterAccountSelect" class="form-select">
                           <option value="">All Accounts</option>
                         </select>
                       </div>
+                    </div>
 
-                      <!-- Direction -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Direction -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
                         <label class="form-label">Direction</label>
                         <select id="filterDirection" class="form-select">
                           <option value="">All</option>
@@ -91,9 +115,44 @@
                           <option value="out">Out</option>
                         </select>
                       </div>
+                    </div>
 
-                      <!-- Currency -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Type -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Type</label>
+                        <select id="filterType" class="form-select">
+                          <option value="">All</option>
+                          <option value="collection">Collection</option>
+                          <option value="expense">Expense</option>
+                          <option value="transfer">Transfer</option>
+                          <option value="adjustment">Adjustment</option>
+                          <option value="refund">Refund</option>
+                          <option value="reversal">Reversal</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Reference Type -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
+                        <label class="form-label">Reference Type</label>
+                        <select id="filterReferenceType" class="form-select">
+                          <option value="">All</option>
+                          <option value="payment">Payment</option>
+                          <option value="deposit">Deposit</option>
+                          <option value="expense">Expense</option>
+                          <option value="refund">Refund</option>
+                          <option value="refund_deposit">Refund Deposit</option>
+                          <option value="transfer">Transfer</option>
+                          <option value="adjustment">Adjustment</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Currency -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper">
                         <label class="form-label">Currency</label>
                         <select id="filterCurrency" class="form-select">
                           <option value="">All</option>
@@ -101,45 +160,52 @@
                           <option value="LRD">LRD</option>
                         </select>
                       </div>
+                    </div>
 
-                      <!-- Org -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Organization -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper form-group">
                         <label class="form-label">Organization</label>
                         <select id="filterOrganizationSelect" class="form-select"></select>
                       </div>
+                    </div>
 
-                      <!-- Facility -->
-                      <div class="col-xxl-3 col-lg-4 col-sm-6">
+                    <!-- Facility -->
+                    <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
+                      <div class="field-wrapper form-group">
                         <label class="form-label">Facility</label>
                         <select id="filterFacilitySelect" class="form-select"></select>
                       </div>
+                    </div>
 
-
-                      <!-- DATE RANGE (MASTER – SINGLE FIELD) -->
-                      <div class="col-md-3">
-                        <div class="field-wrapper">
-                          <label for="dateRange" class="form-label">Date Range</label>
-                          <div class="input-group">
-                            <span class="input-group-text bg-primary-lighten">
-                              <i class="ri-calendar-2-line text-primary"></i>
-                            </span>
-                            <input
-                              type="text"
-                              id="dateRange"
-                              class="form-control custom-daterange"
-                              placeholder="Select date range"
-                            />
-                          </div>
+                    <!-- DATE RANGE -->
+                    <div class="col-xxl-2 col-lg-2 col-md-3 col-sm-6">
+                      <div class="field-wrapper">
+                        <label for="dateRange" class="form-label">Date Range</label>
+                        <div class="input-group">
+                          <span class="input-group-text bg-primary-lighten">
+                            <i class="ri-calendar-2-line text-primary"></i>
+                          </span>
+                          <input
+                            type="text"
+                            id="dateRange"
+                            class="form-control custom-daterange"
+                            placeholder="Select date range"
+                          />
                         </div>
                       </div>
-
-                      <div class="col-12 mt-2">
-                        <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">Clear</button>
-                      </div>
-
                     </div>
+
+                    <!-- ACTIONS (MATCH DISCOUNT) -->
+                    <div class="col-12 d-flex gap-2 filter-actions mt-2">
+                      <button id="resetFilterBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-times me-1"></i> Clear
+                      </button>
+                    </div>
+
                   </div>
                 </div>
+              </div>
 
                 <!-- ============================================================ -->
                 <!-- 🧭 VIEW CONTROLS -->
@@ -226,16 +292,25 @@
   </div>
 
   <!-- JS (UNCHANGED BASE) -->
+    <!-- JS -->
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/moment.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/jquery.overlayScrollbars.min.js"></script>
+  <script src="assets/vendor/overlay-scroll/custom-scrollbar.js"></script>
   <script src="assets/vendor/daterange/daterange.js"></script>
   <script src="assets/vendor/daterange/custom-daterange.js"></script>
+  <script src="assets/vendor/datatables/dataTables.min.js"></script>
+  <script src="assets/vendor/datatables/dataTables.bootstrap.min.js"></script>
+  <script src="assets/vendor/datatables/custom/custom-datatables.js"></script>
+  <script src="assets/js/custom.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <script type="module" src="/js/logout.js"></script>
   <script type="module" src="/js/authSession.js"></script>
-
   <!-- 🔥 ONLY CHANGE -->
-  <script type="module" src="/js/modules/cash-activity/cash-activity.js"></script>
+  <script type="module" src="/js/modules/cash-activity/cash-activity-filter-main.js"></script>
 
   <!-- KEEP -->
   <script type="module" src="/js/modules/shared/list-export.js"></script>
