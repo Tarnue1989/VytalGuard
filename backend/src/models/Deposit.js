@@ -134,7 +134,6 @@ export default (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
-
       method: {
         type: DataTypes.ENUM(...Object.values(PAYMENT_METHODS)),
         allowNull: false,

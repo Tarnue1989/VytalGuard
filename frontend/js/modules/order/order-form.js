@@ -241,17 +241,21 @@ export async function setupOrderFormSubmission({
     "label"
   );
 
-  setupSuggestionInputDynamic(
-    itemInput,
-    document.getElementById("orderItemSearchSuggestions"),
-    "/api/lite/billable-items",
-    (sel) => {
-      itemInput.dataset.value = sel?.id || "";
-      itemInput.value = sel?.name || "";
-    },
-    "name"
-  );
-
+    setupSuggestionInputDynamic(
+      itemInput,
+      document.getElementById("orderItemSearchSuggestions"),
+      "/api/lite/billable-items",
+      (sel) => {
+        itemInput.dataset.value = sel?.id || "";
+        itemInput.value = sel?.label || "";
+      },
+      "label",
+      {
+        extraParams: () => ({
+          exclude_category: JSON.stringify(["registration", "utility"])
+        })
+      }
+    );
   /* ============================================================
     ✏️ EDIT PREFILL (FULL FIX)
   ============================================================ */
@@ -314,7 +318,11 @@ export async function setupOrderFormSubmission({
         entry.items?.map((i) => ({
           id: i.id,
           billable_item_id: i.billable_item_id,
-          billable_item_name: i.billableItem?.name || "",
+          billable_item_name:
+            i.billableItem?.label ||
+            `${i.billableItem?.name || ""}${
+              i.billableItem?.code ? ` (${i.billableItem.code})` : ""
+            }`,
           quantity: i.quantity || 1,
           notes: i.notes || "",
         })) || [];

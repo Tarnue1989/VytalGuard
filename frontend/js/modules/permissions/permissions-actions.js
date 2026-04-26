@@ -1,4 +1,5 @@
 // 📁 permissions-actions.js
+
 import {
   showToast,
   showConfirm,
@@ -11,8 +12,8 @@ import { renderCard } from "./permissions-render.js";
 
 /* ============================================================
    ⚙️ Unified Permission Action Handlers
-   Fully permission-aware + backend aligned
-   ============================================================ */
+   SUPER ADMIN SAFE + ENTERPRISE STABLE
+============================================================ */
 export function setupPermissionActionHandlers({
   entries,
   token,
@@ -32,7 +33,19 @@ export function setupPermissionActionHandlers({
   if (tableBody) tableBody.addEventListener("click", handleActions);
   if (cardContainer) cardContainer.addEventListener("click", handleActions);
 
-  /* ---------------------- Permission Normalization ---------------------- */
+  /* ============================================================
+     🔐 SUPER ADMIN DETECTION (STRONG + FLEXIBLE)
+  ============================================================ */
+  const isSuperAdmin =
+    user?.is_super_admin === true ||
+    user?.role?.toLowerCase().includes("super") ||
+    (user?.roleNames || []).some((r) =>
+      r.toLowerCase().includes("super")
+    );
+
+  /* ============================================================
+     🔄 PERMISSION NORMALIZATION
+  ============================================================ */
   function normalizePermissions(perms) {
     if (!perms) return [];
     if (typeof perms === "string") {
@@ -46,22 +59,38 @@ export function setupPermissionActionHandlers({
   }
 
   const userPerms = normalizePermissions(user?.permissions || []);
-  const hasPerm = (key) => userPerms.includes(key);
-  const hasCreateOrEdit = () =>
-    hasPerm("permissions:create") || hasPerm("permissions:edit");
 
-  /* ---------------------- Core Action Dispatcher ---------------------- */
+  /* ============================================================
+     🧠 PERMISSION CHECK (SUPER ADMIN BYPASS)
+  ============================================================ */
+  const hasPerm = (key) => {
+    if (isSuperAdmin) return true;
+    return userPerms.includes(key);
+  };
+
+  const hasCreateOrEdit = () => {
+    if (isSuperAdmin) return true;
+    return (
+      hasPerm("permissions:create") ||
+      hasPerm("permissions:edit")
+    );
+  };
+
+  /* ============================================================
+     🎯 ACTION DISPATCHER
+  ============================================================ */
   async function handleActions(e) {
     const btn = e.target.closest("button");
     if (!btn || !btn.dataset.id) return;
 
     const id = btn.dataset.id;
+
     let entry =
       (window.latestPermissionEntries || []).find(
         (x) => String(x.id) === String(id)
       ) || null;
 
-    // 🧭 Fallback: fetch fresh record if not cached
+    // 🔁 Fallback fetch
     if (!entry) {
       try {
         showLoading();
@@ -80,28 +109,39 @@ export function setupPermissionActionHandlers({
 
     const cls = btn.classList;
 
-    // --- Basic Actions ---
     if (cls.contains("view-btn")) return handleView(entry);
     if (cls.contains("edit-btn")) return handleEdit(entry);
     if (cls.contains("delete-btn")) return handleDelete(id);
   }
 
-  /* ---------------------- Action Handlers ---------------------- */
-
+  /* ============================================================
+     👁 VIEW
+  ============================================================ */
   function handleView(entry) {
     const html = renderCard(entry, visibleFields, user);
     openViewModal("Permission Info", html);
   }
 
+  /* ============================================================
+     ✏️ EDIT (SUPER ADMIN SAFE)
+  ============================================================ */
   function handleEdit(entry) {
     if (!hasCreateOrEdit()) {
       return showToast("⛔ You don't have permission to edit permissions");
     }
+
     sessionStorage.setItem("permissionEditId", entry.id);
-    sessionStorage.setItem("permissionEditPayload", JSON.stringify(entry));
+    sessionStorage.setItem(
+      "permissionEditPayload",
+      JSON.stringify(entry)
+    );
+
     window.location.href = "add-permission.html";
   }
 
+  /* ============================================================
+     🗑 DELETE (SUPER ADMIN SAFE)
+  ============================================================ */
   async function handleDelete(id) {
     if (!hasPerm("permissions:delete")) {
       return showToast("⛔ You don't have permission to delete permissions");
@@ -112,7 +152,11 @@ export function setupPermissionActionHandlers({
 
     try {
       showLoading();
-      const res = await authFetch(`/api/permissions/${id}`, { method: "DELETE" });
+
+      const res = await authFetch(`/api/permissions/${id}`, {
+        method: "DELETE",
+      });
+
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -122,6 +166,7 @@ export function setupPermissionActionHandlers({
       }
 
       showToast("✅ Permission deleted successfully");
+
       window.latestPermissionEntries = [];
       await loadEntries(currentPage);
     } catch (err) {
@@ -132,7 +177,9 @@ export function setupPermissionActionHandlers({
     }
   }
 
-  /* ---------------------- Global Shortcuts ---------------------- */
+  /* ============================================================
+     🌐 GLOBAL SHORTCUTS
+  ============================================================ */
   const findEntry = (id) =>
     (window.latestPermissionEntries || []).find(
       (x) => String(x.id) === String(id)
@@ -148,6 +195,7 @@ export function setupPermissionActionHandlers({
     if (!hasCreateOrEdit()) {
       return showToast("⛔ You don't have permission to edit permissions");
     }
+
     const entry = findEntry(id);
     if (entry) handleEdit(entry);
     else showToast("❌ Permission not found for editing");
@@ -157,6 +205,7 @@ export function setupPermissionActionHandlers({
     if (!hasPerm("permissions:delete")) {
       return showToast("⛔ You don't have permission to delete permissions");
     }
+
     await handleDelete(id);
   };
 }

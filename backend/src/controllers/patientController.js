@@ -59,7 +59,7 @@ const MODULE_KEY = "patient";
 /* ============================================================
    🔧 DEBUG LOGGER (MASTER STYLE)
 ============================================================ */
-const DEBUG_OVERRIDE = true;
+const DEBUG_OVERRIDE = false;
 const debug = makeModuleLogger("patientController", DEBUG_OVERRIDE);
 
 
@@ -984,6 +984,9 @@ export const getAllPatientsLiteWithContact = async (req, res) => {
 ============================================================ */
 export const getAllPatientsLite = async (req, res) => {
   try {
+    console.log("\n==============================");
+    console.log("📥 BACKEND HIT → /lite/patients");
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
@@ -992,29 +995,48 @@ export const getAllPatientsLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q } = req.query;
+    debug.log("📥 QUERY RECEIVED →", req.query);
 
-    const where = { deleted_at: null };
+    /* ================= SEARCH ================= */
+    const rawSearch = (req.query.q ?? req.query.search ?? "").toString();
+    const search = rawSearch.trim();
 
-    /* ================= TENANT SCOPE ================= */
+    console.log("🔍 SEARCH →", search);
+
+    /* ================= BASE WHERE ================= */
+    const where = {
+      deleted_at: null,
+      [Op.and]: [],
+    };
+
+    /* ================= TENANT ================= */
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+      where[Op.and].push({
+        organization_id: req.user.organization_id,
+      });
 
       if (isFacilityHead(req.user)) {
-        where.facility_id = req.user.facility_id;
+        where[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
       }
     }
 
-    /* ================= SEARCH ================= */
-    if (q) {
-      where[Op.or] = [
-        { first_name: { [Op.iLike]: `%${q}%` } },
-        { middle_name: { [Op.iLike]: `%${q}%` } },
-        { last_name: { [Op.iLike]: `%${q}%` } },
-        { pat_no: { [Op.iLike]: `%${q}%` } },
-      ];
+    /* ================= SEARCH FILTER ================= */
+    if (search) {
+      where[Op.and].push({
+        [Op.or]: [
+          { first_name: { [Op.iLike]: `%${search}%` } },
+          { middle_name: { [Op.iLike]: `%${search}%` } },
+          { last_name: { [Op.iLike]: `%${search}%` } },
+          { pat_no: { [Op.iLike]: `%${search}%` } },
+        ],
+      });
     }
 
+    console.log("🧱 FINAL WHERE →", JSON.stringify(where, null, 2));
+
+    /* ================= QUERY ================= */
     const rows = await Patient.findAll({
       where,
       attributes: ["id", "pat_no", "first_name", "middle_name", "last_name"],
@@ -1033,6 +1055,9 @@ export const getAllPatientsLite = async (req, res) => {
       limit: 20,
     });
 
+    console.log("📊 DB RESULT COUNT →", rows.length);
+
+    /* ================= FORMAT ================= */
     const records = rows.map((p) => {
       const fullName = [p.first_name, p.middle_name, p.last_name]
         .filter(Boolean)
@@ -1048,16 +1073,23 @@ export const getAllPatientsLite = async (req, res) => {
       };
     });
 
+    console.log("📦 RESPONSE SAMPLE →", records.slice(0, 5));
+
+    /* ================= AUDIT ================= */
     await auditService.logAction({
       user: req.user,
       module_key: MODULE_KEY,
       action: "list_lite",
-      details: { q: q || null, count: records.length },
+      details: { search: search || null, count: records.length },
     });
 
+    console.log("📤 SENDING RESPONSE");
+    console.log("==============================\n");
+
     return success(res, "✅ Patients loaded (lite)", { records });
+
   } catch (err) {
-    debug.error("getAllPatientsLite → FAILED", err);
+    console.error("❌ ERROR in getAllPatientsLite →", err);
     return error(res, "❌ Failed to load patients (lite)", err);
   }
 };

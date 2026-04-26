@@ -1,4 +1,3 @@
-// 📁 backend/src/models/DepositApplication.js
 import { DataTypes, Model } from "sequelize";
 import { CURRENCY } from "../constants/enums.js";
 
@@ -35,7 +34,7 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // 🔗 Links
+      /* ================= LINKS ================= */
       deposit_id: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -46,13 +45,15 @@ export default (sequelize) => {
         allowNull: false,
       },
 
-      // 💱 🔥 CRITICAL (MATCH DEPOSIT + INVOICE)
+      /* ================= CURRENCY ================= */
+      // 🔥 Always store deposit (source) currency
       currency: {
         type: DataTypes.ENUM(...Object.values(CURRENCY)),
         allowNull: false,
       },
 
-      // 💵 Amount
+      /* ================= AMOUNTS ================= */
+      // 💵 Amount in deposit currency
       applied_amount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
@@ -60,6 +61,29 @@ export default (sequelize) => {
         validate: { min: 0 },
       },
 
+      // 💱 Converted amount (invoice currency)
+      converted_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+      },
+
+      /* ================= FX TRACKING ================= */
+      fx_rate_used: {
+        type: DataTypes.DECIMAL(12, 6),
+        allowNull: true,
+      },
+
+      fx_from_currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: true,
+      },
+
+      fx_to_currency: {
+        type: DataTypes.ENUM(...Object.values(CURRENCY)),
+        allowNull: true,
+      },
+
+      /* ================= TIMING ================= */
       applied_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -71,7 +95,7 @@ export default (sequelize) => {
         allowNull: true,
       },
 
-      // 🔁 Reversal tracking
+      /* ================= REVERSAL ================= */
       reversed_at: {
         type: DataTypes.DATE,
         allowNull: true,
@@ -82,7 +106,7 @@ export default (sequelize) => {
         allowNull: true,
       },
 
-      // 🔹 Audit
+      /* ================= AUDIT ================= */
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -115,10 +139,9 @@ export default (sequelize) => {
   );
 
   /* ============================================================
-     🔁 Hooks (CRITICAL SAFETY)
+     🔁 HOOKS (FIXED FOR FX SUPPORT)
   ============================================================ */
 
-  // 🔥 Ensure currency + validation
   DepositApplication.beforeValidate(async (app) => {
     const { Deposit, Invoice } = await import("../models/index.js");
 
@@ -128,13 +151,15 @@ export default (sequelize) => {
     const invoice = await Invoice.findByPk(app.invoice_id);
     if (!invoice) throw new Error("Invalid invoice_id");
 
-    // 🔥 enforce same currency
-    if (deposit.currency !== invoice.currency) {
-      throw new Error("Currency mismatch between deposit and invoice");
-    }
+    // ❌ REMOVED: currency mismatch blocking
 
-    // 🔥 assign currency automatically
+    // ✅ Always store deposit currency (source currency)
     app.currency = deposit.currency;
+
+    // OPTIONAL SAFETY: ensure amount exists
+    if (app.applied_amount == null || Number(app.applied_amount) <= 0) {
+      throw new Error("Invalid applied amount");
+    }
   });
 
   return DepositApplication;

@@ -235,24 +235,40 @@ export function setupActionHandlers({
     const invoiceSelect = document.getElementById("applyInvoiceSelect");
     const amountInput = document.getElementById("applyAmount");
 
+    const currencyLabel = document.getElementById("applyCurrencyLabel");
+    const currencyInfo = document.getElementById("applyCurrencyInfo");
+
+    // ✅ SET BASE VALUES
     depositIdInput.value = entry.id;
     amountInput.value = entry.remaining_balance || 0;
+    amountInput.max = entry.remaining_balance || 0;
+
+    // ✅ SHOW DEPOSIT CURRENCY
+    if (currencyLabel) currencyLabel.innerText = entry.currency;
 
     try {
       showLoading();
+
       const res = await authFetch(
         `/api/invoices?patient_id=${entry.patient_id}&status=unpaid,partial`
       );
+
       const data = await res.json();
       hideLoading();
 
       invoiceSelect.innerHTML = "";
+
       if (data?.data?.records?.length) {
         invoiceSelect.innerHTML = `<option value="">-- Select Invoice --</option>`;
+
         data.data.records.forEach((inv) => {
           invoiceSelect.innerHTML += `
-            <option value="${inv.id}" data-balance="${inv.balance}">
-              ${inv.invoice_number} (Bal: ${inv.balance})
+            <option 
+              value="${inv.id}" 
+              data-balance="${inv.balance}"
+              data-currency="${inv.currency}"
+            >
+              ${inv.invoice_number} (${inv.currency}) - Bal: ${inv.balance}
             </option>`;
         });
       } else {
@@ -263,17 +279,120 @@ export function setupActionHandlers({
       showToast("❌ Failed to load invoices");
     }
 
-    openModal("depositApplyModal");
-
+    // ✅ UPDATE FX INFO ON CHANGE
     invoiceSelect.onchange = () => {
       const selected = invoiceSelect.options[invoiceSelect.selectedIndex];
-      const invoiceBalance = parseFloat(selected?.dataset.balance || 0);
-      const depositRemaining = parseFloat(entry.remaining_balance || 0);
-      amountInput.max = Math.min(depositRemaining, invoiceBalance);
-    };
 
+      const invoiceBalance = parseFloat(selected?.dataset.balance || 0);
+      const invoiceCurrency = selected?.dataset.currency;
+
+      const depositRemaining = parseFloat(entry.remaining_balance || 0);
+
+      // ✅ LIMIT AMOUNT
+      amountInput.max = Math.min(depositRemaining, invoiceBalance);
+
+      // ✅ FX DISPLAY
+      if (currencyInfo) {
+        if (!invoiceCurrency) {
+          currencyInfo.innerHTML = "";
+          return;
+        }
+
+        if (entry.currency === invoiceCurrency) {
+          currencyInfo.innerHTML = `
+            Applying in <strong>${entry.currency}</strong>
+          `;
+        } else {
+          currencyInfo.innerHTML = `
+            Deposit: <strong>${entry.currency}</strong> →
+            Invoice: <strong>${invoiceCurrency}</strong>
+            <br><span class="text-warning">Conversion will be applied automatically</span>
+          `;
+        }
+      }
+    };
+    amountInput.oninput = async () => {
+      const amount = parseFloat(amountInput.value);
+      if (!amount) return;
+
+      const selected = invoiceSelect.options[invoiceSelect.selectedIndex];
+      const invoiceCurrency = selected?.dataset.currency;
+      const invoiceBalance = parseFloat(selected?.dataset.balance || 0);
+
+      if (!invoiceCurrency) return;
+
+      const depositCurrency = entry.currency;
+      const preview = document.getElementById("applyPreview");
+
+      // ================= SAME CURRENCY =================
+      if (depositCurrency === invoiceCurrency) {
+        preview.innerHTML = `
+          Applying <strong>${amount.toFixed(2)} ${depositCurrency}</strong>
+        `;
+
+        // 🔥 LIMIT DIRECTLY
+        amountInput.max = Math.min(invoiceBalance, entry.remaining_balance || 0);
+
+        return;
+      }
+
+      try {
+        // ================= FORWARD FX =================
+        const res = await authFetch(`/api/fx/convert`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount,
+            from_currency: depositCurrency,
+            to_currency: invoiceCurrency,
+          }),
+        });
+
+        const data = await res.json();
+        const converted = data?.data?.amount || 0;
+
+        // ================= REVERSE FX (🔥 KEY FIX) =================
+        const reverseRes = await authFetch(`/api/fx/convert`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: invoiceBalance,
+            from_currency: invoiceCurrency,
+            to_currency: depositCurrency,
+          }),
+        });
+
+        const reverseData = await reverseRes.json();
+        const maxAllowed = reverseData?.data?.amount || 0;
+
+        // 🔥 HARD LIMIT INPUT (FINAL FIX)
+        amountInput.max = Math.min(maxAllowed, entry.remaining_balance || 0);
+
+        // ================= PREVIEW =================
+        preview.innerHTML = `
+          ${amount.toFixed(2)} ${depositCurrency} ≈ 
+          <strong>${converted.toFixed(2)} ${invoiceCurrency}</strong>
+          ${
+            converted > invoiceBalance
+              ? `<div class="text-warning">⚠ Exceeds invoice balance</div>`
+              : ""
+          }
+        `;
+
+      } catch {
+        preview.innerHTML = `<span class="text-danger">Conversion unavailable</span>`;
+      }
+    };
+    openModal("depositApplyModal");
+
+    // ✅ SUBMIT (KEEP YOUR FLOW — JUST SAFE)
     document.getElementById("depositApplyForm").onsubmit = async (e) => {
       e.preventDefault();
+
       const invoiceId = invoiceSelect.value;
       const amount = parseFloat(amountInput.value);
 
@@ -286,25 +405,36 @@ export function setupActionHandlers({
 
       if (amount > invoiceBalance)
         return showToast("❌ Amount exceeds invoice balance");
+
       if (amount > depositRemaining)
-        return showToast("❌ Amount exceeds deposit remaining balance");
+        return showToast("❌ Amount exceeds deposit balance");
 
       try {
         showLoading();
+
         const res = await authFetch(
-          `/api/deposits/${depositIdInput.value}/apply-to-invoice`,
+          `/api/deposits/${entry.id}/apply-to-invoice`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ invoice_id: invoiceId, amount }),
+            body: JSON.stringify({
+              invoice_id: invoiceId,
+              amount,
+            }),
           }
         );
+
         const data = await res.json();
+
         if (!res.ok) throw new Error(data.message);
 
         showToast("✅ Deposit applied successfully");
+
         closeModal("depositApplyModal");
+
+        window.latestDepositEntries = [];
         await loadEntries(currentPage);
+
       } catch (err) {
         showToast(err.message || "❌ Failed to apply deposit");
       } finally {
@@ -312,7 +442,7 @@ export function setupActionHandlers({
       }
     };
   }
-
+  
   /* ============================================================
      🖨️ Print
   ============================================================ */

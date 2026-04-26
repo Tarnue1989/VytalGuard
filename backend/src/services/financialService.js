@@ -15,6 +15,7 @@ import { recalcInvoice } from "../utils/invoiceUtil.js";
 import { applyLifecycleTransition } from "../utils/lifecycleUtil.js";
 import { isDateLocked } from "./cashClosingService.js";
 import { getLocalDate } from "../utils/date-utils.js";
+import { fxService } from "./fxService.js";
 
 /* ============================================================
    🔖 Local enum maps (FIXED — OBJECT ENUM SAFE)
@@ -196,11 +197,10 @@ async function logLedger({
    💰 Financial Service
 ============================================================ */
 export const financialService = {
-  /* ----------------- Payments (TRANSACTION-SAFE) ----------------- */
-  /* ----------------- Payments (FIXED – ACCOUNT + LEDGER SAFE) ----------------- */
+  /* ----------------- Payments (FINAL – FX ENABLED + ENTERPRISE SAFE) ----------------- */
   async applyPayment({
     invoice_id,
-    account_id, // 🔥 NEW (REQUIRED)
+    account_id,
     amount,
     method,
     transaction_ref,
@@ -217,7 +217,7 @@ export const financialService = {
     if (!account_id) {
       throw new Error("❌ account_id is required for payment");
     }
-    /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+
     const today = getLocalDate();
 
     const locked = await isDateLocked({
@@ -229,15 +229,12 @@ export const financialService = {
     if (locked && !allow_locked_payment) {
       throw new Error("❌ This day is already closed for this account");
     }
-    /* ============================
-      🔒 LOAD ACCOUNT (CRITICAL)
-    ============================ */
+
+    /* ================= 🔒 LOAD ACCOUNT ================= */
     const account = await db.Account.findByPk(account_id, { transaction: t });
     if (!account) throw new Error("❌ Account not found");
 
-    /* ============================
-      🔒 LOAD + LOCK INVOICE
-    ============================ */
+    /* ================= 🔒 LOAD + LOCK INVOICE ================= */
     const invoice = await db.Invoice.findByPk(invoice_id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -251,18 +248,44 @@ export const financialService = {
       throw new Error("❌ Payment amount must be greater than 0");
     }
 
-    /* ============================
-      🔒 CURRENCY ENFORCEMENT
-    ============================ */
-    if (invoice.currency !== account.currency) {
-      throw new Error(
-        `❌ Currency mismatch: account is ${account.currency}, invoice is ${invoice.currency}`
-      );
+    /* ================= 💱 FX HANDLING (FIXED) ================= */
+    let paymentAmount = parseFloat(amount);
+    let appliedAmount = paymentAmount;
+
+    let fxMeta = {
+      rate: 1,
+      from_currency: account.currency,
+      to_currency: invoice.currency,
+    };
+
+    if (account.currency !== invoice.currency) {
+      const fx = await fxService.convert({
+        amount: paymentAmount,
+        from_currency: account.currency,
+        to_currency: invoice.currency,
+        orgId: organization_id ?? invoice.organization_id,
+        facilityId: facility_id ?? invoice.facility_id,
+        transaction: t,
+      });
+
+      appliedAmount = fx.amount;
+
+      fxMeta = {
+        rate: fx.rate,
+        from_currency: fx.from_currency,
+        to_currency: fx.to_currency,
+      };
+
+      /* ================= 🧾 FX SNAPSHOT ================= */
+      invoice.fx_rate_used = fxMeta.rate;
+      invoice.fx_from_currency = fxMeta.from_currency;
+      invoice.fx_to_currency = fxMeta.to_currency;
+      invoice.fx_timestamp = new Date();
+
+      await invoice.save({ transaction: t });
     }
 
-    /* ============================
-      💳 CREATE PAYMENT
-    ============================ */
+    /* ================= 💳 CREATE PAYMENT ================= */
     const payment = await db.Payment.create(
       {
         invoice_id,
@@ -270,11 +293,14 @@ export const financialService = {
         facility_id: facility_id ?? invoice.facility_id,
         patient_id: invoice.patient_id,
 
-        account_id, // 🔥 NEW
+        account_id,
 
-        currency: invoice.currency, // always from invoice
+        currency: account.currency, // ✅ source currency
+        amount: paymentAmount,
 
-        amount,
+        // 🔥 FIX: always invoice currency
+        applied_amount: appliedAmount.toFixed(2),
+
         method,
         transaction_ref,
 
@@ -284,27 +310,23 @@ export const financialService = {
       { transaction: t, user }
     );
 
-    /* ============================
-      📒 FINANCIAL LEDGER (AUDIT)
-    ============================ */
+    /* ================= 📒 FINANCIAL LEDGER ================= */
     await logLedger({
       type: "payment",
       entity: payment,
       organization_id: payment.organization_id,
       facility_id: payment.facility_id,
-      account_id: account_id, // 🔥 ADD THIS
+      account_id,
       patient_id: payment.patient_id,
       invoice_id,
-      amount,
+      amount: paymentAmount, // 💵 source currency
       method,
-      note: `Payment of ${amount} via ${method}`,
+      note: `Payment of ${paymentAmount} ${account.currency} via ${method}`,
       user,
       t,
     });
 
-    /* ============================
-      💰 CASH LEDGER (REAL MONEY) 🔥
-    ============================ */
+    /* ================= 💰 CASH LEDGER ================= */
     await db.CashLedger.create(
       {
         date: today,
@@ -312,8 +334,8 @@ export const financialService = {
         direction: LEDGER_DIRECTIONS.IN,
 
         account_id,
-        amount,
-        currency: payment.currency,
+        amount: paymentAmount,
+        currency: account.currency,
 
         reference_type: "payment",
         reference_id: payment.id,
@@ -325,9 +347,7 @@ export const financialService = {
       { transaction: t }
     );
 
-    /* ============================
-      🔄 RECALC INVOICE
-    ============================ */
+    /* ================= 🔄 RECALC INVOICE ================= */
     const updatedInvoice = await recalcInvoice(invoice_id, t);
 
     return { payment, invoice: updatedInvoice };
@@ -363,8 +383,7 @@ export const financialService = {
     return { payment, invoice: updatedInvoice };
   },
 
-    /* ----------------- Refunds ----------------- */
-
+    /* ----------------- Refunds (FINAL – FX SAFE + BALANCE CORRECT) ----------------- */
     async applyRefund({ payment_id, amount, reason, user, t }) {
       if (!t) throw new Error("❌ Transaction (t) is required for applyRefund");
 
@@ -408,8 +427,13 @@ export const financialService = {
         0
       );
 
-      const remaining =
-        Number(payment.amount || 0) - alreadyRefunded;
+      /* ============================================================
+        🔥 FX SAFE LIMIT (CRITICAL FIX)
+        Use applied_amount (invoice currency), not amount
+      ============================================================ */
+      const totalApplied = Number(payment.applied_amount || 0);
+
+      const remaining = totalApplied - alreadyRefunded;
 
       if (Number(amount) > remaining) {
         throw new Error(
@@ -425,10 +449,14 @@ export const financialService = {
           organization_id: payment.organization_id,
           facility_id: payment.facility_id,
           patient_id: payment.patient_id,
-          currency: payment.currency,
-          amount,
+
+          currency: payment.currency, // keep original payment currency
+
+          amount, // 🔥 this must match invoice currency expectation in recalc
+
           reason,
           method: payment.method,
+
           status: RS.PENDING,
           created_by_id: user?.id,
         },
@@ -914,7 +942,7 @@ export const financialService = {
       });
     },
 
-    /* ----------------- Deposits (FINAL – ACCOUNT + LEDGER + AUDIT SAFE) ----------------- */
+    /* ----------------- Deposits (FINAL – FX FIXED) ----------------- */
     async applyDeposit({
       patient_id,
       organization_id,
@@ -935,7 +963,7 @@ export const financialService = {
       if (!account_id) {
         throw new Error("❌ account_id is required for deposit");
       }
-      /* ================= 🔒 CASH CLOSING LOCK CHECK ================= */
+
       const today = getLocalDate();
 
       const locked = await isDateLocked({
@@ -947,18 +975,22 @@ export const financialService = {
       if (locked) {
         throw new Error("❌ This day is already closed for this account");
       }
+
       if (parseFloat(amount) <= 0) {
         throw new Error("❌ Deposit amount must be greater than 0");
       }
 
-      /* ================= 🔒 LOAD ACCOUNT ================= */
       const account = await db.Account.findByPk(account_id, { transaction: t });
       if (!account) throw new Error("❌ Account not found");
 
       let appliedAmt = 0;
       let remaining = parseFloat(amount) || 0;
 
-      /* ================= 🔥 LOAD INVOICE (OPTIONAL) ================= */
+      let resolvedCurrency = currency || account.currency;
+      if (!resolvedCurrency) {
+        throw new Error("❌ Unable to resolve deposit currency");
+      }
+
       let invoice = null;
 
       if (invoice_id) {
@@ -966,30 +998,54 @@ export const financialService = {
         if (!invoice) throw new Error("❌ Invoice not found");
 
         const invoiceBalance = parseFloat(invoice.balance) || 0;
-        appliedAmt = Math.min(invoiceBalance, remaining);
-        remaining -= appliedAmt;
-      }
 
-      /* ================= 🔥 RESOLVE CURRENCY ================= */
-      let resolvedCurrency;
+        let convertedAmount = remaining;
 
-      if (invoice?.currency) {
-        resolvedCurrency = invoice.currency;
-      } else {
-        if (!currency) {
-          throw new Error("❌ Currency is required when no invoice is provided");
+        /* ================= 💱 FIXED FX ================= */
+        let fxMeta = { rate: 1 };
+
+        if (resolvedCurrency !== invoice.currency) {
+          const fx = await fxService.convert({
+            amount: remaining,
+            from_currency: resolvedCurrency,
+            to_currency: invoice.currency,
+            orgId: organization_id,
+            facilityId: facility_id,
+            transaction: t,
+          });
+
+          convertedAmount = fx.amount;
+          fxMeta.rate = fx.rate;
+
+          invoice.fx_rate_used = fx.rate;
+          invoice.fx_from_currency = resolvedCurrency;
+          invoice.fx_to_currency = invoice.currency;
+          invoice.fx_timestamp = new Date();
+
+          await invoice.save({ transaction: t });
         }
-        resolvedCurrency = currency;
+
+        appliedAmt = Math.min(invoiceBalance, convertedAmount);
+
+        /* ================= 🔄 FIXED BACK CONVERSION ================= */
+        if (resolvedCurrency === invoice.currency) {
+          remaining -= appliedAmt;
+        } else {
+          const reverseFx = await fxService.convert({
+            amount: appliedAmt,
+            from_currency: invoice.currency,
+            to_currency: resolvedCurrency,
+            orgId: organization_id,
+            facilityId: facility_id,
+            transaction: t,
+          });
+
+          remaining -= reverseFx.amount;
+        }
+
+        remaining = Math.max(0, remaining);
       }
 
-      /* ================= 🔒 CURRENCY ENFORCEMENT ================= */
-      if (resolvedCurrency !== account.currency) {
-        throw new Error(
-          `❌ Currency mismatch: account is ${account.currency}, deposit is ${resolvedCurrency}`
-        );
-      }
-
-      /* ================= 💰 CREATE DEPOSIT ================= */
       const deposit = await db.Deposit.create(
         {
           patient_id,
@@ -997,7 +1053,9 @@ export const financialService = {
           facility_id,
           account_id,
           applied_invoice_id: invoice_id || null,
+
           currency: resolvedCurrency,
+
           amount,
           method,
           transaction_ref,
@@ -1018,38 +1076,31 @@ export const financialService = {
         { transaction: t, user }
       );
 
-      /* ================= 📒 FINANCIAL LEDGER (FIXED) ================= */
       await logLedger({
         type: "deposit",
         entity: deposit,
         organization_id,
         facility_id,
-        account_id: account_id, // 🔥 CRITICAL FIX
+        account_id,
         patient_id,
         invoice_id,
         amount,
         method,
-        note: `Deposit of ${amount} via ${method}${
-          transaction_ref ? ` (Ref: ${transaction_ref})` : ""
-        }${notes ? ` · ${notes}` : ""}${reason ? ` · Reason: ${reason}` : ""}`,
+        note: `Deposit of ${amount} via ${method}`,
         user,
         t,
       });
 
-      /* ================= 💰 CASH LEDGER ================= */
       await db.CashLedger.create(
         {
           date: today,
           type: LEDGER_TYPES.COLLECTION,
           direction: LEDGER_DIRECTIONS.IN,
-
           account_id,
           amount,
           currency: resolvedCurrency,
-
           reference_type: "deposit",
           reference_id: deposit.id,
-
           organization_id,
           facility_id,
           created_by_id: user?.id,
@@ -1057,7 +1108,6 @@ export const financialService = {
         { transaction: t }
       );
 
-      /* ================= 🔄 RECALC ================= */
       let updatedInvoice = null;
       if (invoice_id) {
         updatedInvoice = await recalcInvoice(invoice_id, t);
@@ -1066,53 +1116,85 @@ export const financialService = {
       return { deposit, invoice: updatedInvoice };
     },
 
-    /* ----------------- Finalize Deposit ----------------- */
+    /* ----------------- Finalize Deposit (FINAL – FX FIXED) ----------------- */
     async finalizeDeposit({ deposit_id, invoice_id = null, user, t }) {
       const useTx = t || await sequelize.transaction();
       let committedHere = false;
 
       try {
-        const deposit = await db.Deposit.findByPk(deposit_id, { transaction: useTx });
+        const deposit = await db.Deposit.findByPk(deposit_id, {
+          transaction: useTx,
+          lock: useTx.LOCK.UPDATE,
+        });
         if (!deposit) throw new Error("❌ Deposit not found");
 
-        if (![DS.PENDING, DS.CLEARED].includes(deposit.status)) {
-          throw new Error("❌ Only pending/cleared deposits can be finalized");
-        }
-
         let targetInvoiceId = invoice_id || deposit.applied_invoice_id;
-        if (!targetInvoiceId) {
-          const openInvoice = await db.Invoice.findOne({
-            where: {
-              patient_id: deposit.patient_id,
-              organization_id: deposit.organization_id,
-              facility_id: deposit.facility_id,
-              status: [IS.DRAFT, IS.ISSUED, IS.UNPAID, IS.PARTIAL],
-              is_locked: false,
-            },
-            order: [["created_at", "DESC"]],
-            transaction: useTx,
-          });
-          if (openInvoice) targetInvoiceId = openInvoice.id;
-        }
 
-        let appliedAmt = 0;
-        let remaining = parseFloat(deposit.amount) || 0;
+        let appliedAmtInvoiceCurrency = 0;
+        let remainingDeposit =
+          parseFloat(deposit.remaining_balance ?? deposit.amount) || 0;
 
         if (targetInvoiceId) {
-          const invoice = await db.Invoice.findByPk(targetInvoiceId, { transaction: useTx });
-          if (!invoice) throw new Error("❌ Invoice not found");
+          const invoice = await db.Invoice.findByPk(targetInvoiceId, {
+            transaction: useTx,
+            lock: useTx.LOCK.UPDATE,
+          });
 
+          const depositCurrency = deposit.currency;
+          const invoiceCurrency = invoice.currency;
           const invoiceBalance = parseFloat(invoice.balance) || 0;
-          appliedAmt = Math.min(invoiceBalance, remaining);
-          remaining -= appliedAmt;
+
+          let convertedAmount = remainingDeposit;
+
+          if (depositCurrency !== invoiceCurrency) {
+            const fx = await fxService.convert({
+              amount: remainingDeposit,
+              from_currency: depositCurrency,
+              to_currency: invoiceCurrency,
+              orgId: deposit.organization_id,
+              facilityId: deposit.facility_id,
+              transaction: useTx,
+            });
+
+            convertedAmount = fx.amount;
+
+            invoice.fx_rate_used = fx.rate;
+            invoice.fx_from_currency = depositCurrency;
+            invoice.fx_to_currency = invoiceCurrency;
+            invoice.fx_timestamp = new Date();
+
+            await invoice.save({ transaction: useTx });
+          }
+
+          appliedAmtInvoiceCurrency = Math.min(invoiceBalance, convertedAmount);
+
+          let appliedFromDeposit = appliedAmtInvoiceCurrency;
+
+          if (depositCurrency !== invoiceCurrency) {
+            const reverseFx = await fxService.convert({
+              amount: appliedAmtInvoiceCurrency,
+              from_currency: invoiceCurrency,
+              to_currency: depositCurrency,
+              orgId: deposit.organization_id,
+              facilityId: deposit.facility_id,
+              transaction: useTx,
+            });
+
+            appliedFromDeposit = reverseFx.amount;
+          }
+
+          remainingDeposit -= appliedFromDeposit;
+          remainingDeposit = Math.max(0, remainingDeposit);
         }
 
         await deposit.update(
           {
-            status: remaining <= 0 ? DS.APPLIED : DS.CLEARED,
+            status: remainingDeposit <= 0 ? DS.APPLIED : DS.CLEARED,
             applied_invoice_id: targetInvoiceId,
-            applied_amount: appliedAmt.toFixed(2),
-            remaining_balance: remaining.toFixed(2),
+            applied_amount: (
+              (parseFloat(deposit.amount) || 0) - remainingDeposit
+            ).toFixed(2),
+            remaining_balance: remainingDeposit.toFixed(2),
             updated_by_id: user?.id,
           },
           { transaction: useTx, user }
@@ -1128,6 +1210,7 @@ export const financialService = {
         }
 
         return { deposit, invoice_id: targetInvoiceId };
+
       } catch (err) {
         if (!t && !committedHere) await useTx.rollback();
         throw err;
@@ -1192,9 +1275,11 @@ export const financialService = {
       return { deposit, newStatus };
     },
 
-    /* ----------------- Apply Deposit to Invoice ----------------- */
+    /* ----------------- Apply Deposit to Invoice (FINAL – FX ENTERPRISE SAFE) ----------------- */
     async applyDepositToInvoice({ deposit_id, invoice_id, amount, user }) {
       return await sequelize.transaction(async (t) => {
+
+        /* ================= 🔒 LOAD DEPOSIT ================= */
         const deposit = await db.Deposit.findByPk(deposit_id, { transaction: t });
         if (!deposit) throw new Error("❌ Deposit not found");
 
@@ -1202,32 +1287,107 @@ export const financialService = {
           throw new Error("❌ Only cleared or applied deposits can be used");
         }
 
-        const invoice = await db.Invoice.findByPk(invoice_id, { transaction: t });
+        /* ================= 🔒 LOAD INVOICE ================= */
+        const invoice = await db.Invoice.findByPk(invoice_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!invoice) throw new Error("❌ Invoice not found");
+
+        const depositCurrency = deposit.currency;
+        const invoiceCurrency = invoice.currency;
 
         const remainingDeposit = parseFloat(deposit.remaining_balance) || 0;
         const invoiceBalance = parseFloat(invoice.balance ?? invoice.total ?? 0);
-        const applyAmt = Math.min(
-          parseFloat(amount),
-          remainingDeposit,
+
+        let requestedAmount = parseFloat(amount);
+
+        if (requestedAmount <= 0) throw new Error("❌ Invalid amount");
+
+        if (requestedAmount > remainingDeposit) {
+          requestedAmount = remainingDeposit;
+        }
+
+        /* ================= 💱 FX CONVERSION ================= */
+        let applyAmtInvoiceCurrency = requestedAmount;
+
+        let fxMeta = {
+          rate: 1,
+          from_currency: depositCurrency,
+          to_currency: invoiceCurrency,
+        };
+
+        if (depositCurrency !== invoiceCurrency) {
+          const fx = await fxService.convert({
+            amount: requestedAmount,
+            from_currency: depositCurrency,
+            to_currency: invoiceCurrency,
+            orgId: deposit.organization_id,
+            facilityId: deposit.facility_id,
+            transaction: t,
+          });
+
+          applyAmtInvoiceCurrency = fx.amount;
+
+          fxMeta = {
+            rate: fx.rate,
+            from_currency: fx.from_currency,
+            to_currency: fx.to_currency,
+          };
+        }
+
+        /* ================= APPLY LIMIT ================= */
+        applyAmtInvoiceCurrency = Math.min(
+          applyAmtInvoiceCurrency,
           invoiceBalance
         );
 
-        if (applyAmt <= 0) {
-          throw new Error("❌ Invalid or exhausted deposit/invoice balance");
+        if (applyAmtInvoiceCurrency <= 0) {
+          throw new Error("❌ Nothing to apply");
         }
 
+        /* ================= 🔄 BACK CONVERT ================= */
+        let appliedFromDeposit = requestedAmount;
+
+        if (depositCurrency !== invoiceCurrency) {
+          const reverseFx = await fxService.convert({
+            amount: applyAmtInvoiceCurrency,
+            from_currency: invoiceCurrency,
+            to_currency: depositCurrency,
+            orgId: deposit.organization_id,
+            facilityId: deposit.facility_id,
+            transaction: t,
+          });
+
+          appliedFromDeposit = reverseFx.amount;
+        }
+
+        /* ================= CREATE APPLICATION ================= */
         const application = await db.DepositApplication.create(
           {
             deposit_id,
             invoice_id,
-            applied_amount: applyAmt.toFixed(2),
+
+            // 💵 deposit currency
+            applied_amount: appliedFromDeposit.toFixed(2),
+
+            // 💱 invoice currency
+            converted_amount: applyAmtInvoiceCurrency.toFixed(2),
+
+            // 🔥 FX tracking
+            fx_rate_used: fxMeta.rate,
+            fx_from_currency: fxMeta.from_currency,
+            fx_to_currency: fxMeta.to_currency,
+
             applied_by_id: user?.id || null,
           },
           { transaction: t, user }
         );
 
-        const newApplied = (parseFloat(deposit.applied_amount) || 0) + applyAmt;
+        /* ================= UPDATE DEPOSIT ================= */
+        const newApplied =
+          (parseFloat(deposit.applied_amount) || 0) + appliedFromDeposit;
+
         const newRemaining = Math.max(
           0,
           (parseFloat(deposit.amount) || 0) - newApplied
@@ -1246,11 +1406,19 @@ export const financialService = {
           { transaction: t, user }
         );
 
-        invoice.balance = Math.max(0, invoiceBalance - applyAmt).toFixed(2);
-        invoice.status = invoice.balance <= 0 ? IS.PAID : IS.PARTIAL;
+        /* ================= UPDATE INVOICE ================= */
+        const newInvoiceBalance = Math.max(
+          0,
+          invoiceBalance - applyAmtInvoiceCurrency
+        );
+
+        invoice.balance = newInvoiceBalance.toFixed(2);
+        invoice.status = newInvoiceBalance <= 0 ? IS.PAID : IS.PARTIAL;
         invoice.updated_by_id = user?.id || null;
+
         await invoice.save({ transaction: t, user });
 
+        /* ================= 📒 LEDGER ================= */
         await logLedger({
           type: "deposit",
           entity: deposit,
@@ -1258,18 +1426,18 @@ export const financialService = {
           facility_id: deposit.facility_id,
           patient_id: deposit.patient_id,
           invoice_id,
-          amount: applyAmt,
-          note: `Applied ${applyAmt.toFixed(2)} from deposit ${deposit.id} → invoice ${invoice.invoice_number}`,
+          amount: applyAmtInvoiceCurrency,
+          note: `Applied ${applyAmtInvoiceCurrency.toFixed(2)} ${invoiceCurrency} from deposit ${deposit.id}`,
           user,
           t,
         });
 
+        /* ================= 🔄 RECALC ================= */
         const updatedInvoice = await recalcInvoice(invoice_id, t);
 
         return { application, deposit, invoice: updatedInvoice };
       });
     },
-
     /* ----------------- Verify Deposit (LIFECYCLE) ----------------- */
     async verifyDeposit({ deposit_id, user }) {
       return await sequelize.transaction(async (t) => {

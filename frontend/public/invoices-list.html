@@ -91,12 +91,19 @@
 
                     <!-- Patient -->
                     <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
-                      <label class="form-label">Patient</label>
-                      <input id="filterPatient" class="form-control suggestion-input" />
-                      <input type="hidden" id="filterPatientId" />
-                      <div id="filterPatientSuggestions" class="suggestions"></div>
+                      <div class="field-wrapper">
+                        <label class="form-label" for="filterPatient">Patient</label>
+                        <input
+                          type="text"
+                          id="filterPatient"
+                          class="form-control suggestion-input"
+                          placeholder="Search patient..."
+                          autocomplete="off"
+                        />
+                        <input type="hidden" id="filterPatientId" />
+                        <div id="filterPatientSuggestions" class="suggestions"></div>
+                      </div>
                     </div>
-
                     <!-- Status -->
                     <div class="col-xxl-2 col-lg-3 col-md-4 col-sm-6">
                       <label class="form-label">Status</label>
@@ -275,6 +282,15 @@
             </label>
           </div>
 
+          <!-- 🔥 SHOW BALANCE + CURRENCY -->
+          <div class="mb-2 text-muted">
+            Invoice Balance:
+            <strong>
+              <span id="invoiceCurrency">USD</span>
+              <span id="invoiceBalance">0.00</span>
+            </strong>
+          </div>
+
           <!-- Amount -->
           <div class="mb-3">
             <label for="paymentAmount" class="form-label">Amount</label>
@@ -294,6 +310,14 @@
             <select id="paymentMethod" class="form-select" required></select>
           </div>
 
+          <!-- 🔥 ACCOUNT -->
+          <div class="mb-3">
+            <label for="paymentAccount" class="form-label">Account</label>
+            <select id="paymentAccount" class="form-select" required>
+              <option value="">-- Select Account --</option>
+            </select>
+          </div>
+
           <!-- Reference -->
           <div class="mb-3">
             <label for="paymentRef" class="form-label">Reference</label>
@@ -301,7 +325,11 @@
           </div>
 
           <div class="d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-secondary" data-close="paymentModal">
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              data-close="paymentModal"
+            >
               Cancel
             </button>
             <button type="submit" class="btn btn-primary">
@@ -313,7 +341,6 @@
       </div>
     </div>
   </div>
-
   <!-- Refund -->
   <div id="refundModal" class="modal hidden">
     <div class="modal-content">
@@ -345,28 +372,43 @@
     </div>
   </div>
 
-  <!-- Deposit -->
-  <div id="depositModal" class="modal hidden">
+    <!-- Deposit -->
+  <div id="applyDepositModal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
         <h2>Apply Deposit</h2>
-        <button class="close-btn" data-close="depositModal">&times;</button>
+        <button class="close-btn" data-close="applyDepositModal">&times;</button>
       </div>
+
       <div class="modal-body">
-        <form id="depositForm">
+        <form id="applyDepositForm">
+
+          <!-- Deposit -->
           <div class="mb-3">
-            <label for="depositAmount" class="form-label">Amount</label>
-            <input type="number" id="depositAmount" class="form-control" required />
+            <label class="form-label">Select Deposit</label>
+            <select id="applyDepositSelect" class="form-select" required></select>
           </div>
+
+          <!-- 🔥 SHOW AVAILABLE -->
+          <div class="mb-2 text-muted">
+            Available Balance: <strong id="depositAvailable">0.00</strong>
+          </div>
+
+          <!-- Amount -->
           <div class="mb-3">
-            <label for="depositMethod" class="form-label">Method</label>
-            <!-- ✅ dynamically populated -->
-            <select id="depositMethod" class="form-select" required></select>
+            <label class="form-label">Amount</label>
+            <input type="number" id="applyDepositAmount" class="form-control" required />
           </div>
+
           <div class="d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-secondary" data-close="depositModal">Cancel</button>
-            <button type="submit" class="btn btn-primary">Apply</button>
+            <button type="button" class="btn btn-outline-secondary" data-close="applyDepositModal">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Apply
+            </button>
           </div>
+
         </form>
       </div>
     </div>
@@ -446,7 +488,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  
+
   <script type="module" src="/js/logout.js"></script>
   <script type="module" src="/js/authSession.js"></script>
 

@@ -162,12 +162,12 @@ export function buildInvoiceReceiptHTML(invoice) {
             <tr>
               <th>Item</th>
               <th>Qty</th>
-              <th>Rate</th>
-              <th>Disc</th>
+              <th>Unit Price</th>
+              <th>Discount</th>
               <th>Tax</th>
               <th>Total</th>
-              <th>Ins</th>
-              <th>Pt</th>
+              <th>Insurance</th>
+              <th>Patient</th>
             </tr>
           </thead>
           <tbody>${itemsHTML}</tbody>

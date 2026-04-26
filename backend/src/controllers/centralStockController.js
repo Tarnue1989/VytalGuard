@@ -44,7 +44,7 @@ import { inventoryService } from "../services/inventoryService.js";
 /* ============================================================
    🔐 MODULE
 ============================================================ */
-const MODULE_KEY = "central_stock";
+const MODULE_KEY = "central_stocks";
 
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE

@@ -943,11 +943,11 @@ export const FIELD_ORDER_ADMISSION = [
 
 /* -------------------- Currency Rate -------------------- */
 export const FIELD_ORDER_CURRENCY_RATE = [
-  "id", "organization_id", "facility_id",
-  "from_currency", "to_currency", "rate", "effective_date",
+  "id","organization_id","facility_id",
+  "from_currency","to_currency","rate","effective_date",
   "status",
-  "created_at", "updated_at", "deleted_at",
-  "created_by_id", "updated_by_id", "deleted_by_id"
+  "created_at","updated_at","deleted_at",
+  "created_by_id","updated_by_id","deleted_by_id"
 ];
 
 /* -------------------- Auto Billing Rule -------------------- */

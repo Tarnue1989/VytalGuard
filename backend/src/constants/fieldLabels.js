@@ -1191,7 +1191,7 @@ export const FIELD_LABELS_ADMISSION = {
 export const FIELD_LABELS_CURRENCY_RATE = {
   id: "ID", organization_id: "Organization", facility_id: "Facility",
   from_currency: "From Currency", to_currency: "To Currency",
-  rate: "Rate", effective_date: "Effective Date",
+  rate: "Exchange Rate", effective_date: "Effective Date",
   status: `Status (${joinValues(CURRENCY_RATE_STATUS)})`,
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"

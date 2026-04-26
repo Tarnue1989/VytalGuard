@@ -367,11 +367,32 @@ export const loadSurgeriesLite = (params = {}, force = false) => {
   return fetchGenericList(endpoint, "data", 15, force);
 };
 
-// Billable Items lite (with optional filters: category, department_id, master_item_id, status, q, etc.)
-export const loadBillableItemsLite = (params = {}, force = false) => {
+// Billable Items lite (MASTER — optimized for autocomplete & billing)
+export const loadBillableItemsLite = async (params = {}, force = false) => {
   const q = new URLSearchParams(params);
   const endpoint = `/api/lite/billable-items${q.toString() ? "?" + q.toString() : ""}`;
-  return fetchGenericList(endpoint, "data", 15, force);
+
+  const records = await fetchGenericList(endpoint, "data", 10, force);
+
+  // 🔥 Normalize for ALL UI usage (dropdown + suggestion + billing)
+  return records.map((item) => ({
+    ...item,
+
+    // ✅ universal select support
+    value: item.id,
+
+    // ✅ always safe label
+    label:
+      item.label ||
+      `${item.name || ""}${item.code ? ` (${item.code})` : ""}`,
+
+    // 🔥 OPTIONAL (uncomment if you want price shown in dropdown)
+    // label:
+    //   item.label ||
+    //   `${item.name || ""}${item.code ? ` (${item.code})` : ""}${
+    //     item.price ? ` - ${item.price} ${item.currency || ""}` : ""
+    //   }`,
+  }));
 };
 // 📦 Refund Deposits lite loader
 // Supports optional filters: { patient_id, deposit_id, facility_id, organization_id, status, q }
@@ -410,6 +431,15 @@ export const loadAccountsLite = (params = {}, force = false) => {
   const endpoint = `/api/lite/accounts${q.toString() ? "?" + q.toString() : ""}`;
   return fetchGenericList(endpoint, "data.records", 15, force);
 };
+
+// 📦 Currency Rates lite loader
+export const loadCurrencyRatesLite = (params = {}, force = false) => {
+  const q = new URLSearchParams(params);
+  const endpoint = `/api/lite/currency-rates${q.toString() ? "?" + q.toString() : ""}`;
+  return fetchGenericList(endpoint, "data.records", 15, force);
+};
+
+
 // 📦 Expenses lite loader
 export const loadExpensesLite = (params = {}, force = false) => {
   const q = new URLSearchParams(params);
@@ -672,7 +702,7 @@ export function setupSuggestionInputDynamic(
           : options.extraParams || {};
 
       const url = withQuery(apiUrl, { 
-        q: query,
+        search: query,   // 🔥 FIX: use "search" instead of "q"
         ...extraParams
       });
 

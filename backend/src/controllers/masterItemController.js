@@ -34,7 +34,7 @@ import { makeModuleLogger } from "../utils/debugLogger.js";
 /* ============================================================
    🧭 CONSTANTS
 ============================================================ */
-const MODULE_KEY = "master_item";
+const MODULE_KEY = "master_items";
 
 const debug = makeModuleLogger("masterItem");
 /* ============================================================
@@ -328,12 +328,7 @@ export const updateItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL ITEMS (MASTER PARITY WITH getAllDepartments)
-   🔹 Pagination contract identical
-   🔹 Status filter ENUM-safe
-   🔹 Feature module filter
-   🔹 Date used ONLY for filtering
-   🔹 No scope pollution in summary
+   📌 GET ALL MASTER ITEMS (FINAL — FIXED TENANT SCOPING)
 ============================================================ */
 export const getAllItems = async (req, res) => {
   try {
@@ -345,53 +340,178 @@ export const getAllItems = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, category_id, feature_module_id, status } = req.query;
+    /* ========================================================
+       🧠 BASE QUERY OPTIONS
+    ======================================================== */
+    const options = buildQueryOptions(req, "created_at", "DESC");
 
-    const where = { [Op.and]: [] };
+    delete options.filters?.dateRange;
+    delete options.filters?.light;
 
-    /* ================= TENANT SCOPE ================= */
+    const baseWhere = { [Op.and]: [] };
+
+    /* ========================================================
+       📅 DATE RANGE
+    ======================================================== */
+    const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+    if (dateRange) {
+      baseWhere[Op.and].push({
+        created_at: {
+          [Op.between]: [dateRange.start, dateRange.end],
+        },
+      });
+    }
+
+    /* ========================================================
+       🏢 TENANT SCOPING (🔥 FIXED — MATCH ORDERS)
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        [Op.or]: [
-          { organization_id: null }, // ✅ GLOBAL
-          { organization_id: req.user.organization_id }, // ✅ ORG
-        ],
+      baseWhere[Op.and].push({
+        organization_id: req.user.organization_id,
       });
 
-      where[Op.and].push({
+      if (isFacilityHead(req.user)) {
+        baseWhere[Op.and].push({
+          facility_id: req.user.facility_id,
+        });
+      } else if (req.query.facility_id) {
+        baseWhere[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+
+    } else {
+      if (req.query.organization_id) {
+        baseWhere[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        baseWhere[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
+    }
+
+    /* ========================================================
+       📌 STATUS FILTER
+    ======================================================== */
+    if (
+      req.query.status &&
+      MASTER_ITEM_STATUS_VALUES.includes(req.query.status)
+    ) {
+      baseWhere[Op.and].push({
+        status: req.query.status,
+      });
+    }
+
+    /* ========================================================
+       🧩 CATEGORY + FEATURE MODULE
+    ======================================================== */
+    if (req.query.category_id) {
+      baseWhere[Op.and].push({
+        category_id: req.query.category_id,
+      });
+    }
+
+    if (req.query.feature_module_id) {
+      baseWhere[Op.and].push({
+        feature_module_id: req.query.feature_module_id,
+      });
+    }
+
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
+    const searchWhere = [];
+
+    if (options.search) {
+      searchWhere.push({
         [Op.or]: [
-          { facility_id: null }, // global + org level
-          { facility_id: req.user.facility_id },
+          { name: { [Op.iLike]: `%${options.search}%` } },
+          { code: { [Op.iLike]: `%${options.search}%` } },
+          { description: { [Op.iLike]: `%${options.search}%` } },
+          { "$category.name$": { [Op.iLike]: `%${options.search}%` } },
+          { "$featureModule.name$": { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
-    /* ================= FILTERS ================= */
-    if (status) where[Op.and].push({ status });
-    if (category_id) where[Op.and].push({ category_id });
-    if (feature_module_id) where[Op.and].push({ feature_module_id });
+    const listWhere = {
+      [Op.and]: [...baseWhere[Op.and], ...searchWhere],
+    };
 
-    if (q) {
-      where[Op.and].push({
-        [Op.or]: [
-          { name: { [Op.iLike]: `%${q}%` } },
-          { code: { [Op.iLike]: `%${q}%` } },
-        ],
-      });
-    }
-
-    const records = await MasterItem.findAll({
-      where,
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
+    const { count, rows } = await MasterItem.findAndCountAll({
+      where: listWhere,
       include: MASTER_ITEM_INCLUDES,
-      order: [["name", "ASC"]],
+      order: options.order,
+      offset: options.offset,
+      limit: options.limit,
+      distinct: true,
+      subQuery: false,
     });
 
-    return success(res, "✅ Master Items loaded", { records });
+    const records = rows.map((r) => r.toJSON());
+
+    /* ========================================================
+       📊 SUMMARY
+    ======================================================== */
+    const statusCountsRaw = await MasterItem.findAll({
+      where: baseWhere,
+      attributes: [
+        "status",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      group: ["status"],
+      raw: true,
+    });
+
+    const summary = { total: count };
+
+    MASTER_ITEM_STATUS_VALUES.forEach((s) => {
+      const row = statusCountsRaw.find((r) => r.status === s);
+      summary[s] = row ? Number(row.count) : 0;
+    });
+
+    if (dateRange) {
+      summary.dateRange = {
+        start: dateRange.start,
+        end: dateRange.end,
+      };
+    }
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
+    await auditService.logAction({
+      user: req.user,
+      module: MODULE_KEY,
+      action: "list",
+      details: { query: req.query, returned: count },
+    });
+
+    /* ========================================================
+       📤 RESPONSE
+    ======================================================== */
+    return success(res, "✅ Master Items loaded", {
+      records,
+      summary,
+      pagination: {
+        total: count,
+        page: options.pagination.page,
+        pageCount: Math.ceil(count / options.pagination.limit),
+      },
+    });
+
   } catch (err) {
-    return error(res, "❌ Failed to load items", err);
+    debug.error("list → FAILED", err);
+    return error(res, "❌ Failed to load master items", err);
   }
 };
-
 /* ============================================================
    📌 GET ITEM BY ID (TRUE MASTER PARITY)
 ============================================================ */
@@ -448,7 +568,9 @@ export const getItemById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ITEMS LITE (TRUE MASTER PARITY — FIXED SEARCH)
+   📌 GET ITEMS LITE (FINAL — MASTER PARITY SAFE)
+   🔹 Dropdown / Autocomplete / Suggestions READY
+   🔹 Proper tenant + search merge (NO override bugs)
 ============================================================ */
 export const getAllItemsLite = async (req, res) => {
   try {
@@ -469,39 +591,52 @@ export const getAllItemsLite = async (req, res) => {
       body: req.query,
     });
 
-    // 🔥 FIX: never allow undefined
     const safeOrgId = orgId ?? null;
     const safeFacilityId = facilityId ?? null;
 
+    /* ========================================================
+       🧱 BASE WHERE (MASTER SAFE STRUCTURE)
+    ======================================================== */
     const where = {
       status: MASTER_ITEM_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
     /* ========================================================
-       🌍 GLOBAL + ORG + FACILITY SCOPE
+       🏢 TENANT SCOPING (🔥 SAFE — NO OVERRIDE)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       where[Op.and].push({
-        [Op.or]: [
-          { organization_id: null },       // GLOBAL
-          { organization_id: safeOrgId },  // ORG
-        ],
+        organization_id: safeOrgId,
       });
 
-      where[Op.and].push({
-        [Op.or]: [
-          { facility_id: null },           // GLOBAL + ORG
-          { facility_id: safeFacilityId }, // FACILITY
-        ],
-      });
+      if (safeFacilityId) {
+        where[Op.and].push({
+          [Op.or]: [
+            { facility_id: null },           // global fallback
+            { facility_id: safeFacilityId }, // facility-specific
+          ],
+        });
+      }
+    } else {
+      if (req.query.organization_id) {
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
+      }
+
+      if (req.query.facility_id) {
+        where[Op.and].push({
+          facility_id: req.query.facility_id,
+        });
+      }
     }
 
     /* ========================================================
-       🔍 SEARCH
+       🔍 SEARCH (🔥 SAFE — COMBINED, NOT OVERRIDING)
     ======================================================== */
-    const rawSearch = req.query.search || req.query.q || "";
-    const search = rawSearch?.trim();
+    const rawSearch = (req.query.search ?? req.query.q ?? "").toString();
+    const search = rawSearch.trim();
 
     if (search) {
       where[Op.and].push({
@@ -514,7 +649,22 @@ export const getAllItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       📦 QUERY
+       🧩 OPTIONAL FILTERS (🔥 READY FOR SCALE)
+    ======================================================== */
+    if (req.query.category_id) {
+      where[Op.and].push({
+        category_id: req.query.category_id,
+      });
+    }
+
+    if (req.query.feature_module_id) {
+      where[Op.and].push({
+        feature_module_id: req.query.feature_module_id,
+      });
+    }
+
+    /* ========================================================
+       📦 QUERY (FAST + CLEAN)
     ======================================================== */
     const items = await MasterItem.findAll({
       where,
@@ -531,46 +681,18 @@ export const getAllItemsLite = async (req, res) => {
         "code",
         "description",
         "category_id",
-        "organization_id",
-        "facility_id",
       ],
       order: [["name", "ASC"]],
-      limit: 50,
+      limit: 50, // 🔥 optimized for autocomplete
     });
 
     /* ========================================================
-       🧠 PRIORITY RESOLVER (NO DUPLICATES)
-       Facility > Org > Global
+       🔄 FORMAT (🔥 DROPDOWN READY)
     ======================================================== */
-    const map = new Map();
-
-    const getPriority = (i) =>
-      i.facility_id ? 3 : i.organization_id ? 2 : 1;
-
-    for (const item of items) {
-      const key =
-        (item.name || "").toLowerCase() +
-        "_" +
-        (item.feature_module_id || "");
-
-      if (!map.has(key)) {
-        map.set(key, item);
-      } else {
-        const existing = map.get(key);
-
-        if (getPriority(item) > getPriority(existing)) {
-          map.set(key, item);
-        }
-      }
-    }
-
-    const finalItems = Array.from(map.values());
-
-    /* ========================================================
-       🔄 MAP RESPONSE
-    ======================================================== */
-    const records = finalItems.map((i) => ({
+    const records = items.map((i) => ({
       id: i.id,
+      value: i.id, // 🔥 direct use in select inputs
+      label: `${i.name}${i.code ? ` (${i.code})` : ""}`, // 🔥 UI ready
       name: i.name,
       code: i.code || "",
       description: i.description || "",
@@ -587,7 +709,10 @@ export const getAllItemsLite = async (req, res) => {
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
-      details: { count: records.length, search: search || null },
+      details: {
+        count: records.length,
+        search: search || null,
+      },
     });
 
     /* ========================================================
@@ -595,18 +720,12 @@ export const getAllItemsLite = async (req, res) => {
     ======================================================== */
     return success(res, "✅ Master Items loaded (lite)", {
       records,
-      summary: null,
-      pagination: {
-        total: records.length,
-        page: 1,
-        pageCount: 1,
-      },
     });
+
   } catch (err) {
     return error(res, "❌ Failed to load items (lite)", err);
   }
 };
-
 /* ============================================================
    📌 TOGGLE ITEM STATUS (TRUE MASTER PARITY)
 ============================================================ */

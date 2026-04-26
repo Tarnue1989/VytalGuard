@@ -59,9 +59,9 @@ export const STATUS_ACTION_MATRIX = {
   invoice:{
     draft:["edit","void"],
     unpaid:["collect","deposit","waiver","void","print"],
-    partial:["collect","deposit","waiver","refund","void","print"],
-    paid:["refund","reverse","print"],
-    cancelled:["restore"],voided:["restore"],deleted:["restore"]
+    partial:["collect","deposit","void","print"],
+    paid:["reverse","print"],
+    cancelled:["restore"],voided:["restore"],
   },
 
   /* 💸 DISCOUNTS */
@@ -196,6 +196,11 @@ export const STATUS_ACTION_MATRIX = {
   patient:{active:["edit","toggle","delete"],inactive:["edit","toggle","delete"],cancelled:["edit","toggle","delete"],voided:["restore"],deleted:["restore"]},
 
   role:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
+  currency_rate:{
+    active:["edit","toggle-status","delete"],
+    inactive:["edit","toggle-status","delete"],
+    deleted:["restore"]
+  },
   permission:{active:["edit"]},
   department:{active:["edit","toggle-status","delete"],inactive:["edit","toggle-status","delete"],deleted:["restore"]},
 
@@ -278,19 +283,25 @@ const ORDER = [
 const actionLabels = {
   view:"View",edit:"Edit",
   start:"Start",complete:"Complete",review:"Review",verify:"Verify",finalize:"Finalize",
-  apply:"Apply",process:"Process",reverse:"Reverse",clear:"Clear",revert:"Revert",
+  apply:"Apply",process:"Process Payment",reverse:"Reverse Payment",clear:"Clear",revert:"Revert",
   approve:"Approve",reject:"Reject",cancel:"Cancel",
   void:"Void",restore:"Restore",delete:"Delete",
-  print:"Print", "download-invoice":"Download Invoice",
+  print:"Print","download-invoice":"Download Invoice",
   "toggle-status":"Activate / Deactivate",
   lock:"Lock",unlock:"Unlock",
   "reset-password":"Reset Password",
   "generate-token":"Generate Token",
   "revoke-sessions":"Revoke Sessions",
   submit:"Submit",issue:"Issue",fulfill:"Fulfill",
-  "process-payment":"Process Payment","mark-paid":"Mark Paid",
-  "view-invoice":"Invoice",
+  "process-payment":"Process Payment","mark-paid":"Mark as Paid",
+  "view-invoice":"View Invoice",
   "print-invoice":"Print Invoice",
+
+  // 💰 FINANCE (IMPROVED)
+  collect:"Pay",
+  deposit:"Use Deposit",
+  waiver:"Apply Discount",
+  refund:"Refund Payment",
 };
 
 /* ================= MAIN ================= */
@@ -303,13 +314,11 @@ export function buildActionButtons({module,status,entry,entryId,user,permissionP
 
   const perms=new Set((user?.permissions||[]).map(p=>p.toLowerCase().trim()));
 
-  let allowed = [
-    ...(new Set(
-      STATUS_ACTION_MATRIX[module]?.[status] ||
-      STATUS_ACTION_MATRIX[module]?.default ||
-      []
-    ))
-  ];
+  let allowed =
+    STATUS_ACTION_MATRIX[module]?.[status] ||
+    STATUS_ACTION_MATRIX[module]?.default ||
+    ["view", "edit", "delete"];
+    
 
   /* ===== NORMALIZE ===== */
   if(module==="patient")allowed=allowed.map(a=>a==="toggle"?"toggle-status":a);

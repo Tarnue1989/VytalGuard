@@ -333,27 +333,46 @@
       <div class="modal-body" id="viewModalBody"></div>
     </div>
   </div>
-  <!-- Deposit Apply Modal -->
+  <!-- Deposit Apply Modal (FX-AWARE — FINAL) -->
   <div id="depositApplyModal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
         <h2>Apply Deposit</h2>
         <button class="close-btn" data-close="depositApplyModal">&times;</button>
       </div>
+
       <div class="modal-body">
         <form id="depositApplyForm">
           <input type="hidden" id="applyDepositId">
 
+          <!-- ================= CONTEXT ================= -->
+          <div class="mb-2 small text-muted" id="applyCurrencyInfo"></div>
+
+          <!-- ================= INVOICE ================= -->
           <div class="mb-3">
             <label for="applyInvoiceSelect" class="form-label">Select Invoice</label>
             <select id="applyInvoiceSelect" class="form-select" required></select>
           </div>
 
-          <div class="mb-3">
-            <label for="applyAmount" class="form-label">Amount</label>
-            <input type="number" id="applyAmount" class="form-control" required>
+          <!-- ================= AMOUNT ================= -->
+          <div class="mb-2">
+            <label for="applyAmount" class="form-label">
+              Amount (<span id="applyCurrencyLabel"></span>)
+            </label>
+            <input
+              type="number"
+              id="applyAmount"
+              class="form-control"
+              step="0.01"
+              min="0"
+              required
+            />
           </div>
 
+          <!-- ================= PREVIEW ================= -->
+          <div id="applyPreview" class="small text-muted mb-3"></div>
+
+          <!-- ================= ACTIONS ================= -->
           <div class="d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-secondary" data-close="depositApplyModal">
               Cancel
@@ -366,6 +385,7 @@
       </div>
     </div>
   </div>
+  
   <!-- BOOTSTRAP JS -->
   <!-- View Modal -->
 <div id="viewModal" class="modal hidden">
