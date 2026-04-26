@@ -27,6 +27,8 @@ import rolePermissionRoutes from "./rolePermissionRoutes.js";
 
 import organizationBrandingRoutes from "./organizationBrandingRoutes.js";
 
+import fxRoutes from "./fxRoutes.js";
+
 /* ============================================================
    📦 Inventory & Items
 ============================================================ */
@@ -47,6 +49,7 @@ import appointmentRoutes from "./appointmentRoutes.js";
 import recommendationRoutes from "./recommendationRoutes.js";
 import triageRecordRoutes from "./triageRecordRoutes.js";
 import vitalRoutes from "./vitalRoutes.js";
+import currencyRateRoutes from "./currencyRateRoutes.js";
 
 import labRequestRoutes from "./labRequestRoutes.js";
 import labResultRoutes from "./labResultRoutes.js";
@@ -206,7 +209,8 @@ router.use("/expenses", expenseRoutes);
 router.use("/cash-ledger", cashLedgerRoutes);
 router.use("/cash-closings", cashClosingRoutes);
 router.use("/payrolls", payrollRoutes);
-
+router.use("/currency-rates", currencyRateRoutes);
+router.use("/fx", fxRoutes);
 
 /* ============================================================
    ⚡ Lite Routes

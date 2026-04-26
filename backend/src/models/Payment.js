@@ -97,7 +97,11 @@ export default (sequelize) => {
         type: DataTypes.ENUM(...Object.values(PAYMENT_METHODS)),
         allowNull: false,
       },
-
+      applied_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
       status: {
         type: DataTypes.ENUM(...Object.values(PAYMENT_STATUS)),
         allowNull: false,

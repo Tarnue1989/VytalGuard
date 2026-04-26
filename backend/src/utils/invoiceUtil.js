@@ -41,9 +41,8 @@ const VALID_REFUND_STATUSES = [
 
 const VALID_WAIVER_STATUS = DISCOUNT_WAIVER_STATUS.APPLIED;
 const VALID_DISCOUNT_STATUS = DISCOUNT_STATUS.FINALIZED;
-
 /* ============================================================
-   🔁 RECALC ENGINE (FINAL — LOCK SAFE)
+   🔁 RECALC ENGINE (FINAL — FX SAFE + LOCK SAFE)
 ============================================================ */
 export async function recalcInvoice(invoiceId, t = null) {
   global.__recalcLocks = global.__recalcLocks || {};
@@ -59,18 +58,16 @@ export async function recalcInvoice(invoiceId, t = null) {
     debug.log("START recalcInvoice", { invoiceId });
 
     const invoice = await db.Invoice.findByPk(invoiceId, { transaction: t });
-
-    // ✅ FIX: NULL SAFETY FIRST
     if (!invoice) throw new Error("❌ Invoice not found");
 
     /* ============================================================
-      🔒 LOCK CHECK (MUST BE EARLY)
+      🔒 LOCK CHECK (FX SAFE FIXED)
     ============================================================ */
     if (invoice.is_locked) {
       debug.log("LOCKED → payment-only recalculation", { invoiceId });
 
       const totalPaid =
-        (await db.Payment.sum("amount", {
+        (await db.Payment.sum("applied_amount", {
           where: {
             invoice_id: invoiceId,
             status: { [Op.in]: VALID_PAYMENT_STATUSES },
@@ -161,26 +158,25 @@ export async function recalcInvoice(invoiceId, t = null) {
     /* ============================================================
        🏥 INSURANCE
     ============================================================ */
-    const policy = await db.PatientInsurance.findOne({
-      where: {
-        patient_id: invoice.patient_id,
-        status: "active",
-        organization_id: invoice.organization_id,
-        ...(invoice.facility_id && { facility_id: invoice.facility_id }),
-      },
-      order: [["created_at", "DESC"]],
-      transaction: t,
-    });
+    let totalInsurance = 0;
+    let totalPatient = netAfterDiscount;
 
-    const limit = Number(policy?.coverage_limit || 0);
+    if (invoice.payer_type === "insurance") {
+      const policy = await db.PatientInsurance.findOne({
+        where: { id: invoice.patient_insurance_id },
+        transaction: t,
+      });
 
-    const totalInsurance = Math.min(netAfterDiscount, limit);
-    const totalPatient = netAfterDiscount - totalInsurance;
+      const limit = Number(policy?.coverage_limit || 0);
+
+      totalInsurance = Math.min(netAfterDiscount, limit);
+      totalPatient = netAfterDiscount - totalInsurance;
+    }
 
     /* ============================================================
        🔄 DISTRIBUTE INSURANCE
     ============================================================ */
-    if (items.length) {
+    if (invoice.payer_type === "insurance" && items.length) {
       const totalItems = subtotal;
       let distributed = 0;
 
@@ -211,10 +207,10 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       💰 PAYMENTS
+       💰 PAYMENTS (FX SAFE)
     ============================================================ */
     const totalPaid =
-      (await db.Payment.sum("amount", {
+      (await db.Payment.sum("applied_amount", {
         where: {
           invoice_id: invoiceId,
           status: { [Op.in]: VALID_PAYMENT_STATUSES },
@@ -262,7 +258,7 @@ export async function recalcInvoice(invoiceId, t = null) {
     }
 
     /* ============================================================
-       🔓 NORMAL FULL RECALC
+       🔓 FINAL UPDATE
     ============================================================ */
     await invoice.update(
       {

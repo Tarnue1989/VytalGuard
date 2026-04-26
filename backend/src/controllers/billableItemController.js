@@ -47,7 +47,7 @@ const BILLABLE_ITEM_INCLUDES = [
   { model: Facility, as: "facility", attributes: ["id", "name", "code", "organization_id"] },
   { model: Department, as: "department", attributes: ["id", "name", "code"] },
   { model: MasterItem, as: "masterItem", attributes: ["id", "name", "code", "description"] },
-  { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"] },
+  { model: MasterItemCategory, as: "category", attributes: ["id", "name", "code"],  },
 
   // 🔥 REQUIRED
   {
@@ -850,10 +850,18 @@ export const getBillableItemById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET BILLABLE ITEMS LITE (FIXED)
+   📌 GET BILLABLE ITEMS LITE (FINAL — MASTER-CORRECT)
+   🔹 Autocomplete / Dropdown READY
+   🔹 Category from MasterItem ONLY (FIXED)
+============================================================ */
+/* ============================================================
+   📌 GET BILLABLE ITEMS LITE (FINAL — COMPLETE FIX)
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
+    console.log("\n==============================");
+    console.log("📥 BACKEND HIT → /lite/billable-items");
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -862,27 +870,59 @@ export const getAllBillableItemsLite = async (req, res) => {
     });
     if (!allowed) return;
 
-    const { q, category_id, category, code, limit } = req.query;
+    debug.log("📥 QUERY RECEIVED →", req.query);
 
+    /* ========================================================
+       🧭 RESOLVE TENANT (🔥 FIXED — NEVER NULL)
+    ======================================================== */
+    const { orgId, facilityId } = resolveOrgFacility({
+      user: req.user,
+      value: {},
+      body: req.query,
+    });
+
+    const safeOrgId = orgId || req.user.organization_id;
+    const safeFacilityId = facilityId || req.user.facility_id || null;
+
+    if (!isSuperAdmin(req.user) && !safeOrgId) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Missing organization context",
+      });
+    }
+
+    console.log("🏢 TENANT →", {
+      organization_id: safeOrgId,
+      facility_id: safeFacilityId,
+    });
+
+    /* ========================================================
+       🧱 BASE WHERE
+    ======================================================== */
     const where = {
       status: BILLABLE_ITEM_STATUS.ACTIVE,
       [Op.and]: [],
     };
 
+    /* ========================================================
+       🏢 TENANT SCOPING
+    ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where.organization_id = req.user.organization_id;
+      where[Op.and].push({ organization_id: safeOrgId });
 
-      if (isFacilityHead(req.user)) {
+      if (safeFacilityId) {
         where[Op.and].push({
           [Op.or]: [
             { facility_id: null },
-            { facility_id: req.user.facility_id },
+            { facility_id: safeFacilityId },
           ],
         });
       }
     } else {
       if (req.query.organization_id) {
-        where.organization_id = req.query.organization_id;
+        where[Op.and].push({
+          organization_id: req.query.organization_id,
+        });
       }
 
       if (req.query.facility_id) {
@@ -895,94 +935,175 @@ export const getAllBillableItemsLite = async (req, res) => {
       }
     }
 
-    const categoryWhere = {};
+    /* ========================================================
+       🔍 SEARCH
+    ======================================================== */
+    const rawSearch = (req.query.q ?? req.query.search ?? "").toString();
+    const search = rawSearch.trim();
 
-    if (category_id) {
-      where.category_id = category_id;
-    }
+    console.log("🔍 SEARCH →", search);
 
-    if (category) {
-      categoryWhere.code = category;
-    }
-
-    if (code) {
-      where.code = { [Op.iLike]: `%${code}%` };
-    }
-
-    if (q) {
+    if (search) {
       where[Op.and].push({
         [Op.or]: [
-          { name: { [Op.iLike]: `%${q}%` } },
-          { code: { [Op.iLike]: `%${q}%` } },
-          { description: { [Op.iLike]: `%${q}%` } },
-          { "$category.name$": { [Op.iLike]: `%${q}%` } },
+          { name: { [Op.iLike]: `%${search}%` } },
+          { code: { [Op.iLike]: `%${search}%` } },
+          { description: { [Op.iLike]: `%${search}%` } },
+          { "$masterItem.name$": { [Op.iLike]: `%${search}%` } },
+          { "$masterItem.category.name$": { [Op.iLike]: `%${search}%` } },
         ],
       });
     }
 
+    /* ========================================================
+       🔤 CODE FILTER
+    ======================================================== */
+    if (req.query.code) {
+      where[Op.and].push({
+        code: { [Op.iLike]: `%${req.query.code}%` },
+      });
+    }
+
+    console.log("🧱 FINAL WHERE →", JSON.stringify(where, null, 2));
+
+    /* ========================================================
+       🧠 CATEGORY FILTER PARSE
+    ======================================================== */
+    let excludeCategory = req.query.exclude_category;
+
+    if (typeof excludeCategory === "string") {
+      try {
+        excludeCategory = JSON.parse(excludeCategory);
+      } catch {
+        excludeCategory = excludeCategory
+          .split(",")
+          .map((v) => v.trim());
+      }
+    }
+
+    const categoryParam = req.query.category;
+
+    /* ========================================================
+       🎯 BUILD CATEGORY WHERE
+    ======================================================== */
+    let categoryWhere = {};
+
+    if (categoryParam && excludeCategory) {
+      categoryWhere.code = {
+        [Op.eq]: categoryParam,
+        [Op.notIn]: excludeCategory,
+      };
+    } else if (categoryParam) {
+      categoryWhere.code = categoryParam;
+    } else if (excludeCategory) {
+      categoryWhere.code = { [Op.notIn]: excludeCategory };
+    }
+
+    console.log("📂 CATEGORY FILTER →", categoryWhere);
+
+    /* ========================================================
+       🔗 INCLUDE (🔥 FIXED CATEGORY JOIN)
+    ======================================================== */
+    const include = [
+      {
+        model: MasterItem,
+        as: "masterItem",
+        attributes: ["id", "name", "code"],
+        required: true,
+        include: [
+          {
+            model: MasterItemCategory,
+            as: "category",
+            attributes: ["id", "name", "code"],
+            ...(Object.keys(categoryWhere).length && {
+              where: categoryWhere,
+              required: true, // 🔥 FIX
+            }),
+          },
+        ],
+      },
+      {
+        model: BillableItemPrice,
+        as: "prices",
+        required: false,
+        where: { effective_to: null },
+      },
+    ];
+
+    /* ========================================================
+       📦 QUERY
+    ======================================================== */
     const items = await BillableItem.findAll({
       where,
-      include: [
-        {
-          model: MasterItemCategory,
-          as: "category",
-          attributes: ["id", "name", "code"],
-          ...(category ? { where: categoryWhere } : {}),
-          required: !!category,
-        },
-        {
-          model: BillableItemPrice,
-          as: "prices",
-          required: false,
-          where: { effective_to: null },
-        },
-      ],
-      attributes: ["id", "name", "code", "price", "currency"],
+      include,
+      attributes: ["id", "name", "code"],
       order: [["name", "ASC"]],
-      limit: parseInt(limit) || 500,
+      limit: Math.min(parseInt(req.query.limit) || 50, 100),
       subQuery: false,
     });
 
+    console.log("📊 DB RESULT COUNT →", items.length);
+
+    /* ========================================================
+       🔄 FORMAT
+    ======================================================== */
     const records = items.map((i) => {
-      const resolved = getResolvedPrice(i, req.query.payer_type || "cash");
+      const resolved = getResolvedPrice(
+        i,
+        req.query.payer_type || "cash"
+      );
 
       return {
         id: i.id,
+        value: i.id,
+        label: `${i.name}${i.code ? ` (${i.code})` : ""}`,
+
         name: i.name,
-        code: i.code,
-        price: resolved.price,
-        currency: resolved.currency,
-        category: i.category
+        code: i.code || "",
+
+        price: resolved?.price ?? 0,
+        currency: resolved?.currency ?? "USD",
+
+        category: i.masterItem?.category
           ? {
-              id: i.category.id,
-              name: i.category.name,
-              code: i.category.code,
+              id: i.masterItem.category.id,
+              name: i.masterItem.category.name,
+              code: i.masterItem.category.code,
             }
           : null,
       };
     });
 
+    console.log("📦 RESPONSE SAMPLE →", records.slice(0, 5));
+
+    /* ========================================================
+       🧾 AUDIT
+    ======================================================== */
     await auditService.logAction({
       user: req.user,
       module: MODULE_KEY,
       action: "list_lite",
       details: {
         count: records.length,
-        q,
-        category,
-        category_id,
-        code,
+        search: search || null,
+        category: req.query.category || null,
+        exclude_category: excludeCategory || null,
+        code: req.query.code || null,
       },
     });
 
-    return success(res, "✅ Billable Items loaded (lite)", { records });
+    console.log("📤 SENDING RESPONSE");
+    console.log("==============================\n");
+
+    return success(res, "✅ Billable Items loaded (lite)", {
+      records,
+    });
 
   } catch (err) {
-    debug.error("list_lite → FAILED", err);
+    console.error("❌ ERROR in getAllBillableItemsLite →", err);
     return error(res, "❌ Failed to load billable items (lite)", err);
   }
 };
-
 /* ============================================================
    📌 BULK UPDATE BILLABLE ITEMS (FINAL — MULTI-PRICE FIXED)
 ============================================================ */

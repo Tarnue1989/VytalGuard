@@ -1123,11 +1123,12 @@ export const FIELD_DEFAULTS_ADMISSION = {
 export const FIELD_DEFAULTS_CURRENCY_RATE = {
   admin: FIELD_ORDER_CURRENCY_RATE,
   manager: [
-    "organization_id", "facility_id",
-    "from_currency", "to_currency", "rate", "effective_date", "status"
+    "organization_id","facility_id",
+    "from_currency","to_currency","rate","effective_date","status"
   ],
-  staff: ["from_currency", "to_currency", "rate", "status"]
+  staff: ["from_currency","to_currency","rate","effective_date","status"]
 };
+
 /* -------------------- Auto Billing Rule -------------------- */
 export const FIELD_DEFAULTS_AUTO_BILLING_RULE = {
   admin: FIELD_ORDER_AUTO_BILLING_RULE,

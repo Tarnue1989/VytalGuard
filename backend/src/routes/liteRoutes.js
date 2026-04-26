@@ -34,6 +34,7 @@ import { getUserFacilitiesLite } from "../controllers/userFacilityController.js"
 import { getLitePermissions } from "../controllers/permissionController.js";
 import { getLiteRolePermissions } from "../controllers/rolePermissionController.js";
 import { EMPLOYEE_POSITIONS } from "../constants/enums.js";
+import { getAllCurrencyRatesLite } from "../controllers/currencyRateController.js";
 
 // -------------------------------
 // 🔹 Employees
@@ -220,6 +221,8 @@ router.get("/order-items", verifyAuth, getAllOrderItemsLite);
 router.get("/accounts", verifyAuth, getAllAccountsLite);
 router.get("/expenses", verifyAuth, getAllExpensesLite);
 router.get("/payrolls", verifyAuth, getAllPayrollsLite);
+router.get("/currency-rates", verifyAuth, getAllCurrencyRatesLite);
+
 // -------------------------------
 // 🔹 Consultations & Appointments
 // -------------------------------

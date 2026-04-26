@@ -1,4 +1,5 @@
 // 📁 backend/src/controllers/invoiceController.js
+
 import Joi from "joi";
 import { Op } from "sequelize";
 import {
@@ -62,13 +63,10 @@ const INVOICE_INCLUDES = [
 ];
 
 /* ============================================================
-   📋 ROLE-BASED JOI SCHEMAS (FINAL — CURRENCY SAFE)
+   📋 ROLE-BASED JOI SCHEMAS (FINAL — FULLY ALIGNED)
 ============================================================ */
 function buildInvoiceSchema(userRole, mode = "create") {
   const base = {
-    patient_id: Joi.string().uuid().required(),
-
-    // 💱 REQUIRED (CRITICAL FIX)
     currency: Joi.string()
       .valid(...Object.values(CURRENCY))
       .required(),
@@ -95,11 +93,10 @@ function buildInvoiceSchema(userRole, mode = "create") {
   };
 
   if (mode === "update") {
-    Object.keys(base).forEach(k => {
+    Object.keys(base).forEach((k) => {
       base[k] = base[k].optional();
     });
 
-    // 🔒 Require reason for audit
     base.reason = Joi.string().min(5).required();
   }
 
@@ -113,7 +110,7 @@ function buildInvoiceSchema(userRole, mode = "create") {
       base.organization_id = Joi.forbidden();
       break;
 
-    default: // staff
+    default:
       base.organization_id = Joi.forbidden();
       base.facility_id = Joi.forbidden();
       base.status = Joi.forbidden();
@@ -123,13 +120,14 @@ function buildInvoiceSchema(userRole, mode = "create") {
 }
 
 /* ============================================================
-   🔹 Extra schemas for financial actions (CURRENCY SAFE)
+   🔹 FINANCIAL ACTION SCHEMAS (FINAL — SERVICE SAFE)
 ============================================================ */
 
 /* ================= PAYMENT ================= */
 const paymentSchema = Joi.object({
   invoice_id: Joi.string().uuid().required(),
-  patient_id: Joi.string().uuid().required(),
+
+  account_id: Joi.string().uuid().required(), // 🔥 REQUIRED BY SERVICE
 
   amount: Joi.number().positive().required(),
 
@@ -137,64 +135,95 @@ const paymentSchema = Joi.object({
     .valid(...Object.values(PAYMENT_METHODS))
     .required(),
 
-  // 💱 ADD (for dual currency safety)
   currency: Joi.string()
     .valid(...Object.values(CURRENCY))
     .required(),
 
   transaction_ref: Joi.string().allow(null, ""),
+
+  /* ❌ NEVER TRUST FRONTEND */
+  patient_id: Joi.forbidden(),
+  organization_id: Joi.forbidden(),
+  facility_id: Joi.forbidden(),
+
   status: Joi.forbidden(),
 });
 
 /* ================= REFUND ================= */
 const refundSchema = Joi.object({
   payment_id: Joi.string().uuid().required(),
+
   amount: Joi.number().positive().required(),
   reason: Joi.string().required(),
 
-  // 💱 OPTIONAL (depends on system design — safe to include)
   currency: Joi.string()
     .valid(...Object.values(CURRENCY))
     .optional(),
 
+  /* ❌ DERIVED */
+  patient_id: Joi.forbidden(),
+  organization_id: Joi.forbidden(),
+
   status: Joi.forbidden(),
 });
 
-/* ================= DEPOSIT ================= */
-const depositSchema = Joi.object({
+/* ================= CREATE DEPOSIT ================= */
+const createDepositSchema = Joi.object({
   patient_id: Joi.string().uuid().required(),
-  organization_id: Joi.string().uuid().required(),
-  facility_id: Joi.string().uuid().allow(null),
+
+  account_id: Joi.string().uuid().required(), // 🔥 REQUIRED
 
   amount: Joi.number().positive().required(),
-  method: Joi.string().required(),
 
-  // 💱 CRITICAL FIX
+  method: Joi.string()
+    .valid(...Object.values(PAYMENT_METHODS))
+    .required(),
+
   currency: Joi.string()
     .valid(...Object.values(CURRENCY))
     .required(),
 
+  transaction_ref: Joi.string().allow(null, ""),
+
   invoice_id: Joi.string().uuid().allow(null),
+
+  status: Joi.forbidden(),
+});
+
+/* ================= APPLY DEPOSIT TO INVOICE ================= */
+const applyDepositSchema = Joi.object({
+  deposit_id: Joi.string().uuid().required(),
+  invoice_id: Joi.string().uuid().required(),
+
+  amount: Joi.number().positive().required(),
+
+  /* ❌ DERIVED */
+  patient_id: Joi.forbidden(),
+  organization_id: Joi.forbidden(),
+  facility_id: Joi.forbidden(),
+
   status: Joi.forbidden(),
 });
 
 /* ================= WAIVER ================= */
 const waiverSchema = Joi.object({
   invoice_id: Joi.string().uuid().required(),
-  patient_id: Joi.string().uuid().required(),
-  organization_id: Joi.string().uuid().required(),
-  facility_id: Joi.string().uuid().allow(null),
 
   type: Joi.string().valid("percentage", "fixed").required(),
   value: Joi.number().positive().required(),
   reason: Joi.string().required(),
 
-  // 💱 OPTIONAL (safe for audit consistency)
   currency: Joi.string()
     .valid(...Object.values(CURRENCY))
     .optional(),
 
   applied_total: Joi.number().min(0).optional(),
+
+  /* ❌ BACKEND ONLY */
+  patient_id: Joi.forbidden(),
+  organization_id: Joi.forbidden(),
+  facility_id: Joi.forbidden(),
+
   status: Joi.forbidden(),
 });
 
@@ -221,7 +250,7 @@ export const getAllInvoices = async (req, res) => {
     const visibleFields =
       FIELD_VISIBILITY_INVOICE[role] || FIELD_VISIBILITY_INVOICE.staff;
 
-    /* ================= SAFE QUERY (MASTER PARITY) ================= */
+    /* ================= SAFE QUERY ================= */
     const { dateRange, ...safeQuery } = req.query;
 
     safeQuery.limit = limit;
@@ -338,35 +367,29 @@ export const getAllInvoices = async (req, res) => {
       });
     }
 
-    /* ================= SEARCH ================= */
+    /* ================= SEARCH (FINAL — WORKING) ================= */
     if (options.search) {
       const term = `%${options.search}%`;
 
       options.where[Op.and].push({
         [Op.or]: [
-          { "$patient.first_name$": { [Op.iLike]: term } },
-          { "$patient.last_name$": { [Op.iLike]: term } },
-          { "$patient.pat_no$": { [Op.iLike]: term } },
           { invoice_number: { [Op.iLike]: term } },
-          { status: { [Op.iLike]: term } },
-          { payer_type: { [Op.iLike]: term } },
+
+          // 🔥 SAFE PATIENT SEARCH (NO JOIN ISSUE EVER)
+          sequelize.literal(`
+            EXISTS (
+              SELECT 1
+              FROM patients p
+              WHERE p.id = "Invoice".patient_id
+              AND (
+                p.first_name ILIKE '${term}'
+                OR p.last_name ILIKE '${term}'
+                OR p.pat_no ILIKE '${term}'
+              )
+            )
+          `),
         ],
       });
-
-      const allIncludes = [
-        ...INVOICE_INCLUDES,
-        ...(options.include || []),
-      ];
-
-      const hasPatient = allIncludes.some((i) => i.as === "patient");
-
-      if (!hasPatient) {
-        options.include.push({
-          model: Patient,
-          as: "patient",
-          attributes: [],
-        });
-      }
     }
 
     /* ================= MAIN QUERY ================= */
@@ -407,14 +430,6 @@ export const getAllInvoices = async (req, res) => {
     });
 
     summary.financials = totals[0] || {};
-
-    /* ================= FORCE RECALC ================= */
-    if (req.query.forceRecalc === "true") {
-      for (const r of rows) {
-        await financialService.recalcInvoice(r.id);
-        await r.reload();
-      }
-    }
 
     /* ================= FORMAT ================= */
     const records = rows.map((r) => {
@@ -962,40 +977,53 @@ export const updateInvoice = async (req, res) => {
 
 
 /* ============================================================
-   💵 APPLY PAYMENT (FINAL — SAFE + CURRENCY LOCKED)
+   💵 APPLY PAYMENT (FINAL — WITH TRANSACTION)
 ============================================================ */
 export const applyPayment = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
     const { error: validationError, value } = paymentSchema.validate(req.body, {
       stripUnknown: true,
     });
 
     if (validationError) {
+      await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ================= 💱 CURRENCY CHECK ================= */
-    const invoice = await Invoice.findByPk(value.invoice_id);
+    /* ================= LOAD INVOICE ================= */
+    const invoice = await Invoice.findByPk(value.invoice_id, { transaction: t });
 
     if (!invoice) {
+      await t.rollback();
       return error(res, "❌ Invoice not found", null, 404);
     }
 
+    const patient_id = invoice.patient_id;
+
+    /* ================= 💱 CURRENCY CHECK ================= */
     if (value.currency !== invoice.currency) {
-      return error(
-        res,
-        "❌ Currency mismatch with invoice",
-        null,
-        400
-      );
+      await t.rollback();
+      return error(res, "❌ Currency mismatch with invoice", null, 400);
     }
 
     /* ================= APPLY PAYMENT ================= */
     const { payment, invoice: updatedInvoice } =
       await financialService.applyPayment({
         ...value,
+
+        // 🔥 REQUIRED (FROM INVOICE)
+        patient_id: invoice.patient_id,
+        organization_id: invoice.organization_id,
+        facility_id: invoice.facility_id,
+
+        // 🔥 USER + TRANSACTION
         user: req.user,
+        t,
       });
+    /* ================= COMMIT ================= */
+    await t.commit();
 
     /* ================= AUDIT ================= */
     await auditService.logAction({
@@ -1011,7 +1039,9 @@ export const applyPayment = async (req, res) => {
       payment,
       invoice: updatedInvoice,
     });
+
   } catch (err) {
+    await t.rollback();
     return error(res, "❌ Failed to apply payment", err);
   }
 };
@@ -1068,40 +1098,40 @@ export const applyRefund = async (req, res) => {
   }
 };
 /* ============================================================
-   💰 APPLY DEPOSIT (FINAL — SAFE)
+   💰 APPLY DEPOSIT (FINAL — CLEAN + CONSISTENT)
 ============================================================ */
 export const applyDeposit = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    const { error: validationError, value } = depositSchema.validate(req.body, {
-      stripUnknown: true,
-    });
+    const { error: validationError, value } =
+      applyDepositSchema.validate(req.body, {
+        stripUnknown: true,
+      });
 
     if (validationError) {
+      await t.rollback();
       return error(res, "Validation failed", validationError, 400);
     }
 
-    /* ================= 💱 CURRENCY CHECK ================= */
-    if (value.invoice_id) {
-      const invoice = await Invoice.findByPk(value.invoice_id);
+    const invoice = await Invoice.findByPk(value.invoice_id, { transaction: t });
 
-      if (!invoice) {
-        return error(res, "❌ Invoice not found", null, 404);
-      }
-
-      if (value.currency !== invoice.currency) {
-        return error(
-          res,
-          "❌ Currency mismatch with invoice",
-          null,
-          400
-        );
-      }
+    if (!invoice) {
+      await t.rollback();
+      return error(res, "❌ Invoice not found", null, 404);
     }
 
-    const { deposit, invoice } = await financialService.applyDeposit({
-      ...value,
-      user: req.user,
-    });
+    const { deposit, invoice: updatedInvoice } =
+      await financialService.applyDeposit({
+        ...value,
+        patient_id: invoice.patient_id,
+        organization_id: invoice.organization_id,
+        facility_id: invoice.facility_id,
+        user: req.user,
+        t,
+      });
+
+    await t.commit();
 
     await auditService.logAction({
       user: req.user,
@@ -1109,15 +1139,23 @@ export const applyDeposit = async (req, res) => {
       action: "apply_deposit",
       entityId: deposit.id,
       entity: deposit,
-      details: value,
+      details: {
+        ...value,
+        patient_id: invoice.patient_id,
+      },
     });
 
-    return success(res, "✅ Deposit recorded", { deposit, invoice });
+    return success(res, "✅ Deposit applied", {
+      deposit,
+      invoice: updatedInvoice,
+    });
+
   } catch (err) {
+    await t.rollback();
+    console.error("❌ applyDeposit FAILED:", err);
     return error(res, "❌ Failed to apply deposit", err);
   }
 };
-
 
 /* ============================================================
    🎟️ APPLY WAIVER (FINAL — SAFE)

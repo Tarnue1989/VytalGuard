@@ -1,13 +1,17 @@
-// 📁 backend/src/services/fxService.js
-
 import { sequelize } from "../models/index.js";
 import { Op } from "sequelize";
 import { CURRENCY_RATE_STATUS } from "../constants/enums.js";
 
+/* ============================================================
+   🔧 DEBUG LOGGER
+============================================================ */
+const DEBUG_OVERRIDE = false;
+const debug = {
+  log: (...args) => DEBUG_OVERRIDE && console.log(...args),
+  error: (...args) => DEBUG_OVERRIDE && console.error(...args),
+};
+
 export const fxService = {
-  /* ============================================================
-     💱 CONVERT CURRENCY (MILLI PRECISION — FINAL)
-  ============================================================ */
   async convert({
     amount,
     from_currency,
@@ -16,110 +20,147 @@ export const fxService = {
     facilityId,
     transaction,
   }) {
-    /* ================= SAFE GUARD ================= */
+    /* ================= BASIC GUARD ================= */
     if (amount == null || from_currency === to_currency) {
-      return Number(amount || 0);
+      return {
+        amount: Number(amount || 0),
+        rate: 1,
+        from_currency,
+        to_currency,
+        effective_date: null,
+      };
     }
 
     const CurrencyRate = sequelize.models.CurrencyRate;
+    const today = new Date().toISOString().split("T")[0];
 
-    /* ================= 1️⃣ DIRECT (FACILITY) ================= */
-    let rateRow = await CurrencyRate.findOne({
-      where: {
-        organization_id: orgId,
-        facility_id: facilityId,
-        from_currency,
-        to_currency,
-        status: CURRENCY_RATE_STATUS.ACTIVE,
-      },
-      order: [["effective_date", "DESC"]],
-      transaction,
+    debug.log("💱 FX REQUEST →", {
+      amount,
+      from_currency,
+      to_currency,
+      orgId,
+      facilityId,
     });
 
-    /* ================= 2️⃣ DIRECT (ORG FALLBACK) ================= */
-    if (!rateRow) {
-      rateRow = await CurrencyRate.findOne({
+    /* ============================================================
+       🔍 ENTERPRISE SAFE RATE RESOLUTION (NO RAW SQL)
+    ============================================================ */
+    const findRate = async ({ from, to }) => {
+      return await CurrencyRate.findAll({
         where: {
-          organization_id: orgId,
-          facility_id: null,
+          from_currency: from,
+          to_currency: to,
+          status: CURRENCY_RATE_STATUS.ACTIVE,
+          effective_date: { [Op.lte]: today },
+
+          [Op.or]: [
+            ...(facilityId
+              ? [{ organization_id: orgId, facility_id: facilityId }]
+              : []),
+
+            { organization_id: orgId, facility_id: null },
+            { organization_id: null, facility_id: null },
+          ],
+        },
+        order: [["effective_date", "DESC"]],
+        transaction,
+      });
+    };
+
+    /* ============================================================
+       🧠 PICK BEST MATCH MANUALLY (SAFE PRIORITY)
+    ============================================================ */
+    const pickBest = (rows) => {
+      if (!rows || !rows.length) return null;
+
+      // 1. facility match
+      if (facilityId) {
+        const facilityMatch = rows.find(
+          (r) => r.facility_id === facilityId
+        );
+        if (facilityMatch) return facilityMatch;
+      }
+
+      // 2. org-level
+      const orgMatch = rows.find(
+        (r) => r.organization_id === orgId && r.facility_id == null
+      );
+      if (orgMatch) return orgMatch;
+
+      // 3. global
+      const globalMatch = rows.find(
+        (r) => r.organization_id == null && r.facility_id == null
+      );
+      if (globalMatch) return globalMatch;
+
+      return null;
+    };
+
+    /* ============================================================
+       1️⃣ DIRECT LOOKUP
+    ============================================================ */
+    let rows = await findRate({
+      from: from_currency,
+      to: to_currency,
+    });
+
+    let rateRow = pickBest(rows);
+
+    /* ============================================================
+       2️⃣ REVERSE LOOKUP
+    ============================================================ */
+    if (!rateRow) {
+      rows = await findRate({
+        from: to_currency,
+        to: from_currency,
+      });
+
+      const reverse = pickBest(rows);
+
+      if (reverse) {
+        debug.log("💱 USING REVERSE RATE →", reverse);
+
+        return {
+          amount: Number(
+            (Number(amount) / Number(reverse.rate)).toFixed(6)
+          ),
+          rate: Number(reverse.rate),
           from_currency,
           to_currency,
-          status: CURRENCY_RATE_STATUS.ACTIVE,
-        },
-        order: [["effective_date", "DESC"]],
-        transaction,
-      });
-    }
-
-    /* ================= 3️⃣ REVERSE (FACILITY) ================= */
-    if (!rateRow && facilityId) {
-      const reverse = await CurrencyRate.findOne({
-        where: {
-          organization_id: orgId,
-          facility_id: facilityId,
-          from_currency: to_currency,
-          to_currency: from_currency,
-          status: CURRENCY_RATE_STATUS.ACTIVE,
-        },
-        order: [["effective_date", "DESC"]],
-        transaction,
-      });
-
-      if (reverse) {
-        const amt = Number(amount);
-        const rate = Number(reverse.rate);
-
-        if (isNaN(amt) || isNaN(rate)) {
-          throw new Error("Invalid reverse conversion values");
-        }
-
-        // 🔥 milli precision (6 decimals)
-        return Number((amt / rate).toFixed(6));
+          effective_date: reverse.effective_date,
+        };
       }
     }
 
-    /* ================= 4️⃣ REVERSE (ORG FALLBACK) ================= */
+    /* ============================================================
+       3️⃣ ERROR
+    ============================================================ */
     if (!rateRow) {
-      const reverse = await CurrencyRate.findOne({
-        where: {
-          organization_id: orgId,
-          facility_id: null,
-          from_currency: to_currency,
-          to_currency: from_currency,
-          status: CURRENCY_RATE_STATUS.ACTIVE,
-        },
-        order: [["effective_date", "DESC"]],
-        transaction,
+      debug.error("❌ FX NOT FOUND", {
+        from_currency,
+        to_currency,
+        orgId,
+        facilityId,
       });
 
-      if (reverse) {
-        const amt = Number(amount);
-        const rate = Number(reverse.rate);
-
-        if (isNaN(amt) || isNaN(rate)) {
-          throw new Error("Invalid reverse conversion values");
-        }
-
-        return Number((amt / rate).toFixed(6));
-      }
-    }
-
-    /* ================= 5️⃣ ERROR ================= */
-    if (!rateRow) {
       throw new Error(
         `Missing currency rate: ${from_currency} → ${to_currency}`
       );
     }
 
-    /* ================= 6️⃣ FINAL CONVERSION ================= */
-    const amt = Number(amount);
-    const rate = Number(rateRow.rate);
+    /* ============================================================
+       4️⃣ FINAL DIRECT CONVERSION
+    ============================================================ */
+    debug.log("💱 USING DIRECT RATE →", rateRow);
 
-    if (isNaN(amt) || isNaN(rate)) {
-      throw new Error("Invalid conversion values");
-    }
-
-    // 🔥 milli precision (no float drift)
-    return Number((amt * rate).toFixed(6));
+    return {
+      amount: Number(
+        (Number(amount) * Number(rateRow.rate)).toFixed(6)
+      ),
+      rate: Number(rateRow.rate),
+      from_currency,
+      to_currency,
+      effective_date: rateRow.effective_date,
+    };
   },
 };

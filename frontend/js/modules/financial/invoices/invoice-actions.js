@@ -24,9 +24,21 @@ import {
   REVERSE_TYPES,
 } from "../../../utils/constants.js";
 
+import { loadAccountsLite } from "../../../utils/data-loaders.js";
 /* ============================================================
    ⚙️ Unified Action Handler – Invoice Module
 ============================================================ */
+
+let _loadEntries = null;
+let _currentPage = 1;
+let _entries = [];
+let _handleView = null;
+let _handleDelete = null;
+let _handleToggleStatus = null;
+let _handleLifecycleAction = null;
+let _handlePrint = null;
+let _hasPerm = () => false;
+
 export function setupActionHandlers({
   entries,
   token,
@@ -36,6 +48,14 @@ export function setupActionHandlers({
   sharedState,
   user,
 }) {
+  _loadEntries = loadEntries;
+  _currentPage = currentPage;
+  _entries = entries;
+  _handleView = handleView;
+  _handleDelete = handleDelete;
+  _handleToggleStatus = handleToggleStatus;
+  _handleLifecycleAction = handleLifecycleAction;
+  _handlePrint = handlePrint;
   const { currentEditIdRef } = sharedState || {};
   const tableBody = document.getElementById("invoiceTableBody");
   const cardContainer = document.getElementById("invoiceList");
@@ -80,6 +100,9 @@ export function setupActionHandlers({
 
   const hasPerm = (key) =>
     isSuperAdmin || userPerms.has(String(key).toLowerCase().trim());
+
+  // 🔥 expose globally
+  _hasPerm = hasPerm;
 
   /* ============================================================
      🔄 Lifecycle Map (MASTER STYLE)
@@ -166,7 +189,7 @@ export function setupActionHandlers({
     const actionModalMap = {
       collect: "paymentModal",
       refund: "refundModal",
-      deposit: "depositModal",
+      deposit: "applyDepositModal",
       waiver: "waiverModal",
       reverse: "reverseModal",
     };
@@ -326,41 +349,172 @@ async function openModal(modalId, invoiceId, entry, extra = {}) {
   if (form) form.reset();
 
   /* ============================================================
-     💰 PAYMENT MODAL (ENHANCED BUT SAFE)
+    💰 PAYMENT MODAL (FINAL)
   ============================================================ */
   if (modalId === "paymentModal") {
     const amountInput = document.getElementById("paymentAmount");
     const fullCheck = document.getElementById("payFullBalance");
+    const accountSelect = document.getElementById("paymentAccount");
+    const balanceText = document.getElementById("invoiceBalance");
+    const currencyText = document.getElementById("invoiceCurrency");
 
     const balance = Number(
       entry?.balance ?? entry?.amount_due ?? entry?.total_due ?? 0
     );
+
+    const currency = modal.dataset.currency || "USD";
+
+    /* =========================
+      🔥 BIND DATA FOR SUBMIT
+    ========================= */
+    modal.dataset.patientId =
+      entry?.patient_id ||
+      entry?.patient?.id ||
+      entry?.patientId ||
+      null;
+
+    modal.dataset.patientName =
+      entry?.patient?.full_name ||
+      entry?.patient_name ||
+      entry?.patient?.name ||
+      "";
+
+    modal.dataset.invoiceNo =
+      entry?.invoice_number ||
+      entry?.invoice_no ||
+      entry?.code ||
+      "";
+
+    /* =========================
+      🔥 SHOW BALANCE + CURRENCY
+    ========================= */
+    if (balanceText) balanceText.textContent = balance.toFixed(2);
+    if (currencyText) currencyText.textContent = currency;
 
     if (balance <= 0) {
       showToast("⚠️ No balance due");
       return closeModal("paymentModal");
     }
 
+    /* =========================
+      🔥 AMOUNT CONTROL
+    ========================= */
     if (amountInput && fullCheck) {
       amountInput.value = balance.toFixed(2);
       amountInput.max = balance.toFixed(2);
       amountInput.min = "0.01";
-      amountInput.readOnly = true;
+      amountInput.readOnly = false;
+
       fullCheck.checked = true;
 
       fullCheck.onchange = () => {
         if (fullCheck.checked) {
           amountInput.value = balance.toFixed(2);
-          amountInput.readOnly = true;
-        } else {
-          amountInput.readOnly = false;
-          amountInput.focus();
-          amountInput.select();
+        }
+      };
+
+      /* 🔥 Prevent overpayment */
+      amountInput.oninput = () => {
+        const val = Number(amountInput.value || 0);
+        if (val > balance) {
+          amountInput.value = balance.toFixed(2);
+          showToast("⚠️ Cannot exceed balance");
         }
       };
     }
-  }
 
+    /* =========================
+      🔥 LOAD ACCOUNTS (FILTER BY CURRENCY)
+    ========================= */
+    if (accountSelect) {
+      accountSelect.innerHTML = `<option value="">-- Select Account --</option>`;
+
+      try {
+        showLoading();
+
+        const accounts = await loadAccountsLite({}, true);
+
+        const filteredAccounts = accounts.filter(
+          (acc) =>
+            (acc.currency || "").toUpperCase() === currency.toUpperCase()
+        );
+
+        if (!filteredAccounts.length) {
+          accountSelect.innerHTML = `<option value="">No ${currency} accounts</option>`;
+          showToast(`⚠️ No ${currency} account available`);
+          return;
+        }
+
+        filteredAccounts.forEach((acc) => {
+          const opt = document.createElement("option");
+          opt.value = acc.id;
+          opt.textContent = `${acc.name} (${acc.currency})`;
+          accountSelect.appendChild(opt);
+        });
+
+        /* 🔥 Auto-select first */
+        accountSelect.selectedIndex = 1;
+
+      } catch {
+        showToast("❌ Failed to load accounts");
+      } finally {
+        hideLoading();
+      }
+    }
+  }
+  /* ============================================================
+     🔁 APPLY DEPOSIT
+  ============================================================ */
+  if (modalId === "applyDepositModal") {
+    const select = document.getElementById("applyDepositSelect");
+    const available = document.getElementById("depositAvailable");
+    const amountInput = document.getElementById("applyDepositAmount");
+
+    select.innerHTML = `<option value="">-- Select Deposit --</option>`;
+    available.textContent = "0.00";
+
+    try {
+      showLoading();
+
+      const res = await authFetch(
+        `/api/deposits?patient_id=${entry.patient_id}&status=cleared`
+      );
+
+      const data = await res.json();
+      const deposits = data?.data?.records || [];
+
+      deposits.forEach((dep) => {
+        if (!dep.remaining_balance || dep.remaining_balance <= 0) return;
+
+        const opt = document.createElement("option");
+        opt.value = dep.id;
+        opt.dataset.remaining = dep.remaining_balance;
+
+        const ref = dep.deposit_number;
+
+        const currency = dep.currency || "USD";
+        const amount = Number(dep.remaining_balance || 0).toFixed(2);
+        opt.textContent = `${ref} • ${currency} ${amount}`;
+        select.appendChild(opt);
+      });
+
+    } catch {
+      showToast("❌ Failed to load deposits");
+    } finally {
+      hideLoading();
+    }
+
+    select.onchange = () => {
+      const selected = select.options[select.selectedIndex];
+      const remaining = Number(selected?.dataset.remaining || 0);
+      const invoiceBalance = Number(entry.balance || 0);
+
+      available.textContent = remaining.toFixed(2);
+
+      amountInput.max = Math.min(remaining, invoiceBalance);
+      amountInput.value = Math.min(remaining, invoiceBalance);
+    };
+  }
   /* ============================================================
      🔁 REVERSE
   ============================================================ */
@@ -482,7 +636,9 @@ async function submitAction(endpoint, payload) {
 
     showToast(`✅ ${data.message || "Success"}`);
     window.latestInvoiceEntries = [];
-    await loadEntries(currentPage);
+    if (_loadEntries) {
+      await _loadEntries(_currentPage);
+    }
   } catch (err) {
     showToast(err.message || "❌ Failed");
   } finally {
@@ -495,15 +651,33 @@ async function submitAction(endpoint, payload) {
 ============================================================ */
 bindFormOnce("paymentForm", async (e) => {
   e.preventDefault();
+
   const m = document.getElementById("paymentModal");
+
+  const amount = Number(document.getElementById("paymentAmount").value);
+
+  if (!document.getElementById("paymentAccount").value)
+    return showToast("❌ Account required");
+
+  const balance = Number(
+    m.dataset.balance || document.getElementById("invoiceBalance").textContent
+  );
+
+  if (amount > balance)
+    return showToast("❌ Amount cannot exceed balance");
 
   await submitAction("/api/invoices/apply-payment", {
     invoice_id: m.dataset.invoiceId,
-    patient_id: m.dataset.patientId,
-    amount: Number(document.getElementById("paymentAmount").value),
+
+    /* 🔥 EXTRA CONTEXT */
+    patient_name: m.dataset.patientName,
+    invoice_number: m.dataset.invoiceNo,
+
+    amount,
     method: document.getElementById("paymentMethod").value,
     transaction_ref: document.getElementById("paymentRef").value,
     currency: m.dataset.currency,
+    account_id: document.getElementById("paymentAccount").value,
   });
 
   closeModal("paymentModal");
@@ -524,21 +698,49 @@ bindFormOnce("refundForm", async (e) => {
   closeModal("refundModal");
 });
 
-bindFormOnce("depositForm", async (e) => {
+bindFormOnce("applyDepositForm", async (e) => {
   e.preventDefault();
-  const m = document.getElementById("depositModal");
 
-  await submitAction("/api/invoices/apply-deposit", {
-    invoice_id: m.dataset.invoiceId,
-    patient_id: m.dataset.patientId,
-    organization_id: m.dataset.organizationId,
-    facility_id: m.dataset.facilityId || null,
-    amount: Number(document.getElementById("depositAmount").value),
-    method: document.getElementById("depositMethod").value,
-    currency: m.dataset.currency,
-  });
+  const modal = document.getElementById("applyDepositModal");
 
-  closeModal("depositModal");
+  const depositId = document.getElementById("applyDepositSelect").value;
+  const amount = Number(document.getElementById("applyDepositAmount").value);
+
+  if (!depositId) return showToast("❌ Select deposit");
+  if (!amount || amount <= 0) return showToast("❌ Invalid amount");
+
+  try {
+    showLoading();
+
+    const res = await authFetch(
+      `/api/deposits/${depositId}/apply-to-invoice`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_id: modal.dataset.invoiceId,
+          amount,
+        }),
+      }
+    );
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+
+    showToast("✅ Deposit applied");
+
+    closeModal("applyDepositModal");
+
+    window.latestInvoiceEntries = [];
+    if (_loadEntries) {
+      await _loadEntries(_currentPage);
+    }
+
+  } catch (err) {
+    showToast(err.message || "❌ Failed");
+  } finally {
+    hideLoading();
+  }
 });
 
 bindFormOnce("waiverForm", async (e) => {
@@ -547,7 +749,6 @@ bindFormOnce("waiverForm", async (e) => {
 
   await submitAction("/api/invoices/apply-waiver", {
     invoice_id: m.dataset.invoiceId,
-    patient_id: m.dataset.patientId,
     organization_id: m.dataset.organizationId,
     facility_id: m.dataset.facilityId || null,
     type: document.getElementById("waiverType").value,
@@ -572,48 +773,60 @@ bindFormOnce("reverseForm", async (e) => {
 });
 
 /* ============================================================
-   🌍 GLOBAL HELPERS (MASTER PARITY)
+   🌍 GLOBAL HELPERS (MASTER PARITY — FINAL FIXED)
 ============================================================ */
 const findEntry = (id) =>
-  (window.latestInvoiceEntries || entries || []).find(
+  (window.latestInvoiceEntries || _entries || []).find(
     (x) => String(x.id) === String(id)
   );
 
 window.viewInvoice = (id) => {
-  if (!hasPerm("invoices:view"))
+  if (!_hasPerm("invoices:view"))
     return showToast("⛔ No permission");
+
   const entry = findEntry(id);
-  entry ? handleView(entry) : showToast("❌ Not found");
+  entry && _handleView
+    ? _handleView(entry)
+    : showToast("❌ Not found");
 };
 
 window.deleteInvoice = async (id) => {
-  if (!hasPerm("invoices:delete"))
+  if (!_hasPerm("invoices:delete"))
     return showToast("⛔ No permission");
-  await handleDelete(id);
+
+  if (_handleDelete) {
+    await _handleDelete(id);
+  }
 };
 
 ["toggle-status", "void", "restore"].forEach((action) => {
   window[`${action}Invoice`] = async (id) => {
-    if (!hasPerm(`invoices:${action}`) && !hasPerm("invoices:edit"))
+    if (!_hasPerm(`invoices:${action}`) && !_hasPerm("invoices:edit"))
       return showToast("⛔ No permission");
 
     const entry = findEntry(id);
 
     if (action === "toggle-status") {
-      return await handleToggleStatus(id, entry);
+      if (_handleToggleStatus) {
+        return await _handleToggleStatus(id, entry);
+      }
     }
 
-    return await handleLifecycleAction(id, action);
+    if (_handleLifecycleAction) {
+      return await _handleLifecycleAction(id, action);
+    }
   };
 });
 
 window.printInvoice = (id) => {
-  if (!hasPerm("invoices:print"))
+  if (!_hasPerm("invoices:print"))
     return showToast("⛔ No permission");
-  const entry = findEntry(id);
-  entry ? handlePrint(entry) : showToast("❌ Not found");
-};
 
+  const entry = findEntry(id);
+  entry && _handlePrint
+    ? _handlePrint(entry)
+    : showToast("❌ Not found");
+};
 /* ============================================================
    🔚 FINAL: CLOSE BUTTONS
 ============================================================ */

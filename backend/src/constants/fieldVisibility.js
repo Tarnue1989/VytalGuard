@@ -1164,11 +1164,12 @@ export const FIELD_VISIBILITY_ADMISSION = {
 
 /* -------------------- Currency Rate -------------------- */
 export const FIELD_VISIBILITY_CURRENCY_RATE = {
-    superadmin: FIELD_ORDER_CURRENCY_RATE,
+  superadmin: FIELD_ORDER_CURRENCY_RATE,
   organization_admin: FIELD_ORDER_CURRENCY_RATE,
-  manager: ["id", "from_currency", "to_currency", "rate", "effective_date", "status"],
-  staff: ["id", "from_currency", "to_currency", "rate", "status"]
+  manager: ["id","from_currency","to_currency","rate","effective_date","status"],
+  staff: ["id","from_currency","to_currency","rate","effective_date","status"]
 };
+
 /* -------------------- Auto Billing Rule -------------------- */
 export const FIELD_VISIBILITY_AUTO_BILLING_RULE = {
     superadmin: FIELD_ORDER_AUTO_BILLING_RULE,
