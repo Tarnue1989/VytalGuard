@@ -194,61 +194,93 @@ export async function setupBillableItemFormSubmission({
   const codeInput = document.getElementById("code");
   const descInput = document.getElementById("description");
 
-  /* ============================================================
-     🌐 DROPDOWNS + MASTER ITEM AUTOFILL
-  ============================================================ */
-  try {
-    setupSelectOptions(
-      deptSelect,
-      await loadDepartmentsLite({}, true),
-      "id",
-      "name",
-      "-- Select Department --"
-    );
+/* ============================================================
+   🌐 DROPDOWNS + MASTER ITEM AUTOFILL (FINAL FIXED)
+============================================================ */
+try {
+  setupSelectOptions(
+    deptSelect,
+    await loadDepartmentsLite({}, true),
+    "id",
+    "name",
+    "-- Select Department --"
+  );
 
-    // ================= MASTER ITEM =================
-    setupSuggestionInputDynamic(
-      masterItemInput,
-      masterItemSuggestions,
-      "/api/lite/master-items",
-      (sel) => {
-        masterItemInput.dataset.value = sel?.id || "";
-        document.getElementById("master_item_id").value = sel?.id || "";
+  /* ========================================================
+     🔥 BUILD MASTER ITEM ENDPOINT WITH TENANT CONTEXT
+  ======================================================== */
+  const session = JSON.parse(localStorage.getItem("authSession") || "{}");
 
-        masterItemInput.value = sel?.name || "";
+  const orgId =
+    localStorage.getItem("organization_id") ||
+    session?.organization_id;
 
-        /* 🔥 NAME + CODE */
-        nameInput.value = sel?.name || "";
-        codeInput.value =
-          sel?.code ||
-          (sel?.name || "")
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^a-z0-9\-]/g, "");
+  const facilityId =
+    localStorage.getItem("facility_id") ||
+    session?.facility_id;
 
-        /* 🔥 CATEGORY PREFILL (FIXED FULLY) */
-        const catInput = document.getElementById("category_name");
-        const catIdInput = document.getElementById("category_id");
+  let masterItemEndpoint = "/api/lite/master-items";
+  const params = new URLSearchParams();
 
-        const categoryName =
-          sel?.category?.name ||
-          sel?.category_name ||
-          "";
+  if (orgId) params.set("organization_id", orgId);
+  if (facilityId) params.set("facility_id", facilityId);
 
-        const categoryId =
-          sel?.category_id ||
-          sel?.category?.id ||
-          "";
-
-        if (catInput) catInput.value = categoryName;
-        if (catIdInput) catIdInput.value = categoryId;
-      },
-      "name"
-    );
-  } catch (err) {
-    console.error(err);
-    showToast("❌ Failed to load data");
+  if (params.toString()) {
+    masterItemEndpoint += `?${params.toString()}`;
   }
+
+  // ================= MASTER ITEM =================
+  setupSuggestionInputDynamic(
+    masterItemInput,
+    masterItemSuggestions,
+
+    // 🔥 FIXED ENDPOINT (NO EMPTY RESULTS)
+    masterItemEndpoint,
+
+    (sel) => {
+      masterItemInput.dataset.value = sel?.id || "";
+      document.getElementById("master_item_id").value = sel?.id || "";
+
+      masterItemInput.value = sel?.name || "";
+
+      /* 🔥 NAME + CODE (LOCKED TO MASTER) */
+      nameInput.value = sel?.name || "";
+      codeInput.value =
+        sel?.code ||
+        (sel?.name || "")
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9\-]/g, "");
+
+      // 🔥 LOCK FIELDS (PREVENT USER EDIT)
+      nameInput.readOnly = true;
+      codeInput.readOnly = true;
+      descInput.readOnly = true;
+
+      /* 🔥 CATEGORY PREFILL */
+      const catInput = document.getElementById("category_name");
+      const catIdInput = document.getElementById("category_id");
+
+      const categoryName =
+        sel?.category?.name ||
+        sel?.category_name ||
+        "";
+
+      const categoryId =
+        sel?.category_id ||
+        sel?.category?.id ||
+        "";
+
+      if (catInput) catInput.value = categoryName;
+      if (catIdInput) catIdInput.value = categoryId;
+    },
+
+    "name"
+  );
+} catch (err) {
+  console.error(err);
+  showToast("❌ Failed to load data");
+}
 
   /* ============================================================
      ✏️ PREFILL (EDIT MODE)

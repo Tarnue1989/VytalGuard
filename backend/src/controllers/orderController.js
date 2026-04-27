@@ -1344,6 +1344,11 @@ export const voidOrders = async (req, res) => {
 export const submitOrders = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    console.log("\n==============================");
+    console.log("📥 SUBMIT ORDERS HIT");
+    console.log("👤 USER →", req.user);
+    console.log("📦 BODY →", req.body);
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module_key: MODULE_KEY,
@@ -1366,6 +1371,8 @@ export const submitOrders = async (req, res) => {
       query: req.query,
     });
 
+    console.log("🏢 TENANT →", { orgId, facilityId });
+
     /* ================= LOAD ORDERS ================= */
     const orders = await Order.findAll({
       where: {
@@ -1377,6 +1384,8 @@ export const submitOrders = async (req, res) => {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
+
+    console.log("📄 ORDERS FOUND →", orders.length);
 
     if (!orders.length) {
       await t.rollback();
@@ -1399,6 +1408,8 @@ export const submitOrders = async (req, res) => {
       transaction: t,
     });
 
+    console.log("📦 TOTAL ITEMS LOADED →", items.length);
+
     /* ================= MAP ITEMS ================= */
     const itemsByOrder = {};
     for (const item of items) {
@@ -1412,7 +1423,15 @@ export const submitOrders = async (req, res) => {
 
     /* ================= ATOMIC LOOP ================= */
     for (const o of orders) {
+      console.log("\n➡️ PROCESSING ORDER →", o.id);
+
       const orderItems = itemsByOrder[o.id] || [];
+
+      console.log("📦 ORDER ITEMS →", orderItems.map(i => ({
+        id: i.id,
+        billable_item_id: i.billable_item_id,
+        name: i.billableItem?.name,
+      })));
 
       /* ================= VALIDATE ITEMS ================= */
       if (!orderItems.length) {
@@ -1426,10 +1445,7 @@ export const submitOrders = async (req, res) => {
           billing_status: ORDER_BILLING_STATUS.PENDING,
           updated_by_id: req.user?.id || null,
         },
-        {
-          transaction: t,
-          validate: false,
-        }
+        { transaction: t, validate: false }
       );
 
       await OrderItem.update(
@@ -1444,18 +1460,35 @@ export const submitOrders = async (req, res) => {
         }
       );
 
-      /* ================= BILLING (HARD REQUIRED) ================= */
+      /* ================= BILLING INPUT DEBUG ================= */
+      const billingUser = {
+        ...req.user,
+        organization_id: o.organization_id,
+        facility_id: o.facility_id,
+
+        // 🔥 CRITICAL FIX (THIS WAS MISSING)
+        payer_type: "cash",
+        currency: "LRD",
+      };
+
+      console.log("💰 BILLING INPUT →", {
+        orderId: o.id,
+        org: billingUser.organization_id,
+        facility: billingUser.facility_id,
+        payer_type: billingUser.payer_type,
+        currency: billingUser.currency,
+      });
+
+      /* ================= BILLING ================= */
       const result = await billingService.billOrderItems({
         order: o,
-        user: {
-          ...req.user,
-          organization_id: orgId,
-          facility_id: facilityId,
-        },
+        user: billingUser,
         transaction: t,
       });
 
-      /* ================= HARD FAIL IF BILLING FAILS ================= */
+      console.log("📊 BILLING RESULT →", result);
+
+      /* ================= HARD FAIL ================= */
       if (!result || !result.billedCount) {
         throw new Error(`Order ${o.id}: Billing failed`);
       }
@@ -1465,6 +1498,9 @@ export const submitOrders = async (req, res) => {
 
     /* ================= COMMIT ================= */
     await t.commit();
+
+    console.log("✅ ALL ORDERS SUBMITTED →", updated);
+    console.log("==============================\n");
 
     const records = await Order.findAll({
       where: { id: { [Op.in]: updated } },
@@ -1486,7 +1522,7 @@ export const submitOrders = async (req, res) => {
   } catch (err) {
     await t.rollback();
 
-    debug.error("submitOrders → FAILED", err);
+    console.error("❌ submitOrders FAILED →", err);
 
     return error(
       res,
