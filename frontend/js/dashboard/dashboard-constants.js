@@ -42,6 +42,12 @@ export const KPI_COLOR_MAP = {
   default: "secondary",
 };
 
+export const KPI_LABEL_OVERRIDES = {
+  payments: "Collected Payments",
+  revenue: "Total Revenue",
+  deposits: "Deposits Held",
+};
+
 // =======================================================================
 // 🧩 ICON MAP – standardized icons (RemixIcon-based)
 // =======================================================================
@@ -77,6 +83,10 @@ export const KPI_ICON_MAP = {
 // 🏷️ Label Formatter
 // =======================================================================
 export function formatKeyLabel(key) {
+  if (KPI_LABEL_OVERRIDES[key]) {
+    return KPI_LABEL_OVERRIDES[key];
+  }
+
   return key
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())

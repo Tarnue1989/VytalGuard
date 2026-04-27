@@ -149,125 +149,334 @@ const K = (modelKey, model, statusEnums, aggregates) =>
       ...(aggregates && { aggregates }),
     });
 
-const KPI_HANDLERS = {
-  // 🩺 Core Clinical
-  appointments: K("appointments", Appointment, APPOINTMENT_STATUS),
-  lab_requests: K("lab_requests", LabRequest, LAB_REQUEST_STATUS),
-  admissions: K("admissions", Admission, ADMISSION_STATUS),
-  prescriptions: K("prescriptions", Prescription, PRESCRIPTION_STATUS, { total_value: fn("SUM", col("total_cost")) }),
-  payments: K("payments", Payment, PAYMENT_STATUS, { total_amount: fn("SUM", col("amount")), avg_amount: fn("AVG", col("amount")) }),
-  consultations: K("consultations", Consultation, CONSULTATION_STATUS),
-  delivery_records: K(
-    "delivery_records",
-    DeliveryRecord,
-    DELIVERY_STATUS
-  ),
-  deposits: K("deposits", Deposit, DEPOSIT_STATUS, { total_value: fn("SUM", col("amount")) }),
-  discounts: K("discounts", Discount, DISCOUNT_STATUS, { total_value: fn("SUM", col("value")) }),
-  discount_waivers: K("discount_waivers", DiscountWaiver, DISCOUNT_WAIVER_STATUS, { total_value: fn("SUM", col("amount")) }),
-  ultrasound_records: K("ultrasound_records", UltrasoundRecord, ULTRASOUND_STATUS),
-  ekg_records: K("ekg_records", EKGRecord, EKG_STATUS),
-  maternity_visits: K("maternity_visits", MaternityVisit, MATERNITY_VISIT_STATUS),
-  surgeries: K("surgeries", Surgery, SURGERY_STATUS, { total_value: fn("SUM", col("cost_override")) }),
-  lab_results: K("lab_results", LabResult, LAB_RESULT_STATUS),
-  registration_logs: K("registration_logs", RegistrationLog, REGISTRATION_LOG_STATUS),
+  /* ============================================================
+    💰 CUSTOM KPI — REAL REVENUE (MULTI-CURRENCY SAFE)
+  ============================================================ */
+  const buildRevenueKpi = async ({ where }) => {
+    const paymentsByCurrency = await Payment.findAll({
+      attributes: [
+        "currency",
+        [fn("SUM", col("amount")), "total"]
+      ],
+      where: {
+        ...where,
+        status: PAYMENT_STATUS.COMPLETED
+      },
+      group: ["currency"],
+      raw: true
+    });
 
-  // 🏥 Clinical Extensions
-  patients: K("patients", Patient),
-  recommendations: K("recommendations", Recommendation),
-  triage_records: K("triage_records", TriageRecord, TRIAGE_STATUS),
-  medical_records: K("medical_records", MedicalRecord, MEDICAL_RECORD_STATUS),
-  newborn_records: K("newborn_records", NewbornRecord),
-  vitals: K("vitals", Vital),
+    const refundsByCurrency = await Refund.findAll({
+      attributes: [
+        "currency",
+        [fn("SUM", col("amount")), "total"]
+      ],
+      where: {
+        ...where,
+        status: REFUND_STATUS.PROCESSED
+      },
+      group: ["currency"],
+      raw: true
+    });
 
-  // 🏢 Admin & Support
-  suppliers: K("suppliers", Supplier),
-  organizations: K("organizations", Organization),
-  roles: K("roles", Role),
-  users: K("users", User),
-  feature_modules: K("feature_modules", FeatureModule),
-  feature_accesses: K("feature_accesses", FeatureAccess),
-  master_items: K("master_items", MasterItem),
-  master_item_categories: K("master_item_categories", MasterItemCategory),
+    const depositsByCurrency = await Deposit.findAll({
+      attributes: [
+        "currency",
+        [fn("SUM", col("applied_amount")), "total"]
+      ],
+      where: {
+        ...where,
+        applied_amount: { [Op.gt]: 0 }
+      },
+      group: ["currency"],
+      raw: true
+    });
 
-  // 💳 Billing & Finance
-  refunds: K("refunds", Refund),
-  auto_billing_rules: K("auto_billing_rules", AutoBillingRule),
-  invoices: K("invoices", Invoice, INVOICE_STATUS, { total_value: fn("SUM", col("total")) }),
-  billable_items: K("billable_items", BillableItem, BILLABLE_ITEM_STATUS),
+    const map = {};
 
-  // 🧱 Inventory
-  facilities: K("facilities", Facility, FACILITY_STATUS),
-  departments: K("departments", Department, DEPARTMENT_STATUS),
-  employees: K("employees", Employee, EMPLOYEE_STATUS),
-  pharmacy_transactions: K("pharmacy_transactions", PharmacyTransaction, PHARMACY_TRANSACTION_STATUS, { total_quantity: fn("SUM", col("quantity_dispensed")) }),
-  central_stocks: K("central_stocks", CentralStock, CENTRAL_STOCK_STATUS, { total_quantity: fn("SUM", col("quantity")) }),
-  department_stocks: K("department_stocks", DepartmentStock, DEPARTMENT_STOCK_STATUS, { total_quantity: fn("SUM", col("quantity")) }),
-  stock_adjustments: K("stock_adjustments", StockAdjustment),
-  stock_returns: K("stock_returns", StockReturn),
-  stock_ledger: K("stock_ledger", StockLedger),
-  stock_requests: K("stock_requests", StockRequest),
-};
+    // 🔹 payments
+    paymentsByCurrency.forEach(p => {
+      map[p.currency] = {
+        payments: Number(p.total || 0),
+        deposits: 0,
+        refunds: 0
+      };
+    });
+
+    // 🔹 deposits
+    depositsByCurrency.forEach(d => {
+      if (!map[d.currency]) {
+        map[d.currency] = { payments: 0, deposits: 0, refunds: 0 };
+      }
+      map[d.currency].deposits = Number(d.total || 0);
+    });
+
+    // 🔹 refunds
+    refundsByCurrency.forEach(r => {
+      if (!map[r.currency]) {
+        map[r.currency] = { payments: 0, deposits: 0, refunds: 0 };
+      }
+      map[r.currency].refunds = Number(r.total || 0);
+    });
+
+    // 🔹 net per currency
+    const byCurrency = {};
+
+    Object.keys(map).forEach(curr => {
+      byCurrency[curr] =
+        map[curr].payments +
+        map[curr].deposits -
+        map[curr].refunds;
+    });
+
+    return {
+      total: Object.values(byCurrency).reduce((a, b) => a + b, 0),
+
+      by_currency: byCurrency,
+
+      breakdown: {
+        payments_by_currency: paymentsByCurrency,
+        deposits_by_currency: depositsByCurrency,
+        refunds_by_currency: refundsByCurrency,
+
+        net_by_currency: byCurrency,
+
+        total_payments: paymentsByCurrency.reduce((a, b) => a + Number(b.total || 0), 0),
+        total_refunds: refundsByCurrency.reduce((a, b) => a + Number(b.total || 0), 0),
+        total_deposits: depositsByCurrency.reduce((a, b) => a + Number(b.total || 0), 0),
+      }
+    };
+  };
+  const KPI_HANDLERS = {
+    // 🩺 Core Clinical
+    appointments: K("appointments", Appointment, APPOINTMENT_STATUS),
+    lab_requests: K("lab_requests", LabRequest, LAB_REQUEST_STATUS),
+    admissions: K("admissions", Admission, ADMISSION_STATUS),
+    prescriptions: K("prescriptions", Prescription, PRESCRIPTION_STATUS, { total_value: fn("SUM", col("total_cost")) }),
+    payments: async (where, allowCrossTenant = false) => {
+      const rows = await Payment.findAll({
+        attributes: [
+          "currency",
+          [fn("SUM", col("amount")), "total"]
+        ],
+        where: {
+          ...where,
+          status: PAYMENT_STATUS.COMPLETED
+        },
+        group: ["currency"],
+        raw: true
+      });
+
+      const byCurrency = {};
+
+      rows.forEach(r => {
+        byCurrency[r.currency] = Number(r.total || 0);
+      });
+
+      return {
+        total: null,
+
+        by_currency: byCurrency,
+
+        breakdown: {
+          currencies: Object.keys(byCurrency),
+
+          total_transactions: rows.length,
+
+          // optional (future)
+          note: "Grouped by currency only (no method breakdown yet)"
+        }
+      };
+    },
+    consultations: K("consultations", Consultation, CONSULTATION_STATUS),
+    delivery_records: K(
+      "delivery_records",
+      DeliveryRecord,
+      DELIVERY_STATUS
+    ),
+    deposits: async (where, allowCrossTenant = false) => {
+      const rows = await Deposit.findAll({
+        attributes: [
+          "currency",
+          [fn("SUM", col("amount")), "total_amount"],
+          [fn("SUM", col("applied_amount")), "total_applied"],
+          [fn("SUM", col("remaining_balance")), "total_remaining"]
+        ],
+        where,
+        group: ["currency"],
+        raw: true
+      });
+
+      const byCurrency = {};
+
+      rows.forEach(r => {
+        byCurrency[r.currency] = {
+          total: Number(r.total_amount || 0),
+          applied: Number(r.total_applied || 0),
+          remaining: Number(r.total_remaining || 0)
+        };
+      });
+
+      return {
+        total: Object.values(byCurrency).reduce((sum, c) => sum + c.total, 0),
+
+        by_currency: byCurrency,
+
+        breakdown: {
+          currencies: Object.keys(byCurrency),
+
+          totals: byCurrency
+        }
+      };
+    },
+    discounts: K("discounts", Discount, DISCOUNT_STATUS, { total_value: fn("SUM", col("value")) }),
+    discount_waivers: K("discount_waivers", DiscountWaiver, DISCOUNT_WAIVER_STATUS, { total_value: fn("SUM", col("amount")) }),
+    ultrasound_records: K("ultrasound_records", UltrasoundRecord, ULTRASOUND_STATUS),
+    ekg_records: K("ekg_records", EKGRecord, EKG_STATUS),
+    maternity_visits: K("maternity_visits", MaternityVisit, MATERNITY_VISIT_STATUS),
+    surgeries: K("surgeries", Surgery, SURGERY_STATUS, { total_value: fn("SUM", col("cost_override")) }),
+    lab_results: K("lab_results", LabResult, LAB_RESULT_STATUS),
+    registration_logs: K("registration_logs", RegistrationLog, REGISTRATION_LOG_STATUS),
+
+    // 🏥 Clinical Extensions
+    patients: K("patients", Patient),
+    recommendations: K("recommendations", Recommendation),
+    triage_records: K("triage_records", TriageRecord, TRIAGE_STATUS),
+    medical_records: K("medical_records", MedicalRecord, MEDICAL_RECORD_STATUS),
+    newborn_records: K("newborn_records", NewbornRecord),
+    vitals: K("vitals", Vital),
+
+    // 🏢 Admin & Support
+    suppliers: K("suppliers", Supplier),
+    organizations: K("organizations", Organization),
+    roles: K("roles", Role),
+    users: K("users", User),
+    feature_modules: K("feature_modules", FeatureModule),
+    feature_accesses: K("feature_accesses", FeatureAccess),
+    master_items: K("master_items", MasterItem),
+    master_item_categories: K("master_item_categories", MasterItemCategory),
+
+    // 💳 Billing & Finance
+    refunds: (where, allowCrossTenant = false) =>
+      buildDynamicSummary({
+        model: Refund,
+        options: {
+          where: {
+            ...where,
+            status: REFUND_STATUS.PROCESSED, // 🔥 only real refunds
+          },
+          allowCrossTenant,
+        },
+        aggregates: {
+          total: fn("SUM", col("amount")),
+        },
+      }),
+    auto_billing_rules: K("auto_billing_rules", AutoBillingRule),
+    revenue: async (where, allowCrossTenant = false) =>
+      buildRevenueKpi({ where }),
+    invoices: async (where, allowCrossTenant = false) => {
+      const result = await buildDynamicSummary({
+        model: Invoice,
+        options: {
+          where,
+          allowCrossTenant,
+        },
+        statusEnums: INVOICE_STATUS,
+        aggregates: {
+          total: fn("SUM", col("total")),            // total billed
+          total_balance: fn("SUM", col("balance")),  // outstanding
+        },
+      });
+
+      return {
+        total: result.total || 0,
+
+        breakdown: {
+          total_billed: result.total || 0,
+          total_outstanding: result.total_balance || 0,
+
+          paid: result.by_status?.paid || 0,
+          unpaid: result.by_status?.unpaid || 0,
+          partial: result.by_status?.partial || 0,
+
+          by_status: result.by_status || {}
+        }
+      };
+    },
+    billable_items: K("billable_items", BillableItem, BILLABLE_ITEM_STATUS),
+
+    // 🧱 Inventory
+    facilities: K("facilities", Facility, FACILITY_STATUS),
+    departments: K("departments", Department, DEPARTMENT_STATUS),
+    employees: K("employees", Employee, EMPLOYEE_STATUS),
+    pharmacy_transactions: K("pharmacy_transactions", PharmacyTransaction, PHARMACY_TRANSACTION_STATUS, { total_quantity: fn("SUM", col("quantity_dispensed")) }),
+    central_stocks: K("central_stocks", CentralStock, CENTRAL_STOCK_STATUS, { total_quantity: fn("SUM", col("quantity")) }),
+    department_stocks: K("department_stocks", DepartmentStock, DEPARTMENT_STOCK_STATUS, { total_quantity: fn("SUM", col("quantity")) }),
+    stock_adjustments: K("stock_adjustments", StockAdjustment),
+    stock_returns: K("stock_returns", StockReturn),
+    stock_ledger: K("stock_ledger", StockLedger),
+    stock_requests: K("stock_requests", StockRequest),
+  };
 
 
-/* ============================================================
-   🔹 Trendline Helper (SAFE + COMPACT + DATE-ONLY)
-============================================================ */
-const buildTrendSeries = async (model, where, start, end) => {
-  // 🔒 Normalize inputs (DATE-ONLY → Date objects)
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate   = new Date(`${end}T23:59:59`);
+  /* ============================================================
+    🔹 Trendline Helper (SAFE + COMPACT + DATE-ONLY)
+  ============================================================ */
+  const buildTrendSeries = async (model, where, start, end) => {
+    // 🔒 Normalize inputs (DATE-ONLY → Date objects)
+    const startDate = new Date(`${start}T00:00:00`);
+    const endDate   = new Date(`${end}T23:59:59`);
 
-  // 🧠 Decide granularity
-  const daySpan = Math.ceil((endDate - startDate) / 864e5);
-  const unit = daySpan > 45 ? "week" : "day";
+    // 🧠 Decide granularity
+    const daySpan = Math.ceil((endDate - startDate) / 864e5);
+    const unit = daySpan > 45 ? "week" : "day";
 
-  // 📊 Fetch aggregated rows
-  const rows = await model.findAll({
-    where,
-    attributes: [
-      [fn("date_trunc", unit, col("created_at")), "p"],
-      [fn("COUNT", col("id")), "c"],
-    ],
-    group: ["p"],
-    order: [[literal("p"), "ASC"]],
-    raw: true,
-  });
+    // 📊 Fetch aggregated rows
+    const rows = await model.findAll({
+      where,
+      attributes: [
+        [fn("date_trunc", unit, col("created_at")), "p"],
+        [fn("COUNT", col("id")), "c"],
+      ],
+      group: ["p"],
+      order: [[literal("p"), "ASC"]],
+      raw: true,
+    });
 
-  // 🧭 Map results → DATE-ONLY keys
-  const map = Object.fromEntries(
-    rows.map(r => {
-      const d = new Date(r.p);
+    // 🧭 Map results → DATE-ONLY keys
+    const map = Object.fromEntries(
+      rows.map(r => {
+        const d = new Date(r.p);
+        const key =
+          unit === "week"
+            ? d.toISOString().slice(0, 7)   // YYYY-MM
+            : d.toISOString().slice(0, 10); // YYYY-MM-DD
+        return [key, Number(r.c)];
+      })
+    );
+
+    // 🔁 Fill missing dates/weeks with 0
+    const trend = [];
+    const cursor = new Date(startDate);
+
+    while (cursor <= endDate) {
       const key =
         unit === "week"
-          ? d.toISOString().slice(0, 7)   // YYYY-MM
-          : d.toISOString().slice(0, 10); // YYYY-MM-DD
-      return [key, Number(r.c)];
-    })
-  );
+          ? cursor.toISOString().slice(0, 7)
+          : cursor.toISOString().slice(0, 10);
 
-  // 🔁 Fill missing dates/weeks with 0
-  const trend = [];
-  const cursor = new Date(startDate);
+      trend.push(map[key] || 0);
 
-  while (cursor <= endDate) {
-    const key =
-      unit === "week"
-        ? cursor.toISOString().slice(0, 7)
-        : cursor.toISOString().slice(0, 10);
-
-    trend.push(map[key] || 0);
-
-    // ⏭️ Advance cursor
-    if (unit === "week") {
-      cursor.setDate(cursor.getDate() + 7);
-    } else {
-      cursor.setDate(cursor.getDate() + 1);
+      // ⏭️ Advance cursor
+      if (unit === "week") {
+        cursor.setDate(cursor.getDate() + 7);
+      } else {
+        cursor.setDate(cursor.getDate() + 1);
+      }
     }
-  }
 
-  return trend;
-};
+    return trend;
+  };
 
 /* ============================================================
    🔹 Monthly Chart Helper (SAFE + COMPACT)
@@ -450,8 +659,11 @@ export const getDashboardData = async (req, res) => {
         icon: mod.icon || "activity",
         category: mod.category, 
         link: mod.route || `/${mod.key.replace(/_/g, "-")}-list.html`,
-        total: resolveTotal(summary),
-        value: summary.total_amount || summary.total_value || null,
+        total:
+          summary.total ??
+          summary.total_amount ??
+          summary.total_value ??
+          0,
         summary,
         trend: modelMap[mod.key]
           ? await buildTrendSeries(modelMap[mod.key], where, start, end)
@@ -491,13 +703,49 @@ export const getDashboardData = async (req, res) => {
     }
 
     /* ========================================================
-       ✅ RESPONSE
+      🚨 ALERTS (INTELLIGENCE LAYER)
+    ======================================================== */
+    const alerts = [];
+
+    /* 🔴 Outstanding invoices */
+    const invoiceKpi = kpis.find(k => k.key === "invoices");
+
+    if (invoiceKpi?.summary?.breakdown?.total_outstanding > 0) {
+      alerts.push({
+        type: "warning",
+        title: "Outstanding Invoices",
+        message: `There are unpaid invoices totaling ${invoiceKpi.summary.breakdown.total_outstanding}`,
+      });
+    }
+
+    /* 💰 No revenue */
+    const revenueKpi = kpis.find(k => k.key === "revenue");
+
+    if (revenueKpi && revenueKpi.total === 0) {
+      alerts.push({
+        type: "info",
+        title: "No Revenue",
+        message: "No revenue activity (payments or applied deposits) in selected period",
+      });
+    }
+
+    /* 💸 Refund activity */
+    if (revenueKpi?.summary?.breakdown?.total_refunds > 0) {
+      alerts.push({
+        type: "warning",
+        title: "Refunds Issued",
+        message: `${revenueKpi.summary.breakdown.total_refunds} refunded`,
+      });
+    }
+
+    /* ========================================================
+      ✅ RESPONSE
     ======================================================== */
     const payload = {
       kpis,
       charts,
       queues: [],
-      alerts: [],
+      alerts, // 🔥 dynamic alerts
       start_date: start,
       end_date: end,
       timestamp: normalizeDateOnly(new Date()),

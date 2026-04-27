@@ -14,6 +14,7 @@ import {
 import { getGreetingMeta } from "../utils/greeting.js";
 /* ====================== ⭐ TOP KPI KEYS ====================== */
 const TOP_KPI_KEYS = [
+  "revenue",     // 🔥 ADD THIS
   "patients",
   "appointments",
   "payments",
@@ -296,6 +297,105 @@ export function initLiveDashboard() {
     );
   }
 
+  function formatCurrencyBlock(k) {
+    const byCurrency = k.summary?.by_currency;
+    const deposits = k.summary?.breakdown?.deposits_by_currency || [];
+    const payments = k.summary?.breakdown?.payments_by_currency || [];
+    const refunds = k.summary?.breakdown?.refunds_by_currency || [];
+
+    // 🔹 Fallback (non-currency KPIs)
+    if (!byCurrency) {
+      return Number(k.total || 0).toLocaleString();
+    }
+
+    return `
+      <div class="w-100">
+
+        <!-- 🔹 MAIN VALUES -->
+        ${Object.entries(byCurrency)
+          .map(([cur, val]) => {
+            const amount =
+              typeof val === "object"
+                ? Number(val.total || 0)
+                : Number(val || 0);
+
+            return `
+              <div class="d-flex justify-content-between align-items-baseline">
+                <span class="text-muted small">${cur}</span>
+                <span class="fw-semibold">${amount.toLocaleString()}</span>
+              </div>
+            `;
+          })
+          .join("")}
+
+        <!-- 🔹 ONLY SHOW BREAKDOWN FOR REVENUE -->
+        ${
+          k.key === "revenue"
+            ? `
+            <div class="mt-1 pt-1 border-top" style="opacity:0.85;">
+
+              ${
+                payments.length
+                  ? `
+                  <div class="mt-1">
+                    <div class="text-muted text-uppercase" style="font-size:10px; letter-spacing:0.5px;">
+                      Payments
+                    </div>
+                    ${payments.map(p => `
+                      <div class="d-flex justify-content-between text-muted" style="font-size:12px;">
+                        <span>${p.currency}</span>
+                        <span>${Number(p.total || 0).toLocaleString()}</span>
+                      </div>
+                    `).join("")}
+                  </div>
+                `
+                  : ""
+              }
+
+              ${
+                deposits.length
+                  ? `
+                  <div class="mt-1">
+                    <div class="text-muted text-uppercase" style="font-size:10px; letter-spacing:0.5px;">
+                      Deposits Applied
+                    </div>
+                    ${deposits.map(d => `
+                      <div class="d-flex justify-content-between text-muted" style="font-size:12px;">
+                        <span>${d.currency}</span>
+                        <span>${Number(d.total || 0).toLocaleString()}</span>
+                      </div>
+                    `).join("")}
+                  </div>
+                `
+                  : ""
+              }
+
+              ${
+                refunds.length
+                  ? `
+                  <div class="mt-1">
+                    <div class="text-muted text-uppercase" style="font-size:10px; letter-spacing:0.5px;">
+                      Refunds
+                    </div>
+                    ${refunds.map(r => `
+                      <div class="d-flex justify-content-between text-muted" style="font-size:12px;">
+                        <span>${r.currency}</span>
+                        <span>-${Number(r.total || 0).toLocaleString()}</span>
+                      </div>
+                    `).join("")}
+                  </div>
+                `
+                  : ""
+              }
+
+            </div>
+          `
+            : ""
+        }
+
+      </div>
+    `;
+  }
   /* ---------- TOP KPI STRIP ---------- */
   function renderTopKpis(container, kpis = [], currencySymbol = "") {
     if (!container) return;
@@ -304,10 +404,6 @@ export function initLiveDashboard() {
     kpis.forEach(k => {
       const color = KPI_COLOR_MAP[k.key] || "primary";
       const icon = KPI_ICON_MAP[k.key] || "ri-bar-chart-line";
-      const total =
-        k.key === "payments"
-          ? (k.summary?.total_amount ?? 0)
-          : (k.total ?? 0);
 
       const card = document.createElement("div");
       card.className = "card shadow-sm border-0";
@@ -316,13 +412,9 @@ export function initLiveDashboard() {
         <div class="card-body d-flex justify-content-between align-items-center">
           <div>
             <div class="text-muted small">${k.label}</div>
-            <div class="fs-3 fw-bold text-${color}">
-              ${
-                k.key === "payments"
-                  ? `${currencySymbol || "$"}${Number(total).toLocaleString()}`
-                  : Number(total).toLocaleString()
-              }
-            </div>
+              <div class="fs-3 fw-bold text-${color} mt-1">
+                ${formatCurrencyBlock(k)}
+              </div>
           </div>
           <i class="${icon} fs-1 text-${color} opacity-75"></i>
         </div>
@@ -455,11 +547,28 @@ export function initLiveDashboard() {
 
     alerts.forEach((a) => {
       const el = document.createElement("div");
-      el.className = `alert alert-${a.type || "info"} mb-2 small`;
+
+      const type = a.type || "info";
+
+      const iconMap = {
+        warning: "ri-error-warning-line",
+        danger: "ri-close-circle-line",
+        info: "ri-information-line",
+        success: "ri-checkbox-circle-line"
+      };
+
+      const icon = iconMap[type] || iconMap.info;
+
+      el.className = `alert alert-${type} mb-2 small d-flex align-items-start gap-2`;
+
       el.innerHTML = `
-        <i class="ri-error-warning-line me-2"></i>
-        ${a.message || ""}
+        <i class="${icon} mt-1"></i>
+        <div>
+          <div class="fw-semibold">${a.title || "Alert"}</div>
+          <div class="text-muted">${a.message || ""}</div>
+        </div>
       `;
+
       alertContainer.appendChild(el);
     });
   }
@@ -482,7 +591,17 @@ function renderKpis(
     const color = KPI_COLOR_MAP[k.key] || KPI_COLOR_MAP.default;
     const icon = KPI_ICON_MAP[k.key] || KPI_ICON_MAP.default;
     const total = k.total ?? k.count ?? 0;
+    const breakdown = k.summary?.breakdown;
 
+    const breakdownHtml =
+      k.key === "revenue" && breakdown
+        ? `
+          <div class="small text-muted mt-1">
+            Payments: ${Number(breakdown.total_payments || 0).toLocaleString()}<br>
+            Refunds: ${Number(breakdown.total_refunds || 0).toLocaleString()}
+          </div>
+        `
+        : "";
     /* ---- CRITICAL BADGES ONLY (summary view) ---- */
     const criticalStatuses = showTrend
       ? Object.entries(summary)
@@ -519,15 +638,22 @@ function renderKpis(
 
         <!-- ===== SUMMARY (always visible) ===== -->
         <div class="card-body p-3 kpi-summary">
-          <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex justify-content-between align-items-start flex-column gap-1">
             <div class="d-flex align-items-center gap-2">
               <i class="${icon} text-${color}"></i>
-              <span class="kpi-title">${k.label || ""}</span>
+              <span class="kpi-title d-block mb-2">${k.label || ""}</span>
             </div>
 
-            <div class="d-flex align-items-center gap-2">
-              <div class="kpi-value text-${color}" data-count="${total}">0</div>
-              <i class="ri-arrow-down-s-line kpi-chevron"></i>
+            <div class="mt-1">
+              <div class="kpi-value text-${color}">
+                ${formatCurrencyBlock(k)}
+              </div>
+
+              ${breakdownHtml}
+
+              <div class="text-end">
+                <i class="ri-arrow-down-s-line kpi-chevron"></i>
+              </div>
             </div>
           </div>
 
@@ -585,7 +711,9 @@ function renderKpis(
     adminContainer.innerHTML = "";
 
     /* ================= TOP KPIs ================= */
-    const topKpis = kpis.filter(k => TOP_KPI_KEYS.includes(k.key));
+    const topKpis = TOP_KPI_KEYS
+      .map(key => kpis.find(k => k.key === key))
+      .filter(Boolean);
     if (topKpis.length) {
       renderTopKpis(topKpiContainer, topKpis, currencySymbol);
     }
