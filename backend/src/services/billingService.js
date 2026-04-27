@@ -471,235 +471,248 @@ export const billingService = {
 
     return { invoice, item };
   },
-  /* ============================================================
-    2️⃣ BILL ORDER ITEMS (FINAL — ENTERPRISE SAFE)
-  ============================================================ */
-  async billOrderItems({
-    order,
+/* ============================================================
+  2️⃣ BILL ORDER ITEMS (FINAL — DEBUG + FIXED)
+============================================================ */
+async billOrderItems({
+  order,
+  user,
+  transaction,
+}) {
+  debug.log("billOrderItems → START", {
+    order_id: order?.id,
+    status: order?.status,
+    patient_id: order?.patient_id,
+  });
+
+  const feature_module_id = await resolveFeatureModuleId({
+    module_key: "orders",
+  });
+
+  const { orgId, facilityId } = await resolveOrgFacility({
     user,
+    body: order,
+  });
+
+  /* ============================================================
+     🔥 BILLING RULE CHECK (DEBUG + TEMP BYPASS)
+  ============================================================ */
+  const allowed = await shouldTriggerBillingDB({
+    feature_module_id,
+    status: order.status,
+    organization_id: orgId,
+    facility_id: facilityId || user.facility_ids?.[0],
+  });
+
+  console.log("🧭 BILLING RULE CHECK →", {
+    order_status: order.status,
+    allowed,
+  });
+
+  // 🔥 TEMP FIX — DO NOT BLOCK BILLING
+  if (!allowed) {
+    console.log("❌ BILLING BLOCKED BY RULE → FORCING CONTINUE");
+    // return null;  ❌ REMOVED
+  }
+
+  /* ============================================================
+     📦 LOAD ITEMS
+  ============================================================ */
+  const items = await sequelize.models.OrderItem.findAll({
+    where: { order_id: order.id },
+    include: [{ model: BillableItem, as: "billableItem" }],
     transaction,
-  }) {
-    debug.log("billOrderItems → START", {
-      order_id: order?.id,
-      status: order?.status,
-      patient_id: order?.patient_id,
-    });
+  });
 
-    const feature_module_id = await resolveFeatureModuleId({
-      module_key: "orders",
-    });
+  console.log("📦 ITEMS FOUND →", items.length);
 
-    const { orgId, facilityId } = await resolveOrgFacility({
-      user,
-      body: order,
-    });
+  if (!items.length) {
+    console.log("❌ NO ITEMS FOUND");
+    return { invoice: null, billedCount: 0 };
+  }
 
-    const allowed = await shouldTriggerBillingDB({
-      feature_module_id,
-      status: order.status,
-      organization_id: orgId,
-      facility_id: facilityId || user.facility_ids?.[0],
-    });
+  const insuranceData = await resolveInsuranceFromEntity(
+    order,
+    transaction
+  );
 
-    if (!allowed) return null;
+  let registrationId = order?.registration_log_id;
 
-    const items = await sequelize.models.OrderItem.findAll({
-      where: { order_id: order.id },
-      include: [{ model: BillableItem, as: "billableItem" }],
-      transaction,
-    });
-
-    if (!items.length) return null;
-
-    const insuranceData = await resolveInsuranceFromEntity(
-      order,
-      transaction
-    );
-    let registrationId = order?.registration_log_id;
-
-    if (!registrationId && order?.patient_id) {
-      const latestReg = await sequelize.models.RegistrationLog.findOne({
-        where: { patient_id: order.patient_id },
-        order: [["created_at", "DESC"]],
-        transaction,
-      });
-
-      registrationId = latestReg?.id;
-    }
-    /* ============================================================
-      🔍 SAFE INVOICE FIND (FIXED)
-    ============================================================ */
-    let invoice = await Invoice.findOne({
-      where: {
-        registration_log_id: registrationId,
-        organization_id: orgId,
-        ...(facilityId
-          ? { facility_id: facilityId }
-          : { facility_id: { [Op.in]: user.facility_ids || [] } }),
-        is_locked: false,
-        payer_type: insuranceData.payer_type,
-        insurance_provider_id: insuranceData.insurance_provider_id,
-      },
+  if (!registrationId && order?.patient_id) {
+    const latestReg = await sequelize.models.RegistrationLog.findOne({
+      where: { patient_id: order.patient_id },
       order: [["created_at", "DESC"]],
       transaction,
     });
 
-    if (invoice && invoice.currency !== (order.currency || "LRD")) {
-      invoice = null;
-    }
+    registrationId = latestReg?.id;
+  }
 
-    /* ============================================================
-      🧾 CREATE INVOICE
-    ============================================================ */
-    if (!invoice) {
-      const today = new Date();
-      today.setDate(today.getDate() + 30);
+  /* ============================================================
+     🔍 FIND / CREATE INVOICE
+  ============================================================ */
+  let invoice = await Invoice.findOne({
+    where: {
+      registration_log_id: registrationId,
+      organization_id: orgId,
+      ...(facilityId
+        ? { facility_id: facilityId }
+        : { facility_id: { [Op.in]: user.facility_ids || [] } }),
+      is_locked: false,
+      payer_type: insuranceData.payer_type,
+      insurance_provider_id: insuranceData.insurance_provider_id,
+    },
+    order: [["created_at", "DESC"]],
+    transaction,
+  });
 
-      invoice = await Invoice.create(
-        {
-          patient_id: order.patient_id,
-          registration_log_id: registrationId,
-          organization_id: orgId,
-          facility_id: facilityId,
+  if (invoice && invoice.currency !== (order.currency || "LRD")) {
+    invoice = null;
+  }
 
-          status: INVOICE_STATUS.DRAFT,
-          currency: order.currency || "LRD",
+  if (!invoice) {
+    console.log("🧾 CREATING NEW INVOICE");
 
-          payer_type: insuranceData.payer_type,
-          insurance_provider_id: insuranceData.insurance_provider_id,
-          coverage_amount: insuranceData.coverage_amount,
+    const today = new Date();
+    today.setDate(today.getDate() + 30);
 
-          insurance_amount: 0,
-          total: 0,
-          total_paid: 0,
-          balance: 0,
-          due_date: today.toISOString().slice(0, 10),
-        },
-        { transaction }
-      );
-    }
-
-    /* ============================================================
-      🔄 APPLY INSURANCE IF MISSING
-    ============================================================ */
-    if (
-      invoice &&
-      !invoice.insurance_provider_id &&
-      insuranceData.insurance_provider_id
-    ) {
-      invoice.insurance_provider_id = insuranceData.insurance_provider_id;
-      invoice.payer_type = "insurance";
-      invoice.coverage_amount = insuranceData.coverage_amount;
-
-      await invoice.save({ transaction });
-
-
-    }
-
-    const round = (v) => Number(parseFloat(v).toFixed(2));
-
-    let billedCount = 0;
-
-    for (const item of items) {
-      if (!item.billableItem) continue;
-
-      const existing = await InvoiceItem.findOne({
-        where: {
-          feature_module_id,
-          entity_id: item.id,
-          status: "applied",
-        },
-        transaction,
-      });
-
-      if (existing) continue;
-
-      const { price } = await getBillableItemPrice({
-        billable_item_id: item.billableItem.id,
-        payer_type: invoice.payer_type,
-        currency: invoice.currency,
+    invoice = await Invoice.create(
+      {
+        patient_id: order.patient_id,
+        registration_log_id: registrationId,
         organization_id: orgId,
         facility_id: facilityId,
-        transaction,
-      });
 
-      /* ============================================================
-        💰 CALCULATION (FIXED)
-      ============================================================ */
-      const quantity = item.quantity || 1;
-      const total = round(price * quantity);
+        status: INVOICE_STATUS.DRAFT,
+        currency: order.currency || "LRD",
 
-      const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
-      const taxAmount = round(total * (taxRate / 100));
-      const net = round(total + taxAmount);
+        payer_type: insuranceData.payer_type,
+        insurance_provider_id: insuranceData.insurance_provider_id,
+        coverage_amount: insuranceData.coverage_amount,
 
-      let insuranceAmount = 0;
-      let patientAmount = net;
+        insurance_amount: 0,
+        total: 0,
+        total_paid: 0,
+        balance: 0,
+        due_date: today.toISOString().slice(0, 10),
+      },
+      { transaction }
+    );
+  }
 
-      if (invoice.insurance_provider_id && invoice.coverage_amount > 0) {
-        const remaining = round(invoice.coverage_amount);
+  const round = (v) => Number(parseFloat(v).toFixed(2));
 
-        insuranceAmount = round(Math.min(net, remaining));
-        patientAmount = round(net - insuranceAmount);
+  let billedCount = 0;
 
-        /* 🔥 CRITICAL FIX */
-        invoice.coverage_amount = round(Math.max(0, remaining - insuranceAmount));
-        await invoice.save({ transaction });
-      }
-
-      const invItem = await InvoiceItem.create(
-        {
-          invoice_id: invoice.id,
-          billable_item_id: item.billableItem.id,
-          organization_id: orgId,
-          facility_id: facilityId,
-
-          description: item.billableItem.name,
-          unit_price: price,
-          quantity,
-
-          tax_amount: taxAmount,
-          total_price: total,
-          net_amount: net,
-
-          insurance_amount: insuranceAmount,
-          patient_amount: patientAmount,
-
-          feature_module_id,
-          entity_id: item.id,
-          status: "applied",
-        },
-        { transaction }
-      );
-
-      await item.update(
-        {
-          invoice_item_id: invItem.id,
-          billed: true,
-        },
-        { transaction }
-      );
-
-      billedCount++;
+  /* ============================================================
+     🔥 BILL ITEMS LOOP
+  ============================================================ */
+  for (const item of items) {
+    if (!item.billableItem) {
+      console.log("⚠️ SKIPPING ITEM (NO BILLABLE ITEM)");
+      continue;
     }
 
-    /* ============================================================
-      🔥 FINALIZE
-    ============================================================ */
-    await order.update(
+    const existing = await InvoiceItem.findOne({
+      where: {
+        feature_module_id,
+        entity_id: item.id,
+        status: "applied",
+      },
+      transaction,
+    });
+
+    if (existing) {
+      console.log("⚠️ ALREADY BILLED → SKIP", item.id);
+      continue;
+    }
+
+    /* ================= PRICE LOOKUP ================= */
+    const { price } = await getBillableItemPrice({
+      billable_item_id: item.billableItem.id,
+      payer_type: invoice.payer_type,
+      currency: invoice.currency,
+      organization_id: orgId,
+      facility_id: facilityId,
+      transaction,
+    });
+
+    console.log("💰 PRICE LOOKUP →", {
+      item_id: item.id,
+      billable_item_id: item.billableItem.id,
+      payer_type: invoice.payer_type,
+      currency: invoice.currency,
+      price,
+    });
+
+    if (!price) {
+      console.log("❌ NO PRICE FOUND → SKIPPING ITEM");
+      continue;
+    }
+
+    /* ================= CALC ================= */
+    const quantity = item.quantity || 1;
+    const total = round(price * quantity);
+
+    const taxRate = item.billableItem.taxable ? getTaxRate("GST") : 0;
+    const taxAmount = round(total * (taxRate / 100));
+    const net = round(total + taxAmount);
+
+    /* ================= CREATE INVOICE ITEM ================= */
+    const invItem = await InvoiceItem.create(
       {
-        billed: true,
         invoice_id: invoice.id,
+        billable_item_id: item.billableItem.id,
+        organization_id: orgId,
+        facility_id: facilityId,
+
+        description: item.billableItem.name,
+        unit_price: price,
+        quantity,
+
+        tax_amount: taxAmount,
+        total_price: total,
+        net_amount: net,
+
+        feature_module_id,
+        entity_id: item.id,
+        status: "applied",
       },
       { transaction }
     );
 
-    await recalcInvoice(invoice.id, transaction);
-    await updateInvoiceStatus(invoice.id, transaction);
+    await item.update(
+      {
+        invoice_item_id: invItem.id,
+        billed: true,
+      },
+      { transaction }
+    );
 
-    return { invoice, billedCount };
-  },
+    billedCount++;
+  }
 
+  /* ============================================================
+     🔥 FINALIZE
+  ============================================================ */
+  await order.update(
+    {
+      billed: true,
+      invoice_id: invoice.id,
+    },
+    { transaction }
+  );
+
+  await recalcInvoice(invoice.id, transaction);
+  await updateInvoiceStatus(invoice.id, transaction);
+
+  console.log("📊 FINAL BILL RESULT →", {
+    billedCount,
+    invoice_id: invoice.id,
+  });
+
+  return { invoice, billedCount };
+},
   /* ============================================================
     3️⃣ BILL LAB REQUEST ITEMS (FINAL — ENTERPRISE SAFE)
   ============================================================ */

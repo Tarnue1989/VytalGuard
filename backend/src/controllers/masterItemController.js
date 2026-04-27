@@ -568,9 +568,9 @@ export const getItemById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ITEMS LITE (FINAL — MASTER PARITY SAFE)
+   📌 GET ITEMS LITE (FINAL — STRICT TENANT MATCH)
    🔹 Dropdown / Autocomplete / Suggestions READY
-   🔹 Proper tenant + search merge (NO override bugs)
+   🔹 Matches your DB (org + facility ALWAYS set)
 ============================================================ */
 export const getAllItemsLite = async (req, res) => {
   try {
@@ -591,11 +591,12 @@ export const getAllItemsLite = async (req, res) => {
       body: req.query,
     });
 
-    const safeOrgId = orgId ?? null;
-    const safeFacilityId = facilityId ?? null;
+    // 🔥 FORCE FROM USER IF MISSING
+    const safeOrgId = orgId || req.user.organization_id;
+    const safeFacilityId = facilityId || req.user.facility_id;
 
     /* ========================================================
-       🧱 BASE WHERE (MASTER SAFE STRUCTURE)
+       🧱 BASE WHERE
     ======================================================== */
     const where = {
       status: MASTER_ITEM_STATUS.ACTIVE,
@@ -603,19 +604,18 @@ export const getAllItemsLite = async (req, res) => {
     };
 
     /* ========================================================
-       🏢 TENANT SCOPING (🔥 SAFE — NO OVERRIDE)
+       🏢 TENANT SCOPING (🔥 STRICT MATCH — YOUR SYSTEM)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({
-        organization_id: safeOrgId,
-      });
+      if (safeOrgId) {
+        where[Op.and].push({
+          organization_id: safeOrgId,
+        });
+      }
 
       if (safeFacilityId) {
         where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },           // global fallback
-            { facility_id: safeFacilityId }, // facility-specific
-          ],
+          facility_id: safeFacilityId,
         });
       }
     } else {
@@ -633,7 +633,7 @@ export const getAllItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       🔍 SEARCH (🔥 SAFE — COMBINED, NOT OVERRIDING)
+       🔍 SEARCH
     ======================================================== */
     const rawSearch = (req.query.search ?? req.query.q ?? "").toString();
     const search = rawSearch.trim();
@@ -649,7 +649,7 @@ export const getAllItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       🧩 OPTIONAL FILTERS (🔥 READY FOR SCALE)
+       🧩 OPTIONAL FILTERS
     ======================================================== */
     if (req.query.category_id) {
       where[Op.and].push({
@@ -664,7 +664,7 @@ export const getAllItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       📦 QUERY (FAST + CLEAN)
+       📦 QUERY
     ======================================================== */
     const items = await MasterItem.findAll({
       where,
@@ -683,16 +683,16 @@ export const getAllItemsLite = async (req, res) => {
         "category_id",
       ],
       order: [["name", "ASC"]],
-      limit: 50, // 🔥 optimized for autocomplete
+      limit: 50,
     });
 
     /* ========================================================
-       🔄 FORMAT (🔥 DROPDOWN READY)
+       🔄 FORMAT (DROPDOWN READY)
     ======================================================== */
     const records = items.map((i) => ({
       id: i.id,
-      value: i.id, // 🔥 direct use in select inputs
-      label: `${i.name}${i.code ? ` (${i.code})` : ""}`, // 🔥 UI ready
+      value: i.id,
+      label: `${i.name}${i.code ? ` (${i.code})` : ""}`,
       name: i.name,
       code: i.code || "",
       description: i.description || "",

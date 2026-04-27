@@ -137,11 +137,16 @@ function buildBillableItemSchema(user, mode = "create") {
   return schema;
 }
 /* ============================================================
-   📌 CREATE BILLABLE ITEM(S) (FINAL — MULTI-PRICE FIXED)
+   📌 CREATE BILLABLE ITEM(S) (FINAL — ORG + FACILITY SAFE)
 ============================================================ */
 export const createBillableItems = async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    console.log("\n==============================");
+    console.log("📥 CREATE BILLABLE HIT");
+    console.log("👤 REQ.USER →", req.user);
+    console.log("📦 BODY →", req.body);
+
     const allowed = await authzService.checkPermission({
       user: req.user,
       module: MODULE_KEY,
@@ -162,41 +167,105 @@ export const createBillableItems = async (req, res) => {
       );
 
       if (errors) {
+        console.log("❌ VALIDATION FAILED →", errors);
         skipped.push({ reason: "Validation failed", errors });
         continue;
       }
 
+      /* ========================================================
+         🧭 RESOLVE TENANT (FIXED)
+      ======================================================== */
       const { orgId, facilityId } = resolveOrgFacility({
         user: req.user,
         body: raw,
         value,
       });
 
+      const safeOrgId = orgId || req.user?.organization_id;
+
+      const safeFacilityId =
+        facilityId ||
+        req.user?.facility_id ||
+        (req.user?.facility_ids?.length
+          ? req.user.facility_ids[0] // 🔥 KEY FIX
+          : null);
+
+      console.log("🏢 RESOLVED TENANT →", {
+        orgId,
+        facilityId,
+        safeOrgId,
+        safeFacilityId,
+      });
+
       /* ========================================================
-         🔹 CREATE MAIN ITEM
+         🚨 ONLY REQUIRE ORG (NOT FACILITY)
+      ======================================================== */
+      if (!safeOrgId) {
+        console.log("❌ MISSING ORG CONTEXT");
+        skipped.push({
+          reason: "Missing organization context",
+        });
+        continue;
+      }
+
+      /* ========================================================
+         🔥 LOAD MASTER
+      ======================================================== */
+      const master = await MasterItem.findByPk(value.master_item_id, {
+        transaction: t,
+      });
+
+      if (!master) {
+        console.log("❌ MASTER NOT FOUND →", value.master_item_id);
+        skipped.push({ reason: "Master item not found" });
+        continue;
+      }
+
+      console.log("📦 MASTER →", master.toJSON());
+
+      /* ========================================================
+         🔥 FALLBACK PRICE
+      ======================================================== */
+      const fallbackPrice =
+        value.price ??
+        (value.prices?.length ? value.prices[0].price : 0);
+
+      console.log("💰 FALLBACK PRICE →", fallbackPrice);
+
+      /* ========================================================
+         🔹 CREATE BILLABLE ITEM
       ======================================================== */
       const item = await BillableItem.create(
         {
           ...value,
-          organization_id: orgId,
-          facility_id: facilityId,
+
+          // 🔥 TENANT (FIXED)
+          organization_id: safeOrgId,
+          facility_id: safeFacilityId, // now never null for org users
+
+          // 🔥 REQUIRED FIELDS
+          item_type: master.item_type,
+          price: fallbackPrice,
+
           status: BILLABLE_ITEM_STATUS.ACTIVE,
           created_by_id: req.user?.id || null,
         },
         { transaction: t }
       );
 
+      console.log("✅ CREATED ITEM →", item.id);
+
       created.push(item);
 
       /* ========================================================
-         🔥 MULTI-PRICE SUPPORT (FIXED)
+         🔥 MULTI-PRICE SUPPORT
       ======================================================== */
       if (value.prices && value.prices.length) {
         for (const p of value.prices) {
           await BillableItemPrice.create(
             {
-              organization_id: orgId,
-              facility_id: facilityId,
+              organization_id: safeOrgId,
+              facility_id: safeFacilityId,
               billable_item_id: item.id,
 
               payer_type: p.payer_type,
@@ -209,45 +278,26 @@ export const createBillableItems = async (req, res) => {
             { transaction: t }
           );
         }
-      } else {
-        /* 🔁 BACKWARD COMPAT (OLD FORM SUPPORT) */
-        await BillableItemPrice.create(
-          {
-            organization_id: orgId,
-            facility_id: facilityId,
-            billable_item_id: item.id,
-
-            payer_type: PAYER_TYPES.CASH,
-            currency: item.currency,
-            price: item.price,
-            is_default: true,
-
-            created_by_id: req.user?.id || null,
-          },
-          { transaction: t }
-        );
       }
     }
 
     await t.commit();
 
-    const full = await BillableItem.findAll({
-      where: { id: { [Op.in]: created.map((c) => c.id) } },
-      include: BILLABLE_ITEM_INCLUDES,
-    });
+    console.log("📤 CREATE DONE");
+    console.log("==============================\n");
 
     return success(res, {
       message: `✅ ${created.length} created`,
-      records: full,
+      records: created,
       skipped,
     });
 
   } catch (err) {
     await t.rollback();
+    console.error("❌ CREATE FAILED →", err);
     return error(res, "❌ Failed to create billable item(s)", err);
   }
 };
-
 /* ============================================================
    ✏️ UPDATE BILLABLE ITEM (FINAL — MULTI-PRICE ENABLED)
 ============================================================ */
