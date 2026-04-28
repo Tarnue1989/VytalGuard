@@ -48,23 +48,22 @@ function resetForm() {
   sessionStorage.removeItem("masterItemEditId");
   sessionStorage.removeItem("masterItemEditPayload");
 
-  // Clear hidden + select fields (ID-safe)
+  // Clear select fields (MASTER pattern)
   [
     "organizationSelect",
     "facilitySelect",
     "departmentSelect",
     "categorySelect",
-    "featureModuleId",
+    "featureModuleSelect",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
 
-  const featureModuleInput = document.getElementById("featureModuleInput");
-  if (featureModuleInput) featureModuleInput.value = "";
-
   // Default status → active
-  document.getElementById("status_active")?.setAttribute("checked", true);
+  document
+    .getElementById("status_active")
+    ?.setAttribute("checked", true);
 
   // Reset UI labels
   const titleEl = document.querySelector(".card-title");
