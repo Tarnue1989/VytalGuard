@@ -33,6 +33,7 @@ import {
   loadMasterItemCategoriesLite,
   setupSelectOptions,
   setupSuggestionInputDynamic,
+  loadFeatureModulesLite,
 } from "../../utils/data-loaders.js";
 
 import { MASTER_ITEM_FORM_RULES } from "./master-item.form.rules.js";
@@ -144,11 +145,7 @@ export async function setupMasterItemFormSubmission({ form }) {
   const itemTypeSelect = document.getElementById("itemType");
   const codeInput = document.getElementById("code");
 
-  const featureModuleInput = document.getElementById("featureModuleInput");
-  const featureModuleId = document.getElementById("featureModuleId");
-  const featureModuleSuggestions = document.getElementById(
-    "featureModuleSuggestions"
-  );
+  const featureModuleSelect = document.getElementById("featureModuleSelect");
 
   const role = (localStorage.getItem("userRole") || "").toLowerCase();
 
@@ -241,15 +238,12 @@ export async function setupMasterItemFormSubmission({ form }) {
       );
     }
 
-    setupSuggestionInputDynamic(
-      featureModuleInput,
-      featureModuleSuggestions,
-      "/api/lite/feature-modules",
-      (item) => {
-        featureModuleInput.value = item.name;
-        featureModuleId.value = item.id;
-      },
-      "name"
+    setupSelectOptions(
+      featureModuleSelect,
+      await loadFeatureModulesLite(),
+      "id",
+      "name",
+      "-- Select Feature Module --"
     );
   } catch {
     showToast("❌ Failed to load reference data");
@@ -301,8 +295,7 @@ export async function setupMasterItemFormSubmission({ form }) {
       catSelect.value = e.category_id || "";
       itemTypeSelect.value = e.item_type || "";
 
-      featureModuleInput.value = e.feature_module?.name || "";
-      featureModuleId.value = e.feature_module_id || "";
+      featureModuleSelect.value = e.feature_module_id || "";
 
       document
         .getElementById(`status_${e.status}`)
@@ -363,7 +356,7 @@ export async function setupMasterItemFormSubmission({ form }) {
       facility_id: role.includes("org")
         ? normalizeUUID(facSelect?.value) || localStorage.getItem("facility_id")
         : normalizeUUID(facSelect?.value),
-      feature_module_id: normalizeUUID(featureModuleId.value),
+      feature_module_id: normalizeUUID(featureModuleSelect.value),
       status:
         document.querySelector("input[name='status']:checked")?.value ||
         "active",
@@ -404,8 +397,7 @@ export async function setupMasterItemFormSubmission({ form }) {
           ?.setAttribute("checked", true);
 
         /* ================= CLEAR CUSTOM FIELDS ================= */
-        featureModuleInput.value = "";
-        featureModuleId.value = "";
+        if (featureModuleSelect) featureModuleSelect.value = "";
 
         /* ================= OPTIONAL: reset dropdowns ================= */
         if (orgSelect) orgSelect.value = "";

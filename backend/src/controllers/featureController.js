@@ -613,10 +613,10 @@ export const getLiteFeatureModules = async (req, res) => {
     const modules = await FeatureModule.findAll({
       where,
       attributes: ["id", "name", "key", "category"],
-      order: [
-        ["order_index", "ASC"],
-        ["name", "ASC"],
-      ],
+
+      // ✅ PURE A → Z
+      order: [["name", "ASC"]],
+
       limit: 100,
     });
 
