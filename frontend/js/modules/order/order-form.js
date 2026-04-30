@@ -251,9 +251,9 @@ export async function setupOrderFormSubmission({
       },
       "label",
       {
-        extraParams: () => ({
-          exclude_category: JSON.stringify(["registration", "utility"])
-        })
+      extraParams: () => ({
+        exclude_codes: JSON.stringify(["REG"])
+      })
       }
     );
   /* ============================================================

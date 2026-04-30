@@ -31,32 +31,50 @@ const SORTABLE_FIELDS = new Set([
   "facility_id",
   "name",
   "code",
+
+  // 🔥 ADD THIS
+  "order_type",
+
   "status",
   "created_at",
   "updated_at",
 ]);
 
-/* ============================================================
-   🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
-============================================================ */
-let sortBy = localStorage.getItem("masterItemCategorySortBy") || "";
-let sortDir = localStorage.getItem("masterItemCategorySortDir") || "asc";
+  /* ============================================================
+    🔃 SORT STATE (UI ONLY – MAIN OWNS BACKEND)
+  ============================================================ */
+  let sortBy = localStorage.getItem("masterItemCategorySortBy") || "";
+  let sortDir = localStorage.getItem("masterItemCategorySortDir") || "asc";
 
-function toggleSort(field) {
-  if (sortBy === field) {
-    sortDir = sortDir === "asc" ? "desc" : "asc";
-  } else {
-    sortBy = field;
-    sortDir = "asc";
+  function toggleSort(field) {
+    if (sortBy === field) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortBy = field;
+      sortDir = "asc";
+    }
+
+    localStorage.setItem("masterItemCategorySortBy", sortBy);
+    localStorage.setItem("masterItemCategorySortDir", sortDir);
+
+    // 🔥 EXACT FIX STARTS HERE
+    const FIELD_MAP = {
+      organization_id: "organization_id",
+      facility_id: "facility_id",
+      name: "name",
+      code: "code",
+      order_type: "order_type", // 🔥 REQUIRED
+      status: "status",
+      created_at: "created_at",
+      updated_at: "updated_at",
+    };
+
+    const backendField = FIELD_MAP[sortBy] || sortBy;
+
+    // 🔗 Bridge to MAIN (FIXED)
+    window.setMasterItemCategorySort?.(backendField, sortDir);
+    window.loadMasterItemCategoryPage?.(1);
   }
-
-  localStorage.setItem("masterItemCategorySortBy", sortBy);
-  localStorage.setItem("masterItemCategorySortDir", sortDir);
-
-  // 🔗 Bridge to MAIN
-  window.setMasterItemCategorySort?.(sortBy, sortDir);
-  window.loadMasterItemCategoryPage?.(1);
-}
 
 /* ============================================================
    🎛️ ACTION BUTTONS
@@ -194,7 +212,18 @@ function renderValue(entry, field) {
     case "updated_at":
     case "deleted_at":
       return entry[field] ? formatDateTime(entry[field]) : "—";
+    case "order_type": {
+      const raw = (entry.order_type || "").toLowerCase();
 
+      const map = {
+        service: "Service",
+        procedure: "Procedure",
+        lab: "Lab",
+        medication: "Medication", // ✅ FIX
+      };
+
+      return map[raw] || raw.toUpperCase() || "—";
+    }
     default:
       return entry[field] ?? "—";
   }
@@ -246,18 +275,24 @@ export function renderCard(entry, visibleFields, user) {
     : "";
 
   const body =
-    has("description")
+    has("description") || has("order_type")
       ? `
         <div class="entity-card-body">
           <div>
-            ${has("description")
-              ? fieldRow("Description", entry.description)
-              : ""}
+            ${
+              has("order_type")
+                ? fieldRow("Order Type", renderValue(entry, "order_type"))
+                : ""
+            }
+            ${
+              has("description")
+                ? fieldRow("Description", entry.description)
+                : ""
+            }
           </div>
         </div>
       `
       : "";
-
   const audit =
     has("created_at") || has("updated_at") || has("deleted_at")
       ? `

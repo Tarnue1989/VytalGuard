@@ -1,9 +1,6 @@
-// 📁 master-item-category-constants.js – Enterprise-Aligned Master Pattern (FINAL / LOCKED)
+// 📁 master-item-category-constants.js – FINAL (ORDER TYPE INCLUDED)
 // ============================================================================
-// 🔹 Pattern Source: role-fields.js / vital-constants.js (Enterprise Master)
-// 🔹 Structural Consistency: Field labels, order, role-based visibility
-// 🔹 100% ID retention (safe for linked HTML + JS modules)
-// 🔹 Includes standardized metadata + hierarchical visibility map
+// 🔥 Updated to include order_type across all layers
 // ============================================================================
 
 /* ============================================================
@@ -14,6 +11,10 @@ export const FIELD_LABELS_MASTER_ITEM_CATEGORY = {
   facility: "Facility",
   name: "Category Name",
   code: "Category Code",
+
+  // 🔥 NEW
+  order_type: "Order Type",
+
   description: "Description",
   status: "Status",
   createdBy: "Created By",
@@ -26,13 +27,17 @@ export const FIELD_LABELS_MASTER_ITEM_CATEGORY = {
 };
 
 /* ============================================================
-   📋 Field Order (Enterprise-Consistent)
+   📋 Field Order
 ============================================================ */
 export const FIELD_ORDER_MASTER_ITEM_CATEGORY = [
   "organization",
   "facility",
   "name",
   "code",
+
+  // 🔥 NEW (placed logically after code)
+  "order_type",
+
   "description",
   "status",
   "createdBy",
@@ -45,17 +50,15 @@ export const FIELD_ORDER_MASTER_ITEM_CATEGORY = [
 ];
 
 /* ============================================================
-   👥 Role-Based Field Visibility Defaults (Enterprise-Aligned)
+   👥 Role-Based Field Visibility Defaults
 ============================================================ */
-// 🧩 Superadmin/Admin: Full metadata visibility
-// 🧩 Manager/Facility Head: Scoped operational visibility
-// 🧩 Staff: Essential operational fields only
 export const FIELD_DEFAULTS_MASTER_ITEM_CATEGORY = {
   superadmin: [
     "organization",
     "facility",
     "name",
     "code",
+    "order_type", // 🔥 NEW
     "description",
     "status",
     "createdBy",
@@ -72,6 +75,7 @@ export const FIELD_DEFAULTS_MASTER_ITEM_CATEGORY = {
     "facility",
     "name",
     "code",
+    "order_type", // 🔥 NEW
     "description",
     "status",
     "createdBy",
@@ -87,6 +91,7 @@ export const FIELD_DEFAULTS_MASTER_ITEM_CATEGORY = {
     "facility",
     "name",
     "code",
+    "order_type", // 🔥 NEW
     "description",
     "status",
     "createdBy",
@@ -100,6 +105,7 @@ export const FIELD_DEFAULTS_MASTER_ITEM_CATEGORY = {
     "facility",
     "name",
     "code",
+    "order_type", // 🔥 NEW
     "description",
     "status",
     "actions",
@@ -107,7 +113,7 @@ export const FIELD_DEFAULTS_MASTER_ITEM_CATEGORY = {
 };
 
 /* ============================================================
-   ⚙️ Module Metadata (For routing / permissions / UI context)
+   ⚙️ Module Metadata
 ============================================================ */
 export const MODULE_KEY_MASTER_ITEM_CATEGORY = "master-item-category";
 export const MODULE_LABEL_MASTER_ITEM_CATEGORY = "Master Item Category";

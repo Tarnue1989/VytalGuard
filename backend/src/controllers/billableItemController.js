@@ -24,6 +24,7 @@ import { BILLABLE_ITEM_STATUS } from "../constants/enums.js";
 import { normalizeDateRangeLocal } from "../utils/date-utils.js";
 import { getResolvedPrice } from "../utils/billable-utils.js";
 import { PAYER_TYPES } from "../constants/enums.js";
+import { resolveTenantScopeLite } from "../utils/resolveTenantScopeLite.js";
 
 import {
   isSuperAdmin,
@@ -900,12 +901,10 @@ export const getBillableItemById = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET BILLABLE ITEMS LITE (FINAL — MASTER-CORRECT)
-   🔹 Autocomplete / Dropdown READY
-   🔹 Category from MasterItem ONLY (FIXED)
-============================================================ */
-/* ============================================================
-   📌 GET BILLABLE ITEMS LITE (FINAL — COMPLETE FIX)
+   📌 GET BILLABLE ITEMS LITE (FINAL — MASTER PARITY)
+   🔥 Uses resolveTenantScopeLite (like Departments)
+   🔥 STRICT facility scope (no NULL fallback)
+   🔥 ACTIVE PRICE ONLY
 ============================================================ */
 export const getAllBillableItemsLite = async (req, res) => {
   try {
@@ -923,64 +922,55 @@ export const getAllBillableItemsLite = async (req, res) => {
     debug.log("📥 QUERY RECEIVED →", req.query);
 
     /* ========================================================
-       🧭 RESOLVE TENANT (🔥 FIXED — NEVER NULL)
+       🧭 TENANT RESOLUTION (BASE)
     ======================================================== */
-    const { orgId, facilityId } = resolveOrgFacility({
+    const { orgId, facilityId } = resolveTenantScopeLite({
       user: req.user,
-      value: {},
-      body: req.query,
+      query: req.query,
     });
 
-    const safeOrgId = orgId || req.user.organization_id;
-    const safeFacilityId = facilityId || req.user.facility_id || null;
+    /* ========================================================
+       🔥 FORCE ONE FACILITY (FINAL FIX)
+    ======================================================== */
+    const forcedOrgId =
+      orgId ||
+      req.user.organization_id ||
+      null;
 
-    if (!isSuperAdmin(req.user) && !safeOrgId) {
-      return res.status(400).json({
-        success: false,
-        message: "❌ Missing organization context",
-      });
+    const forcedFacilityId =
+      req.query.facility_id || // allow explicit override (superadmin UI)
+      req.user.facility_id ||
+      (req.user.facility_ids?.length ? req.user.facility_ids[0] : null);
+
+    console.log("🏢 TENANT (FORCED) →", {
+      organization_id: forcedOrgId,
+      facility_id: forcedFacilityId,
+    });
+
+    if (!isSuperAdmin(req.user) && !forcedFacilityId) {
+      return error(res, "❌ Facility context required", null, 400);
     }
-
-    console.log("🏢 TENANT →", {
-      organization_id: safeOrgId,
-      facility_id: safeFacilityId,
-    });
 
     /* ========================================================
        🧱 BASE WHERE
     ======================================================== */
     const where = {
       status: BILLABLE_ITEM_STATUS.ACTIVE,
+      organization_id: forcedOrgId,
       [Op.and]: [],
     };
 
     /* ========================================================
-       🏢 TENANT SCOPING
+       🔐 STRICT FACILITY FILTER (NO OR, NO NULL)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      where[Op.and].push({ organization_id: safeOrgId });
-
-      if (safeFacilityId) {
-        where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },
-            { facility_id: safeFacilityId },
-          ],
-        });
-      }
+      where[Op.and].push({
+        facility_id: forcedFacilityId,
+      });
     } else {
-      if (req.query.organization_id) {
+      if (forcedFacilityId) {
         where[Op.and].push({
-          organization_id: req.query.organization_id,
-        });
-      }
-
-      if (req.query.facility_id) {
-        where[Op.and].push({
-          [Op.or]: [
-            { facility_id: null },
-            { facility_id: req.query.facility_id },
-          ],
+          facility_id: forcedFacilityId,
         });
       }
     }
@@ -990,8 +980,6 @@ export const getAllBillableItemsLite = async (req, res) => {
     ======================================================== */
     const rawSearch = (req.query.q ?? req.query.search ?? "").toString();
     const search = rawSearch.trim();
-
-    console.log("🔍 SEARCH →", search);
 
     if (search) {
       where[Op.and].push({
@@ -1006,53 +994,15 @@ export const getAllBillableItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       🔤 CODE FILTER
-    ======================================================== */
-    if (req.query.code) {
-      where[Op.and].push({
-        code: { [Op.iLike]: `%${req.query.code}%` },
-      });
-    }
-
-    console.log("🧱 FINAL WHERE →", JSON.stringify(where, null, 2));
-
-    /* ========================================================
-       🧠 CATEGORY FILTER PARSE
-    ======================================================== */
-    let excludeCategory = req.query.exclude_category;
-
-    if (typeof excludeCategory === "string") {
-      try {
-        excludeCategory = JSON.parse(excludeCategory);
-      } catch {
-        excludeCategory = excludeCategory
-          .split(",")
-          .map((v) => v.trim());
-      }
-    }
-
-    const categoryParam = req.query.category;
-
-    /* ========================================================
-       🎯 BUILD CATEGORY WHERE
+       📂 CATEGORY FILTER
     ======================================================== */
     let categoryWhere = {};
-
-    if (categoryParam && excludeCategory) {
-      categoryWhere.code = {
-        [Op.eq]: categoryParam,
-        [Op.notIn]: excludeCategory,
-      };
-    } else if (categoryParam) {
-      categoryWhere.code = categoryParam;
-    } else if (excludeCategory) {
-      categoryWhere.code = { [Op.notIn]: excludeCategory };
+    if (req.query.category) {
+      categoryWhere.code = req.query.category;
     }
 
-    console.log("📂 CATEGORY FILTER →", categoryWhere);
-
     /* ========================================================
-       🔗 INCLUDE (🔥 FIXED CATEGORY JOIN)
+       🔗 INCLUDE
     ======================================================== */
     const include = [
       {
@@ -1067,7 +1017,7 @@ export const getAllBillableItemsLite = async (req, res) => {
             attributes: ["id", "name", "code"],
             ...(Object.keys(categoryWhere).length && {
               where: categoryWhere,
-              required: true, // 🔥 FIX
+              required: true,
             }),
           },
         ],
@@ -1076,7 +1026,7 @@ export const getAllBillableItemsLite = async (req, res) => {
         model: BillableItemPrice,
         as: "prices",
         required: false,
-        where: { effective_to: null },
+        where: { effective_to: null }, // 🔥 ACTIVE PRICE ONLY
       },
     ];
 
@@ -1107,13 +1057,10 @@ export const getAllBillableItemsLite = async (req, res) => {
         id: i.id,
         value: i.id,
         label: `${i.name}${i.code ? ` (${i.code})` : ""}`,
-
         name: i.name,
         code: i.code || "",
-
         price: resolved?.price ?? 0,
         currency: resolved?.currency ?? "USD",
-
         category: i.masterItem?.category
           ? {
               id: i.masterItem.category.id,
@@ -1137,8 +1084,6 @@ export const getAllBillableItemsLite = async (req, res) => {
         count: records.length,
         search: search || null,
         category: req.query.category || null,
-        exclude_category: excludeCategory || null,
-        code: req.query.code || null,
       },
     });
 

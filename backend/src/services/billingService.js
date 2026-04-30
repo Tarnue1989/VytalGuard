@@ -256,43 +256,23 @@ export const billingService = {
       return null;
     }
 
-    /* ============================================================
-      🔥 FIX: SAFE ORG/FAC (NO RESOLVER)
-    ============================================================ */
+    /* ================= SAFE ORG / FAC ================= */
     const orgId =
       user.organization_id || user.organizationId || null;
 
     const facilityId =
       user.facility_id || user.facilityId || null;
 
-    console.log("🔥 [ORG RESOLUTION - TRIGGER]", {
-      organization_id: user.organization_id,
-      organizationId: user.organizationId,
-      resolvedOrgId: orgId,
-      facility_id: user.facility_id,
-      facilityId: user.facilityId,
-      resolvedFacilityId: facilityId,
-    });
-
     if (!orgId) {
-      console.error("❌ [ORG ERROR - TRIGGER]", {
-        user,
-      });
       throw new Error("triggerAutoBilling: organization_id missing");
     }
 
-    /* ================= BILLING RULE CHECK ================= */
+    /* ================= TRIGGER CHECK ================= */
     const allowed = await shouldTriggerBillingDB({
       feature_module_id,
       status: entity.log_status || entity.status,
       organization_id: orgId,
       facility_id: facilityId,
-    });
-
-    console.log("🧭 [TRIGGER CHECK]", {
-      allowed,
-      status: entity.log_status || entity.status,
-      entity_id: entity.id,
     });
 
     if (!allowed) return null;
@@ -314,30 +294,21 @@ export const billingService = {
       return null;
     }
 
-    /* ================= LOAD RULE ================= */
-    const rule = await AutoBillingRule.findOne({
-      where: {
-        trigger_feature_module_id: feature_module_id,
-        organization_id: orgId,
-        facility_id: facilityId,
-        status: "active",
-      },
-      include: [{ model: BillableItem, as: "billableItem" }],
-      transaction,
-    });
-
-    if (!rule || !rule.billableItem) {
-      console.warn("⚠️ [NO BILLING RULE]");
+    /* ============================================================
+      🔥 DIRECT BILLING ONLY
+    ============================================================ */
+    if (!entity?.billable_item_id) {
       return null;
     }
 
-    /* ================= INSURANCE ================= */
+    console.log("🔥 [DIRECT BILLING]", {
+      billable_item_id: entity.billable_item_id,
+    });
+
     const insuranceData = await resolveInsuranceFromEntity(
       entity,
       transaction
     );
-
-    console.log("🧾 [INSURANCE DATA]", insuranceData);
 
     let registrationId = entity?.registration_log_id;
 
@@ -347,17 +318,18 @@ export const billingService = {
         order: [["created_at", "DESC"]],
         transaction,
       });
-
       registrationId = latestReg?.id;
     }
 
-    console.log("🔗 [REGISTRATION LINK]", {
-      registrationId,
-    });
+    /* ================= GET ITEM (FIXED) ================= */
+    const billableItem = await BillableItem.findByPk(
+      entity.billable_item_id,
+      { transaction }
+    );
 
     /* ================= PRICE ================= */
     const { price } = await getBillableItemPrice({
-      billable_item_id: rule.billableItem.id,
+      billable_item_id: entity.billable_item_id,
       payer_type: insuranceData.payer_type,
       currency: entity.currency || "LRD",
       organization_id: orgId,
@@ -365,15 +337,7 @@ export const billingService = {
       transaction,
     });
 
-    console.log("💰 [PRICE RESOLVED]", { price });
-
-    /* ================= FIND INVOICE ================= */
-    console.log("🔍 [QUERY INVOICE - TRIGGER]", {
-      registrationId,
-      orgId,
-      facilityId,
-    });
-
+    /* ================= FIND / CREATE INVOICE ================= */
     let invoice = await Invoice.findOne({
       where: {
         registration_log_id: registrationId,
@@ -387,20 +351,7 @@ export const billingService = {
       transaction,
     });
 
-    console.log("📄 [INVOICE FOUND - TRIGGER]", {
-      found: !!invoice,
-      invoice_id: invoice?.id,
-    });
-
-    if (invoice && invoice.currency !== (entity.currency || "LRD")) {
-      console.warn("⚠️ [CURRENCY MISMATCH → NEW INVOICE]");
-      invoice = null;
-    }
-
-    /* ================= CREATE INVOICE ================= */
     if (!invoice) {
-      console.log("🧾 [CREATING NEW INVOICE]");
-
       const today = new Date();
       today.setDate(today.getDate() + 30);
 
@@ -416,11 +367,9 @@ export const billingService = {
 
           payer_type: insuranceData.payer_type,
           patient_insurance_id: insuranceData.patient_insurance_id,
-
           insurance_provider_id: insuranceData.insurance_provider_id,
           coverage_amount: insuranceData.coverage_amount,
 
-          insurance_amount: 0,
           total: 0,
           total_paid: 0,
           balance: 0,
@@ -430,23 +379,20 @@ export const billingService = {
         },
         { transaction }
       );
-
-      console.log("✅ [INVOICE CREATED]", {
-        invoice_id: invoice.id,
-      });
     }
 
-    /* ================= ITEM CREATION ================= */
-    console.log("🧾 [CREATING INVOICE ITEM]");
-
+    /* ================= CREATE ITEM ================= */
     const item = await InvoiceItem.create(
       {
         invoice_id: invoice.id,
-        billable_item_id: rule.billableItem.id,
+        billable_item_id: entity.billable_item_id,
+
         organization_id: orgId,
         facility_id: facilityId,
 
-        description: rule.billableItem.name,
+        // 🔥 FIXED DESCRIPTION
+        description: billableItem?.name || "Registration",
+
         unit_price: price,
         quantity: 1,
 
@@ -458,15 +404,12 @@ export const billingService = {
       { transaction }
     );
 
-    console.log("✅ [ITEM CREATED]", {
-      item_id: item.id,
-    });
-
     await recalcInvoice(invoice.id, transaction);
     await updateInvoiceStatus(invoice.id, transaction);
 
-    console.log("🏁 [TRIGGER COMPLETE]", {
+    console.log("✅ [DIRECT BILL CREATED]", {
       invoice_id: invoice.id,
+      item_id: item.id,
     });
 
     return { invoice, item };

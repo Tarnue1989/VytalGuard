@@ -1,11 +1,6 @@
 // 📦 add-master-item-category.js – Master Item Category Form Page Controller
 // ============================================================================
-// 🧭 FULL PARITY WITH department-main.js (Enterprise Master Pattern)
-// 🔹 Auth guard + logout watcher
-// 🔹 Form reset orchestration
-// 🔹 Edit session coordination
-// 🔹 Delegates ALL business logic to master-item-category-form.js
-// 🔹 100% ID-safe (no DOM or contract drift)
+// 🔥 FINAL (ORDER TYPE SUPPORT ADDED)
 // ============================================================================
 
 import { setupMasterItemCategoryFormSubmission } from "./master-item-category-form.js";
@@ -23,7 +18,7 @@ const token = initPageGuard(autoPagePermissionKey());
 initLogoutWatcher();
 
 /* ============================================================
-   🌐 Shared State (Enterprise Pattern)
+   🌐 Shared State
 ============================================================ */
 const sharedState = {
   currentEditIdRef: { value: null },
@@ -37,7 +32,7 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 /* ============================================================
-   🧹 Reset Helper (Add Mode)
+   🧹 Reset Helper (FIXED)
 ============================================================ */
 function resetForm() {
   if (!form) return;
@@ -48,8 +43,8 @@ function resetForm() {
   sessionStorage.removeItem("masterItemCategoryEditId");
   sessionStorage.removeItem("masterItemCategoryEditPayload");
 
-  // Reset selects
-  ["organizationSelect", "facilitySelect"].forEach((id) => {
+  // 🔥 FIXED: include orderType
+  ["organizationSelect", "facilitySelect", "orderType"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -68,12 +63,11 @@ function resetForm() {
 }
 
 /* ============================================================
-   🚀 Init (Page Entry)
+   🚀 Init
 ============================================================ */
 document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
-  // Wire form logic (ALL business logic lives there)
   setupMasterItemCategoryFormSubmission({
     form,
     token,
@@ -95,8 +89,8 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ============================================================
-   🔁 Reserved Sync Hook (Future)
+   🔁 Reserved Sync Hook
 ============================================================ */
 export function syncRefsToState() {
-  // Reserved for enterprise reactive form syncing
+  // reserved
 }

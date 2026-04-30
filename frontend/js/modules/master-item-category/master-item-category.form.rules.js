@@ -1,10 +1,9 @@
 // =============================================
 // Master Item Category Form Rules (Controller-Aligned)
 // =============================================
-// 🔹 Parity source: DEPARTMENT_FORM_RULES
-// 🔹 Aligned with master-item-category controller validation
+// 🔹 Includes order_type (NEW REQUIRED FIELD)
+// 🔹 Matches backend validation exactly
 // 🔹 Role-aware (superadmin / org-level / facility-level)
-// 🔹 No guessing, no extra rules
 // =============================================
 
 export const MASTER_ITEM_CATEGORY_FORM_RULES = [
@@ -26,6 +25,15 @@ export const MASTER_ITEM_CATEGORY_FORM_RULES = [
     id: "description",
     message: "Description is required",
     when: () => false,
+  },
+
+  /* ===============================
+     🔥 Order Type (REQUIRED)
+  =============================== */
+  {
+    id: "orderType",
+    message: "Order type is required",
+    when: () => true,
   },
 
   /* ===============================

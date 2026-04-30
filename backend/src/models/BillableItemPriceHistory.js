@@ -1,5 +1,5 @@
 import { DataTypes, Model } from "sequelize";
-import { PAYER_TYPES, CURRENCY } from "../constants/enums.js";
+import { PAYER_TYPES, CURRENCY, PRICE_CHANGE_TYPE } from "../constants/enums.js";
 
 export default (sequelize) => {
   class BillableItemPriceHistory extends Model {
@@ -10,7 +10,7 @@ export default (sequelize) => {
         foreignKey: "billable_item_price_id",
       });
 
-      // 🔗 Direct link to billable item (🔥 CRITICAL ADD)
+      // 🔗 Direct link to billable item (🔥 CRITICAL)
       BillableItemPriceHistory.belongsTo(models.BillableItem, {
         as: "billableItem",
         foreignKey: "billable_item_id",
@@ -56,7 +56,6 @@ export default (sequelize) => {
 
       /* ================= LINKS ================= */
 
-      // 🔥 CRITICAL (NEW)
       billable_item_id: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -90,12 +89,12 @@ export default (sequelize) => {
         allowNull: false,
       },
 
-      /* ================= CHANGE TYPE (🔥 NEW) ================= */
+      /* ================= CHANGE TYPE ================= */
 
       change_type: {
-        type: DataTypes.ENUM("price_update", "currency_update", "both"),
+        type: DataTypes.ENUM(...Object.values(PRICE_CHANGE_TYPE)),
         allowNull: false,
-        defaultValue: "price_update",
+        defaultValue: PRICE_CHANGE_TYPE.PRICE_UPDATE,
       },
 
       /* ================= TIMING ================= */
@@ -125,11 +124,18 @@ export default (sequelize) => {
       paranoid: false,
 
       indexes: [
-        { fields: ["billable_item_id"] }, // 🔥 NEW (important for queries)
+        // 🔹 Base indexes
+        { fields: ["billable_item_id"] },
         { fields: ["billable_item_price_id"] },
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
         { fields: ["effective_date"] },
+
+        // 🔥 Query performance (VERY IMPORTANT)
+        { fields: ["billable_item_id", "payer_type", "currency"] },
+
+        // 🔥 Tenant-safe queries
+        { fields: ["organization_id", "facility_id", "billable_item_id"] },
       ],
     }
   );

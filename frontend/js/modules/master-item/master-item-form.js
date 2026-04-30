@@ -65,7 +65,7 @@ function normalizeUUID(val) {
    ⚙️ Item-Type Driven Field Rules
 ============================================================ */
 const ITEM_TYPE_FIELD_RULES = {
-  drug: [
+  medication: [
     "generic_group",
     "strength",
     "dosage_form",
@@ -74,8 +74,9 @@ const ITEM_TYPE_FIELD_RULES = {
     "is_controlled",
     "sample_required",
   ],
-  consumable: ["unit", "reorder_level", "sample_required"],
   service: ["test_method", "sample_required"],
+  lab: ["test_method", "sample_required"],
+  procedure: [],
 };
 
 /* ============================================================
@@ -163,7 +164,34 @@ export async function setupMasterItemFormSubmission({ form }) {
 
     catSelect?.addEventListener("change", () => {
       const opt = catSelect.options[catSelect.selectedIndex];
+
+      // 🔒 Safety: no selection
+      if (!opt || !opt.value) {
+        codeInput.value = "";
+        itemTypeSelect.value = "";
+        document.getElementById("itemTypeHidden").value = "";
+        return;
+      }
+
+      /* ================= CODE (AUTO LIKE BEFORE) ================= */
       codeInput.value = opt?.dataset?.code || "";
+
+      /* ================= ITEM TYPE (AUTO — SAME PATTERN) ================= */
+      const orderType = opt?.dataset?.order_type || "";
+
+      // 🔥 DIRECT ASSIGN (NO MAP, NO LOGIC)
+      itemTypeSelect.value = orderType;
+
+      // 🔥 REQUIRED FOR SUBMIT (since select is disabled)
+      const hidden = document.getElementById("itemTypeHidden");
+      if (hidden) hidden.value = orderType;
+
+      /* ================= TOGGLER ================= */
+      if (orderType) {
+        toggleFieldsByItemType(orderType);
+      } else {
+        console.warn("⚠️ order_type missing on selected category", opt);
+      }
     });
 
     if (role.includes("super")) {
