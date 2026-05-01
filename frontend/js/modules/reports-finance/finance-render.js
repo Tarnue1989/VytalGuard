@@ -6,6 +6,19 @@
 // 🔥 Clean enterprise UX (decision-first design)
 // ============================================================
 
+function formatMoneyByCurrency(amount, currency) {
+  const symbols = {
+    USD: "$",
+    LRD: "L$",
+  };
+
+  const symbol = symbols[currency] || "";
+
+  return `${symbol}${Number(amount || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 /* ============================================================
    📊 FINANCE SUMMARY (GROUPED CARDS)
 ============================================================ */
@@ -13,52 +26,52 @@ export function renderFinanceSummary(data = {}) {
   const container = document.getElementById("financeSummary");
   if (!container) return;
 
-  const gross = Number(data.subtotal || 0);
-  const discount = Number(data.discounts || 0);
-  const waivers = Number(data.waivers || 0);
-  const net = Number(data.gross_total || 0);
+  const summary = data.summary || [];
+  const deposits = data.deposits || {};
 
-  const paid = Number(data.paid || 0);
-  const refunded = Number(data.payment_refunded || 0);
-  const netCash = Number(data.net_cash || 0);
+  /* =========================
+     🔥 HELPER (LOCAL SAFE)
+  ========================= */
+  const currencyLines = (arr, field) => {
+    if (!Array.isArray(arr)) return formatMoney(arr);
 
-  const depositCollected = Number(data.deposit_collected || 0);
-  const depositUsed = Number(data.applied_deposits || 0);
-  const depositRefunded = Number(data.deposit_refunded || 0);
-  const depositBalance = Number(data.deposit_balance || 0);
+    return arr.map(r => {
+      const val = Number(r[field] || 0);
+      return `<div>${r.currency}: ${formatMoneyByCurrency(val, r.currency)}</div>`;
+    }).join("");
+  };
 
-  const outstanding = Number(data.outstanding || 0);
-
+  
   container.innerHTML = `
+
     ${groupCard("📊 Revenue", [
-      row("Gross", gross),
-      row("Discount", discount, "text-danger"),
-      row("Waivers", waivers, "text-warning"),
+      rowHTML("Gross", currencyLines(summary, "subtotal")),
+      rowHTML("Discount", currencyLines(summary, "discounts"), "text-danger"),
+      rowHTML("Waivers", currencyLines(summary, "waivers"), "text-warning"),
       divider(),
-      row("Net", net, "fw-bold text-primary")
+      rowHTML("Net", currencyLines(summary, "gross_total"), "fw-bold text-primary")
     ])}
 
     ${groupCard("💰 Cash Flow", [
-      row("Collected", paid, "text-success"),
-      row("Refunded", refunded, "text-danger"),
+      rowHTML("Collected", currencyLines(summary, "paid"), "text-success"),
+      rowHTML("Refunded", currencyLines(summary, "payment_refunded"), "text-danger"),
       divider(),
-      row("Net Cash", netCash, "fw-bold text-primary")
+      rowHTML("Net Cash", currencyLines(summary, "net_cash"), "fw-bold text-primary")
     ])}
 
     ${groupCard("🏦 Deposits", [
-      row("Collected", depositCollected),
-      row("Used", depositUsed, "text-info"),
-      row("Refunded", depositRefunded, "text-danger"),
+      rowHTML("Collected", currencyLines(deposits.collected, "collected")),
+      rowHTML("Used", currencyLines(deposits.applied, "applied"), "text-info"),
+      rowHTML("Refunded", currencyLines(deposits.deposit_refunded, "refunded"), "text-danger"),
       divider(),
-      row("Balance", depositBalance, "fw-bold text-warning")
+      rowHTML("Balance", currencyLines(deposits.remaining, "remaining"), "fw-bold text-warning")
     ])}
 
     ${groupCard("⚠️ Outstanding Invoices", [
-      bigValue(outstanding, "text-warning")
+      rowHTML("Total", currencyLines(summary, "outstanding"), "fw-bold text-warning")
     ])}
   `;
 }
-
 /* ============================================================
    📦 REVENUE BY SERVICE (ENHANCED)
 ============================================================ */
@@ -139,30 +152,61 @@ export function renderPaymentsTable(rows = []) {
     return;
   }
 
-  const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  /* ============================================================
+     🔥 GROUP BY CURRENCY
+  ============================================================ */
+  const grouped = {};
 
-  const rowsHtml = rows.map(r => {
-    const amount = Number(r.amount || 0);
-    const percent = total > 0 ? ((amount / total) * 100).toFixed(1) : 0;
+  rows.forEach(r => {
+    const currency = r.currency || "UNK";
+    if (!grouped[currency]) grouped[currency] = [];
 
-    return `
-      <tr>
-        <td>${safe(r.method)}</td>
-        <td>${formatMoney(amount)}</td>
-        <td class="text-muted">${percent}%</td>
+    grouped[currency].push({
+      method: r.method,
+      amount: Number(r.amount || 0),
+    });
+  });
+
+  /* ============================================================
+     🔥 BUILD TABLE (PER CURRENCY)
+  ============================================================ */
+  let html = "";
+
+  Object.keys(grouped).forEach(currency => {
+    const list = grouped[currency];
+
+    const total = list.reduce((sum, r) => sum + r.amount, 0);
+
+    html += `
+      <tr class="table-light fw-bold">
+        <td colspan="3">${currency}</td>
       </tr>
     `;
-  }).join("");
 
-  const totalRow = `
-    <tr class="fw-bold border-top bg-light">
-      <td>TOTAL</td>
-      <td>${formatMoney(total)}</td>
-      <td>100%</td>
-    </tr>
-  `;
+    list.forEach(r => {
+      const percent = total > 0
+        ? ((r.amount / total) * 100).toFixed(1)
+        : 0;
 
-  body.innerHTML = rowsHtml + totalRow;
+      html += `
+        <tr>
+          <td>${safe(r.method)}</td>
+          <td>${formatMoney(r.amount)}</td>
+          <td class="text-muted">${percent}%</td>
+        </tr>
+      `;
+    });
+
+    html += `
+      <tr class="fw-bold border-top bg-light">
+        <td>TOTAL (${currency})</td>
+        <td>${formatMoney(total)}</td>
+        <td>100%</td>
+      </tr>
+    `;
+  });
+
+  body.innerHTML = html;
 }
 
 /* ============================================================
@@ -222,7 +266,14 @@ function row(label, value, extraClass = "") {
     </div>
   `;
 }
-
+function rowHTML(label, html, extraClass = "") {
+  return `
+    <div class="d-flex justify-content-between small mb-1">
+      <span class="text-muted">${label}</span>
+      <span class="${extraClass}">${html}</span>
+    </div>
+  `;
+}
 function bigValue(val, cls = "") {
   return `
     <div class="text-center mt-2">
@@ -264,14 +315,45 @@ function formatModule(key) {
     ?.replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/* ============================================================
+   📈 FINANCE INSIGHTS (🔥 FIXED — MULTI-CURRENCY SAFE)
+   - Expenses
+   - Profit
+   - Refunds
+   - Insurance
+   👉 No currency mixing
+============================================================ */
 export function renderFinanceInsights(data = {}) {
   const container = document.getElementById("financeInsights");
   if (!container) return;
 
-  const paymentRefund = Number(data.payment_refunded || 0);
-  const depositRefund = Number(data.deposit_refunded || 0);
+  /* ============================================================
+     🔥 HELPER — FORMAT MULTI-CURRENCY LINES
+     - Accepts array OR single number
+     - Displays: USD: L$200 / LRD: L$48,000
+  ============================================================ */
+  const currencyLines = (arr, field) => {
+    if (!Array.isArray(arr)) return formatMoney(arr);
+
+    return arr.map(r => {
+      const val = Number(r[field] || 0);
+      return `<div>${r.currency}: ${formatMoneyByCurrency(val, r.currency)}</div>`;
+    }).join("");
+  };
+
+  /* ============================================================
+     🔹 SAFE DATA (RAW FROM BACKEND)
+  ============================================================ */
+  const expenses = data.expenses || [];
+  const insurance = data.insurance || [];
+  const summary = data.summary || [];
+  const deposits = data.deposits || {};
 
   container.innerHTML = `
+
+    <!-- ===================================================== -->
+    <!-- 💸 EXPENSES -->
+    <!-- ===================================================== -->
     <div class="col-xl-3 col-md-6">
       <div class="card border-0 shadow-sm h-100 summary-card clickable"
            data-route="/expenses-list.html">
@@ -280,13 +362,17 @@ export function renderFinanceInsights(data = {}) {
             <span>💸 Expenses</span>
             <a href="/expenses-list.html" class="small text-primary">View →</a>
           </div>
+
           <div class="fw-bold text-danger">
-            ${formatMoney(data.total_expense)}
+            ${currencyLines(expenses, "total")}
           </div>
         </div>
       </div>
     </div>
 
+    <!-- ===================================================== -->
+    <!-- 📈 PROFIT -->
+    <!-- ===================================================== -->
     <div class="col-xl-3 col-md-6">
       <div class="card border-0 shadow-sm h-100 summary-card clickable"
            data-route="/finance-reports.html">
@@ -295,16 +381,37 @@ export function renderFinanceInsights(data = {}) {
             <span>📈 Profit</span>
             <a href="/finance-reports.html" class="small text-primary">View →</a>
           </div>
+
           <div class="small text-muted">Net Cash - Expenses</div>
-          <div class="fw-bold ${
-            data.profit >= 0 ? "text-success" : "text-danger"
-          }">
-            ${formatMoney(data.profit)}
+
+          <div class="fw-bold text-primary">
+            <!-- 🔥 PROFIT PER CURRENCY -->
+            ${summary.map(s => {
+              const currency = s.currency;
+              const netCash = Number(s.net_cash || 0);
+
+              const expenseRow = expenses.find(e => e.currency === currency);
+              const exp = Number(expenseRow?.total || 0);
+
+              const profit = netCash - exp;
+
+              const formatted = Math.abs(profit).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              });
+
+              return `<div class="${profit >= 0 ? "text-success" : "text-danger"}">
+                ${currency}: ${formatMoneyByCurrency(profit, currency)}
+              </div>`;
+            }).join("")}
           </div>
         </div>
       </div>
     </div>
 
+    <!-- ===================================================== -->
+    <!-- 🔁 REFUNDS -->
+    <!-- ===================================================== -->
     <div class="col-xl-3 col-md-6">
       <div class="card border-0 shadow-sm h-100 summary-card clickable"
            data-route="/refunds-list.html">
@@ -316,17 +423,24 @@ export function renderFinanceInsights(data = {}) {
 
           <div class="small d-flex justify-content-between">
             <span>Payment</span>
-            <span class="text-danger">${formatMoney(paymentRefund)}</span>
+            <span class="text-danger">
+              ${currencyLines(summary, "payment_refunded")}
+            </span>
           </div>
 
           <div class="small d-flex justify-content-between">
             <span>Deposit</span>
-            <span class="text-warning">${formatMoney(depositRefund)}</span>
+            <span class="text-warning">
+              ${currencyLines(deposits.deposit_refunded, "refunded")}
+            </span>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- ===================================================== -->
+    <!-- 🏥 INSURANCE -->
+    <!-- ===================================================== -->
     <div class="col-xl-3 col-md-6">
       <div class="card border-0 shadow-sm h-100 summary-card clickable"
            data-route="/insurance-claims-list.html">
@@ -338,22 +452,31 @@ export function renderFinanceInsights(data = {}) {
 
           <div class="small d-flex justify-content-between">
             <span>Claimed</span>
-            <span>${formatMoney(data.insurance_claimed)}</span>
+            <span>${currencyLines(insurance, "claimed")}</span>
           </div>
 
           <div class="small d-flex justify-content-between">
             <span>Approved</span>
-            <span class="text-primary">${formatMoney(data.insurance_approved)}</span>
+            <span class="text-primary">
+              ${currencyLines(insurance, "approved")}
+            </span>
           </div>
 
           <div class="small d-flex justify-content-between">
             <span>Paid</span>
-            <span class="text-success">${formatMoney(data.insurance_paid)}</span>
+            <span class="text-success">
+              ${currencyLines(insurance, "paid")}
+            </span>
           </div>
 
           <div class="small d-flex justify-content-between fw-bold mt-1">
             <span>Outstanding</span>
-            <span class="text-warning">${formatMoney(data.insurance_outstanding)}</span>
+            <span class="text-warning">
+              ${currencyLines(insurance.map(r => ({
+                currency: r.currency,
+                outstanding: Number(r.approved || 0) - Number(r.paid || 0)
+              })), "outstanding")}
+            </span>
           </div>
         </div>
       </div>
