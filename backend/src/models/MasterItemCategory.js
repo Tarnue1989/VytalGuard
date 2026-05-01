@@ -11,13 +11,13 @@ export default (sequelize) => {
         foreignKey: "organization_id",
       });
 
-      // 🔗 Facility scope (optional)
+      // 🔗 Facility (kept optional for legacy, but NOT USED)
       MasterItemCategory.belongsTo(models.Facility, {
         as: "facility",
         foreignKey: "facility_id",
       });
 
-      // 🔗 Master Items under this category
+      // 🔗 Master Items
       MasterItemCategory.hasMany(models.MasterItem, {
         as: "masterItems",
         foreignKey: "category_id",
@@ -38,35 +38,61 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // 🔗 Tenant scope
-      organization_id: { type: DataTypes.UUID, allowNull: false },
-      facility_id: { type: DataTypes.UUID, allowNull: true },
+      /* ========================================================
+         🔗 TENANT (GLOBAL CATEGORY RULE)
+      ======================================================== */
+      organization_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
-      // 📑 Identity
-      name: { type: DataTypes.STRING(100), allowNull: false },
-      code: { type: DataTypes.STRING(50), allowNull: true },
-      description: { type: DataTypes.TEXT },
+      facility_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        defaultValue: null, // 🔥 ALWAYS NULL (GLOBAL)
+      },
 
-      /* ============================================================
-         🔥 ENTERPRISE FIX: ORDER TYPE (SOURCE OF TRUTH)
-      ============================================================ */
+      /* ========================================================
+         📑 IDENTITY
+      ======================================================== */
+      name: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+      },
+
+      code: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+
+      description: {
+        type: DataTypes.TEXT,
+      },
+
+      /* ========================================================
+         🔥 ORDER TYPE (SOURCE OF TRUTH)
+      ======================================================== */
       order_type: {
         type: DataTypes.ENUM(...Object.values(ORDER_TYPE)),
         allowNull: false,
         defaultValue: ORDER_TYPE.SERVICE,
       },
 
-      // 🔹 Lifecycle
+      /* ========================================================
+         🔹 STATUS
+      ======================================================== */
       status: {
         type: DataTypes.ENUM(...Object.values(MASTER_ITEM_CATEGORY_STATUS)),
         allowNull: false,
         defaultValue: MASTER_ITEM_CATEGORY_STATUS.ACTIVE,
       },
 
-      // 🔹 Audit
-      created_by_id: { type: DataTypes.UUID, allowNull: true },
-      updated_by_id: { type: DataTypes.UUID, allowNull: true },
-      deleted_by_id: { type: DataTypes.UUID, allowNull: true },
+      /* ========================================================
+         🔹 AUDIT
+      ======================================================== */
+      created_by_id: { type: DataTypes.UUID },
+      updated_by_id: { type: DataTypes.UUID },
+      deleted_by_id: { type: DataTypes.UUID },
     },
     {
       sequelize,
@@ -78,15 +104,38 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
-      defaultScope: { attributes: { exclude: ["deleted_at", "deleted_by_id"] } },
+
+      /* ========================================================
+         🔧 DEFAULT SCOPE
+      ======================================================== */
+      defaultScope: {
+        attributes: { exclude: ["deleted_at", "deleted_by_id"] },
+      },
+
+      /* ========================================================
+         🔧 SCOPES (🔥 FIXED)
+      ======================================================== */
       scopes: {
         withDeleted: { paranoid: false },
-        active: { where: { deleted_at: null } },
-        tenant(facilityId) {
-          if (!facilityId) return {};
-          return { where: { facility_id: facilityId } };
+
+        active: {
+          where: { deleted_at: null },
+        },
+
+        /* 🔥 GLOBAL TENANT SCOPE */
+        tenant(orgId) {
+          return {
+            where: {
+              organization_id: orgId,
+              facility_id: null, // 🔥 GLOBAL ONLY
+            },
+          };
         },
       },
+
+      /* ========================================================
+         📊 INDEXES
+      ======================================================== */
       indexes: [
         { fields: ["organization_id"] },
         { fields: ["facility_id"] },
@@ -94,8 +143,14 @@ export default (sequelize) => {
         { fields: ["code"] },
         { fields: ["status"] },
       ],
+
+      /* ========================================================
+         🔐 UNIQUE (ORG LEVEL)
+      ======================================================== */
       uniqueKeys: {
-        unique_category_per_org: { fields: ["organization_id", "name"] },
+        unique_category_per_org: {
+          fields: ["organization_id", "name"],
+        },
       },
     }
   );

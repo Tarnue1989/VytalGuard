@@ -62,23 +62,6 @@
                           >
                         </div>
                       </div>
-                      <!-- Item Type -->
-                      <div class="col-lg-3 col-sm-6">
-                        <div class="mb-3 form-group">
-                          <label class="form-label" for="itemType">Item Type</label>
-                          <select
-                            class="form-control"
-                            id="itemType"
-                            name="item_type"
-                          >
-                            <option value="">-- Select Type --</option>
-                            <option value="drug">Drug</option>
-                            <option value="consumable">Consumable</option>
-                            <option value="service">Service</option>
-                          </select>
-                        </div>
-                      </div>
-
                       <!-- Category -->
                       <div class="col-lg-3 col-sm-6">
                         <div class="mb-3 form-group">
@@ -91,7 +74,31 @@
                             name="category_id"
                           ></select>
                         </div>
+                      </div>     
+                        <!-- Item Type -->
+                      <div class="col-lg-3 col-sm-6">
+                        <div class="mb-3 form-group">
+                          <label class="form-label" for="itemType">Item Type</label>
+
+                          <select
+                            class="form-control"
+                            id="itemType"
+                            disabled
+                          >
+                            <option value="">Auto-selected</option>
+
+                            <!-- 🔥 REQUIRED OPTIONS (FIX) -->
+                            <option value="service">Service</option>
+                            <option value="procedure">Procedure</option>
+                            <option value="lab">Lab</option>
+                            <option value="medication">Pharmacy</option>
+                          </select>
+
+                          <!-- 🔥 REQUIRED FOR SUBMIT -->
+                          <input type="hidden" id="itemTypeHidden" name="item_type">
+                        </div>
                       </div>
+
                       <!-- Code -->
                       <div class="col-lg-3 col-sm-6">
                         <div class="mb-3">

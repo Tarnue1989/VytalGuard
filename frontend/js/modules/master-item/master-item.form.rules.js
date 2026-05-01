@@ -8,28 +8,23 @@ export const MASTER_ITEM_FORM_RULES = [
   ========================= */
   { id: "name", message: "Item name is required" },
 
-  // Code is auto-generated on backend
   { id: "code", message: "Item code is required", when: () => false },
 
-  { id: "itemType", message: "Item type is required" },
+  {
+    id: "itemType",
+    message: "Item type is required",
+    when: () => false, // 🔒 controlled by system, not user
+  },
 
   {
     id: "categorySelect",
-    message: "Category is required",
+    message: "Category is required", // optional: set when false if matching backend
   },
 
   {
-    id: "featureModuleId",
+    id: "featureModuleSelect", // ✅ FIXED ID
     message: "Feature module is required",
-  },
-
-  /* =========================
-     Status
-  ========================= */
-  {
-    id: "status_active",
-    message: "Item status is required",
-    when: () => true,
+    when: () => true, // ✅ backend allows null
   },
 
   /* =========================

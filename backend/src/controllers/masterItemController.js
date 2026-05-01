@@ -568,9 +568,9 @@ export const getItemById = async (req, res) => {
 
 
 /* ============================================================
-   📌 GET ITEMS LITE (FINAL — STRICT TENANT MATCH)
+   📌 GET ITEMS LITE (FINAL — TENANT + GLOBAL FIXED)
    🔹 Dropdown / Autocomplete / Suggestions READY
-   🔹 Matches your DB (org + facility ALWAYS set)
+   🔹 NO NULL CATEGORY GUARANTEED
 ============================================================ */
 export const getAllItemsLite = async (req, res) => {
   try {
@@ -591,20 +591,21 @@ export const getAllItemsLite = async (req, res) => {
       body: req.query,
     });
 
-    // 🔥 FORCE FROM USER IF MISSING
     const safeOrgId = orgId || req.user.organization_id;
     const safeFacilityId = facilityId || req.user.facility_id;
 
     /* ========================================================
-       🧱 BASE WHERE
+       🧱 BASE WHERE (STRICT CLEAN)
     ======================================================== */
     const where = {
       status: MASTER_ITEM_STATUS.ACTIVE,
+      category_id: { [Op.ne]: null },       // ✅ must have category
+      feature_module_id: { [Op.ne]: null }, // ✅ must have module
       [Op.and]: [],
     };
 
     /* ========================================================
-       🏢 TENANT SCOPING (🔥 STRICT MATCH — YOUR SYSTEM)
+       🏢 TENANT SCOPING (GLOBAL + FACILITY)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
       if (safeOrgId) {
@@ -615,7 +616,10 @@ export const getAllItemsLite = async (req, res) => {
 
       if (safeFacilityId) {
         where[Op.and].push({
-          facility_id: safeFacilityId,
+          [Op.or]: [
+            { facility_id: safeFacilityId },
+            { facility_id: null }, // ✅ include global items
+          ],
         });
       }
     } else {
@@ -664,15 +668,18 @@ export const getAllItemsLite = async (req, res) => {
     }
 
     /* ========================================================
-       📦 QUERY
+       📦 QUERY (🔥 FIXED CATEGORY JOIN)
     ======================================================== */
     const items = await MasterItem.findAll({
       where,
       include: [
         {
-          model: MasterItemCategory,
+          model: MasterItemCategory.scope([
+            { method: ["tenant", safeOrgId, safeFacilityId] }, // 🔥 FIX
+          ]),
           as: "category",
           attributes: ["id", "name"],
+          required: true, // 🔥 INNER JOIN — no nulls
         },
       ],
       attributes: [
@@ -696,10 +703,11 @@ export const getAllItemsLite = async (req, res) => {
       name: i.name,
       code: i.code || "",
       description: i.description || "",
-      category_id: i.category_id || null,
-      category: i.category
-        ? { id: i.category.id, name: i.category.name }
-        : null,
+      category_id: i.category_id,
+      category: {
+        id: i.category.id,
+        name: i.category.name,
+      },
     }));
 
     /* ========================================================
@@ -726,6 +734,7 @@ export const getAllItemsLite = async (req, res) => {
     return error(res, "❌ Failed to load items (lite)", err);
   }
 };
+
 /* ============================================================
    📌 TOGGLE ITEM STATUS (TRUE MASTER PARITY)
 ============================================================ */

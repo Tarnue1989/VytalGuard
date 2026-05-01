@@ -6,21 +6,17 @@
   "engines": {
     "node": ">=18.18"
   },
-"scripts": {
-  "dev": "nodemon backend/src/server.js",
-  "start": "cross-env NODE_ENV=production node backend/src/server.js",
-
-  "migrate": "sequelize db:migrate --migrations-path backend/src/db/migrations --config config/config.cjs",
-  "migrate:status": "sequelize db:migrate:status --migrations-path backend/src/db/migrations --config config/config.cjs",
-  "migrate:undo": "sequelize db:migrate:undo --migrations-path backend/src/db/migrations --config config/config.cjs",
-
-  "seed": "sequelize db:seed:all --seeders-path backend/src/db/seeders --config config/config.cjs",
-  "seed:undo": "sequelize db:seed:undo:all --seeders-path backend/src/db/seeders --config config/config.cjs",
-
-  "lb:up": "docker compose -f infra/docker/docker-compose.lb.yml up -d --build",
-  "lb:down": "docker compose -f infra/docker/docker-compose.lb.yml down -v"
-},
-
+  "scripts": {
+    "dev": "nodemon backend/src/server.js",
+    "start": "cross-env NODE_ENV=production node backend/src/server.js",
+    "migrate": "sequelize db:migrate --migrations-path backend/src/db/migrations --config config/config.cjs",
+    "migrate:status": "sequelize db:migrate:status --migrations-path backend/src/db/migrations --config config/config.cjs",
+    "migrate:undo": "sequelize db:migrate:undo --migrations-path backend/src/db/migrations --config config/config.cjs",
+    "seed": "sequelize db:seed:all --seeders-path backend/src/db/seeders --config config/config.cjs",
+    "seed:undo": "sequelize db:seed:undo:all --seeders-path backend/src/db/seeders --config config/config.cjs",
+    "lb:up": "docker compose -f infra/docker/docker-compose.lb.yml up -d --build",
+    "lb:down": "docker compose -f infra/docker/docker-compose.lb.yml down -v"
+  },
   "dependencies": {
     "apexcharts": "^5.3.6",
     "bcrypt": "^6.0.0",
@@ -40,7 +36,8 @@
     "pg-hstore": "^2.3.4",
     "qrcode": "^1.5.4",
     "selfsigned": "^3.0.1",
-    "sequelize": "^6.37.3"
+    "sequelize": "^6.37.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.0",

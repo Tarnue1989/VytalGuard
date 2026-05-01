@@ -76,10 +76,9 @@ export async function recalcInvoice(invoiceId, t = null) {
         })) || 0;
 
       const totalDeposits =
-        (await db.Deposit.sum("applied_amount", {
+        (await db.DepositApplication.sum("converted_amount", {
           where: {
-            applied_invoice_id: invoiceId,
-            applied_amount: { [Op.gt]: 0 },
+            invoice_id: invoiceId,
           },
           transaction: t,
         })) || 0;
@@ -219,10 +218,9 @@ export async function recalcInvoice(invoiceId, t = null) {
       })) || 0;
 
     const totalDeposits =
-      (await db.Deposit.sum("applied_amount", {
+      (await db.DepositApplication.sum("converted_amount", {
         where: {
-          applied_invoice_id: invoiceId,
-          applied_amount: { [Op.gt]: 0 },
+          invoice_id: invoiceId,
         },
         transaction: t,
       })) || 0;

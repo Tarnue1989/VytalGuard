@@ -153,6 +153,10 @@ function renderValue(entry, field) {
     case "master_item_id":
       return entry.masterItem?.name || "—";
 
+    case "category":
+    case "category_id":
+      return entry.category?.name || "—";
+      
     case "prices":
       return renderPrices(entry);
 

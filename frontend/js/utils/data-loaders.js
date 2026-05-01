@@ -149,7 +149,7 @@ export const loadRolePermissionsLite = (params = {}, force = false) => {
 export const loadMasterItemCategoriesLite = (params = {}, force = false) => {
   const q = new URLSearchParams(params);
   const endpoint = `/api/lite/master-item-categories${q.toString() ? "?" + q.toString() : ""}`;
-  return fetchGenericList(endpoint, "data", 15, force);
+  return fetchGenericList(endpoint, "data.records", 15, force);
 };
 
 // Master Items lite (with optional filters: { organization_id, facility_id, category_id, department_id, status, q })
@@ -818,13 +818,20 @@ export function setupSelectOptions(
     list
       .map((item) => {
         const attrs = [];
+
         if (item.code) attrs.push(`data-code="${item.code}"`);
+
+        // 🔥 THIS IS THE FIX (ADD THIS LINE)
+        if (item.order_type) attrs.push(`data-order_type="${item.order_type}"`);
+
         if (item.description) attrs.push(`data-description="${item.description}"`);
-        return `<option value="${item[valueField]}" ${attrs.join(" ")}>${item[labelField] ?? ""}</option>`;
+
+        return `<option value="${item[valueField]}" ${attrs.join(" ")}>
+          ${item[labelField] ?? ""}
+        </option>`;
       })
       .join("");
 }
-
 
 // -----------------------------------------------------------------------------
 // 🔧 Helpers

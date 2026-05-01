@@ -462,16 +462,21 @@ async function openModal(modalId, invoiceId, entry, extra = {}) {
       }
     }
   }
+  
   /* ============================================================
-     🔁 APPLY DEPOSIT
+    🔁 APPLY DEPOSIT (WITH FX PREVIEW – MASTER ALIGNED)
   ============================================================ */
   if (modalId === "applyDepositModal") {
     const select = document.getElementById("applyDepositSelect");
     const available = document.getElementById("depositAvailable");
     const amountInput = document.getElementById("applyDepositAmount");
 
+    // 🔥 ADD PREVIEW ELEMENT (must exist in HTML)
+    const preview = document.getElementById("depositFxPreview");
+
     select.innerHTML = `<option value="">-- Select Deposit --</option>`;
     available.textContent = "0.00";
+    if (preview) preview.innerHTML = "";
 
     try {
       showLoading();
@@ -487,13 +492,15 @@ async function openModal(modalId, invoiceId, entry, extra = {}) {
         if (!dep.remaining_balance || dep.remaining_balance <= 0) return;
 
         const opt = document.createElement("option");
+
         opt.value = dep.id;
         opt.dataset.remaining = dep.remaining_balance;
+        opt.dataset.currency = dep.currency || "USD"; // 🔥 IMPORTANT
 
         const ref = dep.deposit_number;
-
         const currency = dep.currency || "USD";
         const amount = Number(dep.remaining_balance || 0).toFixed(2);
+
         opt.textContent = `${ref} • ${currency} ${amount}`;
         select.appendChild(opt);
       });
@@ -504,8 +511,12 @@ async function openModal(modalId, invoiceId, entry, extra = {}) {
       hideLoading();
     }
 
+    /* ============================================================
+      🔄 ON SELECT CHANGE
+    ============================================================ */
     select.onchange = () => {
       const selected = select.options[select.selectedIndex];
+
       const remaining = Number(selected?.dataset.remaining || 0);
       const invoiceBalance = Number(entry.balance || 0);
 
@@ -513,8 +524,73 @@ async function openModal(modalId, invoiceId, entry, extra = {}) {
 
       amountInput.max = Math.min(remaining, invoiceBalance);
       amountInput.value = Math.min(remaining, invoiceBalance);
+
+      // 🔥 trigger preview update
+      amountInput.dispatchEvent(new Event("input"));
+    };
+
+    /* ============================================================
+      💱 FX PREVIEW (EXACT SAME LOGIC AS DEPOSIT MODULE)
+    ============================================================ */
+    amountInput.oninput = async () => {
+      const amount = parseFloat(amountInput.value);
+      if (!amount) {
+        if (preview) preview.innerHTML = "";
+        return;
+      }
+
+      const selected = select.options[select.selectedIndex];
+      if (!selected) return;
+
+      const depositCurrency = selected.dataset.currency;
+      const invoiceCurrency = entry.currency;
+
+      // ================= SAME CURRENCY =================
+      if (depositCurrency === invoiceCurrency) {
+        if (preview) {
+          preview.innerHTML = `
+            <span class="text-primary fw-semibold">
+              Applying ${amount.toFixed(2)} ${depositCurrency}
+            </span>
+          `;
+        }
+        return;
+      }
+
+      try {
+        // 🔥 REAL FX CALL (same as deposit-actions.js)
+        const res = await authFetch(`/api/fx/convert`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount,
+            from_currency: depositCurrency,
+            to_currency: invoiceCurrency,
+          }),
+        });
+
+        const data = await res.json();
+        const converted = data?.data?.amount || 0;
+
+        if (preview) {
+          preview.innerHTML = `
+            <span class="text-primary fw-semibold">
+              ${amount.toFixed(2)} ${depositCurrency} ≈ 
+              ${converted.toFixed(2)} ${invoiceCurrency}
+            </span>
+          `;
+        }
+
+      } catch {
+        if (preview) {
+          preview.innerHTML = `<span class="text-danger">Conversion unavailable</span>`;
+        }
+      }
     };
   }
+
   /* ============================================================
      🔁 REVERSE
   ============================================================ */

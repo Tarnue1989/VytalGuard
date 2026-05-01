@@ -1,16 +1,19 @@
 // 📁 backend/src/services/financialReportService.js
 // ============================================================================
-// 📊 FINANCIAL REPORT SERVICE — ENTERPRISE FIX (PART 1)
-// 🔥 STRICT CURRENCY SEPARATION (NO MIXING)
+// 📊 FINANCIAL REPORT SERVICE — FINAL ENTERPRISE VERSION (SOURCE OF TRUTH)
 // ============================================================================
 
 import { Op, fn, col, literal } from "sequelize";
 import db from "../models/index.js";
 
+/* ============================================================
+   📊 FINANCIAL REPORT SERVICE (ENTERPRISE FINAL)
+============================================================ */
+
 export const financialReportService = {
 
   /* ============================================================
-    🔹 OVERALL FINANCIAL SUMMARY (🔥 FIXED — GROUP BY CURRENCY)
+    🔹 OVERALL FINANCIAL SUMMARY (FIXED — USE INVOICE ONLY)
   ============================================================ */
   async getSummary({ from, to, organization_id, facility_id }) {
 
@@ -20,10 +23,11 @@ export const financialReportService = {
       invoice_date: { [Op.between]: [from, to] },
     };
 
-    const rows = await db.Invoice.findAll({
+    /* ========================================================
+      🔹 INVOICE SOURCE OF TRUTH (🔥 FIXED)
+    ======================================================== */
+    const summary = await db.Invoice.findAll({
       attributes: [
-        "currency",
-
         [fn("COUNT", col("id")), "invoice_count"],
 
         [fn("SUM", col("subtotal")), "gross"],
@@ -37,13 +41,15 @@ export const financialReportService = {
         [fn("SUM", col("balance")), "outstanding"],
       ],
       where: invoiceWhere,
-      group: ["currency"],
       raw: true,
     });
 
-    return rows.map((s) => ({
-      currency: s.currency,
+    const s = summary[0] || {};
 
+    /* ========================================================
+      🔹 FINAL RETURN
+    ======================================================== */
+    return {
       invoice_count: Number(s.invoice_count || 0),
 
       subtotal: Number(s.gross || 0),
@@ -60,11 +66,11 @@ export const financialReportService = {
 
       applied_deposits: Number(s.applied_deposits || 0),
       outstanding: Number(s.outstanding || 0),
-    }));
+    };
   },
 
   /* ============================================================
-    🔹 REVENUE BY SERVICE (UNCHANGED — CORRECT)
+    🔹 REVENUE BY SERVICE (KEEP — CORRECT)
   ============================================================ */
   async getServiceBreakdown({ from, to, organization_id, facility_id }) {
     return await db.InvoiceItem.findAll({
@@ -83,6 +89,7 @@ export const financialReportService = {
         [fn("SUM", col("InvoiceItem.discount_amount")), "discount"],
         [fn("SUM", col("InvoiceItem.net_amount")), "revenue"],
       ],
+
       include: [
         {
           model: db.Invoice,
@@ -100,7 +107,9 @@ export const financialReportService = {
           attributes: [],
         },
       ],
+
       where: { status: "applied" },
+
       group: ["featureModule.key"],
       order: [[literal("revenue"), "DESC"]],
       raw: true,
@@ -108,13 +117,12 @@ export const financialReportService = {
   },
 
   /* ============================================================
-    🔹 PAYMENTS BY METHOD (🔥 FIXED — NO AMBIGUOUS CURRENCY)
+    🔹 PAYMENTS BY METHOD (KEEP — CORRECT)
   ============================================================ */
   async getPaymentsByMethod({ from, to, organization_id, facility_id }) {
     return await db.Payment.findAll({
       attributes: [
-        [col("Payment.method"), "method"],
-        [col("Payment.currency"), "currency"],
+        "method",
         [fn("SUM", col("Payment.amount")), "amount"],
       ],
       include: [
@@ -134,19 +142,19 @@ export const financialReportService = {
           [Op.in]: ["completed", "verified"],
         },
       },
-      group: ["Payment.method", "Payment.currency"],
+      group: ["method"],
       order: [[fn("SUM", col("Payment.amount")), "DESC"]],
       raw: true,
     });
   },
+
   /* ============================================================
-     🔹 PAYMENT REFUNDS (🔥 FIXED — ADD CURRENCY)
+     🔹 PAYMENT REFUNDS (KEEP)
   ============================================================ */
   async getPaymentRefunds({ from, to, organization_id, facility_id }) {
     return await db.Refund.findAll({
       attributes: [
         "method",
-        "currency",
         [fn("SUM", col("amount")), "amount"],
       ],
       include: [
@@ -164,12 +172,13 @@ export const financialReportService = {
       where: {
         status: "processed",
       },
-      group: ["method", "currency"],
+      group: ["method"],
       raw: true,
     });
   },
+
   /* ============================================================
-    🔹 DEPOSIT SUMMARY (🔥 FIXED — NO AMBIGUOUS CURRENCY)
+    🔹 DEPOSIT SUMMARY (FINAL — TIMEZONE SAFE)
   ============================================================ */
   async getDeposits({ from, to, organization_id, facility_id }) {
 
@@ -180,35 +189,35 @@ export const financialReportService = {
     };
 
     /* ============================================================
-      💰 COLLECTED
+      💰 COLLECTED (FIXED — DATE SAFE)
     ============================================================ */
-    const collected = await db.Deposit.findAll({
+    const collected = await db.Deposit.findOne({
       attributes: [
-        [col("Deposit.currency"), "currency"],
-        [fn("SUM", col("Deposit.amount")), "collected"],
+        [fn("SUM", col("amount")), "collected"],
       ],
       where: {
         organization_id,
         ...(facility_id && { facility_id }),
         status: "cleared",
+
         [Op.and]: [
           db.sequelize.where(
-            db.sequelize.fn("DATE", db.sequelize.col("Deposit.created_at")),
-            { [Op.between]: [from, to] }
+            db.sequelize.fn("DATE", db.sequelize.col("created_at")),
+            {
+              [Op.between]: [from, to],
+            }
           ),
         ],
       },
-      group: ["Deposit.currency"],
       raw: true,
     });
 
     /* ============================================================
-      💰 APPLIED (🔥 MAIN FIX HERE)
+      💰 APPLIED (KEEP — CORRECT)
     ============================================================ */
-    const applied = await db.DepositApplication.findAll({
+    const applied = await db.DepositApplication.findOne({
       attributes: [
-        [col("DepositApplication.currency"), "currency"],
-        [fn("SUM", col("DepositApplication.applied_amount")), "applied"],
+        [fn("SUM", col("applied_amount")), "applied"],
       ],
       include: [
         {
@@ -218,47 +227,45 @@ export const financialReportService = {
           where: invoiceWhere,
         },
       ],
-      group: ["DepositApplication.currency"],
       raw: true,
     });
 
     /* ============================================================
-      💰 REMAINING
+      💰 REMAINING (KEEP — CORRECT)
     ============================================================ */
-    const remaining = await db.Deposit.findAll({
+    const remaining = await db.Deposit.findOne({
       attributes: [
-        [col("Deposit.currency"), "currency"],
-        [fn("SUM", col("Deposit.remaining_balance")), "remaining"],
+        [fn("SUM", col("remaining_balance")), "remaining"],
       ],
       where: {
         organization_id,
         ...(facility_id && { facility_id }),
         status: "cleared",
       },
-      group: ["Deposit.currency"],
       raw: true,
     });
 
     /* ============================================================
-      💰 REFUNDED
+      💰 REFUNDED (FIXED — DATE SAFE)
     ============================================================ */
-    const refunded = await db.Deposit.findAll({
+    const refunded = await db.Deposit.findOne({
       attributes: [
-        [col("Deposit.currency"), "currency"],
-        [fn("SUM", col("Deposit.refund_amount")), "refunded"],
+        [fn("SUM", col("refund_amount")), "refunded"],
       ],
       where: {
         organization_id,
         ...(facility_id && { facility_id }),
         status: "cleared",
+
         [Op.and]: [
           db.sequelize.where(
-            db.sequelize.fn("DATE", db.sequelize.col("Deposit.updated_at")),
-            { [Op.between]: [from, to] }
+            db.sequelize.fn("DATE", db.sequelize.col("updated_at")),
+            {
+              [Op.between]: [from, to],
+            }
           ),
         ],
       },
-      group: ["Deposit.currency"],
       raw: true,
     });
 
@@ -266,20 +273,19 @@ export const financialReportService = {
       📤 FINAL RETURN
     ============================================================ */
     return {
-      collected,
-      applied,
-      remaining,
-      deposit_refunded: refunded,
+      collected: Number(collected?.collected || 0),
+      applied: Number(applied?.applied || 0),
+      remaining: Number(remaining?.remaining || 0),
+      deposit_refunded: Number(refunded?.refunded || 0),
     };
   },
 
-  /* ============================================================
-     🔹 EXPENSES SUMMARY (🔥 FIXED — CURRENCY SPLIT)
+    /* ============================================================
+     🔹 EXPENSES SUMMARY (NEW)
   ============================================================ */
   async getExpenses({ from, to, organization_id, facility_id }) {
-    return await db.Expense.findAll({
+    const result = await db.Expense.findOne({
       attributes: [
-        "currency",
         [fn("SUM", col("amount")), "total"]
       ],
       where: {
@@ -288,18 +294,20 @@ export const financialReportService = {
         status: "posted",
         date: { [Op.between]: [from, to] }
       },
-      group: ["currency"],
       raw: true,
     });
+
+    return {
+      total_expense: Number(result?.total || 0),
+    };
   },
 
   /* ============================================================
-     🔹 INSURANCE SUMMARY (🔥 FIXED — CURRENCY SPLIT)
+     🔹 INSURANCE SUMMARY (NEW)
   ============================================================ */
   async getInsurance({ from, to, organization_id, facility_id }) {
-    return await db.InsuranceClaim.findAll({
+    const result = await db.InsuranceClaim.findOne({
       attributes: [
-        "currency",
         [fn("SUM", col("amount_claimed")), "claimed"],
         [fn("SUM", col("amount_approved")), "approved"],
         [fn("SUM", col("amount_paid")), "paid"]
@@ -309,9 +317,16 @@ export const financialReportService = {
         ...(facility_id && { facility_id }),
         claim_date: { [Op.between]: [from, to] }
       },
-      group: ["currency"],
       raw: true,
     });
-  },
 
+    return {
+      claimed: Number(result?.claimed || 0),
+      approved: Number(result?.approved || 0),
+      paid: Number(result?.paid || 0),
+      outstanding:
+        Number(result?.approved || 0) -
+        Number(result?.paid || 0),
+    };
+  },
 };

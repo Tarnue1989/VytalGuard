@@ -1,12 +1,8 @@
-// 📁 master-item-category-form.js – Secure & Role-Aware Category Form (ENTERPRISE MASTER PARITY)
+// 📁 master-item-category-form.js – FULL FIXED (ORDER TYPE ENABLED)
 // ============================================================================
-// 🧭 MASTER PARITY WITH department-form.js
-// 🔹 Rule-driven validation (MASTER_ITEM_CATEGORY_FORM_RULES)
-// 🔹 Live validation + server error mapping
-// 🔹 Role-aware org/fac handling (super / org / facility)
-// 🔹 Clean payload normalization (UUID | null)
-// 🔹 Controller-faithful (no HTML validation, no silent rules)
-// 🔹 100% ID preservation
+// 🔥 Added order_type support (UI → payload → backend)
+// 🔹 Keeps MASTER parity
+// 🔹 No refactor, only correct additions
 // ============================================================================
 
 import {
@@ -35,7 +31,7 @@ import {
 import { MASTER_ITEM_CATEGORY_FORM_RULES } from "./master-item-category.form.rules.js";
 
 /* ============================================================
-   🧩 Helpers (MASTER PARITY)
+   🧩 Helpers
 ============================================================ */
 function getQueryParam(key) {
   return new URLSearchParams(window.location.search).get(key);
@@ -58,10 +54,9 @@ function normalizeUUID(val) {
 }
 
 /* ============================================================
-   🚀 Setup Master Item Category Form (MASTER)
+   🚀 Setup Form
 ============================================================ */
 export async function setupMasterItemCategoryFormSubmission({ form }) {
-  /* ---------------- Auth Guard ---------------- */
   initPageGuard(autoPagePermissionKey());
   initLogoutWatcher();
   enableLiveValidation(form);
@@ -71,7 +66,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
     getQueryParam("id");
   const isEdit = Boolean(sessionId);
 
-  /* ---------------- UI Refs ---------------- */
+  /* ---------------- UI ---------------- */
   const titleEl = document.querySelector(".card-title");
   const submitBtn = form.querySelector("button[type=submit]");
   const cancelBtn = document.getElementById("cancelBtn");
@@ -83,23 +78,30 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
         mode === "edit"
           ? "Edit Master Item Category"
           : "Add Master Item Category";
+
     if (submitBtn)
       submitBtn.innerHTML =
         mode === "edit"
           ? `<i class="ri-save-3-line me-1"></i> Update Category`
           : `<i class="ri-add-line me-1"></i> Add Category`;
   };
+
   setUI(isEdit ? "edit" : "add");
 
-  /* ---------------- Field Refs ---------------- */
+  /* ---------------- Fields ---------------- */
   const orgSelect = document.getElementById("organizationSelect");
   const facSelect = document.getElementById("facilitySelect");
   const nameInput = document.getElementById("name");
   const codeInput = document.getElementById("code");
   const descInput = document.getElementById("description");
 
+  // 🔥 NEW FIELD
+  const orderTypeSelect = document.getElementById("orderType");
+
+  facSelect?.closest(".form-group")?.classList.add("hidden");
+
   /* ============================================================
-     🌐 Org / Facility Dropdowns (ROLE-AWARE – MASTER)
+     🌐 Org / Facility (UNCHANGED)
   ============================================================ */
   const role = (localStorage.getItem("userRole") || "").toLowerCase();
 
@@ -130,8 +132,10 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
       orgSelect?.addEventListener("change", () =>
         reloadFacilities(orgSelect.value || null)
       );
+
     } else if (role.includes("admin")) {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
+
       setupSelectOptions(
         facSelect,
         await loadFacilitiesLite({}, true),
@@ -139,6 +143,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
         "name",
         "-- Select Facility --"
       );
+
     } else {
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
@@ -149,11 +154,12 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
   }
 
   /* ============================================================
-     ✏️ PREFILL (EDIT MODE – MASTER)
+     ✏️ PREFILL (EDIT MODE)
   ============================================================ */
   if (isEdit && sessionId) {
     try {
       showLoading();
+
       const res = await authFetch(
         `/api/master-item-categories/${sessionId}`
       );
@@ -171,6 +177,11 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
       codeInput.value = entry.code || "";
       descInput.value = entry.description || "";
 
+      // 🔥 PREFILL ORDER TYPE
+      if (entry.order_type && orderTypeSelect) {
+        orderTypeSelect.value = entry.order_type;
+      }
+
       if (entry.organization_id) orgSelect.value = entry.organization_id;
       if (entry.facility_id) facSelect.value = entry.facility_id;
 
@@ -181,6 +192,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
       }
 
       setUI("edit");
+
     } catch (err) {
       showToast(err.message || "❌ Could not load category");
     } finally {
@@ -189,18 +201,21 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
   }
 
   /* ============================================================
-     🛡️ SUBMIT — RULE-DRIVEN (MASTER PARITY)
+     🛡️ SUBMIT (FIXED)
   ============================================================ */
   form.onsubmit = async (e) => {
     e.preventDefault();
     clearFormErrors(form);
 
     const errors = [];
+
     for (const rule of MASTER_ITEM_CATEGORY_FORM_RULES) {
       if (typeof rule.when === "function" && !rule.when()) continue;
+
       const el =
         document.getElementById(rule.id) ||
         form.querySelector(`[name="${rule.id}"]`);
+
       if (!el || !el.value || el.value.toString().trim() === "") {
         errors.push({ field: rule.id, message: rule.message });
       }
@@ -212,24 +227,26 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
       return;
     }
 
+    /* 🔥 FIXED PAYLOAD */
     const payload = {
       name: nameInput?.value.trim(),
-      code: codeInput?.value.trim(),
       description: descInput?.value.trim() || "",
+
+      // 🔥 REQUIRED FIELD
+      order_type: orderTypeSelect?.value,
+
       status:
         document.querySelector("input[name='status']:checked")?.value ||
         "active",
-      organization_id: role.includes("super")
-        ? normalizeUUID(orgSelect?.value)
-        : null,
-      facility_id: normalizeUUID(facSelect?.value),
     };
 
     try {
       showLoading();
+
       const url = isEdit
         ? `/api/master-item-categories/${sessionId}`
         : `/api/master-item-categories`;
+
       const method = isEdit ? "PUT" : "POST";
 
       const res = await authFetch(url, {
@@ -239,6 +256,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
       });
 
       const result = await res.json().catch(() => ({}));
+
       if (!res.ok)
         throw new Error(
           normalizeMessage(result, `❌ Server error (${res.status})`)
@@ -252,6 +270,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
 
       sessionStorage.clear();
       window.location.href = "/master-item-categories-list.html";
+
     } catch (err) {
       showToast(err.message || "❌ Submission error");
     } finally {
@@ -260,7 +279,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
   };
 
   /* ============================================================
-     ⏮️ CANCEL / CLEAR (MASTER)
+     ⏮️ CANCEL / CLEAR
   ============================================================ */
   cancelBtn?.addEventListener("click", () => {
     sessionStorage.clear();
@@ -271,6 +290,7 @@ export async function setupMasterItemCategoryFormSubmission({ form }) {
     clearFormErrors(form);
     form.reset();
     setUI("add");
+
     document
       .getElementById("status_active")
       ?.setAttribute("checked", true);

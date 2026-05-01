@@ -1,4 +1,4 @@
-// 📦 finance-filter-main.js – FINAL (UI + PRINT FULL + EXPENSES + INSURANCE)
+// 📦 finance-filter-main.js – FINAL (TRUE MULTI-CURRENCY)
 // ============================================================
 
 import {
@@ -60,97 +60,52 @@ async function loadReports() {
 
     const query = params.toString();
 
-    /* ========================================================
-       🔥 FETCH ALL (UPGRADED)
-    ======================================================== */
+    /* ======================================================== */
     const [
       summaryRes,
       servicesRes,
       paymentsRes,
       depositsRes,
-      expensesRes,     // 🔥 NEW
-      insuranceRes,    // 🔥 NEW
+      expensesRes,
+      insuranceRes,
     ] = await Promise.all([
       authFetch(`/api/reports/finance/summary?${query}`),
       authFetch(`/api/reports/finance/services?${query}`),
       authFetch(`/api/reports/finance/payments?${query}`),
       authFetch(`/api/reports/finance/deposits?${query}`),
-
-      // 🔥 NEW ENDPOINTS
       authFetch(`/api/reports/finance/expenses?${query}`),
       authFetch(`/api/reports/finance/insurance?${query}`),
     ]);
 
-    /* ========================================================
-       🔥 PARSE RESPONSES
-    ======================================================== */
-    const summaryJson   = summaryRes.ok   ? await summaryRes.json()   : {};
-    const servicesJson  = servicesRes.ok  ? await servicesRes.json()  : {};
-    const paymentsJson  = paymentsRes.ok  ? await paymentsRes.json()  : {};
-    const depositsJson  = depositsRes.ok  ? await depositsRes.json()  : {};
-    const expensesJson  = expensesRes.ok  ? await expensesRes.json()  : {};
-    const insuranceJson = insuranceRes.ok ? await insuranceRes.json() : {};
+    /* ======================================================== */
+    // 🔥 SAFE JSON PARSE (prevents undefined crashes)
+    const summaryJson   = summaryRes?.ok   ? await summaryRes.json()   : { data: [] };
+    const servicesJson  = servicesRes?.ok  ? await servicesRes.json()  : { data: [] };
+    const paymentsJson  = paymentsRes?.ok  ? await paymentsRes.json()  : { data: [] };
+    const depositsJson  = depositsRes?.ok  ? await depositsRes.json()  : { data: {} };
+    const expensesJson  = expensesRes?.ok  ? await expensesRes.json()  : { data: [] };
+    const insuranceJson = insuranceRes?.ok ? await insuranceRes.json() : { data: [] };
 
-    console.log("Finance Summary:", summaryJson);
-    console.log("Deposits:", depositsJson);
-    console.log("Expenses:", expensesJson);
-    console.log("Insurance:", insuranceJson);
-
-    /* ========================================================
-       🔥 MERGE ALL DATA (FINAL)
-    ======================================================== */
-    const summaryData  = summaryJson?.data || {};
-    const depositData  = depositsJson?.data || {};
-    const expenseData  = expensesJson?.data || {};
-    const insuranceData = insuranceJson?.data || {};
-
+    /* ======================================================== */
+    /* 🔥 RAW DATA — NO FLATTENING (CRITICAL) */
     const mergedSummary = {
-      ...summaryData,
-
-      /* =========================
-         🏦 DEPOSITS
-      ========================= */
-      deposit_collected: depositData.collected || 0,
-      applied_deposits: depositData.applied || 0,
-      deposit_refunded: depositData.deposit_refunded || 0,
-      deposit_balance: depositData.remaining || 0,
-
-      /* =========================
-         💸 EXPENSES (NEW)
-      ========================= */
-      total_expense: expenseData.total_expense || 0,
-
-      /* =========================
-         🏥 INSURANCE (NEW)
-      ========================= */
-      insurance_claimed: insuranceData.claimed || 0,
-      insurance_approved: insuranceData.approved || 0,
-      insurance_paid: insuranceData.paid || 0,
-      insurance_outstanding: insuranceData.outstanding || 0,
+      summary: summaryJson.data || [],
+      deposits: depositsJson.data || {},
+      expenses: expensesJson.data || [],
+      insurance: insuranceJson.data || [],
     };
 
-    /* ========================================================
-       🔥 PROFIT (CRITICAL)
-    ======================================================== */
-    mergedSummary.profit =
-      (mergedSummary.net_cash || 0) -
-      (mergedSummary.total_expense || 0);
-
-    /* ========================================================
-       🎨 RENDER
-    ======================================================== */
+    /* ======================================================== */
     renderFinanceSummary(mergedSummary);
     renderFinanceInsights(mergedSummary);
-    renderServiceTable(servicesJson?.data || []);
-    renderPaymentsTable(paymentsJson?.data || []);
-    renderDepositSummary(); // intentionally empty
+    renderServiceTable(servicesJson.data || []);
+    renderPaymentsTable(paymentsJson.data || []);
+    renderDepositSummary();
 
-    /* ========================================================
-       🖨️ STORE FOR PRINT
-    ======================================================== */
+    /* ======================================================== */
     window.financeSummaryData  = mergedSummary;
-    window.financeServicesData = servicesJson?.data || [];
-    window.financePaymentsData = paymentsJson?.data || [];
+    window.financeServicesData = servicesJson.data || [];
+    window.financePaymentsData = paymentsJson.data || [];
 
   } catch (err) {
     console.error("❌ Finance report load failed", err);

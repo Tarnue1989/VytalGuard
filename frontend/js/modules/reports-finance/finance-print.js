@@ -59,238 +59,237 @@ function formatLabel(str) {
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
-
 /* ============================================================
-   🧾 BUILD PRINT HTML
+   🧾 BUILD PRINT HTML (FINAL — CARD + FULL DETAIL)
 ============================================================ */
 function buildFinanceReceiptHTML(data = {}) {
   const printedAt = new Date().toLocaleString();
+
+  const summary = data.summary || [];
+  const deposits = data.deposits || {};
+  const expenses = data.expenses || [];
 
   const services = window.financeServicesData || [];
   const payments = window.financePaymentsData || [];
 
   /* =========================
-     📊 TABLE TOTALS
+     💰 FORMATTER
   ========================= */
-  const totalItems = services.reduce((s, r) => s + Number(r.items || 0), 0);
-  const totalGross = services.reduce((s, r) => s + Number(r.gross || 0), 0);
-  const totalDiscount = services.reduce((s, r) => s + Number(r.discount || 0), 0);
-  const totalNet = services.reduce((s, r) => s + Number(r.revenue || 0), 0);
+  const money = (val, cur) => {
+    const sym = { USD: "$", LRD: "L$" }[cur] || "";
+    return `${sym}${Number(val || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
 
-  const totalPayments = payments.reduce((s, r) => s + Number(r.amount || 0), 0);
+  /* =========================
+     🔥 LABELED ROWS (KEY FIX)
+  ========================= */
+  const labeledLines = (arr, fields) => {
+    if (!Array.isArray(arr)) return "";
+
+    return arr.map(r => {
+      return fields.map(f => `
+        <div class="row-line">
+          <span>${f.label} (${r.currency})</span>
+          <span>${money(r[f.key], r.currency)}</span>
+        </div>
+      `).join("");
+    }).join("");
+  };
+
+  /* =========================
+     💰 PROFIT
+  ========================= */
+  const profitLines = summary.map(s => {
+    const exp = expenses.find(e => e.currency === s.currency);
+    const profit = Number(s.net_cash || 0) - Number(exp?.total || 0);
+
+    return `
+      <div class="row-line">
+        <span>Profit (${s.currency})</span>
+        <span>${money(profit, s.currency)}</span>
+      </div>
+    `;
+  }).join("");
 
   return `
     <style>
-      /* ===== Layout ===== */
-      .grid-2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 30px;
-      }
-
-      .header-grid {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 12px;
-      }
-
-      .header-grid .right {
-        text-align: right;
-      }
-
-      /* ===== Typography ===== */
-      h4 {
-        margin: 8px 0 4px;
-        font-size: 13px;
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        margin: 10px;
       }
 
       .title {
         text-align: center;
-        font-weight: bold;
         font-size: 16px;
-        margin: 10px 0;
+        font-weight: bold;
+        margin-bottom: 10px;
       }
 
-      .section {
-        margin-bottom: 16px;
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
       }
 
-      .muted {
-        font-size: 11px;
-        color: #555;
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 8px;
       }
 
-      /* ===== Tables ===== */
+      .card h4 {
+        margin: 0 0 6px;
+        font-size: 12px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 3px;
+      }
+
+      .row-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+      }
+
+      .row-line span:last-child {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .section-title {
+        margin-top: 10px;
+        font-weight: bold;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 12px;
+        margin-top: 6px;
+        font-size: 10.5px;
       }
 
-      th {
-        border-bottom: 2px solid #000;
-        font-weight: bold;
-      }
-
-      td, th {
-        padding: 4px 6px;
+      th, td {
+        padding: 3px;
         border-bottom: 1px solid #ddd;
       }
 
-      td:last-child, th:last-child {
+      th {
+        text-align: left;
+      }
+
+      td:last-child {
         text-align: right;
       }
 
-      .final-row td {
-        border-top: 1px solid #000;
-        font-weight: bold;
+      .footer {
+        margin-top: 12px;
+        font-size: 10px;
+        color: #555;
       }
     </style>
 
-    <!-- ===================================================== -->
-    <!-- 🧾 HEADER -->
-    <!-- ===================================================== -->
-    <div class="header-grid">
-      <div>
-        <div><strong>Report:</strong> Finance Summary</div>
-        <div><strong>Date:</strong> ${formatDate(new Date())}</div>
-      </div>
-      <div class="right">
-        <div><strong>Status:</strong> Generated</div>
-        <div><strong>Currency:</strong> LRD</div>
-      </div>
-    </div>
+    <!-- HEADER -->
+    <div class="title">Finance Report</div>
 
+    <!-- ================= CARDS ================= -->
+    <div class="grid">
 
-    <!-- ===================================================== -->
-    <!-- 📊 SUMMARY SECTION (2-COLUMN) -->
-    <!-- ===================================================== -->
-    <div class="grid-2">
-
-      <!-- 🔹 LEFT: REVENUE -->
-      <div class="section">
+      <!-- REVENUE -->
+      <div class="card">
         <h4>Revenue</h4>
-        <table>
-          <tr><td>Gross</td><td>${money(data.subtotal)}</td></tr>
-          <tr><td>Discount</td><td>${money(data.discounts)}</td></tr>
-          <tr><td>Waivers</td><td>${money(data.waivers)}</td></tr>
-          <tr class="final-row">
-            <td>Net Revenue</td>
-            <td>${money(data.gross_total)}</td>
-          </tr>
-        </table>
+        ${labeledLines(summary, [
+          { key: "subtotal", label: "Gross" },
+          { key: "discounts", label: "Discount" },
+          { key: "waivers", label: "Waivers" },
+          { key: "gross_total", label: "Net" },
+        ])}
       </div>
 
-      <!-- 🔹 RIGHT: CASH + DEPOSITS + OUTSTANDING -->
-      <div class="section">
-
-        <!-- 💰 CASH FLOW -->
+      <!-- CASH FLOW -->
+      <div class="card">
         <h4>Cash Flow</h4>
-        <table>
-          <tr><td>Collected</td><td>${money(data.paid)}</td></tr>
-          <tr><td>Refunded</td><td>${money(data.payment_refunded)}</td></tr>
-          <tr class="final-row">
-            <td>Net Cash</td>
-            <td>${money(data.net_cash)}</td>
-          </tr>
-        </table>
-
-        <!-- 🏦 DEPOSITS -->
-        <h4 style="margin-top:12px;">Deposits</h4>
-        <table>
-          <tr><td>Collected</td><td>${money(data.deposit_collected)}</td></tr>
-          <tr><td>Used</td><td>${money(data.applied_deposits)}</td></tr>
-          <tr><td>Refunded</td><td>${money(data.deposit_refunded)}</td></tr>
-          <tr class="final-row">
-            <td>Balance</td>
-            <td>${money(data.deposit_balance)}</td>
-          </tr>
-        </table>
-
-        <!-- ⚠️ OUTSTANDING -->
-        <h4 style="margin-top:12px;">Outstanding</h4>
-        <table>
-          <tr class="final-row">
-            <td>Total Outstanding</td>
-            <td>${money(data.outstanding)}</td>
-          </tr>
-        </table>
-
+        ${labeledLines(summary, [
+          { key: "paid", label: "Collected" },
+          { key: "payment_refunded", label: "Refunded" },
+          { key: "net_cash", label: "Net Cash" },
+        ])}
       </div>
+
+      <!-- DEPOSITS -->
+      <div class="card">
+        <h4>Deposits</h4>
+        ${labeledLines(deposits.collected, [{ key: "collected", label: "Collected" }])}
+        ${labeledLines(deposits.applied, [{ key: "applied", label: "Used" }])}
+        ${labeledLines(deposits.deposit_refunded, [{ key: "refunded", label: "Refunded" }])}
+        ${labeledLines(deposits.remaining, [{ key: "remaining", label: "Balance" }])}
+      </div>
+
+      <!-- EXPENSES -->
+      <div class="card">
+        <h4>Expenses</h4>
+        ${labeledLines(expenses, [{ key: "total", label: "Total" }])}
+      </div>
+
+      <!-- OUTSTANDING -->
+      <div class="card">
+        <h4>Outstanding</h4>
+        ${labeledLines(summary, [{ key: "outstanding", label: "Total" }])}
+      </div>
+
+      <!-- PROFIT -->
+      <div class="card">
+        <h4>Profit</h4>
+        ${profitLines}
+      </div>
+
     </div>
 
-    <!-- ===================================================== -->
-    <!-- 📊 REVENUE BY SERVICE TABLE -->
-    <!-- ===================================================== -->
-    <h4>Revenue by Service</h4>
+    <!-- ================= SERVICES ================= -->
+    <div class="section-title">Revenue by Service</div>
     <table>
-      <thead>
+      <tr>
+        <th>Service</th>
+        <th>Items</th>
+        <th>Gross</th>
+        <th>Net</th>
+      </tr>
+      ${services.map(r => `
         <tr>
-          <th>Service</th>
-          <th>Items</th>
-          <th>Gross</th>
-          <th>Discount</th>
-          <th>Net</th>
+          <td>${formatLabel(r.module)}</td>
+          <td>${r.items}</td>
+          <td>L$${Number(r.gross).toLocaleString()}</td>
+          <td>L$${Number(r.revenue).toLocaleString()}</td>
         </tr>
-      </thead>
-      <tbody>
-        ${services.map(r => `
-          <tr>
-            <td>${formatLabel(r.module)}</td>
-            <td>${r.items}</td>
-            <td>${money(r.gross)}</td>
-            <td>${money(r.discount)}</td>
-            <td>${money(r.revenue)}</td>
-          </tr>
-        `).join("")}
-        <tr class="final-row">
-          <td>TOTAL</td>
-          <td>${totalItems}</td>
-          <td>${money(totalGross)}</td>
-          <td>${money(totalDiscount)}</td>
-          <td>${money(totalNet)}</td>
-        </tr>
-      </tbody>
+      `).join("")}
     </table>
 
-    <!-- ===================================================== -->
-    <!-- 💳 PAYMENTS TABLE -->
-    <!-- ===================================================== -->
-    <h4>Payments by Method</h4>
+    <!-- ================= PAYMENTS ================= -->
+    <div class="section-title">Payments</div>
     <table>
-      <thead>
+      <tr>
+        <th>Method</th>
+        <th>Currency</th>
+        <th>Amount</th>
+      </tr>
+      ${payments.map(r => `
         <tr>
-          <th>Method</th>
-          <th>Amount</th>
-          <th>%</th>
+          <td>${formatLabel(r.method)}</td>
+          <td>${r.currency}</td>
+          <td>${money(r.amount, r.currency)}</td>
         </tr>
-      </thead>
-      <tbody>
-        ${payments.map(r => `
-          <tr>
-            <td>${formatLabel(r.method)}</td>
-            <td>${money(r.amount)}</td>
-            <td>${totalPayments ? ((r.amount / totalPayments) * 100).toFixed(1) : 0}%</td>
-          </tr>
-        `).join("")}
-        <tr class="final-row">
-          <td>TOTAL</td>
-          <td>${money(totalPayments)}</td>
-          <td>100%</td>
-        </tr>
-      </tbody>
+      `).join("")}
     </table>
 
-    <!-- ===================================================== -->
-    <!-- 🧾 AUDIT FOOTER -->
-    <!-- ===================================================== -->
-    <div class="muted" style="margin-top:14px;">
-      Printed by: ${getPrintedBy()} <br/>
+    <!-- FOOTER -->
+    <div class="footer">
+      Printed by: ${getPrintedBy()}<br/>
       Printed at: ${printedAt}
     </div>
   `;
 }
-
 /* ============================================================
    🖨️ PRINT ENTRY POINT
 ============================================================ */

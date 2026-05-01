@@ -986,7 +986,13 @@ export const financialService = {
       let appliedAmt = 0;
       let remaining = parseFloat(amount) || 0;
 
-      let resolvedCurrency = currency || account.currency;
+      // 🔥 FORCE ACCOUNT CURRENCY (MASTER SAFE)
+      let resolvedCurrency = account.currency;
+
+      // 🔒 BLOCK BAD INPUT
+      if (currency && currency !== account.currency) {
+        throw new Error("❌ Deposit currency must match account currency");
+      }
       if (!resolvedCurrency) {
         throw new Error("❌ Unable to resolve deposit currency");
       }

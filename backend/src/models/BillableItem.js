@@ -133,25 +133,41 @@ export default (sequelize) => {
     }
   );
 
-  /* ============================================================
-     🔥 BEFORE CREATE — SYNC FROM MASTER ITEM
-  ============================================================ */
-  BillableItem.beforeCreate(async (item, options) => {
-    try {
-      const { MasterItem } = await import("../models/index.js");
+/* ============================================================
+   🔥 SYNC ITEM TYPE FROM MASTER (SAFE + ENUM-CORRECT)
+============================================================ */
+const syncItemTypeFromMaster = async (item, options) => {
+  try {
+    // 🔥 If already set (from import or controller), DO NOT override
+    if (item.item_type) return;
 
-      const master = await MasterItem.findByPk(item.master_item_id, {
-        attributes: ["item_type"],
-        transaction: options?.transaction,
-      });
+    const { MasterItem } = await import("../models/index.js");
 
-      if (master) {
-        item.item_type = master.item_type;
-      }
-    } catch (err) {
-      console.error("⚠️ beforeCreate sync error:", err.message);
+    const master = await MasterItem.findByPk(item.master_item_id, {
+      attributes: ["item_type"], // ✅ already valid enum
+      transaction: options?.transaction,
+    });
+
+    if (master?.item_type) {
+      item.item_type = master.item_type; // ✅ safe assignment
     }
-  });
+  } catch (err) {
+    console.error("⚠️ sync item_type error:", err.message);
+  }
+};
+
+/* ================= BEFORE CREATE ================= */
+BillableItem.beforeCreate(async (item, options) => {
+  await syncItemTypeFromMaster(item, options);
+});
+
+/* ================= BEFORE UPDATE ================= */
+BillableItem.beforeUpdate(async (item, options) => {
+  // 🔥 Only re-sync if master/category changed
+  if (!item.changed("master_item_id") && !item.changed("category_id")) return;
+
+  await syncItemTypeFromMaster(item, options);
+});
 
   /* ============================================================
      🔥 AFTER CREATE — AUTO BILLING RULE
