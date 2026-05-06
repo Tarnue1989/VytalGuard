@@ -171,13 +171,32 @@ export async function setupDepositFormSubmission({ form }) {
       },
       "label"
     );
-    setupSelectOptions(
-      accountSelect,
-      await loadAccountsLite({}, true),
-      "id",
-      "name",
-      "-- Select Account --"
-    );
+    /* ================= ACCOUNTS ================= */
+    const reloadAccountsByCurrency = async (currency = null) => {
+      setupSelectOptions(
+        accountSelect,
+        await loadAccountsLite(
+          currency ? { currency } : {},
+          true
+        ),
+        "id",
+        "label",
+        "-- Select Account --"
+      );
+
+      // 🔥 Auto-select first valid account
+      if (accountSelect.options.length > 1) {
+        accountSelect.selectedIndex = 1;
+      }
+    };
+
+    // ✅ Initial load
+    await reloadAccountsByCurrency(currencySelect?.value || null);
+
+    // 🔥 Currency → Account auto filter
+    currencySelect?.addEventListener("change", async () => {
+      await reloadAccountsByCurrency(currencySelect.value || null);
+    });
   } catch (err) {
     console.error(err);
     showToast("❌ Failed to load reference data");
@@ -218,6 +237,8 @@ export async function setupDepositFormSubmission({ form }) {
       transactionRefInput.value = entry.transaction_ref || "";
       notesInput.value = entry.notes || "";
       reasonInput.value = entry.reason || "";
+      await reloadAccountsByCurrency(entry.currency || null);
+
       if (accountSelect && entry.account_id) {
         accountSelect.value = entry.account_id;
       }

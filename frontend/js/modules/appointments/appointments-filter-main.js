@@ -295,25 +295,6 @@ qs("resetFilterBtn").onclick = () => {
 };
 
 /* ============================================================
-   ⬇️ EXPORT (MASTER)
-============================================================ */
-qs("exportCSVBtn")?.addEventListener("click", () => {
-  if (!entries.length) return showToast("❌ No data");
-  exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_APPOINTMENT),
-    `appointments_${new Date().toISOString().slice(0, 10)}.csv`
-  );
-});
-
-qs("exportPDFBtn")?.addEventListener("click", () => {
-  exportToPDF(
-    "Appointments List",
-    viewMode === "table" ? ".table-container" : "#appointmentList",
-    "landscape"
-  );
-});
-
-/* ============================================================
    🚀 INIT (MASTER)
 ============================================================ */
 export async function initAppointmentModule() {

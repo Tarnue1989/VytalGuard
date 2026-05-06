@@ -409,9 +409,8 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   setupExportHandlers(entries, visibleFields);
 }
 /* ============================================================
-   📤 EXPORT HANDLERS (DEPOSIT 1:1)
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
 ============================================================ */
-
 function setupExportHandlers(entries, visibleFields) {
   const title = "Discounts Report";
 
@@ -429,6 +428,9 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
   function getFiltersFromDOM() {
     const val = (id) => document.getElementById(id)?.value;
 
@@ -445,11 +447,17 @@ function setupExportHandlers(entries, visibleFields) {
     };
   }
 
-  const mapRow = (e, fields) => {
+  /* =========================================================
+     🔥 SHARED ROW MAPPER
+  ========================================================= */
+  const mapDiscountRow = (e, fields) => {
     const row = {};
 
     fields.forEach((f) => {
       switch (f) {
+
+        /* ================= RELATIONS ================= */
+
         case "organization":
         case "organization_id":
           row[f] = e.organization?.name || "";
@@ -465,21 +473,22 @@ function setupExportHandlers(entries, visibleFields) {
           row[f] = e.invoice?.invoice_number || "";
           break;
 
-        case "createdBy":
-          row[f] = e.createdBy
-            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+        case "invoiceItem":
+        case "invoice_item_id":
+          row[f] = e.invoiceItem
+            ? `${e.invoiceItem.description || ""}`
             : "";
           break;
 
-        case "updatedBy":
-          row[f] = e.updatedBy
-            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
-            : "";
-          break;
+        /* ================= STATUS ================= */
 
         case "status":
-          row[f] = (e.status || "").toUpperCase();
+          row[f] = (e.status || "")
+            .replace(/_/g, " ")
+            .toUpperCase();
           break;
+
+        /* ================= MONEY ================= */
 
         case "value":
           row[f] =
@@ -489,13 +498,54 @@ function setupExportHandlers(entries, visibleFields) {
           break;
 
         case "applied_amount":
-          row[f] = `${getCurrencySymbol(e.currency)} ${Number(e.applied_amount || 0).toFixed(2)}`;
+          row[f] =
+            e.applied_amount != null
+              ? `${getCurrencySymbol(e.currency)} ${Number(e.applied_amount).toFixed(2)}`
+              : "";
           break;
+
+        /* ================= AUDIT USERS ================= */
+
+        case "createdBy":
+          row[f] = renderUserName(e.createdBy);
+          break;
+
+        case "updatedBy":
+          row[f] = renderUserName(e.updatedBy);
+          break;
+
+        case "deletedBy":
+          row[f] = renderUserName(e.deletedBy);
+          break;
+
+        case "finalizedBy":
+          row[f] = renderUserName(e.finalizedBy);
+          break;
+
+        case "voidedBy":
+          row[f] = renderUserName(e.voidedBy);
+          break;
+
+        /* ================= DATES ================= */
 
         case "created_at":
         case "updated_at":
-          row[f] = e[f] ? new Date(e[f]).toLocaleDateString() : "";
+        case "deleted_at":
+        case "finalized_at":
+        case "voided_at":
+          row[f] = e[f]
+            ? new Date(e[f]).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
           break;
+
+        /* ================= DEFAULT ================= */
 
         default:
           row[f] =
@@ -508,35 +558,57 @@ function setupExportHandlers(entries, visibleFields) {
     return row;
   };
 
-  // CSV
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
+
       data: entries,
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_DISCOUNT,
-      mapRow,
+
+      mapRow: (e, fields) =>
+        mapDiscountRow(e, fields),
     });
   });
 
-  // EXCEL
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/discounts",
+
       title,
+
       filters: getFiltersFromDOM(),
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_DISCOUNT,
-      mapRow,
+
+      mapRow: (e, fields) =>
+        mapDiscountRow(e, fields),
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
     });
   });
 
-  // PDF
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
 
       const params = new URLSearchParams();
+
       params.set("limit", 10000);
       params.set("page", 1);
 
@@ -545,6 +617,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -552,8 +625,12 @@ function setupExportHandlers(entries, visibleFields) {
         }
       });
 
-      const res = await authFetch(`/api/discounts?${params.toString()}`);
+      const res = await authFetch(
+        `/api/discounts?${params.toString()}`
+      );
+
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
@@ -564,24 +641,52 @@ function setupExportHandlers(entries, visibleFields) {
 
       printReport({
         title,
+
         columns: cleanFields.map((f) => ({
           key: f,
           label: FIELD_LABELS_DISCOUNT[f] || f,
         })),
-        rows: allEntries.map((e) => mapRow(e, cleanFields)),
+
+        rows: allEntries.map((e) =>
+          mapDiscountRow(e, cleanFields)
+        ),
+
         meta: {
-          Organization: allEntries[0]?.organization?.name || "",
-          Facility: allEntries[0]?.facility?.name || "",
+          Organization:
+            allEntries[0]?.organization?.name || "",
+
+          Facility:
+            allEntries[0]?.facility?.name || "",
+
           Records: allEntries.length,
         },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
         context: {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
+
     } catch (err) {
       console.error(err);
       alert("❌ Failed to export full report");

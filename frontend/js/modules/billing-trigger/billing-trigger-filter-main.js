@@ -21,8 +21,7 @@ import {
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
-import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
-import { mapDataForExport } from "../../utils/export-mapper.js";
+
 
 import {
   renderList,
@@ -237,22 +236,6 @@ qs("resetFilterBtn").onclick = () => {
   loadEntries(1);
 };
 
-/* ============================================================ */
-qs("exportCSVBtn")?.addEventListener("click", () => {
-  if (!entries.length) return showToast("❌ No data");
-  exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_BILLING_TRIGGER),
-    `billing_triggers_${new Date().toISOString().slice(0, 10)}.csv`
-  );
-});
-
-qs("exportPDFBtn")?.addEventListener("click", () => {
-  exportToPDF(
-    "Billing Triggers",
-    viewMode === "table" ? ".table-container" : "#billingTriggerList",
-    "portrait"
-  );
-});
 
 /* ============================================================ */
 export async function initBillingTriggerModule() {

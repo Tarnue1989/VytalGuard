@@ -378,6 +378,9 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 /* ============================================================
    📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
 ============================================================ */
+/* ============================================================
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
+============================================================ */
 function setupExportHandlers(entries, visibleFields) {
   const title = "Insurance Providers Report";
 
@@ -395,6 +398,9 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
   function getFiltersFromDOM() {
     const val = (id) => document.getElementById(id)?.value;
 
@@ -407,94 +413,145 @@ function setupExportHandlers(entries, visibleFields) {
     };
   }
 
-  /* ================= CSV ================= */
+  /* =========================================================
+     🔥 SHARED ROW MAPPER
+  ========================================================= */
+  const mapInsuranceProviderRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        /* ================= RELATIONS ================= */
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        /* ================= STATUS ================= */
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        /* ================= AUDIT USERS ================= */
+
+        case "createdBy":
+        case "created_by":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+        case "updated_by":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+        case "deleted_by":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        /* ================= AUDIT DATES ================= */
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        /* ================= DEFAULT ================= */
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
+
       data: entries,
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_INSURANCE_PROVIDER,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapInsuranceProviderRow(e, fields),
     });
   });
 
-  /* ================= EXCEL ================= */
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/insurance-providers",
+
       title,
+
       filters: getFiltersFromDOM(),
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_INSURANCE_PROVIDER,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapInsuranceProviderRow(e, fields),
 
       computeTotals: (records) => ({
         "Total Records": records.length,
@@ -502,12 +559,15 @@ function setupExportHandlers(entries, visibleFields) {
     });
   });
 
-  /* ================= PDF ================= */
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
 
       const params = new URLSearchParams();
+
       params.set("limit", 10000);
       params.set("page", 1);
 
@@ -516,6 +576,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -526,7 +587,9 @@ function setupExportHandlers(entries, visibleFields) {
       const res = await authFetch(
         `/api/insurance-providers?${params.toString()}`
       );
+
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
@@ -543,42 +606,13 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_INSURANCE_PROVIDER[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "organization":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "status":
-                row[f] = (e.status || "").toUpperCase();
-                break;
-
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) =>
+          mapInsuranceProviderRow(e, cleanFields)
+        ),
 
         meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
           Records: allEntries.length,
         },
 
@@ -594,8 +628,17 @@ function setupExportHandlers(entries, visibleFields) {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
 

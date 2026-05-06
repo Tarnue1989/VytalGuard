@@ -29,7 +29,6 @@ import {
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
-import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
 import {
   renderList,
@@ -47,7 +46,6 @@ import {
 import { setupVisibleFields } from "../../utils/field-visibility.js";
 import { initPaginationControl } from "../../utils/pagination-control.js";
 import { setupAutoSearch, setupAutoFilters } from "../../utils/search-utils.js";
-import { mapDataForExport } from "../../utils/export-mapper.js";
 import { syncViewToggleUI } from "../../utils/view-toggle.js";
 import { renderModuleSummary } from "../../utils/render-module-summary.js";
 
@@ -287,25 +285,6 @@ qs("resetFilterBtn").onclick = () => {
   if (filterInvoiceHidden) filterInvoiceHidden.value = "";
   loadEntries(1);
 };
-
-/* ============================================================
-   ⬇️ EXPORT (MASTER)
-============================================================ */
-qs("exportCSVBtn")?.addEventListener("click", () => {
-  if (!entries.length) return showToast("❌ No data");
-  exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_DISCOUNT),
-    `discounts_${new Date().toISOString().slice(0, 10)}.csv`
-  );
-});
-
-qs("exportPDFBtn")?.addEventListener("click", () => {
-  exportToPDF(
-    "Discounts List",
-    viewMode === "table" ? ".table-container" : "#discountList",
-    "portrait"
-  );
-});
 
 /* ============================================================
    🚀 INIT

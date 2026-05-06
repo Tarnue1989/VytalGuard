@@ -21,7 +21,6 @@ import {
 } from "../../utils/data-loaders.js";
 
 import { renderFieldSelector } from "../../utils/ui-utils.js";
-import { exportToExcel, exportToPDF } from "../../utils/export-utils.js";
 
 import {
   renderList,
@@ -285,25 +284,6 @@ qs("resetFilterBtn").onclick = () => {
 
   loadEntries(1);
 };
-
-/* ============================================================
-   ⬇️ EXPORT
-============================================================ */
-qs("exportCSVBtn")?.addEventListener("click", () => {
-  if (!entries.length) return showToast("❌ No data");
-  exportToExcel(
-    mapDataForExport(entries, visibleFields, FIELD_LABELS_INSURANCE_CLAIM),
-    `insurance_claims_${new Date().toISOString().slice(0, 10)}.csv`
-  );
-});
-
-qs("exportPDFBtn")?.addEventListener("click", () => {
-  exportToPDF(
-    "Insurance Claims List",
-    viewMode === "table" ? ".table-container" : "#insuranceClaimList",
-    "portrait"
-  );
-});
 
 /* ============================================================
    🚀 INIT (FIXED)

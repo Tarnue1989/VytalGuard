@@ -23,6 +23,12 @@ import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS (MASTER PARITY)
 ============================================================ */
@@ -357,27 +363,303 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 }
 
 /* ============================================================
-   📤 EXPORT (MASTER)
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
 ============================================================ */
-let exportHandlersBound = false;
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+function setupExportHandlers(entries, visibleFields) {
   const title = "Appointments Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () =>
-    exportData({ type: "csv", data: entries, title })
-  );
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () =>
-    exportData({ type: "xlsx", data: entries, title })
-  );
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () =>
-    exportData({
-      type: "pdf",
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatus"),
+      department_id: val("filterDepartment"),
+      patient_id: document.getElementById("filterPatientId")?.value,
+      doctor_id: document.getElementById("filterDoctorId")?.value,
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* =========================================================
+     🔥 SHARED ROW MAPPER
+  ========================================================= */
+  const mapAppointmentRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        /* ================= RELATIONS ================= */
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] = renderPatient(e);
+          break;
+
+        case "doctor":
+        case "doctor_id":
+          row[f] = renderUserName(e.doctor);
+          break;
+
+        case "department":
+        case "department_id":
+          row[f] = e.department?.name || "";
+          break;
+
+        case "invoice":
+        case "invoice_id":
+          row[f] = e.invoice?.invoice_number || "";
+          break;
+
+        /* ================= STATUS ================= */
+
+        case "status":
+          row[f] = (e.status || "")
+            .replace(/_/g, " ")
+            .toUpperCase();
+          break;
+
+        /* ================= DATES ================= */
+
+        case "date_time":
+          row[f] = e.date_time
+            ? new Date(e.date_time).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        /* ================= AUDIT USERS ================= */
+
+        case "createdBy":
+          row[f] = renderUserName(e.createdBy);
+          break;
+
+        case "updatedBy":
+          row[f] = renderUserName(e.updatedBy);
+          break;
+
+        case "deletedBy":
+          row[f] = renderUserName(e.deletedBy);
+          break;
+
+        /* ================= AUDIT DATES ================= */
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        /* ================= DEFAULT ================= */
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
       title,
-      selector: ".table-container.active, #appointmentList.active",
-      orientation: "landscape",
-    })
-  );
+
+      data: entries,
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_APPOINTMENT,
+
+      mapRow: (e, fields) =>
+        mapAppointmentRow(e, fields),
+    });
+  });
+
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/appointments",
+
+      title,
+
+      filters: getFiltersFromDOM(),
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_APPOINTMENT,
+
+      mapRow: (e, fields) =>
+        mapAppointmentRow(e, fields),
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/appointments?${params.toString()}`
+      );
+
+      const json = await res.json();
+
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_APPOINTMENT[f] || f,
+        })),
+
+        rows: allEntries.map((e) =>
+          mapAppointmentRow(e, cleanFields)
+        ),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+
+          printedBy: "System",
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

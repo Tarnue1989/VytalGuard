@@ -1,6 +1,8 @@
 /* =============================================
-   Payroll Form Rules (MASTER PARITY – Controller Aligned)
-   ✅ Added payment config (REQUIRED by backend)
+   Payroll Form Rules (MASTER PARITY – FINAL)
+   ✅ Controller aligned
+   ✅ Currency-aware accounts
+   ✅ Superadmin-only tenant fields
 ============================================= */
 
 export const PAYROLL_FORM_RULES = [
@@ -31,7 +33,7 @@ export const PAYROLL_FORM_RULES = [
     message: "Currency is required",
   },
 
-  /* ================= PAYMENT CONFIG (REQUIRED) ================= */
+  /* ================= PAYMENT CONFIG ================= */
   {
     id: "accountSelect",
     message: "Account is required",
@@ -42,10 +44,13 @@ export const PAYROLL_FORM_RULES = [
     message: "Payment method is required",
   },
 
+  /* ==================================================
+     Optional because backend defaults to "salary"
+  ================================================== */
   {
     id: "categorySelect",
     message: "Category is required",
-    optional: true, // backend defaults to "salary"
+    optional: true,
   },
 
   /* ================= Optional ================= */
@@ -68,12 +73,12 @@ export const PAYROLL_FORM_RULES = [
       const isEdit =
         !!sessionStorage.getItem("payrollEditId") ||
         !!new URLSearchParams(window.location.search).get("id");
+
       return isEdit;
     },
   },
 
-  /* ================= Scope ================= */
-
+  /* ================= SUPERADMIN ONLY ================= */
   {
     id: "organizationSelect",
     message: "Organization is required",
@@ -83,13 +88,8 @@ export const PAYROLL_FORM_RULES = [
         .includes("super"),
   },
 
-  {
-    id: "facilitySelect",
-    message: "Facility is required",
-    when: () => {
-      const role = (localStorage.getItem("userRole") || "").toLowerCase();
-      if (role.includes("super")) return false;
-      return true;
-    },
-  },
+  /* ==================================================
+     Facility OPTIONAL even for superadmin
+     Backend allows null facility_id
+  ================================================== */
 ];

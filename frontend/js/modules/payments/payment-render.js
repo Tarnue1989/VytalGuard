@@ -516,48 +516,174 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
-  /* CSV */
+  /* =========================================================
+     🔥 SHARED MAPPER
+  ========================================================= */
+  const mapPaymentRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        case "payment_number":
+          row[f] = e.payment_number || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] =
+            `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
+          break;
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "invoice":
+        case "invoice_id":
+          row[f] = e.invoice?.invoice_number || "";
+          break;
+
+        case "account":
+        case "account_id":
+          row[f] = e.account?.name || "";
+          break;
+
+        case "currency":
+          row[f] = e.currency || "";
+          break;
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "method":
+          row[f] = e.method || "";
+          break;
+
+        case "transaction_ref":
+          row[f] = e.transaction_ref || "";
+          break;
+
+        case "reason":
+          row[f] = e.reason || "";
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "amount":
+          row[f] =
+            `${getCurrencySymbol(e.currency)} ${Number(e.amount || 0).toFixed(2)}`;
+          break;
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     🔥 GROUP TOTALS BY CURRENCY
+  ========================================================= */
+  const groupTotalsByCurrency = (records, field = "amount") => {
+    const totals = {};
+
+    records.forEach((r) => {
+      const currency = r.currency || "USD";
+
+      if (!totals[currency]) {
+        totals[currency] = 0;
+      }
+
+      totals[currency] += Number(r[field] || 0);
+    });
+
+    return totals;
+  };
+
+  /* =========================================================
+     ✅ CSV
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
       data: entries,
       visibleFields,
       fieldLabels: FIELD_LABELS_PAYMENT,
-      mapRow: (e, fields) => {
-        const row = {};
-        fields.forEach((f) => {
-          switch (f) {
-            case "patient":
-              row[f] = `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
-              break;
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-            case "account":
-              row[f] = e.account?.name || "";
-              break;
-            case "invoice":
-              row[f] = e.invoice?.invoice_number || "";
-              break;
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-            case "amount":
-              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e.amount || 0).toFixed(2)}`;
-              break;
-            default:
-              row[f] = typeof e[f] === "object" ? "" : String(e[f] ?? "");
-          }
-        });
-        return row;
-      },
+
+      mapRow: (e, fields) => mapPaymentRow(e, fields),
     });
   });
 
-  /* EXCEL */
+  /* =========================================================
+     ✅ EXCEL
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/payments",
@@ -565,93 +691,102 @@ function setupExportHandlers(entries, visibleFields) {
       filters: getFiltersFromDOM(),
       visibleFields,
       fieldLabels: FIELD_LABELS_PAYMENT,
-      mapRow: (e, fields) => {
-        const row = {};
-        fields.forEach((f) => {
-          switch (f) {
-            case "patient":
-              row[f] = `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
-              break;
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-            case "account":
-              row[f] = e.account?.name || "";
-              break;
-            case "invoice":
-              row[f] = e.invoice?.invoice_number || "";
-              break;
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-            case "amount":
-              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e.amount || 0).toFixed(2)}`;
-              break;
-            default:
-              row[f] = typeof e[f] === "object" ? "" : String(e[f] ?? "");
-          }
+
+      mapRow: (e, fields) => mapPaymentRow(e, fields),
+
+      computeTotals: (records) => {
+        const grouped = groupTotalsByCurrency(records);
+
+        const result = {};
+
+        Object.entries(grouped).forEach(([currency, total]) => {
+          result[`Total Amount (${currency})`] = total;
         });
-        return row;
+
+        return result;
       },
-      computeTotals: (records) => ({
-        "Total Amount": records.reduce((s, e) => s + Number(e.amount || 0), 0),
-      }),
     });
   });
 
-  /* PDF */
+  /* =========================================================
+     ✅ PDF
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
+
       const params = new URLSearchParams();
       params.set("limit", 10000);
       params.set("page", 1);
 
       Object.entries(filters).forEach(([k, v]) => {
-        if (!v) return;
+        if (!v || String(v).trim() === "" || v === "null") return;
+
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
-          if (from) params.set("date_from", from);
-          if (to) params.set("date_to", to);
+
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
         } else {
           params.set(k, v);
         }
       });
 
-      const res = await authFetch(`/api/payments?${params}`);
+      const res = await authFetch(`/api/payments?${params.toString()}`);
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
-      const currency = allEntries[0]?.currency || "USD";
+      const groupedTotals = groupTotalsByCurrency(allEntries);
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
 
       printReport({
         title,
-        columns: visibleFields.map((f) => ({
+
+        columns: cleanFields.map((f) => ({
           key: f,
           label: FIELD_LABELS_PAYMENT[f] || f,
         })),
-        rows: allEntries.map((e) => ({
-          payment: e.payment_number,
-          amount: `${getCurrencySymbol(e.currency)} ${Number(e.amount || 0).toFixed(2)}`,
-          status: (e.status || "").toUpperCase(),
-        })),
-        totals: [
-          {
-            label: "Total Amount",
-            value: `${getCurrencySymbol(currency)} ${allEntries
-              .reduce((s, e) => s + Number(e.amount || 0), 0)
-              .toFixed(2)}`,
-            final: true,
-          },
-        ],
+
+        rows: allEntries.map((e) =>
+          mapPaymentRow(e, cleanFields)
+        ),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        totals: Object.entries(groupedTotals).map(
+          ([currency, total], index, arr) => ({
+            label: `Total Amount (${currency})`,
+            value: `${getCurrencySymbol(currency)} ${total.toFixed(2)}`,
+            final: index === arr.length - 1,
+          })
+        ),
+
         context: {
-          filters: formatFilters(filters, { sample: allEntries[0] }),
-          printedAt: new Date().toLocaleString(),
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+          printedBy: "System",
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
+
     } catch (err) {
       console.error(err);
       alert("❌ Failed to export report");
