@@ -7,6 +7,12 @@ import { buildActionButtons } from "../../utils/status-action-matrix.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
 
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
+
 /* ============================================================
    🔃 SORTABLE FIELDS
 ============================================================ */
@@ -361,4 +367,366 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
 
     initTooltips(cardContainer);
   }
+    setupExportHandlers(entries, visibleFields);
+}
+
+/* ============================================================
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
+============================================================ */
+/* ============================================================
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
+  const title = "Patient Insurance Report";
+
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
+
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
+
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: val("globalSearch")?.trim(),
+      organization_id: val("filterOrganizationSelect"),
+      facility_id: val("filterFacilitySelect"),
+      status: val("filterStatus"),
+      patient_id: document.getElementById("filterPatientId")?.value,
+      provider_id: val("filterProvider"),
+      currency: val("filterCurrency"),
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* =========================================================
+     🔥 SHARED ROW MAPPER
+  ========================================================= */
+  const mapPatientInsuranceRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        /* ================= RELATIONS ================= */
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] = renderPatient(e);
+          break;
+
+        case "provider":
+        case "provider_id":
+          row[f] = renderProvider(e);
+          break;
+
+        /* ================= MONEY ================= */
+
+        case "coverage_limit":
+          row[f] =
+            `${getCurrencySymbol(e.currency || "USD")} ${Number(e.coverage_limit || 0).toFixed(2)}`;
+          break;
+
+        case "currency":
+          row[f] = e.currency || "";
+          break;
+
+        /* ================= STATUS ================= */
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "is_primary":
+          row[f] = e.is_primary ? "YES" : "NO";
+          break;
+
+        /* ================= VALIDITY ================= */
+
+        case "valid_from":
+          row[f] = e.valid_from
+            ? new Date(e.valid_from).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : "";
+          break;
+
+        case "valid_to":
+          row[f] = e.valid_to
+            ? new Date(e.valid_to).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : "";
+          break;
+
+        /* ================= AUDIT USERS ================= */
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        /* ================= AUDIT DATES ================= */
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        /* ================= DEFAULT ================= */
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     🔥 GROUP TOTALS BY CURRENCY
+  ========================================================= */
+  const groupTotalsByCurrency = (records, field) => {
+    const totals = {};
+
+    records.forEach((r) => {
+      const currency = r.currency || "USD";
+
+      if (!totals[currency]) {
+        totals[currency] = 0;
+      }
+
+      totals[currency] += Number(r[field] || 0);
+    });
+
+    return totals;
+  };
+
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+
+      data: entries,
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_PATIENT_INSURANCE,
+
+      mapRow: (e, fields) =>
+        mapPatientInsuranceRow(e, fields),
+    });
+  });
+
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/patient-insurances",
+
+      title,
+
+      filters: getFiltersFromDOM(),
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_PATIENT_INSURANCE,
+
+      mapRow: (e, fields) =>
+        mapPatientInsuranceRow(e, fields),
+
+      computeTotals: (records) => {
+        const grouped =
+          groupTotalsByCurrency(records, "coverage_limit");
+
+        const result = {
+          "Total Records": records.length,
+        };
+
+        Object.entries(grouped).forEach(([currency, total]) => {
+          result[`Coverage Limit (${currency})`] = total;
+        });
+
+        return result;
+      },
+    });
+  });
+
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (!v || String(v).trim() === "" || v === "null") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/patient-insurances?${params.toString()}`
+      );
+
+      const json = await res.json();
+
+      const allEntries = json?.data?.records || [];
+
+      const grouped =
+        groupTotalsByCurrency(allEntries, "coverage_limit");
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_PATIENT_INSURANCE[f] || f,
+        })),
+
+        rows: allEntries.map((e) =>
+          mapPatientInsuranceRow(e, cleanFields)
+        ),
+
+        meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+          },
+
+          ...Object.entries(grouped).map(
+            ([currency, total], index, arr) => ({
+              label: `Coverage Limit (${currency})`,
+              value: `${getCurrencySymbol(currency)} ${total.toFixed(2)}`,
+              final: index === arr.length - 1,
+            })
+          ),
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+
+          printedBy: "System",
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
+  });
 }

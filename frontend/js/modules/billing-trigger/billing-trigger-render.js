@@ -8,9 +8,14 @@ import {
 } from "../../utils/ui-utils.js";
 
 import { buildActionButtons } from "../../utils/status-action-matrix.js";
-import { exportData } from "../../utils/export-utils.js";
 import { enableColumnResize } from "../../utils/table-resize.js";
 import { enableColumnDrag } from "../../utils/table-column-drag.js";
+
+import { exportExcelReport } from "../../utils/exportExcelReport.js";
+import { exportCsvReport } from "../../utils/exportCsvReport.js";
+import { printReport } from "../../utils/printBuilder.js";
+import { authFetch } from "../../authSession.js";
+import { formatFilters } from "../../utils/filterFormatter.js";
 
 /* ============================================================ */
 const SORTABLE_FIELDS = new Set([
@@ -322,29 +327,257 @@ export function renderList({ entries, visibleFields, viewMode, user }) {
   setupExportHandlers(entries, visibleFields);
 }
 
-/* ============================================================ */
-let exportHandlersBound = false;
-
-function setupExportHandlers(entries) {
-  if (exportHandlersBound) return;
-  exportHandlersBound = true;
-
+/* ============================================================
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
+============================================================ */
+function setupExportHandlers(entries, visibleFields) {
   const title = "Billing Triggers Report";
 
-  document.getElementById("exportCSVBtn")?.addEventListener("click", () => {
-    exportData({ type: "csv", data: entries, title });
-  });
+  const pdfBtn = document.getElementById("exportPDFBtn");
+  const csvBtn = document.getElementById("exportCSVBtn");
+  const excelBtn = document.getElementById("exportExcelBtn");
 
-  document.getElementById("exportExcelBtn")?.addEventListener("click", () => {
-    exportData({ type: "xlsx", data: entries, title });
-  });
+  if (!pdfBtn || !csvBtn || !excelBtn) return;
 
-  document.getElementById("exportPDFBtn")?.addEventListener("click", () => {
-    exportData({
-      type: "pdf",
-      title,
-      selector: ".table-container.active, #billingTriggerList.active",
-      orientation: "landscape",
+  pdfBtn.replaceWith(pdfBtn.cloneNode(true));
+  csvBtn.replaceWith(csvBtn.cloneNode(true));
+  excelBtn.replaceWith(excelBtn.cloneNode(true));
+
+  const newPdfBtn = document.getElementById("exportPDFBtn");
+  const newCsvBtn = document.getElementById("exportCSVBtn");
+  const newExcelBtn = document.getElementById("exportExcelBtn");
+
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
+  function getFiltersFromDOM() {
+    const val = (id) => document.getElementById(id)?.value;
+
+    return {
+      search: document.getElementById("globalSearch")?.value?.trim(),
+
+      feature_module_id: val("filterModuleSelect"),
+
+      organization_id: val("filterOrganizationSelect"),
+
+      facility_id: val("filterFacilitySelect"),
+
+      is_active:
+        val("filterStatusSelect") === "active"
+          ? true
+          : val("filterStatusSelect") === "inactive"
+          ? false
+          : undefined,
+
+      dateRange: val("dateRange"),
+    };
+  }
+
+  /* =========================================================
+     🔥 ROW MAPPER
+  ========================================================= */
+  const mapBillingTriggerRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        case "featureModule":
+        case "feature_module_id":
+          row[f] =
+            e.featureModule?.name ||
+            e.module_key ||
+            "";
+          break;
+
+        case "module_key":
+          row[f] = e.module_key || "";
+          break;
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "is_active":
+          row[f] = e.is_active ? "ACTIVE" : "INACTIVE";
+          break;
+
+        case "createdBy":
+          row[f] = renderUserName(e.createdBy);
+          break;
+
+        case "updatedBy":
+          row[f] = renderUserName(e.updatedBy);
+          break;
+
+        case "deletedBy":
+          row[f] = renderUserName(e.deletedBy);
+          break;
+
+        case "created_at":
+        case "updated_at":
+        case "deleted_at":
+          row[f] = e[f]
+            ? new Date(e[f]).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
     });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
+  newCsvBtn.addEventListener("click", () => {
+    exportCsvReport({
+      title,
+
+      data: entries,
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_BILLING_TRIGGER,
+
+      mapRow: (e, fields) =>
+        mapBillingTriggerRow(e, fields),
+    });
+  });
+
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
+  newExcelBtn.addEventListener("click", () => {
+    exportExcelReport({
+      endpoint: "/api/billing-triggers",
+
+      title,
+
+      filters: getFiltersFromDOM(),
+
+      visibleFields,
+
+      fieldLabels: FIELD_LABELS_BILLING_TRIGGER,
+
+      mapRow: (e, fields) =>
+        mapBillingTriggerRow(e, fields),
+
+      computeTotals: (records) => ({
+        "Total Records": records.length,
+      }),
+    });
+  });
+
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
+  newPdfBtn.addEventListener("click", async () => {
+    try {
+      const filters = getFiltersFromDOM();
+
+      const params = new URLSearchParams();
+
+      params.set("limit", 10000);
+      params.set("page", 1);
+
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === "") return;
+
+        if (k === "dateRange") {
+          const [from, to] = v.split(" - ");
+
+          if (from) params.set("date_from", from.trim());
+          if (to) params.set("date_to", to.trim());
+        } else {
+          params.set(k, v);
+        }
+      });
+
+      const res = await authFetch(
+        `/api/billing-triggers?${params.toString()}`
+      );
+
+      const json = await res.json();
+
+      const allEntries = json?.data?.records || [];
+
+      const cleanFields = visibleFields.filter(
+        (f) =>
+          f !== "actions" &&
+          !["deletedBy", "deleted_at"].includes(f)
+      );
+
+      printReport({
+        title,
+
+        columns: cleanFields.map((f) => ({
+          key: f,
+          label: FIELD_LABELS_BILLING_TRIGGER[f] || f,
+        })),
+
+        rows: allEntries.map((e) =>
+          mapBillingTriggerRow(e, cleanFields)
+        ),
+
+        meta: {
+          Organization:
+            allEntries[0]?.organization?.name || "",
+
+          Facility:
+            allEntries[0]?.facility?.name || "",
+
+          Records: allEntries.length,
+        },
+
+        totals: [
+          {
+            label: "Total Records",
+            value: allEntries.length,
+            final: true,
+          },
+        ],
+
+        context: {
+          filters: formatFilters(filters, {
+            sample: allEntries[0],
+          }),
+
+          printedBy: "System",
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export report");
+    }
   });
 }

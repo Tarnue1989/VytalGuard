@@ -127,18 +127,37 @@ export async function setupPayrollFormSubmission({ form }) {
         reloadFacilities(orgSelect.value || null)
       );
     } else {
+      // 🔒 Org Admin / Facility / Staff
       orgSelect?.closest(".form-group")?.classList.add("hidden");
       facSelect?.closest(".form-group")?.classList.add("hidden");
     }
 
-    // ✅ Accounts (REQUIRED)
-    setupSelectOptions(
-      accountSelect,
-      await loadAccountsLite({}, true),
-      "id",
-      "name",
-      "-- Select Account --"
-    );
+    /* ================= ACCOUNTS ================= */
+    const reloadAccountsByCurrency = async (currency = null) => {
+      setupSelectOptions(
+        accountSelect,
+        await loadAccountsLite(
+          currency ? { currency } : {},
+          true
+        ),
+        "id",
+        "label",
+        "-- Select Account --"
+      );
+
+      // 🔥 Auto-select first valid account
+      if (accountSelect.options.length > 1) {
+        accountSelect.selectedIndex = 1;
+      }
+    };
+
+    // ✅ Initial load
+    await reloadAccountsByCurrency(currencySelect?.value || null);
+
+    // 🔥 Currency → Account auto filter
+    currencySelect?.addEventListener("change", async () => {
+      await reloadAccountsByCurrency(currencySelect.value || null);
+    });
 
     // 👤 Employee suggestion
     setupSuggestionInputDynamic(
@@ -189,6 +208,7 @@ export async function setupPayrollFormSubmission({ form }) {
       allowancesInput.value = entry.allowances ?? "";
       deductionsInput.value = entry.deductions ?? "";
 
+      await reloadAccountsByCurrency(entry.currency || null);
       accountSelect.value = entry.account_id || "";
       paymentMethodSelect.value = entry.payment_method || "";
       categorySelect.value = entry.category || "salary";

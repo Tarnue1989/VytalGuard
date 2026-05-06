@@ -541,9 +541,169 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
-  /* ============================================================
+  /* =========================================================
+     🔥 SHARED MAPPER
+  ========================================================= */
+  const mapDepositRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        case "deposit_number":
+          row[f] = e.deposit_number || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] =
+            `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim();
+          break;
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "account":
+        case "account_id":
+          row[f] = e.account?.name || "";
+          break;
+
+        case "appliedInvoice":
+        case "applied_invoice_id":
+          row[f] = e.appliedInvoice?.invoice_number || "";
+          break;
+
+        case "currency":
+          row[f] = e.currency || "";
+          break;
+
+        case "status":
+          row[f] = (e.status || "").toUpperCase();
+          break;
+
+        case "method":
+          row[f] = e.method || "";
+          break;
+
+        case "transaction_ref":
+          row[f] = e.transaction_ref || "";
+          break;
+
+        case "reason":
+          row[f] = e.reason || "";
+          break;
+
+        case "notes":
+          row[f] = e.notes || "";
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "amount":
+        case "applied_amount":
+        case "remaining_balance":
+        case "refund_amount":
+        case "balance":
+        case "unapplied_amount":
+          row[f] =
+            `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
+          break;
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     🔥 GROUP TOTALS BY CURRENCY
+  ========================================================= */
+  const groupTotalsByCurrency = (records, field) => {
+    const totals = {};
+
+    records.forEach((r) => {
+      const currency = r.currency || "USD";
+
+      if (!totals[currency]) {
+        totals[currency] = 0;
+      }
+
+      totals[currency] += Number(r[field] || 0);
+    });
+
+    return totals;
+  };
+
+  /* =========================================================
      ✅ CSV
-  ============================================================ */
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
@@ -551,75 +711,13 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_DEPOSIT,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "patient":
-            case "patient_id":
-              row[f] =
-                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
-              break;
-
-            case "organization":
-            case "organization_id":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-            case "facility_id":
-              row[f] = e.facility?.name || "";
-              break;
-            case "account":
-            case "account_id":
-              row[f] = e.account?.name || "";
-              break;
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-
-            case "createdBy":
-              row[f] = e.createdBy
-                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "updatedBy":
-              row[f] = e.updatedBy
-                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "amount":
-            case "applied_amount":
-            case "remaining_balance":
-              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) => mapDepositRow(e, fields),
     });
   });
 
-  /* ============================================================
+  /* =========================================================
      ✅ EXCEL
-  ============================================================ */
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/deposits",
@@ -628,81 +726,40 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_DEPOSIT,
 
-      mapRow: (e, fields) => {
-        const row = {};
+      mapRow: (e, fields) => mapDepositRow(e, fields),
 
-        fields.forEach((f) => {
-          switch (f) {
-            case "patient":
-            case "patient_id":
-              row[f] =
-                `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
-              break;
+      computeTotals: (records) => {
+        const result = {};
 
-            case "organization":
-            case "organization_id":
-              row[f] = e.organization?.name || "";
-              break;
+        const amountTotals =
+          groupTotalsByCurrency(records, "amount");
 
-            case "facility":
-            case "facility_id":
-              row[f] = e.facility?.name || "";
-              break;
-            case "account":
-            case "account_id":
-              row[f] = e.account?.name || "";
-              break;
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
+        const appliedTotals =
+          groupTotalsByCurrency(records, "applied_amount");
 
-            case "createdBy":
-              row[f] = e.createdBy
-                ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
-                : "";
-              break;
+        const balanceTotals =
+          groupTotalsByCurrency(records, "remaining_balance");
 
-            case "updatedBy":
-              row[f] = e.updatedBy
-                ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "amount":
-            case "applied_amount":
-            case "remaining_balance":
-              row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
+        Object.entries(amountTotals).forEach(([currency, total]) => {
+          result[`Total Amount (${currency})`] = total;
         });
 
-        return row;
-      },
+        Object.entries(appliedTotals).forEach(([currency, total]) => {
+          result[`Total Applied (${currency})`] = total;
+        });
 
-      computeTotals: (records) => ({
-        "Total Amount": records.reduce((s, e) => s + Number(e.amount || 0), 0),
-        "Total Applied": records.reduce((s, e) => s + Number(e.applied_amount || 0), 0),
-        "Remaining Balance": records.reduce((s, e) => s + Number(e.remaining_balance || 0), 0),
-      }),
+        Object.entries(balanceTotals).forEach(([currency, total]) => {
+          result[`Remaining Balance (${currency})`] = total;
+        });
+
+        return result;
+      },
     });
   });
 
-  /* ============================================================
+  /* =========================================================
      ✅ PDF
-  ============================================================ */
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
@@ -716,6 +773,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -725,15 +783,47 @@ function setupExportHandlers(entries, visibleFields) {
 
       const res = await authFetch(`/api/deposits?${params.toString()}`);
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
-      const currency = allEntries[0]?.currency || "USD";
+      const amountTotals =
+        groupTotalsByCurrency(allEntries, "amount");
+
+      const appliedTotals =
+        groupTotalsByCurrency(allEntries, "applied_amount");
+
+      const balanceTotals =
+        groupTotalsByCurrency(allEntries, "remaining_balance");
 
       const cleanFields = visibleFields.filter(
         (f) =>
           f !== "actions" &&
           !["deletedBy", "deleted_at"].includes(f)
       );
+
+      const totals = [];
+
+      Object.entries(amountTotals).forEach(([currency, total]) => {
+        totals.push({
+          label: `Total Amount (${currency})`,
+          value: `${getCurrencySymbol(currency)} ${total.toFixed(2)}`,
+        });
+      });
+
+      Object.entries(appliedTotals).forEach(([currency, total]) => {
+        totals.push({
+          label: `Total Applied (${currency})`,
+          value: `${getCurrencySymbol(currency)} ${total.toFixed(2)}`,
+        });
+      });
+
+      Object.entries(balanceTotals).forEach(([currency, total], index, arr) => {
+        totals.push({
+          label: `Remaining Balance (${currency})`,
+          value: `${getCurrencySymbol(currency)} ${total.toFixed(2)}`,
+          final: index === arr.length - 1,
+        });
+      });
 
       printReport({
         title,
@@ -743,64 +833,9 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_DEPOSIT[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "patient":
-              case "patient_id":
-                row[f] =
-                  `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "";
-                break;
-
-              case "organization":
-              case "organization_id":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-              case "facility_id":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "createdBy":
-              case "updatedBy":
-                row[f] = e[f]
-                  ? `${e[f].first_name || ""} ${e[f].last_name || ""}`.trim()
-                  : "";
-                break;
-              case "account":
-              case "account_id":
-                row[f] = e.account?.name || "";
-                break;
-              case "status":
-                row[f] = (e.status || "").toUpperCase();
-                break;
-
-              case "amount":
-              case "applied_amount":
-              case "remaining_balance":
-                row[f] = `${getCurrencySymbol(e.currency)} ${Number(e[f] || 0).toFixed(2)}`;
-                break;
-
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) =>
+          mapDepositRow(e, cleanFields)
+        ),
 
         meta: {
           Organization: allEntries[0]?.organization?.name || "",
@@ -808,34 +843,23 @@ function setupExportHandlers(entries, visibleFields) {
           Records: allEntries.length,
         },
 
-        totals: [
-          {
-            label: "Total Amount",
-            value: `${getCurrencySymbol(currency)} ${allEntries
-              .reduce((s, e) => s + Number(e.amount || 0), 0)
-              .toFixed(2)}`,
-          },
-          {
-            label: "Total Applied",
-            value: `${getCurrencySymbol(currency)} ${allEntries
-              .reduce((s, e) => s + Number(e.applied_amount || 0), 0)
-              .toFixed(2)}`,
-          },
-          {
-            label: "Remaining Balance",
-            value: `${getCurrencySymbol(currency)} ${allEntries
-              .reduce((s, e) => s + Number(e.remaining_balance || 0), 0)
-              .toFixed(2)}`,
-            final: true,
-          },
-        ],
+        totals,
 
         context: {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
 
@@ -845,4 +869,3 @@ function setupExportHandlers(entries, visibleFields) {
     }
   });
 }
-

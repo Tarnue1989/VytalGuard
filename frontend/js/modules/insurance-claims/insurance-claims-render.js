@@ -279,7 +279,7 @@ export function renderList({entries,visibleFields,viewMode,user}){
 }
 
 /* ============================================================
-   📤 EXPORT (MASTER – EXACT DEPOSIT PATTERN)
+   📤 EXPORT (MASTER – ENTERPRISE PARITY)
 ============================================================ */
 function setupExportHandlers(entries, visibleFields) {
   const title = "Insurance Claims Report";
@@ -298,6 +298,9 @@ function setupExportHandlers(entries, visibleFields) {
   const newCsvBtn = document.getElementById("exportCSVBtn");
   const newExcelBtn = document.getElementById("exportExcelBtn");
 
+  /* =========================================================
+     🔎 FILTERS
+  ========================================================= */
   function getFiltersFromDOM() {
     const val = (id) => document.getElementById(id)?.value;
 
@@ -314,138 +317,153 @@ function setupExportHandlers(entries, visibleFields) {
     };
   }
 
-  /* ================= CSV ================= */
+  /* =========================================================
+     🔥 SHARED ROW MAPPER
+  ========================================================= */
+  const mapInsuranceClaimRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        /* ================= RELATIONS ================= */
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] = e.patient
+            ? `${e.patient.pat_no || ""} - ${[
+                e.patient.first_name,
+                e.patient.middle_name,
+                e.patient.last_name,
+              ]
+                .filter(Boolean)
+                .join(" ")}`
+            : "";
+          break;
+
+        case "provider":
+        case "provider_id":
+          row[f] = e.provider?.name || "";
+          break;
+
+        case "invoice":
+        case "invoice_id":
+          row[f] = e.invoice?.invoice_number || "";
+          break;
+
+        /* ================= STATUS ================= */
+
+        case "status":
+          row[f] = (e.status || "")
+            .replace(/_/g, " ")
+            .toUpperCase();
+          break;
+
+        /* ================= MONEY ================= */
+
+        case "invoice_total":
+        case "insurance_amount":
+        case "patient_amount":
+        case "amount_claimed":
+        case "amount_approved":
+        case "amount_paid":
+          row[f] =
+            e[f] != null
+              ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
+              : "";
+          break;
+
+        /* ================= AUDIT USERS ================= */
+
+        case "createdBy":
+          row[f] = renderUserName(e.createdBy);
+          break;
+
+        case "updatedBy":
+          row[f] = renderUserName(e.updatedBy);
+          break;
+
+        case "deletedBy":
+          row[f] = renderUserName(e.deletedBy);
+          break;
+
+        /* ================= DATES ================= */
+
+        case "claim_date":
+        case "response_date":
+        case "created_at":
+        case "updated_at":
+        case "deleted_at":
+          row[f] = e[f]
+            ? new Date(e[f]).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        /* ================= DEFAULT ================= */
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV EXPORT
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
+
       data: entries,
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_INSURANCE_CLAIM,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-              row[f] = e.patient
-                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "provider":
-              row[f] = e.provider?.name || "";
-              break;
-
-            case "invoice":
-              row[f] = e.invoice?.invoice_number || "";
-              break;
-
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-
-            case "amount_claimed":
-            case "amount_approved":
-            case "amount_paid":
-              row[f] = e[f] != null
-                ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
-                : "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapInsuranceClaimRow(e, fields),
     });
   });
 
-  /* ================= EXCEL ================= */
+  /* =========================================================
+     ✅ EXCEL EXPORT
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/insurance-claims",
+
       title,
+
       filters: getFiltersFromDOM(),
+
       visibleFields,
+
       fieldLabels: FIELD_LABELS_INSURANCE_CLAIM,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-              row[f] = e.patient
-                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "provider":
-              row[f] = e.provider?.name || "";
-              break;
-
-            case "invoice":
-              row[f] = e.invoice?.invoice_number || "";
-              break;
-
-            case "status":
-              row[f] = (e.status || "").toUpperCase();
-              break;
-
-            case "amount_claimed":
-            case "amount_approved":
-            case "amount_paid":
-              row[f] = e[f] != null
-                ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
-                : "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapInsuranceClaimRow(e, fields),
 
       computeTotals: (records) => ({
         "Total Records": records.length,
@@ -453,12 +471,15 @@ function setupExportHandlers(entries, visibleFields) {
     });
   });
 
-  /* ================= PDF ================= */
+  /* =========================================================
+     ✅ PDF EXPORT
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
 
       const params = new URLSearchParams();
+
       params.set("limit", 10000);
       params.set("page", 1);
 
@@ -467,6 +488,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -477,7 +499,9 @@ function setupExportHandlers(entries, visibleFields) {
       const res = await authFetch(
         `/api/insurance-claims?${params.toString()}`
       );
+
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
@@ -494,64 +518,17 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_INSURANCE_CLAIM[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "organization":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "patient":
-                row[f] = e.patient
-                  ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                  : "";
-                break;
-
-              case "provider":
-                row[f] = e.provider?.name || "";
-                break;
-
-              case "invoice":
-                row[f] = e.invoice?.invoice_number || "";
-                break;
-
-              case "status":
-                row[f] = (e.status || "").toUpperCase();
-                break;
-
-              case "amount_claimed":
-              case "amount_approved":
-              case "amount_paid":
-                row[f] = e[f] != null
-                  ? `${e.currency || ""} ${Number(e[f]).toFixed(2)}`
-                  : "";
-                break;
-
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) =>
+          mapInsuranceClaimRow(e, cleanFields)
+        ),
 
         meta: {
+          Organization:
+            allEntries[0]?.organization?.name || "",
+
+          Facility:
+            allEntries[0]?.facility?.name || "",
+
           Records: allEntries.length,
         },
 
@@ -567,8 +544,17 @@ function setupExportHandlers(entries, visibleFields) {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
 

@@ -328,7 +328,7 @@ export const updateItem = async (req, res) => {
 };
 
 /* ============================================================
-   📌 GET ALL MASTER ITEMS (FINAL — FIXED TENANT SCOPING)
+   📌 GET ALL MASTER ITEMS (MASTER-ALIGNED — FINAL FIXED)
 ============================================================ */
 export const getAllItems = async (req, res) => {
   try {
@@ -348,14 +348,15 @@ export const getAllItems = async (req, res) => {
     delete options.filters?.dateRange;
     delete options.filters?.light;
 
-    const baseWhere = { [Op.and]: [] };
+    options.where = { [Op.and]: [] };
 
     /* ========================================================
        📅 DATE RANGE
     ======================================================== */
     const dateRange = normalizeDateRangeLocal(req.query.dateRange);
+
     if (dateRange) {
-      baseWhere[Op.and].push({
+      options.where[Op.and].push({
         created_at: {
           [Op.between]: [dateRange.start, dateRange.end],
         },
@@ -363,118 +364,138 @@ export const getAllItems = async (req, res) => {
     }
 
     /* ========================================================
-       🏢 TENANT SCOPING (🔥 FIXED — MATCH ORDERS)
+       🔐 TENANT SCOPING (MASTER SAFE)
     ======================================================== */
     if (!isSuperAdmin(req.user)) {
-      baseWhere[Op.and].push({
+
+      // 🔥 STRICT ORG OWNERSHIP
+      options.where[Op.and].push({
         organization_id: req.user.organization_id,
       });
 
+      // 🔥 FACILITY + GLOBAL SUPPORT
       if (isFacilityHead(req.user)) {
-        baseWhere[Op.and].push({
-          facility_id: req.user.facility_id,
+        options.where[Op.and].push({
+          [Op.or]: [
+            { facility_id: req.user.facility_id },
+            { facility_id: null }, // ✅ shared org items
+          ],
         });
+
       } else if (req.query.facility_id) {
-        baseWhere[Op.and].push({
-          facility_id: req.query.facility_id,
+        options.where[Op.and].push({
+          [Op.or]: [
+            { facility_id: req.query.facility_id },
+            { facility_id: null }, // ✅ shared org items
+          ],
         });
       }
 
     } else {
+
       if (req.query.organization_id) {
-        baseWhere[Op.and].push({
+        options.where[Op.and].push({
           organization_id: req.query.organization_id,
         });
       }
 
       if (req.query.facility_id) {
-        baseWhere[Op.and].push({
+        options.where[Op.and].push({
           facility_id: req.query.facility_id,
         });
       }
     }
 
     /* ========================================================
-       📌 STATUS FILTER
+       📌 STATUS
     ======================================================== */
     if (
       req.query.status &&
       MASTER_ITEM_STATUS_VALUES.includes(req.query.status)
     ) {
-      baseWhere[Op.and].push({
+      options.where[Op.and].push({
         status: req.query.status,
       });
     }
 
     /* ========================================================
-       🧩 CATEGORY + FEATURE MODULE
+       🧩 CATEGORY
     ======================================================== */
     if (req.query.category_id) {
-      baseWhere[Op.and].push({
+      options.where[Op.and].push({
         category_id: req.query.category_id,
       });
     }
 
+    /* ========================================================
+       🧩 FEATURE MODULE
+    ======================================================== */
     if (req.query.feature_module_id) {
-      baseWhere[Op.and].push({
+      options.where[Op.and].push({
         feature_module_id: req.query.feature_module_id,
       });
     }
 
     /* ========================================================
-       🔍 SEARCH
+       🔍 SEARCH (MASTER SAFE)
     ======================================================== */
-    const searchWhere = [];
-
     if (options.search) {
-      searchWhere.push({
+      options.where[Op.and].push({
         [Op.or]: [
           { name: { [Op.iLike]: `%${options.search}%` } },
           { code: { [Op.iLike]: `%${options.search}%` } },
           { description: { [Op.iLike]: `%${options.search}%` } },
           { "$category.name$": { [Op.iLike]: `%${options.search}%` } },
-          { "$featureModule.name$": { [Op.iLike]: `%${options.search}%` } },
         ],
       });
     }
 
-    const listWhere = {
-      [Op.and]: [...baseWhere[Op.and], ...searchWhere],
-    };
+    /* ========================================================
+       🧹 CLEAN EMPTY AND
+    ======================================================== */
+    if (!options.where[Op.and].length) {
+      delete options.where[Op.and];
+    }
+
+    /* ========================================================
+       🐞 DEBUG
+    ======================================================== */
+    console.log("MASTER ITEM WHERE:");
+    console.log(JSON.stringify(options.where, null, 2));
 
     /* ========================================================
        📦 QUERY
     ======================================================== */
     const { count, rows } = await MasterItem.findAndCountAll({
-      where: listWhere,
-      include: MASTER_ITEM_INCLUDES,
+      where: options.where,
+
+      include: MASTER_ITEM_INCLUDES.map((inc) => ({
+        ...inc,
+        required: false, // ✅ prevent INNER JOIN row loss
+      })),
+
       order: options.order,
+
       offset: options.offset,
+
       limit: options.limit,
+
       distinct: true,
+
       subQuery: false,
     });
-
-    const records = rows.map((r) => r.toJSON());
 
     /* ========================================================
        📊 SUMMARY
     ======================================================== */
-    const statusCountsRaw = await MasterItem.findAll({
-      where: baseWhere,
-      attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-      ],
-      group: ["status"],
-      raw: true,
-    });
+    const summary = await buildDynamicSummary({
+      model: MasterItem,
 
-    const summary = { total: count };
+      options: {
+        where: options.where,
+      },
 
-    MASTER_ITEM_STATUS_VALUES.forEach((s) => {
-      const row = statusCountsRaw.find((r) => r.status === s);
-      summary[s] = row ? Number(row.count) : 0;
+      statusEnums: MASTER_ITEM_STATUS,
     });
 
     if (dateRange) {
@@ -489,17 +510,26 @@ export const getAllItems = async (req, res) => {
     ======================================================== */
     await auditService.logAction({
       user: req.user,
+
       module: MODULE_KEY,
+
       action: "list",
-      details: { query: req.query, returned: count },
+
+      details: {
+        returned: count,
+        query: req.query,
+        dateRange: dateRange || null,
+      },
     });
 
     /* ========================================================
        📤 RESPONSE
     ======================================================== */
     return success(res, "✅ Master Items loaded", {
-      records,
+      records: rows.map((r) => r.toJSON()),
+
       summary,
+
       pagination: {
         total: count,
         page: options.pagination.page,
@@ -509,9 +539,11 @@ export const getAllItems = async (req, res) => {
 
   } catch (err) {
     debug.error("list → FAILED", err);
+
     return error(res, "❌ Failed to load master items", err);
   }
 };
+
 /* ============================================================
    📌 GET ITEM BY ID (TRUE MASTER PARITY)
 ============================================================ */

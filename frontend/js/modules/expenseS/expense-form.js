@@ -107,15 +107,32 @@ export async function setupExpenseFormSubmission({ form }) {
 
   /* ================= DROPDOWNS ================= */
   try {
-    /* 🔥 Accounts (DataLoader SAFE) */
-    const accounts = await loadAccountsLite();
-    setupSelectOptions(
-      accountSelect,
-      accounts,
-      "id",
-      "name",
-      "-- Select Account --"
-    );
+    /* ================= ACCOUNTS ================= */
+    const reloadAccountsByCurrency = async (currency = null) => {
+      setupSelectOptions(
+        accountSelect,
+        await loadAccountsLite(
+          currency ? { currency } : {},
+          true
+        ),
+        "id",
+        "label",
+        "-- Select Account --"
+      );
+
+      // 🔥 Auto-select first valid account
+      if (accountSelect.options.length > 1) {
+        accountSelect.selectedIndex = 1;
+      }
+    };
+
+    // ✅ Initial load
+    await reloadAccountsByCurrency(currencySelect?.value || null);
+
+    // 🔥 Currency → Account auto filter
+    currencySelect?.addEventListener("change", async () => {
+      await reloadAccountsByCurrency(currencySelect.value || null);
+    });
 
     if (isSuper) {
       setupSelectOptions(
@@ -181,7 +198,11 @@ export async function setupExpenseFormSubmission({ form }) {
       paymentMethodSelect.value = entry.payment_method || "";
       descriptionInput.value = entry.description || "";
 
-      if (accountSelect) accountSelect.value = entry.account_id || "";
+      await reloadAccountsByCurrency(entry.currency || null);
+
+      if (accountSelect) {
+        accountSelect.value = entry.account_id || "";
+      }
 
       if (isSuper) {
         if (orgSelect && entry.organization_id)

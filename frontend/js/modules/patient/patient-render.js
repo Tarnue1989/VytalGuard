@@ -403,7 +403,136 @@ function setupExportHandlers(entries, visibleFields) {
     };
   }
 
-  /* ================= CSV ================= */
+  /* =========================================================
+     🔥 SHARED MAPPER
+  ========================================================= */
+  const mapPatientRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "patient":
+        case "full_name":
+          row[f] = [
+            e.first_name,
+            e.middle_name,
+            e.last_name,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          break;
+
+        case "registration_status":
+          row[f] = (e.registration_status || "").toUpperCase();
+          break;
+
+        case "gender":
+          row[f] = (e.gender || "").toUpperCase();
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "date_of_birth":
+          row[f] = e.date_of_birth
+            ? new Date(e.date_of_birth).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : "";
+          break;
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "emergency_contacts":
+          row[f] = Array.isArray(e.emergency_contacts)
+            ? e.emergency_contacts
+                .map(
+                  (c) =>
+                    `${c.name || "—"} (${c.phone || "—"})`
+                )
+                .join("; ")
+            : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
@@ -411,65 +540,14 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_PATIENT,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-            case "full_name":
-              row[f] = [
-                e.first_name,
-                e.middle_name,
-                e.last_name,
-              ]
-                .filter(Boolean)
-                .join(" ");
-              break;
-
-            case "registration_status":
-              row[f] = (e.registration_status || "").toUpperCase();
-              break;
-
-            case "gender":
-              row[f] = (e.gender || "").toUpperCase();
-              break;
-
-            case "date_of_birth":
-              row[f] = e.date_of_birth
-                ? new Date(e.date_of_birth).toLocaleDateString()
-                : "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapPatientRow(e, fields),
     });
   });
 
-  /* ================= EXCEL ================= */
+  /* =========================================================
+     ✅ EXCEL
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/patients",
@@ -478,61 +556,8 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_PATIENT,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-            case "full_name":
-              row[f] = [
-                e.first_name,
-                e.middle_name,
-                e.last_name,
-              ]
-                .filter(Boolean)
-                .join(" ");
-              break;
-
-            case "registration_status":
-              row[f] = (e.registration_status || "").toUpperCase();
-              break;
-
-            case "gender":
-              row[f] = (e.gender || "").toUpperCase();
-              break;
-
-            case "date_of_birth":
-              row[f] = e.date_of_birth
-                ? new Date(e.date_of_birth).toLocaleDateString()
-                : "";
-              break;
-
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapPatientRow(e, fields),
 
       computeTotals: (records) => ({
         "Total Records": records.length,
@@ -540,7 +565,9 @@ function setupExportHandlers(entries, visibleFields) {
     });
   });
 
-  /* ================= PDF ================= */
+  /* =========================================================
+     ✅ PDF
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
@@ -554,6 +581,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -564,7 +592,9 @@ function setupExportHandlers(entries, visibleFields) {
       const res = await authFetch(
         `/api/patients?${params.toString()}`
       );
+
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
@@ -581,63 +611,13 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_PATIENT[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "organization":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "patient":
-              case "full_name":
-                row[f] = [
-                  e.first_name,
-                  e.middle_name,
-                  e.last_name,
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                break;
-
-              case "registration_status":
-                row[f] = (e.registration_status || "").toUpperCase();
-                break;
-
-              case "gender":
-                row[f] = (e.gender || "").toUpperCase();
-                break;
-
-              case "date_of_birth":
-                row[f] = e.date_of_birth
-                  ? new Date(e.date_of_birth).toLocaleDateString()
-                  : "";
-                break;
-
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) =>
+          mapPatientRow(e, cleanFields)
+        ),
 
         meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
           Records: allEntries.length,
         },
 
@@ -653,8 +633,17 @@ function setupExportHandlers(entries, visibleFields) {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
 

@@ -580,7 +580,156 @@ function setupExportHandlers(entries, visibleFields) {
     };
   }
 
-  /* ================= CSV ================= */
+  /* =========================================================
+     🔥 SHARED MAPPER
+  ========================================================= */
+  const mapRegistrationRow = (e, fields) => {
+    const row = {};
+
+    fields.forEach((f) => {
+      switch (f) {
+
+        case "organization":
+        case "organization_id":
+          row[f] = e.organization?.name || "";
+          break;
+
+        case "facility":
+        case "facility_id":
+          row[f] = e.facility?.name || "";
+          break;
+
+        case "patient":
+        case "patient_id":
+          row[f] = e.patient
+            ? `${e.patient.pat_no || ""} - ${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "registrar":
+        case "registrar_id":
+          row[f] = e.registrar
+            ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "registration_type":
+        case "registration_type_id":
+          row[f] = e.registrationType?.name || "";
+          break;
+
+        case "invoice":
+        case "invoice_id":
+          row[f] = e.invoice
+            ? `${e.invoice.invoice_number || ""} - ${e.invoice.total || 0} ${e.invoice.currency || ""}`
+            : "";
+          break;
+
+        case "payer_type":
+          row[f] = e.payer_type
+            ? e.payer_type.replace("_", " ").toUpperCase()
+            : "";
+          break;
+
+        case "patientInsurance":
+        case "patient_insurance_id":
+          row[f] = e.patientInsurance
+            ? `${e.patientInsurance.policy_number || ""} - ${e.patientInsurance.plan_name || ""} (${e.patientInsurance.provider?.name || ""})`
+            : "";
+          break;
+
+        case "log_status":
+          row[f] = (e.log_status || "").toUpperCase();
+          break;
+
+        case "is_emergency":
+          row[f] = e.is_emergency ? "Yes" : "No";
+          break;
+
+        case "createdBy":
+          row[f] = e.createdBy
+            ? `${e.createdBy.first_name || ""} ${e.createdBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "updatedBy":
+          row[f] = e.updatedBy
+            ? `${e.updatedBy.first_name || ""} ${e.updatedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "deletedBy":
+          row[f] = e.deletedBy
+            ? `${e.deletedBy.first_name || ""} ${e.deletedBy.last_name || ""}`.trim()
+            : "";
+          break;
+
+        case "registration_time":
+          row[f] = e.registration_time
+            ? new Date(e.registration_time).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "created_at":
+          row[f] = e.created_at
+            ? new Date(e.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "updated_at":
+          row[f] = e.updated_at
+            ? new Date(e.updated_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        case "deleted_at":
+          row[f] = e.deleted_at
+            ? new Date(e.deleted_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "";
+          break;
+
+        default:
+          row[f] =
+            typeof e[f] === "object"
+              ? ""
+              : String(e[f] ?? "");
+      }
+    });
+
+    return row;
+  };
+
+  /* =========================================================
+     ✅ CSV
+  ========================================================= */
   newCsvBtn.addEventListener("click", () => {
     exportCsvReport({
       title,
@@ -588,61 +737,14 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_REGISTRATION_LOG,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-              row[f] = e.patient
-                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "registrar":
-              row[f] = e.registrar
-                ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "log_status":
-              row[f] = (e.log_status || "").toUpperCase();
-              break;
-
-            case "is_emergency":
-              row[f] = e.is_emergency ? "Yes" : "No";
-              break;
-
-            case "registration_time":
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapRegistrationRow(e, fields),
     });
   });
 
-  /* ================= EXCEL ================= */
+  /* =========================================================
+     ✅ EXCEL
+  ========================================================= */
   newExcelBtn.addEventListener("click", () => {
     exportExcelReport({
       endpoint: "/api/registration-logs",
@@ -651,57 +753,8 @@ function setupExportHandlers(entries, visibleFields) {
       visibleFields,
       fieldLabels: FIELD_LABELS_REGISTRATION_LOG,
 
-      mapRow: (e, fields) => {
-        const row = {};
-
-        fields.forEach((f) => {
-          switch (f) {
-            case "organization":
-              row[f] = e.organization?.name || "";
-              break;
-
-            case "facility":
-              row[f] = e.facility?.name || "";
-              break;
-
-            case "patient":
-              row[f] = e.patient
-                ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "registrar":
-              row[f] = e.registrar
-                ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
-                : "";
-              break;
-
-            case "log_status":
-              row[f] = (e.log_status || "").toUpperCase();
-              break;
-
-            case "is_emergency":
-              row[f] = e.is_emergency ? "Yes" : "No";
-              break;
-
-            case "registration_time":
-            case "created_at":
-            case "updated_at":
-              row[f] = e[f]
-                ? new Date(e[f]).toLocaleDateString()
-                : "";
-              break;
-
-            default:
-              row[f] =
-                typeof e[f] === "object"
-                  ? ""
-                  : String(e[f] ?? "");
-          }
-        });
-
-        return row;
-      },
+      mapRow: (e, fields) =>
+        mapRegistrationRow(e, fields),
 
       computeTotals: (records) => ({
         "Total Records": records.length,
@@ -709,7 +762,9 @@ function setupExportHandlers(entries, visibleFields) {
     });
   });
 
-  /* ================= PDF ================= */
+  /* =========================================================
+     ✅ PDF
+  ========================================================= */
   newPdfBtn.addEventListener("click", async () => {
     try {
       const filters = getFiltersFromDOM();
@@ -723,6 +778,7 @@ function setupExportHandlers(entries, visibleFields) {
 
         if (k === "dateRange") {
           const [from, to] = v.split(" - ");
+
           if (from) params.set("date_from", from.trim());
           if (to) params.set("date_to", to.trim());
         } else {
@@ -733,7 +789,9 @@ function setupExportHandlers(entries, visibleFields) {
       const res = await authFetch(
         `/api/registration-logs?${params.toString()}`
       );
+
       const json = await res.json();
+
       const allEntries = json?.data?.records || [];
 
       const cleanFields = visibleFields.filter(
@@ -750,59 +808,13 @@ function setupExportHandlers(entries, visibleFields) {
           label: FIELD_LABELS_REGISTRATION_LOG[f] || f,
         })),
 
-        rows: allEntries.map((e) => {
-          const row = {};
-
-          cleanFields.forEach((f) => {
-            switch (f) {
-              case "organization":
-                row[f] = e.organization?.name || "";
-                break;
-
-              case "facility":
-                row[f] = e.facility?.name || "";
-                break;
-
-              case "patient":
-                row[f] = e.patient
-                  ? `${e.patient.first_name || ""} ${e.patient.last_name || ""}`.trim()
-                  : "";
-                break;
-
-              case "registrar":
-                row[f] = e.registrar
-                  ? `${e.registrar.first_name || ""} ${e.registrar.last_name || ""}`.trim()
-                  : "";
-                break;
-
-              case "log_status":
-                row[f] = (e.log_status || "").toUpperCase();
-                break;
-
-              case "is_emergency":
-                row[f] = e.is_emergency ? "Yes" : "No";
-                break;
-
-              case "registration_time":
-              case "created_at":
-              case "updated_at":
-                row[f] = e[f]
-                  ? new Date(e[f]).toLocaleDateString()
-                  : "";
-                break;
-
-              default:
-                row[f] =
-                  typeof e[f] === "object"
-                    ? ""
-                    : String(e[f] ?? "");
-            }
-          });
-
-          return row;
-        }),
+        rows: allEntries.map((e) =>
+          mapRegistrationRow(e, cleanFields)
+        ),
 
         meta: {
+          Organization: allEntries[0]?.organization?.name || "",
+          Facility: allEntries[0]?.facility?.name || "",
           Records: allEntries.length,
         },
 
@@ -818,8 +830,17 @@ function setupExportHandlers(entries, visibleFields) {
           filters: formatFilters(filters, {
             sample: allEntries[0],
           }),
+
           printedBy: "System",
-          printedAt: new Date().toLocaleString(),
+
+          printedAt: new Date().toLocaleString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
         },
       });
 
