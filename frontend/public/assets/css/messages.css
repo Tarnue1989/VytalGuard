@@ -1,0 +1,380 @@
+/* ============================================
+   💬 MESSAGES PAGE
+============================================ */
+
+.messages-layout{
+  display:flex;
+  overflow:hidden;
+  height:78vh;
+  background:#fff;
+  border-radius:12px;
+}
+
+/* ============================================
+   📋 SIDEBAR
+============================================ */
+
+.messages-sidebar{
+  width:340px;
+  min-width:340px;
+  border-right:1px solid #e9ecef;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+}
+
+.messages-search{
+  padding:12px;
+}
+
+.messages-search .form-control{
+  height:40px;
+  border-radius:10px;
+  padding-left:34px;
+  box-shadow:none;
+}
+
+.messages-search .form-control:focus{
+  box-shadow:none;
+}
+
+.messages-search-icon{
+  position:absolute;
+  left:12px;
+  top:12px;
+  color:#9aa0a6;
+}
+
+.conversation-list{
+  flex:1;
+  overflow:auto;
+}
+
+/* ============================================
+   💬 CONVERSATION ITEM
+============================================ */
+
+.conversation-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 14px;
+  border-bottom:1px solid #f1f3f5;
+  cursor:pointer;
+  transition:.2s ease;
+  background:#fff;
+}
+
+.conversation-item:hover{
+  background:#f8f9fa;
+}
+
+.conversation-item.active{
+  background:#eef4ff;
+}
+
+.conversation-avatar{
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  background:#0d6efd;
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+  flex-shrink:0;
+}
+
+.conversation-content{
+  flex:1;
+  min-width:0;
+}
+
+.conversation-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.conversation-name{
+  font-size:14px;
+  font-weight:600;
+  color:#212529;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.conversation-time{
+  font-size:11px;
+  color:#9aa0a6;
+  white-space:nowrap;
+}
+
+.conversation-message{
+  font-size:12px;
+  color:#6c757d;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  margin-top:2px;
+}
+
+.conversation-badge{
+  min-width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#dc3545;
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-weight:600;
+  padding:0 5px;
+}
+
+/* ============================================
+   💬 CHAT PANEL
+============================================ */
+
+.messages-chat{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  background:#f8f9fa;
+}
+
+/* ============================================
+   🔝 CHAT HEADER
+============================================ */
+
+.chat-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 14px;
+  background:#fff;
+  border-bottom:1px solid #e9ecef;
+}
+
+.chat-avatar{
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  background:#0d6efd;
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+  flex-shrink:0;
+}
+
+/* ============================================
+   📩 CHAT BODY
+============================================ */
+
+.chat-body{
+  flex:1;
+  overflow:auto;
+  padding:16px;
+}
+
+/* ============================================
+   📭 EMPTY CHAT
+============================================ */
+
+.empty-chat{
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  color:#6c757d;
+}
+
+.empty-chat-icon{
+  font-size:52px;
+  opacity:.25;
+  margin-bottom:12px;
+}
+
+/* ============================================
+   💬 MESSAGE BUBBLE
+============================================ */
+
+.message-row{
+  display:flex;
+  margin-bottom:14px;
+}
+
+.message-row.me{
+  justify-content:flex-end;
+}
+
+.message-row.other{
+  justify-content:flex-start;
+}
+
+.message-bubble{
+  max-width:75%;
+  padding:10px 14px;
+  border-radius:14px;
+  position:relative;
+  word-break:break-word;
+}
+
+.message-row.me .message-bubble{
+  background:#0d6efd;
+  color:#fff;
+  border-bottom-right-radius:4px;
+}
+
+.message-row.other .message-bubble{
+  background:#fff;
+  color:#212529;
+  border-bottom-left-radius:4px;
+  border:1px solid #e9ecef;
+}
+
+.message-time{
+  font-size:10px;
+  margin-top:4px;
+  opacity:.7;
+  text-align:right;
+}
+
+/* ============================================
+   ✍️ TYPING
+============================================ */
+
+.typing-indicator{
+  padding:0 16px 8px;
+  font-size:12px;
+  color:#6c757d;
+}
+
+/* ============================================
+   📎 PREVIEW
+============================================ */
+
+.attachment-preview{
+  padding:0 16px 10px;
+}
+
+/* ============================================
+   📝 INPUT
+============================================ */
+
+.chat-input-area{
+  padding:12px;
+  background:#fff;
+  border-top:1px solid #e9ecef;
+}
+
+.chat-input-area textarea{
+  resize:none;
+  min-height:42px;
+  max-height:120px;
+  border-radius:10px;
+  box-shadow:none;
+}
+
+.chat-input-area textarea:focus{
+  box-shadow:none;
+}
+
+.send-btn{
+  height:42px;
+  min-width:42px;
+}
+
+/* ============================================
+   📜 SCROLLBAR
+============================================ */
+
+.chat-body::-webkit-scrollbar,
+.conversation-list::-webkit-scrollbar{
+  width:6px;
+}
+
+.chat-body::-webkit-scrollbar-thumb,
+.conversation-list::-webkit-scrollbar-thumb{
+  background:#d6dbe1;
+  border-radius:10px;
+}
+
+/* ============================================
+   📱 TABLET
+============================================ */
+
+@media (max-width:991px){
+
+  .messages-layout{
+    flex-direction:column;
+    height:calc(100vh - 180px);
+  }
+
+  .messages-sidebar{
+    width:100%;
+    min-width:100%;
+    height:260px;
+    border-right:0;
+    border-bottom:1px solid #e9ecef;
+  }
+
+  .messages-chat{
+    width:100%;
+  }
+
+  .chat-header{
+    padding:10px 12px;
+  }
+
+  .chat-body{
+    padding:12px;
+  }
+
+  .chat-input-area{
+    padding:10px;
+  }
+
+  .message-bubble{
+    max-width:90%;
+  }
+
+}
+
+/* ============================================
+   📱 MOBILE
+============================================ */
+
+@media (max-width:576px){
+
+  .messages-layout{
+    height:100vh;
+  }
+
+  .messages-sidebar{
+    width:100%;
+    min-width:100%;
+    display:flex;
+  }
+
+  .messages-chat{
+    display:none;
+  }
+
+  .messages-layout.chat-open .messages-sidebar{
+    display:none;
+  }
+
+  .messages-layout.chat-open .messages-chat{
+    display:flex;
+  }
+
+}

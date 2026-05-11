@@ -35,7 +35,12 @@ import {
 
   // 🔥 NEW (BILLING)
   BILLING_MODE, PRICE_CHANGE_TYPE,
-
+  // 🔥 SUPPORT / CHAT
+  CONVERSATION_STATUS, CONVERSATION_TYPES,
+  MESSAGE_TYPES, MESSAGE_STATUS, MESSAGE_PARTICIPANT_ROLES,
+  SUPPORT_TICKET_STATUS, SUPPORT_TICKET_PRIORITY, SUPPORT_TICKET_CATEGORY,
+  TICKET_ACTIVITY_TYPES,
+  NOTIFICATION_TYPES, NOTIFICATION_STATUS,
 
 } from "./enums.js";
 // 🧠 Safe join helper for enums (handles both arrays & objects)
@@ -1351,4 +1356,77 @@ export const FIELD_LABELS_ORDER_ITEM = {
 
   created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
   created_by_id: "Created By", updated_by_id: "Updated By", deleted_by_id: "Deleted By"
+};
+
+/* -------------------- Conversation Participant -------------------- */
+export const FIELD_LABELS_CONVERSATION_PARTICIPANT = {
+  id: "ID", conversation_id: "Conversation",
+  participant_id: "Participant", participant_role: "Participant Role",
+  is_admin: "Admin", is_muted: "Muted", is_archived: "Archived",
+  unread_count: "Unread Count",
+  notifications_enabled: "Notifications Enabled",
+  last_delivered_message_id: "Last Delivered Message",
+  joined_at: "Joined At", left_at: "Left At",
+  last_read_at: "Last Read At",
+  metadata: "Metadata",
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by: "Created By", updated_by: "Updated By", deleted_by: "Deleted By"
+};
+
+/* -------------------- Support Ticket -------------------- */
+export const FIELD_LABELS_SUPPORT_TICKET = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  conversation_id: "Conversation",
+  patient_id: "Patient", employee_id: "Employee", assigned_to: "Assigned To",
+  ticket_number: "Ticket #",
+  subject: "Subject", description: "Description",
+  internal_notes: "Internal Notes",
+  status: "Status", priority: "Priority", category: "Category",
+  is_escalated: "Escalated",
+  sla_breached: "SLA Breached",
+  reopened_count: "Reopened Count",
+  resolution_summary: "Resolution Summary",
+  closed_by: "Closed By",
+  opened_at: "Opened At", first_response_at: "First Response At",
+  due_at: "Due At",
+  resolved_at: "Resolved At", closed_at: "Closed At",
+  rating: "Rating", feedback_comment: "Feedback",
+  metadata: "Metadata",
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by: "Created By", updated_by: "Updated By", deleted_by: "Deleted By"
+};
+
+/* -------------------- Ticket Activity -------------------- */
+export const FIELD_LABELS_TICKET_ACTIVITY = {
+  id: "ID", ticket_id: "Ticket",
+  activity_type: "Activity Type",
+  old_value: "Old Value", new_value: "New Value",
+  notes: "Notes", metadata: "Metadata",
+  performed_by: "Performed By",
+  is_system_generated: "System Generated",
+  activity_source: "Activity Source",
+  ip_address: "IP Address",
+  device_info: "Device Info",
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by: "Created By", updated_by: "Updated By", deleted_by: "Deleted By"
+};
+
+/* -------------------- Notification -------------------- */
+export const FIELD_LABELS_NOTIFICATION = {
+  id: "ID", organization_id: "Organization", facility_id: "Facility",
+  user_id: "User",
+  title: "Title", message: "Message",
+  type: "Type",
+  reference_type: "Reference Type", reference_id: "Reference",
+  channel: "Channel",
+  delivery_status: "Delivery Status",
+  delivered_at: "Delivered At",
+  failed_at: "Failed At",
+  failure_reason: "Failure Reason",
+  status: "Status",
+  read_at: "Read At",
+  is_seen: "Seen", seen_at: "Seen At",
+  metadata: "Metadata",
+  created_at: "Created At", updated_at: "Updated At", deleted_at: "Deleted At",
+  created_by: "Created By", updated_by: "Updated By", deleted_by: "Deleted By"
 };

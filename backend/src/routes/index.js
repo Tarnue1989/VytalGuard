@@ -9,6 +9,10 @@ import authRoutes from "./authRoutes.js";
 import featureRoutes from "./featureRoutes.js";
 import dashboardRoutes from "./dashboardRoutes.js";
 
+import messageRoutes from "./messageRoutes.js";
+import supportTicketRoutes from "./supportTicketRoutes.js";
+import notificationRoutes from "./notificationRoutes.js";
+
 /* ============================================================
    📌 Entity Management (ORG → USERS → ACCESS CONTROL)
 ============================================================ */
@@ -95,6 +99,8 @@ import expenseRoutes from "./expenseRoutes.js";
 import cashLedgerRoutes from "./cashLedgerRoutes.js";
 import cashClosingRoutes from "./cashClosingRoutes.js";
 import payrollRoutes from "./payrollRoutes.js";
+
+import conversationRoutes from "./conversationRoutes.js";
 
 /* ============================================================
    ⚡ Lite Routes (Autocomplete / Dropdown APIs)
@@ -217,6 +223,22 @@ router.use("/fx", fxRoutes);
 ============================================================ */
 router.use("/lite", liteRoutes);
 
+/* ============================================================
+   💬 Messaging & Support
+============================================================ */
+router.use("/messages", messageRoutes);
+
+router.use(
+  "/support-tickets",
+  supportTicketRoutes
+);
+
+router.use(
+  "/notifications",
+  notificationRoutes
+);
+
+router.use("/conversations", conversationRoutes);
 /* ============================================================
    📊 Reports
 ============================================================ */

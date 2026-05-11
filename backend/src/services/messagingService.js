@@ -43,22 +43,15 @@ const buildConversationParticipantRows = ({
 }) =>
   participants.map((p) => ({
     conversation_id: conversationId,
-
     organization_id: organizationId,
     facility_id: facilityId,
-
     participant_id: p.participant_id,
     participant_role: p.participant_role,
-
     is_admin: !!p.is_admin,
-
     unread_count: 0,
     notifications_enabled: true,
-
     joined_at: new Date(),
-
     metadata: {},
-
     created_by: userId,
   }));
 
@@ -140,12 +133,9 @@ class MessagingService {
         const rows =
           buildConversationParticipantRows({
             conversationId: conversation.id,
-
             organizationId: organization_id,
             facilityId: facility_id,
-
             participants,
-
             userId: created_by,
           });
 

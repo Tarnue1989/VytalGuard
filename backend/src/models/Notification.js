@@ -1,48 +1,51 @@
-// 📁 backend/src/models/MessageAttachment.js
+// 📁 backend/src/models/Notification.js
 import { DataTypes, Model } from "sequelize";
+import {
+  NOTIFICATION_TYPES,
+  NOTIFICATION_STATUS,
+} from "../constants/enums.js";
 
 export default (sequelize) => {
-  class MessageAttachment extends Model {
+  class Notification extends Model {
     static associate(models) {
 
-      // 🔹 Parent Message
-      MessageAttachment.belongsTo(models.Message, {
-        foreignKey: "message_id",
-        as: "message",
-        onDelete: "CASCADE",
+      // 🔹 Recipient User
+      Notification.belongsTo(models.User, {
+        foreignKey: "user_id",
+        as: "user",
       });
 
       // 🔹 Organization
-      MessageAttachment.belongsTo(models.Organization, {
+      Notification.belongsTo(models.Organization, {
         foreignKey: "organization_id",
         as: "organization",
       });
 
       // 🔹 Facility
-      MessageAttachment.belongsTo(models.Facility, {
+      Notification.belongsTo(models.Facility, {
         foreignKey: "facility_id",
         as: "facility",
       });
 
       // 🔹 Audit
-      MessageAttachment.belongsTo(models.User, {
+      Notification.belongsTo(models.User, {
         foreignKey: "created_by",
         as: "createdByUser",
       });
 
-      MessageAttachment.belongsTo(models.User, {
+      Notification.belongsTo(models.User, {
         foreignKey: "updated_by",
         as: "updatedByUser",
       });
 
-      MessageAttachment.belongsTo(models.User, {
+      Notification.belongsTo(models.User, {
         foreignKey: "deleted_by",
         as: "deletedByUser",
       });
     }
   }
 
-  MessageAttachment.init({
+  Notification.init({
     id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
@@ -60,99 +63,90 @@ export default (sequelize) => {
       allowNull: false,
     },
 
-    // 🔹 Parent Message
-    message_id: {
+    // 🔹 Recipient
+    user_id: {
       type: DataTypes.UUID,
       allowNull: false,
     },
 
-    // 🔹 File Metadata
-    file_name: {
-      type: DataTypes.STRING,
+    // 🔹 Notification Content
+    title: {
+      type: DataTypes.STRING(255),
       allowNull: false,
     },
 
-    original_file_name: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-
-    file_type: {
-      type: DataTypes.STRING,
+    message: {
+      type: DataTypes.TEXT,
       allowNull: false,
     },
 
-    mime_type: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-
-    file_size: {
-      type: DataTypes.INTEGER,
+    // 🔹 Notification Type
+    type: {
+      type: DataTypes.ENUM(
+        ...Object.values(NOTIFICATION_TYPES)
+      ),
       allowNull: false,
     },
 
-    file_path: {
-      type: DataTypes.STRING,
-      allowNull: false,
+    // 🔹 Linked Entity
+    reference_type: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
     },
 
-    file_url: {
+    reference_id: {
       type: DataTypes.STRING,
       allowNull: true,
     },
 
-    thumbnail_path: {
-      type: DataTypes.STRING,
+    // 🔹 Delivery
+    channel: {
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
 
-    // 🔹 Storage
-    storage_provider: {
-      type: DataTypes.STRING,
+    delivery_status: {
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
 
-    storage_key: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-
-    checksum: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-
-    expires_at: {
+    delivered_at: {
       type: DataTypes.DATE,
       allowNull: true,
     },
 
-    // 🔹 Security
-    virus_scan_status: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-
-    is_encrypted: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-    },
-
-    // 🔹 Usage
-    download_count: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-    },
-
-    last_downloaded_at: {
+    failed_at: {
       type: DataTypes.DATE,
       allowNull: true,
     },
 
-    is_deleted_from_storage: {
+    failure_reason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    // 🔹 Read State
+    status: {
+      type: DataTypes.ENUM(
+        ...Object.values(NOTIFICATION_STATUS)
+      ),
+      allowNull: false,
+      defaultValue: NOTIFICATION_STATUS.UNREAD,
+    },
+
+    read_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    is_seen: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+
+    seen_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
 
     // 🔹 Advanced Metadata
@@ -175,8 +169,8 @@ export default (sequelize) => {
     },
   }, {
     sequelize,
-    modelName: "MessageAttachment",
-    tableName: "message_attachments",
+    modelName: "Notification",
+    tableName: "notifications",
     underscored: true,
     paranoid: true,
     timestamps: true,
@@ -195,16 +189,58 @@ export default (sequelize) => {
         paranoid: false,
       },
 
-      byMessage(messageId) {
+      unread: {
+        where: {
+          status: NOTIFICATION_STATUS.UNREAD,
+        },
+      },
+
+      read: {
+        where: {
+          status: NOTIFICATION_STATUS.READ,
+        },
+      },
+
+      byUser(userId) {
         return {
-          where: { message_id: messageId },
+          where: { user_id: userId },
+        };
+      },
+
+      byType(type) {
+        return {
+          where: { type },
         };
       },
     },
 
     indexes: [
       {
-        fields: ["message_id"],
+        fields: ["user_id"],
+      },
+
+      {
+        fields: ["type"],
+      },
+
+      {
+        fields: ["status"],
+      },
+
+      {
+        fields: ["channel"],
+      },
+
+      {
+        fields: ["delivery_status"],
+      },
+
+      {
+        fields: ["reference_id"],
+      },
+
+      {
+        fields: ["reference_type"],
       },
 
       {
@@ -216,26 +252,10 @@ export default (sequelize) => {
       },
 
       {
-        fields: ["file_type"],
-      },
-
-      {
-        fields: ["mime_type"],
-      },
-
-      {
-        fields: ["checksum"],
-      },
-
-      {
-        fields: ["virus_scan_status"],
-      },
-
-      {
         fields: ["created_at"],
       },
     ],
   });
 
-  return MessageAttachment;
+  return Notification;
 };

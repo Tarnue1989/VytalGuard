@@ -12,6 +12,7 @@ export default (sequelize) => {
         onDelete: "CASCADE",
         onUpdate: "CASCADE",
       });
+
       Employee.belongsTo(models.Facility, {
         as: "facility",
         foreignKey: "facility_id",
@@ -44,18 +45,76 @@ export default (sequelize) => {
         onUpdate: "CASCADE",
       });
 
+      // 🔹 Messaging
+      Employee.hasMany(models.Message, {
+        foreignKey: "sender_id",
+        constraints: false,
+        as: "sentMessages",
+      });
+
+      Employee.hasMany(models.Message, {
+        foreignKey: "receiver_id",
+        constraints: false,
+        as: "receivedMessages",
+      });
+
+      // 🔹 Conversations
+      Employee.hasMany(models.Conversation, {
+        foreignKey: "employee_id",
+        as: "conversations",
+      });
+
+      Employee.hasMany(models.ConversationParticipant, {
+        foreignKey: "participant_id",
+        constraints: false,
+        as: "conversationParticipants",
+      });
+
+      // 🔹 Support Tickets
+      Employee.hasMany(models.SupportTicket, {
+        foreignKey: "employee_id",
+        as: "createdTickets",
+      });
+
+      Employee.hasMany(models.SupportTicket, {
+        foreignKey: "assigned_to",
+        as: "assignedTickets",
+      });
+
+      Employee.hasMany(models.TicketActivity, {
+        foreignKey: "performed_by",
+        as: "ticketActivities",
+      });
+
       // 🔹 Audit
-      Employee.belongsTo(models.User, { as: "createdBy", foreignKey: "created_by_id" });
-      Employee.belongsTo(models.User, { as: "updatedBy", foreignKey: "updated_by_id" });
-      Employee.belongsTo(models.User, { as: "deletedBy", foreignKey: "deleted_by_id" });
+      Employee.belongsTo(models.User, {
+        as: "createdBy",
+        foreignKey: "created_by_id",
+      });
+
+      Employee.belongsTo(models.User, {
+        as: "updatedBy",
+        foreignKey: "updated_by_id",
+      });
+
+      Employee.belongsTo(models.User, {
+        as: "deletedBy",
+        foreignKey: "deleted_by_id",
+      });
     }
 
-    // Virtual full name
+    // 🔹 Virtual full name
     get full_name() {
-      return [this.first_name, this.middle_name, this.last_name].filter(Boolean).join(" ");
+      return [
+        this.first_name,
+        this.middle_name,
+        this.last_name,
+      ]
+        .filter(Boolean)
+        .join(" ");
     }
 
-    // 🔑 Ensure virtuals show up in API responses
+    // 🔹 Ensure virtuals show up in API responses
     toJSON() {
       return {
         ...this.get(),
@@ -72,57 +131,161 @@ export default (sequelize) => {
         primaryKey: true,
       },
 
-      // Identity
-      first_name: { type: DataTypes.STRING(80), allowNull: false },
-      middle_name: { type: DataTypes.STRING(80), allowNull: true },
-      last_name: { type: DataTypes.STRING(80), allowNull: false },
-      gender: {
-        type: DataTypes.ENUM(...Object.values(GENDER_TYPES)),
+      // 🔹 Identity
+      first_name: {
+        type: DataTypes.STRING(80),
         allowNull: false,
       },
+
+      middle_name: {
+        type: DataTypes.STRING(80),
+        allowNull: true,
+      },
+
+      last_name: {
+        type: DataTypes.STRING(80),
+        allowNull: false,
+      },
+
+      gender: {
+        type: DataTypes.ENUM(
+          ...Object.values(GENDER_TYPES)
+        ),
+        allowNull: false,
+      },
+
       status: {
-        type: DataTypes.ENUM(...Object.values(EMPLOYEE_STATUS)),
+        type: DataTypes.ENUM(
+          ...Object.values(EMPLOYEE_STATUS)
+        ),
         defaultValue: EMPLOYEE_STATUS.ACTIVE,
       },
-      dob: { type: DataTypes.DATEONLY, allowNull: true },
 
-      // Contact
-      phone: { type: DataTypes.STRING(50), allowNull: true },
-      email: { type: DataTypes.STRING(120), allowNull: true, validate: { isEmail: true } },
-      address: { type: DataTypes.STRING(255), allowNull: true },
+      dob: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
 
-      // Employment
-      employee_no: { type: DataTypes.STRING(50), allowNull: false },
-      organization_id: { type: DataTypes.UUID, allowNull: false },
-      facility_id: { type: DataTypes.UUID, allowNull: true },
-      department_id: { type: DataTypes.UUID, allowNull: true },
-      position: { type: DataTypes.STRING(120), allowNull: true },
+      // 🔹 Contact
+      phone: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
 
-      // Professional
-      license_no: { type: DataTypes.STRING(120), allowNull: true },
-      specialty: { type: DataTypes.STRING(120), allowNull: true },
-      certifications: { type: DataTypes.TEXT, allowNull: true },
+      email: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+        validate: {
+          isEmail: true,
+        },
+      },
 
-      // Dates
-      hire_date: { type: DataTypes.DATE, allowNull: true },
-      termination_date: { type: DataTypes.DATE, allowNull: true },
+      address: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
 
-      // Emergency
-      emergency_contact_name: { type: DataTypes.STRING(120), allowNull: true },
-      emergency_contact_phone: { type: DataTypes.STRING(50), allowNull: true },
+      // 🔹 Employment
+      employee_no: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+      },
 
-      // Uploads
-      photo_path: { type: DataTypes.STRING(255), allowNull: true },
-      resume_url: { type: DataTypes.STRING(255), allowNull: true },
-      document_url: { type: DataTypes.STRING(255), allowNull: true },
+      organization_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
 
-      // Link
-      user_id: { type: DataTypes.UUID, allowNull: true },
+      facility_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
 
-      // Audit
-      created_by_id: { type: DataTypes.UUID, allowNull: true },
-      updated_by_id: { type: DataTypes.UUID, allowNull: true },
-      deleted_by_id: { type: DataTypes.UUID, allowNull: true },
+      department_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      position: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+
+      // 🔹 Professional
+      license_no: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+
+      specialty: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+
+      certifications: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+
+      // 🔹 Dates
+      hire_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+
+      termination_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+
+      // 🔹 Emergency
+      emergency_contact_name: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+
+      emergency_contact_phone: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+
+      // 🔹 Uploads
+      photo_path: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      resume_url: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      document_url: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      // 🔹 Link
+      user_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      // 🔹 Audit
+      created_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      updated_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
+      deleted_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       sequelize,
@@ -134,29 +297,78 @@ export default (sequelize) => {
       createdAt: "created_at",
       updatedAt: "updated_at",
       deletedAt: "deleted_at",
+
       defaultScope: {
-        attributes: { exclude: ["deleted_at", "deleted_by_id"] },
+        attributes: {
+          exclude: [
+            "deleted_at",
+            "deleted_by_id",
+          ],
+        },
       },
+
       scopes: {
-        withDeleted: { paranoid: false },
+        withDeleted: {
+          paranoid: false,
+        },
+
         byFacility(facilityId) {
-          return { where: { facility_id: facilityId } };
+          return {
+            where: {
+              facility_id: facilityId,
+            },
+          };
         },
+
         byOrganization(orgId) {
-          return { where: { organization_id: orgId } };
+          return {
+            where: {
+              organization_id: orgId,
+            },
+          };
         },
-        active: { where: { status: "active" } },
+
+        active: {
+          where: {
+            status: "active",
+          },
+        },
+
         tenant(facilityId) {
           if (!facilityId) return {};
-          return { where: { facility_id: facilityId } };
+
+          return {
+            where: {
+              facility_id: facilityId,
+            },
+          };
         },
       },
+
       indexes: [
-        { unique: true, fields: ["organization_id", "employee_no"] },
-        { fields: ["organization_id"] },
-        { fields: ["facility_id"] },
-        { fields: ["phone"] },
-        { fields: ["status"] },
+        {
+          unique: true,
+          fields: [
+            "organization_id",
+            "employee_no",
+          ],
+        },
+
+        {
+          fields: ["organization_id"],
+        },
+
+        {
+          fields: ["facility_id"],
+        },
+
+        {
+          fields: ["phone"],
+        },
+
+        {
+          fields: ["status"],
+        },
       ],
     }
   );

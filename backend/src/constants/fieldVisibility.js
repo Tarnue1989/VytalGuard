@@ -21,7 +21,11 @@ import {
   FIELD_ORDER_FINANCIAL_LEDGER, FIELD_ORDER_REFUND_TRANSACTION, FIELD_ORDER_PERMISSION, FIELD_ORDER_ROLE_PERMISSION,
   FIELD_ORDER_PATIENT_CHART_CACHE,  FIELD_ORDER_PATIENT_CHART_NOTE,  FIELD_ORDER_PATIENT_CHART_VIEW_LOG, FIELD_ORDER_BILLING_TRIGGER,
   FIELD_ORDER_ORDER, FIELD_ORDER_ORDER_ITEM,  FIELD_ORDER_BILLABLE_ITEM_PRICE, FIELD_ORDER_PATIENT_INSURANCE,
-  FIELD_ORDER_ACCOUNT,  FIELD_ORDER_CASH_LEDGER,  FIELD_ORDER_EXPENSE,  FIELD_ORDER_CASH_CLOSING,  FIELD_ORDER_PAYROLL
+  FIELD_ORDER_ACCOUNT,  FIELD_ORDER_CASH_LEDGER,  FIELD_ORDER_EXPENSE,  FIELD_ORDER_CASH_CLOSING,  FIELD_ORDER_PAYROLL,
+  FIELD_ORDER_CONVERSATION_PARTICIPANT,
+  FIELD_ORDER_SUPPORT_TICKET,
+  FIELD_ORDER_TICKET_ACTIVITY,
+  FIELD_ORDER_NOTIFICATION,
 
 } from "./fieldOrder.js";
 
@@ -1348,5 +1352,70 @@ export const FIELD_VISIBILITY_ORDER_ITEM = {
   staff: [
     "id","billable_item_id",
     "quantity","status"
+  ]
+};
+
+/* -------------------- Conversation Participant -------------------- */
+export const FIELD_VISIBILITY_CONVERSATION_PARTICIPANT = {
+  superadmin: FIELD_ORDER_CONVERSATION_PARTICIPANT,
+  organization_admin: FIELD_ORDER_CONVERSATION_PARTICIPANT,
+  manager: [
+    "id","conversation_id","participant_id","participant_role",
+    "is_admin","unread_count",
+    "joined_at","last_read_at"
+  ],
+  staff: [
+    "id","conversation_id","participant_id","participant_role",
+    "unread_count"
+  ]
+};
+
+/* -------------------- Support Ticket -------------------- */
+export const FIELD_VISIBILITY_SUPPORT_TICKET = {
+  superadmin: FIELD_ORDER_SUPPORT_TICKET,
+  organization_admin: FIELD_ORDER_SUPPORT_TICKET,
+  manager: [
+    "id","ticket_number","patient_id","assigned_to",
+    "subject",
+    "status","priority","category",
+    "is_escalated","sla_breached",
+    "opened_at","due_at","resolved_at","closed_at"
+  ],
+  staff: [
+    "id","ticket_number",
+    "subject",
+    "status","priority",
+    "sla_breached"
+  ]
+};
+
+/* -------------------- Ticket Activity -------------------- */
+export const FIELD_VISIBILITY_TICKET_ACTIVITY = {
+  superadmin: FIELD_ORDER_TICKET_ACTIVITY,
+  organization_admin: FIELD_ORDER_TICKET_ACTIVITY,
+  manager: [
+    "id","ticket_id","activity_type",
+    "notes","activity_source",
+    "performed_by",
+    "created_at"
+  ],
+  staff: [
+    "id","ticket_id","activity_type","notes"
+  ]
+};
+
+/* -------------------- Notification -------------------- */
+export const FIELD_VISIBILITY_NOTIFICATION = {
+  superadmin: FIELD_ORDER_NOTIFICATION,
+  organization_admin: FIELD_ORDER_NOTIFICATION,
+  manager: [
+    "id","title","message",
+    "type","channel","delivery_status",
+    "status",
+    "is_seen","created_at"
+  ],
+  staff: [
+    "id","title","message",
+    "type","status"
   ]
 };

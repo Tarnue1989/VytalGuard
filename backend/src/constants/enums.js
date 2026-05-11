@@ -901,38 +901,6 @@ export const FEATURE_MODULE_VISIBILITY = {
   PRIVATE: 'private',
   HIDDEN: 'hidden',
 };
-
-// ============================================================
-// 🔹 Messaging (NOT IN CURRENT FILE)
-// ============================================================
-export const MESSAGE_TYPE = {
-  TEXT: 'text',
-  IMAGE: 'image',
-  FILE: 'file',
-};
-
-export const MESSAGE_ROLE = {
-  PATIENT: 'patient',
-  EMPLOYEE: 'employee',
-};
-
-// ============================================================
-// 🔹 Conversations (NOT IN CURRENT FILE)
-// ============================================================
-export const CONVERSATION_TYPE = {
-  INTERNAL: 'internal',
-  HELPDESK: 'helpdesk',
-  CLINICAL: 'clinical',
-};
-
-// ============================================================
-// 🔹 Notifications (NOT IN CURRENT FILE)
-// ============================================================
-export const NOTIFICATION_STATUS = {
-  READ: 'read',
-  UNREAD: 'unread',
-};
-
 // ============================================================
 // 🔹 Refund Deposit Transaction (NOT IN CURRENT FILE)
 // ============================================================
@@ -1180,3 +1148,136 @@ const ES = {
   VOIDED: EXPENSE_STATUS.VOIDED,
   REVERSED: EXPENSE_STATUS.REVERSED,
 };
+
+
+// ============================================================
+// 🔹 Enterprise Messaging & Helpdesk
+// ============================================================
+
+// ------------------------------------------------------------
+// 🔹 Conversation Types
+// ------------------------------------------------------------
+export const CONVERSATION_TYPES = Object.freeze({
+  INTERNAL: "internal",
+  DIRECT: "direct",
+  GROUP: "group",
+  HELPDESK: "helpdesk",
+  CLINICAL: "clinical",
+});
+
+// ------------------------------------------------------------
+// 🔹 Message Types
+// ------------------------------------------------------------
+export const MESSAGE_TYPES = Object.freeze({
+  TEXT: "text",
+  IMAGE: "image",
+  VIDEO: "video",
+  AUDIO: "audio",
+  FILE: "file",
+  SYSTEM: "system",
+});
+
+// ------------------------------------------------------------
+// 🔹 Message Status
+// ------------------------------------------------------------
+export const MESSAGE_STATUS = Object.freeze({
+  SENT: "sent",
+  DELIVERED: "delivered",
+  READ: "read",
+  FAILED: "failed",
+  DELETED: "deleted",
+  EDITED: "edited",
+});
+
+// ------------------------------------------------------------
+// 🔹 Message Participant Roles
+// ------------------------------------------------------------
+export const MESSAGE_PARTICIPANT_ROLES = Object.freeze({
+  PATIENT: "patient",
+  EMPLOYEE: "employee",
+  DOCTOR: "doctor",
+  NURSE: "nurse",
+  SUPPORT: "support",
+  ADMIN: "admin",
+  SYSTEM: "system",
+});
+
+// ------------------------------------------------------------
+// 🔹 Ticket Status
+// ------------------------------------------------------------
+export const SUPPORT_TICKET_STATUS = Object.freeze({
+  OPEN: "open",
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  RESOLVED: "resolved",
+  CLOSED: "closed",
+  REOPENED: "reopened",
+  ESCALATED: "escalated",
+});
+
+// ------------------------------------------------------------
+// 🔹 Ticket Priority
+// ------------------------------------------------------------
+export const SUPPORT_TICKET_PRIORITY = Object.freeze({
+  LOW: "low",
+  MEDIUM: "medium",
+  HIGH: "high",
+  URGENT: "urgent",
+  CRITICAL: "critical",
+});
+
+// ------------------------------------------------------------
+// 🔹 Ticket Categories
+// ------------------------------------------------------------
+export const SUPPORT_TICKET_CATEGORY = Object.freeze({
+  BILLING: "billing",
+  TECHNICAL: "technical",
+  CLINICAL: "clinical",
+  APPOINTMENT: "appointment",
+  INSURANCE: "insurance",
+  PHARMACY: "pharmacy",
+  GENERAL: "general",
+});
+
+// ------------------------------------------------------------
+// 🔹 Ticket Activity Types
+// ------------------------------------------------------------
+export const TICKET_ACTIVITY_TYPES = Object.freeze({
+  CREATED: "created",
+  ASSIGNED: "assigned",
+  REASSIGNED: "reassigned",
+  REPLIED: "replied",
+  STATUS_CHANGED: "status_changed",
+  PRIORITY_CHANGED: "priority_changed",
+  ESCALATED: "escalated",
+  CLOSED: "closed",
+  REOPENED: "reopened",
+  NOTE_ADDED: "note_added",
+});
+
+// ------------------------------------------------------------
+// 🔹 Notification Types
+// ------------------------------------------------------------
+export const NOTIFICATION_TYPES = Object.freeze({
+  NEW_MESSAGE: "new_message",
+  TICKET_ASSIGNED: "ticket_assigned",
+  TICKET_REPLIED: "ticket_replied",
+  TICKET_CLOSED: "ticket_closed",
+  TICKET_ESCALATED: "ticket_escalated",
+  MENTION: "mention",
+  SYSTEM_ALERT: "system_alert",
+});
+
+// ------------------------------------------------------------
+// 🔹 Notification Status
+// ------------------------------------------------------------
+export const NOTIFICATION_STATUS = Object.freeze({
+  READ: "read",
+  UNREAD: "unread",
+});
+
+export const CONVERSATION_STATUS = Object.freeze({
+  ACTIVE: "active",
+  ARCHIVED: "archived",
+  CLOSED: "closed",
+});

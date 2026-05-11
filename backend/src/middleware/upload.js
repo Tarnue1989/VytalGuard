@@ -27,9 +27,11 @@ const storage = multer.diskStorage({
       case "employee_photo":
         folder = "uploads/employees";
         break;
+
       case "resume_url":
         folder = "uploads/resumes";
         break;
+
       case "document_url":
         folder = "uploads/documents";
         break;
@@ -81,16 +83,17 @@ const storage = multer.diskStorage({
         folder = "uploads/videos/files";
         break;
 
+      case "message_attachment":
+      case "message_file":
+        folder = "uploads/messages";
+        break;
+
       case "ultrasound_file":
         folder = "uploads/ultrasounds";
         break;
 
       case "report_file":
         folder = "uploads/medical-records";
-        break;
-
-      case "message_file":
-        folder = "uploads/messages";
         break;
 
       case "ekg_file":
@@ -103,12 +106,17 @@ const storage = multer.diskStorage({
     }
 
     ensureDir(folder);
+
     cb(null, folder);
   },
 
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
-    const unique = Date.now() + "_" + Math.round(Math.random() * 1e6);
+
+    const unique =
+      Date.now() +
+      "_" +
+      Math.round(Math.random() * 1e6);
 
     const field = file.fieldname.replace(/\[\d+\]/g, "");
 
@@ -129,6 +137,11 @@ const storage = multer.diskStorage({
 
       case "document_url":
         prefix = "doc";
+        break;
+
+      case "message_attachment":
+      case "message_file":
+        prefix = "message";
         break;
 
       /* ---------- Branding ---------- */
@@ -184,15 +197,22 @@ function fileFilter(req, file, cb) {
     "about_image",
     "video_thumb",
     "video_file",
+
     "ultrasound_file",
     "report_file",
+
     "message_file",
+    "message_attachment",
+
     "ekg_file",
     "surgery_file",
   ];
 
   if (!allowedFields.includes(field)) {
-    return cb(new Error("Invalid field for file upload"), false);
+    return cb(
+      new Error("Invalid field for file upload"),
+      false
+    );
   }
 
   cb(null, true);
@@ -203,8 +223,12 @@ function fileFilter(req, file, cb) {
 ============================================================ */
 const baseMulter = multer({
   storage,
+
   fileFilter,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+  }, // 100MB
 });
 
 /* ============================================================
@@ -212,31 +236,77 @@ const baseMulter = multer({
 ============================================================ */
 
 // Employee
-export const uploadEmployee = baseMulter.fields([
-  { name: "employee_photo", maxCount: 1 },
-  { name: "resume_url", maxCount: 1 },
-  { name: "document_url", maxCount: 1 },
-]);
+export const uploadEmployee =
+  baseMulter.fields([
+    {
+      name: "employee_photo",
+      maxCount: 1,
+    },
+
+    {
+      name: "resume_url",
+      maxCount: 1,
+    },
+
+    {
+      name: "document_url",
+      maxCount: 1,
+    },
+  ]);
 
 // Patient
-export const uploadPatient = baseMulter.fields([
-  { name: "photo_path", maxCount: 1 },
-]);
+export const uploadPatient =
+  baseMulter.fields([
+    {
+      name: "photo_path",
+      maxCount: 1,
+    },
+  ]);
 
 // Lab Results (dynamic)
-export const uploadLabResult = baseMulter.any();
+export const uploadLabResult =
+  baseMulter.any();
 
-// Branding (🔥 NEW — USE THIS)
-export const uploadBranding = baseMulter.fields([
-  { name: "logo", maxCount: 1 },
-  { name: "logo_print", maxCount: 1 },
-  { name: "favicon", maxCount: 1 },
-]);
+// Branding
+export const uploadBranding =
+  baseMulter.fields([
+    {
+      name: "logo",
+      maxCount: 1,
+    },
+
+    {
+      name: "logo_print",
+      maxCount: 1,
+    },
+
+    {
+      name: "favicon",
+      maxCount: 1,
+    },
+  ]);
+
+// Messages
+export const uploadMessage =
+  baseMulter.fields([
+    {
+      name: "message_attachment",
+      maxCount: 10,
+    },
+  ]);
 
 // Others
-export const uploadUltrasound = baseMulter.single("ultrasound_file");
-export const uploadMedicalRecord = baseMulter.single("report_file");
-export const uploadEKG = baseMulter.single("ekg_file");
+export const uploadUltrasound =
+  baseMulter.single(
+    "ultrasound_file"
+  );
+
+export const uploadMedicalRecord =
+  baseMulter.single("report_file");
+
+export const uploadEKG =
+  baseMulter.single("ekg_file");
 
 // Generic fallback
-export const uploadGeneric = baseMulter;
+export const uploadGeneric =
+  baseMulter;
