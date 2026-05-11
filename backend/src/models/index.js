@@ -110,6 +110,10 @@ import RoomModel from "./Room.js";
 // 📦 System / Logs
 import AccessViolationLogModel from "./AccessViolationLog.js";
 import ConversationModel from "./Conversation.js";
+import ConversationParticipantModel from "./ConversationParticipant.js";
+import SupportTicketModel from "./SupportTicket.js";
+import TicketActivityModel from "./TicketActivity.js";
+import NotificationModel from "./Notification.js";
 import SystemAuditLogModel from "./SystemAuditLog.js";
 
 // 📦 RBAC
@@ -130,6 +134,7 @@ const models = {
   RefreshToken: RefreshTokenModel(sequelize),
   PasswordHistory: PasswordHistoryModel(sequelize),
   OrganizationBranding: OrganizationBrandingModel(sequelize),
+  
     // 🔹 RBAC
   Permission: PermissionModel(sequelize),
   RolePermission: RolePermissionModel(sequelize),
@@ -228,6 +233,10 @@ const models = {
   // 🔹 System
   AccessViolationLog: AccessViolationLogModel(sequelize),
   Conversation: ConversationModel(sequelize),
+  ConversationParticipant: ConversationParticipantModel(sequelize),
+  SupportTicket: SupportTicketModel(sequelize),
+  TicketActivity: TicketActivityModel(sequelize),
+  Notification: NotificationModel(sequelize),
   SystemAuditLog: SystemAuditLogModel(sequelize),
 };
 
@@ -273,7 +282,14 @@ export const {
   Bed, Ward, Room,
 
   // System
-  AccessViolationLog, Conversation, SystemAuditLog,
+  AccessViolationLog,
+  Conversation,
+  ConversationParticipant,
+  SupportTicket,
+  TicketActivity,
+  Notification,
+  SystemAuditLog,
+  
 } = models;
 
 

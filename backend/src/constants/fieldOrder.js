@@ -1104,3 +1104,64 @@ export const FIELD_ORDER_ORDER_ITEM = [
   "created_at","updated_at","deleted_at",
   "created_by_id","updated_by_id","deleted_by_id"
 ];
+
+/* -------------------- Conversation Participant -------------------- */
+export const FIELD_ORDER_CONVERSATION_PARTICIPANT = [
+  "id","conversation_id","participant_id","participant_role",
+  "is_admin","is_muted","is_archived",
+  "unread_count","notifications_enabled",
+  "last_delivered_message_id",
+  "joined_at","left_at","last_read_at",
+  "metadata",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by","updated_by","deleted_by"
+];
+
+/* -------------------- Support Ticket -------------------- */
+export const FIELD_ORDER_SUPPORT_TICKET = [
+  "id","ticket_number","conversation_id",
+  "patient_id","employee_id","assigned_to",
+  "subject","description","internal_notes",
+  "status","priority","category",
+  "is_escalated","sla_breached",
+  "reopened_count","resolution_summary",
+  "closed_by",
+  "opened_at","first_response_at","due_at",
+  "resolved_at","closed_at",
+  "rating","feedback_comment",
+  "metadata",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by","updated_by","deleted_by"
+];
+
+/* -------------------- Ticket Activity -------------------- */
+export const FIELD_ORDER_TICKET_ACTIVITY = [
+  "id","ticket_id","activity_type",
+  "old_value","new_value",
+  "notes","metadata",
+  "performed_by",
+  "is_system_generated",
+  "activity_source","ip_address","device_info",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by","updated_by","deleted_by"
+];
+
+/* -------------------- Notification -------------------- */
+export const FIELD_ORDER_NOTIFICATION = [
+  "id","user_id",
+  "title","message",
+  "type",
+  "reference_type","reference_id",
+  "channel","delivery_status",
+  "delivered_at","failed_at","failure_reason",
+  "status",
+  "read_at",
+  "is_seen","seen_at",
+  "metadata",
+  "organization_id","facility_id",
+  "created_at","updated_at","deleted_at",
+  "created_by","updated_by","deleted_by"
+];

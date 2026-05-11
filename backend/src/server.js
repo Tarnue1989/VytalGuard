@@ -18,6 +18,8 @@ import routes from "./routes/index.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { makeModuleLogger, isDebugEnabled } from "./utils/debugLogger.js";
 
+import initSocket from "./socket/index.js";
+
 /* ============================================================
    🔧 LOCAL DEBUG OVERRIDE (SERVER ONLY)
 ============================================================ */
@@ -163,13 +165,28 @@ let server;
         cert = fs.readFileSync(path.resolve(SSL_CERT_PATH));
       }
 
-      server = https.createServer({ key, cert }, app).listen(PORT, () => {
-        log.log(`API listening on https://0.0.0.0:${PORT}`);
+      server = https.createServer(
+        { key, cert },
+        app
+      );
+
+      initSocket(server);
+
+      server.listen(PORT, () => {
+        log.log(
+          `API listening on https://0.0.0.0:${PORT}`
+        );
       });
     } else {
-      server = http.createServer(app).listen(PORT, () => {
-        log.log(`API listening on http://0.0.0.0:${PORT}`);
-      });
+    server = http.createServer(app);
+
+    initSocket(server);
+
+    server.listen(PORT, () => {
+      log.log(
+        `API listening on http://0.0.0.0:${PORT}`
+      );
+    });
     }
   } catch (err) {
     log.error("Failed to start server", err);

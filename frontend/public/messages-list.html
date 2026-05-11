@@ -1,0 +1,332 @@
+<!-- 📁 messages.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <title>VytalGuard - Messages</title>
+
+  <meta name="description" content="VytalGuard HMS - Messaging Center"/>
+
+  <link rel="shortcut icon" href="assets/images/favicon.svg"/>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/fonts/remix/remixicon.css"/>
+  <link rel="stylesheet" href="assets/css/main.min.css"/>
+  <link rel="stylesheet" href="assets/css/admin-global.css"/>
+  <link rel="stylesheet" href="assets/css/filter-page.css"/>
+  <link rel="stylesheet" href="assets/css/messages.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+</head>
+
+<body>
+
+<div class="page-wrapper">
+  <div class="app-container">
+
+    <!-- HEADER -->
+    <div class="app-header d-flex align-items-center"></div>
+
+    <!-- BREADCRUMB -->
+    <div class="app-hero-header d-flex align-items-center">
+
+      <ol class="breadcrumb mb-0">
+
+        <li class="breadcrumb-item">
+          <a href="dashboard.html">
+            <i class="ri-home-3-line"></i>
+          </a>
+        </li>
+
+        <li class="breadcrumb-item">
+          Communication
+        </li>
+
+        <li class="breadcrumb-item text-primary" aria-current="page">
+          Messages
+        </li>
+
+      </ol>
+
+    </div>
+
+    <!-- BODY -->
+    <div class="app-body">
+
+      <div class="row gx-3">
+        <div class="col-12">
+
+          <div class="card">
+
+            <!-- CARD HEADER -->
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+
+              <!-- LEFT -->
+              <div>
+
+                <h5 class="card-title mb-0">
+                  Messages
+                </h5>
+
+                <small class="text-muted">
+                  Enterprise Communication Center
+                </small>
+
+              </div>
+
+              <!-- RIGHT -->
+              <div class="d-flex align-items-center gap-2">
+
+                <!-- SEARCH -->
+                <div class="position-relative" style="width:250px;">
+
+                  <i class="fa fa-search position-absolute text-muted"
+                     style="left:12px;top:11px;font-size:12px;"></i>
+
+                  <input
+                    id="conversationSearch"
+                    type="text"
+                    class="form-control ps-4"
+                    placeholder="Search conversations..."
+                  />
+
+                </div>
+
+                <!-- NEW CHAT -->
+                <button id="newConversationBtn" class="btn btn-primary btn-sm">
+
+                  <i class="ri-add-line me-1"></i>
+
+                  New Chat
+
+                </button>
+
+              </div>
+
+            </div>
+
+            <!-- CHAT -->
+            <div class="card-body p-0">
+
+              <div class="messages-layout">
+
+                <!-- SIDEBAR -->
+                <div class="messages-sidebar">
+
+                  <div id="conversationList" class="conversation-list"></div>
+
+                </div>
+
+                <!-- CHAT PANEL -->
+                <div class="messages-chat">
+
+                  <!-- CHAT HEADER -->
+                  <div class="chat-header">
+
+                    <!-- LEFT -->
+                    <div class="d-flex align-items-center gap-2">
+
+                      <!-- MOBILE BACK -->
+                      <button id="backToListBtn" class="btn btn-light btn-sm d-md-none">
+
+                        <i class="fa fa-arrow-left"></i>
+
+                      </button>
+
+                      <!-- AVATAR -->
+                      <div class="chat-avatar">
+                        C
+                      </div>
+
+                      <!-- INFO -->
+                      <div>
+
+                        <div id="chatTitle" class="fw-semibold">
+                          Select Conversation
+                        </div>
+
+                        <small id="chatPresence" class="text-success">
+                          Online
+                        </small>
+
+                      </div>
+
+                    </div>
+
+                    <!-- RIGHT -->
+                    <div class="d-flex align-items-center gap-2">
+
+                      <!-- SEARCH -->
+                      <div class="position-relative d-none d-md-block" style="width:220px;">
+
+                        <i class="fa fa-search position-absolute text-muted"
+                           style="left:12px;top:11px;font-size:12px;"></i>
+
+                        <input
+                          id="messageSearch"
+                          type="text"
+                          class="form-control form-control-sm ps-4"
+                          placeholder="Search messages..."
+                        />
+
+                      </div>
+
+                      <!-- CALL -->
+                      <button class="btn btn-light btn-sm">
+                        <i class="fa fa-phone"></i>
+                      </button>
+
+                      <!-- VIDEO -->
+                      <button class="btn btn-light btn-sm">
+                        <i class="fa fa-video"></i>
+                      </button>
+
+                      <!-- INFO -->
+                      <button class="btn btn-light btn-sm">
+                        <i class="fa fa-circle-info"></i>
+                      </button>
+
+                      <!-- MORE -->
+                      <button class="btn btn-light btn-sm">
+                        <i class="fa fa-ellipsis-v"></i>
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                  <!-- CHAT BODY -->
+                  <div id="chatMessages" class="chat-body">
+
+                    <!-- EMPTY -->
+                    <div id="emptyChat" class="empty-chat">
+
+                      <i class="fa fa-comments empty-chat-icon"></i>
+
+                      <div class="fw-semibold">
+                        No Conversation Selected
+                      </div>
+
+                      <small>
+                        Select a conversation to start chatting
+                      </small>
+
+                    </div>
+
+                  </div>
+
+                  <!-- TYPING -->
+                  <div id="typingIndicator" class="typing-indicator"></div>
+
+                  <!-- ATTACHMENT -->
+                  <div id="attachmentPreview" class="attachment-preview"></div>
+
+                  <!-- INPUT -->
+                  <form id="messageForm" class="chat-input-area">
+
+                    <div class="d-flex align-items-end gap-2">
+
+                      <!-- ATTACH -->
+                      <div>
+
+                        <label for="messageAttachment" class="btn btn-light btn-sm mb-0">
+
+                          <i class="fa fa-paperclip"></i>
+
+                        </label>
+
+                        <input
+                          id="messageAttachment"
+                          type="file"
+                          hidden
+                          multiple
+                        />
+
+                      </div>
+
+                      <!-- MESSAGE -->
+                      <div class="flex-grow-1">
+
+                        <textarea
+                          id="messageInput"
+                          rows="1"
+                          class="form-control"
+                          placeholder="Type a message..."
+                        ></textarea>
+
+                      </div>
+
+                      <!-- EMOJI -->
+                      <button type="button" class="btn btn-light btn-sm">
+
+                        <i class="fa fa-face-smile"></i>
+
+                      </button>
+
+                      <!-- SEND -->
+                      <button type="submit" class="btn btn-primary btn-sm send-btn">
+
+                        <i class="fa fa-paper-plane"></i>
+
+                      </button>
+
+                    </div>
+
+                  </form>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="app-footer">
+
+      <span>
+        © VytalGuard HMS 2025
+      </span>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loadingOverlay" class="hidden">
+
+  <div class="spinner-box">
+
+    <i class="fas fa-spinner fa-spin"></i>
+
+    Loading...
+
+  </div>
+
+</div>
+
+<!-- JS -->
+<script src="assets/js/jquery.min.js"></script>
+<script src="assets/js/bootstrap.bundle.min.js"></script>
+<script src="assets/js/custom.js"></script>
+
+<!-- AUTH -->
+<script type="module" src="/js/authSession.js"></script>
+<script type="module" src="/js/logout.js"></script>
+
+<!-- SOCKET -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<!-- MESSAGES -->
+<script type="module" src="/js/modules/communication/messages/message-main.js"></script>
+
+</body>
+</html>

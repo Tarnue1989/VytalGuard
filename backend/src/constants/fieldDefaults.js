@@ -25,7 +25,12 @@ import {
   FIELD_ORDER_CASH_LEDGER,
   FIELD_ORDER_EXPENSE,
   FIELD_ORDER_CASH_CLOSING,
-  FIELD_ORDER_PAYROLL
+  FIELD_ORDER_PAYROLL,
+  FIELD_ORDER_CONVERSATION_PARTICIPANT,
+  FIELD_ORDER_SUPPORT_TICKET,
+  FIELD_ORDER_TICKET_ACTIVITY,
+  FIELD_ORDER_NOTIFICATION,
+  
 } from "./fieldOrder.js";
 
 
@@ -1416,3 +1421,69 @@ export const FIELD_DEFAULTS_PATIENT_CHART_VIEW_LOG = {
   action: "view",
 };
 
+/* -------------------- Conversation Participant -------------------- */
+export const FIELD_DEFAULTS_CONVERSATION_PARTICIPANT = {
+  admin: FIELD_ORDER_CONVERSATION_PARTICIPANT,
+  manager: [
+    "conversation_id","participant_id","participant_role",
+    "is_admin","is_muted","notifications_enabled",
+    "unread_count",
+    "joined_at","last_read_at"
+  ],
+  staff: [
+    "conversation_id",
+    "participant_id",
+    "participant_role",
+    "unread_count"
+  ]
+};
+
+/* -------------------- Support Ticket -------------------- */
+export const FIELD_DEFAULTS_SUPPORT_TICKET = {
+  admin: FIELD_ORDER_SUPPORT_TICKET,
+  manager: [
+    "ticket_number","patient_id","assigned_to",
+    "subject",
+    "status","priority","category",
+    "sla_breached",
+    "opened_at","due_at","resolved_at"
+  ],
+  staff: [
+    "ticket_number",
+    "subject",
+    "status",
+    "priority",
+    "sla_breached"
+  ]
+};
+
+/* -------------------- Ticket Activity -------------------- */
+export const FIELD_DEFAULTS_TICKET_ACTIVITY = {
+  admin: FIELD_ORDER_TICKET_ACTIVITY,
+  manager: [
+    "ticket_id","activity_type","notes",
+    "activity_source",
+    "performed_by","created_at"
+  ],
+  staff: [
+    "ticket_id",
+    "activity_type",
+    "notes"
+  ]
+};
+
+/* -------------------- Notification -------------------- */
+export const FIELD_DEFAULTS_NOTIFICATION = {
+  admin: FIELD_ORDER_NOTIFICATION,
+  manager: [
+    "title","message","type",
+    "channel","delivery_status",
+    "status","is_seen","created_at"
+  ],
+  staff: [
+    "title",
+    "message",
+    "type",
+    "status"
+  ]
+};
